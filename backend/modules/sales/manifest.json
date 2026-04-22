@@ -1,0 +1,9 @@
+{
+  "name": "sales",
+  "version": "1.0.0",
+  "description": "Sales Module - Inquiries, Quotations, Proforma Invoices, Sales Orders",
+  "dependencies": ["core", "crm", "products"],
+  "routes": ["inquiryRoutes", "quotationRoutes", "proformaInvoiceRoutes", "salesOrderRoutes"],
+  "models": ["Inquiry", "InquiryItem", "Quotation", "QuotationItem", "ProformaInvoice", "ProformaInvoiceItem", "SalesOrder", "SalesOrderItem"],
+  "config": {}
+}

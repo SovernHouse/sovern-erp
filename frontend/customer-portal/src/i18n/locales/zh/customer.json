@@ -1,0 +1,74 @@
+{
+  "customer": {
+    "title": "客户门户",
+    "dashboard": {
+      "title": "仪表板",
+      "myOrders": "我的订单",
+      "ordersSummary": "订单摘要",
+      "totalSpent": "总支出",
+      "recentOrders": "最近的订单",
+      "quotations": "报价",
+      "invoices": "发票",
+      "shipments": "发货"
+    },
+    "orders": {
+      "title": "我的订单",
+      "orderId": "订单编号",
+      "date": "日期",
+      "status": "状态",
+      "total": "总计",
+      "actions": "操作",
+      "viewDetails": "查看详情",
+      "downloadInvoice": "下载发票"
+    },
+    "quotations": {
+      "title": "报价",
+      "quotationId": "报价编号",
+      "date": "日期",
+      "status": "状态",
+      "validUntil": "有效期至",
+      "total": "总计",
+      "acceptQuotation": "接受报价",
+      "rejectQuotation": "拒绝报价",
+      "downloadPDF": "下载PDF"
+    },
+    "inquiries": {
+      "title": "询价",
+      "createInquiry": "创建询价",
+      "inquiryDetails": "询价详情",
+      "products": "产品",
+      "quantity": "数量",
+      "specifications": "规格",
+      "deliveryDate": "交货日期",
+      "submit": "提交"
+    },
+    "invoices": {
+      "title": "发票",
+      "invoiceId": "发票编号",
+      "date": "日期",
+      "amount": "金额",
+      "status": "状态",
+      "dueDate": "到期日期",
+      "downloadPDF": "下载PDF",
+      "recordPayment": "记录付款"
+    },
+    "shipments": {
+      "title": "发货",
+      "shipmentId": "发货编号",
+      "orderId": "订单编号",
+      "status": "状态",
+      "trackingNumber": "跟踪号",
+      "estimatedDelivery": "估计交货日期",
+      "trackShipment": "追踪发货"
+    },
+    "profile": {
+      "title": "我的个人资料",
+      "personalInfo": "个人信息",
+      "companyInfo": "公司信息",
+      "billingAddress": "账单地址",
+      "shippingAddress": "收货地址",
+      "changePassword": "更改密码",
+      "editProfile": "编辑个人资料"
+    }
+  }
+}

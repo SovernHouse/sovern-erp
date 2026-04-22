@@ -1,0 +1,72 @@
+{
+  "factory": {
+    "title": "工厂门户",
+    "dashboard": {
+      "title": "仪表板",
+      "production": "生产",
+      "purchaseOrders": "采购订单",
+      "inventory": "库存",
+      "quality": "质量控制",
+      "performance": "性能指标"
+    },
+    "purchaseOrders": {
+      "title": "采购订单",
+      "orderId": "订单编号",
+      "supplier": "供应商",
+      "date": "日期",
+      "status": "状态",
+      "total": "总计",
+      "dueDate": "截止日期",
+      "items": "项目",
+      "quantity": "数量",
+      "unitPrice": "单价"
+    },
+    "production": {
+      "title": "生产计划",
+      "batchId": "批号",
+      "orderId": "订单编号",
+      "product": "产品",
+      "quantity": "数量",
+      "startDate": "开始日期",
+      "completionDate": "完成日期",
+      "status": "状态",
+      "progress": "进度"
+    },
+    "inventory": {
+      "title": "库存",
+      "productId": "产品编号",
+      "productName": "产品名称",
+      "quantity": "数量",
+      "location": "位置",
+      "lastUpdated": "最后更新",
+      "adjustStock": "调整库存"
+    },
+    "quality": {
+      "title": "质量控制",
+      "inspectionId": "检查编号",
+      "batchId": "批号",
+      "inspectionDate": "检查日期",
+      "status": "状态",
+      "notes": "备注",
+      "uploadPhotos": "上传照片",
+      "approveQuality": "批准质量"
+    },
+    "shipments": {
+      "title": "发货",
+      "shipmentId": "发货编号",
+      "orderId": "订单编号",
+      "status": "状态",
+      "readyToShip": "准备就绪",
+      "shipped": "已发货",
+      "trackingNumber": "跟踪号",
+      "markAsShipped": "标记为已发货"
+    },
+    "reports": {
+      "title": "报告",
+      "productionReport": "生产报告",
+      "qualityReport": "质量报告",
+      "performanceReport": "性能报告",
+      "inventoryReport": "库存报告"
+    }
+  }
+}

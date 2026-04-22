@@ -1,0 +1,60 @@
+{
+  "name": "trading-erp-system",
+  "version": "1.0.0",
+  "description": "Complete Trading Company ERP System",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend/shared",
+    "frontend/admin-portal",
+    "frontend/customer-portal",
+    "frontend/factory-portal"
+  ],
+  "scripts": {
+    "install:all": "npm install",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:admin\" \"npm run dev:customer\" \"npm run dev:factory\"",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:admin": "npm run dev --workspace=frontend/admin-portal",
+    "dev:customer": "npm run dev --workspace=frontend/customer-portal",
+    "dev:factory": "npm run dev --workspace=frontend/factory-portal",
+    "build:all": "npm run build --workspace=frontend/admin-portal && npm run build --workspace=frontend/customer-portal && npm run build --workspace=frontend/factory-portal",
+    "seed": "npm run seed --workspace=backend",
+    "migrate": "npm run migrate --workspace=backend",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "docker:rebuild": "docker-compose down && docker-compose up -d --build",
+    "test": "npm run test --workspace=backend",
+    "lint": "echo lint",
+    "test:e2e": "npx playwright test",
+    "test:e2e:headed": "npx playwright test --headed",
+    "test:e2e:ui": "npx playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "erp",
+    "trading",
+    "logistics",
+    "supply-chain"
+  ],
+  "author": "Trading Company",
+  "license": "PROPRIETARY",
+  "dependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.59.0",
+    "cookie-parser": "^1.4.7",
+    "csv-parse": "^6.1.0",
+    "docxtemplater": "^3.68.3",
+    "exceljs": "^4.4.0",
+    "handlebars": "^4.7.8",
+    "http-proxy-middleware": "^3.0.5",
+    "pizzip": "^3.2.0",
+    "sqlite3": "^6.0.1"
+  }
+}

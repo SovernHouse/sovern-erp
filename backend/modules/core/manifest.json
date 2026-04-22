@@ -1,0 +1,12 @@
+{
+  "name": "core",
+  "version": "1.0.0",
+  "description": "Core Platform - Auth, Users, RBAC, Settings, Audit, Notifications",
+  "dependencies": [],
+  "routes": ["authRoutes", "userRoutes", "settingsRoutes", "auditRoutes"],
+  "models": ["User", "AuditLog"],
+  "config": {
+    "jwtExpiry": "24h",
+    "maxLoginAttempts": 5
+  }
+}

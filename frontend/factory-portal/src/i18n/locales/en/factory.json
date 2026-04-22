@@ -1,0 +1,72 @@
+{
+  "factory": {
+    "title": "Factory Portal",
+    "dashboard": {
+      "title": "Dashboard",
+      "production": "Production",
+      "purchaseOrders": "Purchase Orders",
+      "inventory": "Inventory",
+      "quality": "Quality Control",
+      "performance": "Performance Metrics"
+    },
+    "purchaseOrders": {
+      "title": "Purchase Orders",
+      "orderId": "Order ID",
+      "supplier": "Supplier",
+      "date": "Date",
+      "status": "Status",
+      "total": "Total",
+      "dueDate": "Due Date",
+      "items": "Items",
+      "quantity": "Quantity",
+      "unitPrice": "Unit Price"
+    },
+    "production": {
+      "title": "Production Schedule",
+      "batchId": "Batch ID",
+      "orderId": "Order ID",
+      "product": "Product",
+      "quantity": "Quantity",
+      "startDate": "Start Date",
+      "completionDate": "Completion Date",
+      "status": "Status",
+      "progress": "Progress"
+    },
+    "inventory": {
+      "title": "Inventory",
+      "productId": "Product ID",
+      "productName": "Product Name",
+      "quantity": "Quantity",
+      "location": "Location",
+      "lastUpdated": "Last Updated",
+      "adjustStock": "Adjust Stock"
+    },
+    "quality": {
+      "title": "Quality Control",
+      "inspectionId": "Inspection ID",
+      "batchId": "Batch ID",
+      "inspectionDate": "Inspection Date",
+      "status": "Status",
+      "notes": "Notes",
+      "uploadPhotos": "Upload Photos",
+      "approveQuality": "Approve Quality"
+    },
+    "shipments": {
+      "title": "Shipments",
+      "shipmentId": "Shipment ID",
+      "orderId": "Order ID",
+      "status": "Status",
+      "readyToShip": "Ready to Ship",
+      "shipped": "Shipped",
+      "trackingNumber": "Tracking Number",
+      "markAsShipped": "Mark as Shipped"
+    },
+    "reports": {
+      "title": "Reports",
+      "productionReport": "Production Report",
+      "qualityReport": "Quality Report",
+      "performanceReport": "Performance Report",
+      "inventoryReport": "Inventory Report"
+    }
+  }
+}

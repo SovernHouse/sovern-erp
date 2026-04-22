@@ -1,0 +1,9 @@
+{
+  "name": "finance",
+  "version": "1.0.0",
+  "description": "Finance Module - Invoices, Payments, Currency",
+  "dependencies": ["core", "sales"],
+  "routes": ["invoiceRoutes", "paymentRoutes", "currencyRoutes"],
+  "models": ["Invoice", "Payment", "ExchangeRate"],
+  "config": {}
+}

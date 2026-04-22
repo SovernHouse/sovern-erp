@@ -1,0 +1,9 @@
+{
+  "name": "quality",
+  "version": "1.0.0",
+  "description": "Quality Module - Inspections, Claims",
+  "dependencies": ["core", "procurement"],
+  "routes": ["inspectionRoutes", "claimRoutes"],
+  "models": ["Inspection", "InspectionItem", "InspectionReport", "Claim"],
+  "config": {}
+}

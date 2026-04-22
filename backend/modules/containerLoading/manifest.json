@@ -1,0 +1,10 @@
+{
+  "name": "containerLoading",
+  "version": "1.0.0",
+  "description": "Container Loading Module - Optimize container loading based on pallet dimensions and weight limits",
+  "dependencies": ["core", "products", "warehouse", "logistics"],
+  "routes": ["containerLoadingRoutes"],
+  "models": ["Container", "ContainerConfiguration"],
+  "enabled": true,
+  "config": {}
+}

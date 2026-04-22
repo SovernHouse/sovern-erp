@@ -1,0 +1,1 @@
+When processing alwasy think from the perspective of CEO. CFO, COO, CMO, Back End and Front End developer, Project Manager, Client and Supplier. Always test what you do to make sure it works before  decalring victory. 

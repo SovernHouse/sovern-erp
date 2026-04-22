@@ -1,0 +1,9 @@
+{
+  "name": "logistics",
+  "version": "1.0.0",
+  "description": "Logistics Module - Shipments, Packing Lists, Tracking",
+  "dependencies": ["core", "sales", "procurement"],
+  "routes": ["shipmentRoutes", "packingListRoutes", "shippingDocumentRoutes"],
+  "models": ["Shipment", "ShipmentTracking", "PackingList", "PackingListItem", "ShippingDocument"],
+  "config": {}
+}

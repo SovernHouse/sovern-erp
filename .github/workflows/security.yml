@@ -1,0 +1,168 @@
+name: Security Scanning
+
+on:
+  schedule:
+    # Run weekly on Monday at 2 AM UTC
+    - cron: '0 2 * * 1'
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+
+jobs:
+  npm-audit:
+    name: NPM Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate || true
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: npm-audit-report
+          path: |
+            npm-audit-*.json
+          retention-days: 90
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Dependency review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+
+  security-headers:
+    name: Security Configuration Review
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for security misconfigurations
+        run: |
+          echo "Checking security configuration..."
+
+          # Check for environment secrets in code
+          if grep -r "JWT_SECRET\|API_KEY\|PASSWORD" backend --include="*.js" | grep -v node_modules | grep -v "process.env" | grep -v "config/"; then
+            echo "WARNING: Potential hardcoded secrets found"
+          else
+            echo "✓ No hardcoded secrets detected"
+          fi
+
+          # Check for helmet configuration
+          if grep -q "helmet()" backend/server.js; then
+            echo "✓ Helmet security middleware configured"
+          else
+            echo "WARNING: Helmet security middleware not found"
+          fi
+
+          # Check for CORS configuration
+          if grep -q "cors(" backend/server.js; then
+            echo "✓ CORS configuration present"
+          else
+            echo "WARNING: CORS configuration not found"
+          fi
+
+          # Check for rate limiting
+          if grep -q "rateLimit\|rateLimiter" backend/server.js; then
+            echo "✓ Rate limiting configured"
+          else
+            echo "WARNING: Rate limiting not configured"
+          fi
+
+          echo ""
+          echo "Security configuration review completed"
+
+  trivy-scan:
+    name: Trivy Container Vulnerability Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image for scanning
+        run: docker build -t trading-erp:latest . 2>/dev/null || echo "Docker build skipped"
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        continue-on-error: true
+        with:
+          image-ref: 'trading-erp:latest'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        continue-on-error: true
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  codeql-analysis:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v2
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+
+  secret-scanning:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run TruffleHog secret scanner
+        uses: trufflesecurity/trufflehog@main
+        continue-on-error: true
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified

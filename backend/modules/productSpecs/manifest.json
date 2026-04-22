@@ -1,0 +1,10 @@
+{
+  "name": "productSpecs",
+  "version": "1.0.0",
+  "description": "Product Specifications Module - Tile-specific properties including PEI rating, water absorption, shade variation, slip resistance, and certifications",
+  "dependencies": ["core", "products"],
+  "routes": ["productSpecsRoutes"],
+  "models": ["ProductSpecification"],
+  "enabled": true,
+  "config": {}
+}

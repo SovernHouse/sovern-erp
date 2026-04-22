@@ -1,0 +1,74 @@
+{
+  "customer": {
+    "title": "Customer Portal",
+    "dashboard": {
+      "title": "Dashboard",
+      "myOrders": "My Orders",
+      "ordersSummary": "Orders Summary",
+      "totalSpent": "Total Spent",
+      "recentOrders": "Recent Orders",
+      "quotations": "Quotations",
+      "invoices": "Invoices",
+      "shipments": "Shipments"
+    },
+    "orders": {
+      "title": "My Orders",
+      "orderId": "Order ID",
+      "date": "Date",
+      "status": "Status",
+      "total": "Total",
+      "actions": "Actions",
+      "viewDetails": "View Details",
+      "downloadInvoice": "Download Invoice"
+    },
+    "quotations": {
+      "title": "Quotations",
+      "quotationId": "Quotation ID",
+      "date": "Date",
+      "status": "Status",
+      "validUntil": "Valid Until",
+      "total": "Total",
+      "acceptQuotation": "Accept Quotation",
+      "rejectQuotation": "Reject Quotation",
+      "downloadPDF": "Download PDF"
+    },
+    "inquiries": {
+      "title": "Inquiries",
+      "createInquiry": "Create Inquiry",
+      "inquiryDetails": "Inquiry Details",
+      "products": "Products",
+      "quantity": "Quantity",
+      "specifications": "Specifications",
+      "deliveryDate": "Delivery Date",
+      "submit": "Submit"
+    },
+    "invoices": {
+      "title": "Invoices",
+      "invoiceId": "Invoice ID",
+      "date": "Date",
+      "amount": "Amount",
+      "status": "Status",
+      "dueDate": "Due Date",
+      "downloadPDF": "Download PDF",
+      "recordPayment": "Record Payment"
+    },
+    "shipments": {
+      "title": "Shipments",
+      "shipmentId": "Shipment ID",
+      "orderId": "Order ID",
+      "status": "Status",
+      "trackingNumber": "Tracking Number",
+      "estimatedDelivery": "Estimated Delivery",
+      "trackShipment": "Track Shipment"
+    },
+    "profile": {
+      "title": "My Profile",
+      "personalInfo": "Personal Information",
+      "companyInfo": "Company Information",
+      "billingAddress": "Billing Address",
+      "shippingAddress": "Shipping Address",
+      "changePassword": "Change Password",
+      "editProfile": "Edit Profile"
+    }
+  }
+}

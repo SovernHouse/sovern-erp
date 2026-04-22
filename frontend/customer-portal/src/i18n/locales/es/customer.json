@@ -1,0 +1,74 @@
+{
+  "customer": {
+    "title": "Portal del Cliente",
+    "dashboard": {
+      "title": "Panel de Control",
+      "myOrders": "Mis Pedidos",
+      "ordersSummary": "Resumen de Pedidos",
+      "totalSpent": "Gasto Total",
+      "recentOrders": "Pedidos Recientes",
+      "quotations": "Cotizaciones",
+      "invoices": "Facturas",
+      "shipments": "Envíos"
+    },
+    "orders": {
+      "title": "Mis Pedidos",
+      "orderId": "ID de Pedido",
+      "date": "Fecha",
+      "status": "Estado",
+      "total": "Total",
+      "actions": "Acciones",
+      "viewDetails": "Ver Detalles",
+      "downloadInvoice": "Descargar Factura"
+    },
+    "quotations": {
+      "title": "Cotizaciones",
+      "quotationId": "ID de Cotización",
+      "date": "Fecha",
+      "status": "Estado",
+      "validUntil": "Válido Hasta",
+      "total": "Total",
+      "acceptQuotation": "Aceptar Cotización",
+      "rejectQuotation": "Rechazar Cotización",
+      "downloadPDF": "Descargar PDF"
+    },
+    "inquiries": {
+      "title": "Consultas",
+      "createInquiry": "Crear Consulta",
+      "inquiryDetails": "Detalles de la Consulta",
+      "products": "Productos",
+      "quantity": "Cantidad",
+      "specifications": "Especificaciones",
+      "deliveryDate": "Fecha de Entrega",
+      "submit": "Enviar"
+    },
+    "invoices": {
+      "title": "Facturas",
+      "invoiceId": "ID de Factura",
+      "date": "Fecha",
+      "amount": "Cantidad",
+      "status": "Estado",
+      "dueDate": "Fecha de Vencimiento",
+      "downloadPDF": "Descargar PDF",
+      "recordPayment": "Registrar Pago"
+    },
+    "shipments": {
+      "title": "Envíos",
+      "shipmentId": "ID de Envío",
+      "orderId": "ID de Pedido",
+      "status": "Estado",
+      "trackingNumber": "Número de Seguimiento",
+      "estimatedDelivery": "Entrega Estimada",
+      "trackShipment": "Rastrear Envío"
+    },
+    "profile": {
+      "title": "Mi Perfil",
+      "personalInfo": "Información Personal",
+      "companyInfo": "Información de la Empresa",
+      "billingAddress": "Dirección de Facturación",
+      "shippingAddress": "Dirección de Envío",
+      "changePassword": "Cambiar Contraseña",
+      "editProfile": "Editar Perfil"
+    }
+  }
+}

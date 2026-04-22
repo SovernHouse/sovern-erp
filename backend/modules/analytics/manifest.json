@@ -1,0 +1,9 @@
+{
+  "name": "analytics",
+  "version": "1.0.0",
+  "description": "Analytics Module - Dashboards, Reports, Analytics, Monitoring",
+  "dependencies": ["core", "sales", "finance"],
+  "routes": ["dashboardRoutes", "reportRoutes", "analyticsRoutes", "monitoringRoutes"],
+  "models": [],
+  "config": {}
+}

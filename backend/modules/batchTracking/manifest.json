@@ -1,0 +1,10 @@
+{
+  "name": "batchTracking",
+  "version": "1.0.0",
+  "description": "Batch & Shade Tracking Module - Track production batches with shade/caliber information and warehouse allocation",
+  "dependencies": ["core", "products", "warehouse"],
+  "routes": ["batchTrackingRoutes"],
+  "models": ["ProductBatch", "BatchAllocation"],
+  "enabled": true,
+  "config": {}
+}

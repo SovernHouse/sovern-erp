@@ -1,0 +1,72 @@
+{
+  "factory": {
+    "title": "Portal de Fábrica",
+    "dashboard": {
+      "title": "Panel de Control",
+      "production": "Producción",
+      "purchaseOrders": "Órdenes de Compra",
+      "inventory": "Inventario",
+      "quality": "Control de Calidad",
+      "performance": "Métricas de Rendimiento"
+    },
+    "purchaseOrders": {
+      "title": "Órdenes de Compra",
+      "orderId": "ID de Orden",
+      "supplier": "Proveedor",
+      "date": "Fecha",
+      "status": "Estado",
+      "total": "Total",
+      "dueDate": "Fecha de Vencimiento",
+      "items": "Artículos",
+      "quantity": "Cantidad",
+      "unitPrice": "Precio Unitario"
+    },
+    "production": {
+      "title": "Programación de Producción",
+      "batchId": "ID de Lote",
+      "orderId": "ID de Orden",
+      "product": "Producto",
+      "quantity": "Cantidad",
+      "startDate": "Fecha de Inicio",
+      "completionDate": "Fecha de Finalización",
+      "status": "Estado",
+      "progress": "Progreso"
+    },
+    "inventory": {
+      "title": "Inventario",
+      "productId": "ID de Producto",
+      "productName": "Nombre del Producto",
+      "quantity": "Cantidad",
+      "location": "Ubicación",
+      "lastUpdated": "Última Actualización",
+      "adjustStock": "Ajustar Stock"
+    },
+    "quality": {
+      "title": "Control de Calidad",
+      "inspectionId": "ID de Inspección",
+      "batchId": "ID de Lote",
+      "inspectionDate": "Fecha de Inspección",
+      "status": "Estado",
+      "notes": "Notas",
+      "uploadPhotos": "Subir Fotos",
+      "approveQuality": "Aprobar Calidad"
+    },
+    "shipments": {
+      "title": "Envíos",
+      "shipmentId": "ID de Envío",
+      "orderId": "ID de Orden",
+      "status": "Estado",
+      "readyToShip": "Listo para Enviar",
+      "shipped": "Enviado",
+      "trackingNumber": "Número de Seguimiento",
+      "markAsShipped": "Marcar como Enviado"
+    },
+    "reports": {
+      "title": "Informes",
+      "productionReport": "Informe de Producción",
+      "qualityReport": "Informe de Calidad",
+      "performanceReport": "Informe de Rendimiento",
+      "inventoryReport": "Informe de Inventario"
+    }
+  }
+}

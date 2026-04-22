@@ -1,0 +1,161 @@
+const { DataTypes } = require('sequelize');
+
+module.exports = (sequelize) => {
+  const Lead = sequelize.define('Lead', {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    companyName: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    contactName: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    email: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        isEmail: true,
+      },
+    },
+    phone: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    source: {
+      type: DataTypes.ENUM('website', 'referral', 'trade_show', 'cold_call', 'social_media', 'advertisement', 'other'),
+      defaultValue: 'other',
+    },
+    status: {
+      type: DataTypes.ENUM('new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'),
+      defaultValue: 'new',
+    },
+    assignedToId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      // references removed — handled by Sequelize association
+    },
+    industry: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    estimatedValue: {
+      type: DataTypes.DECIMAL(15, 2),
+      allowNull: true,
+    },
+    currency: {
+      type: DataTypes.STRING,
+      defaultValue: 'USD',
+    },
+    probability: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      validate: {
+        min: 0,
+        max: 100,
+      },
+    },
+    expectedCloseDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    description: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    address: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    city: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    country: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    lostReason: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    wonDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    lostDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    convertedCustomerId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      // Note: references removed — SQLite FK enforcement causes INSERT failures
+      // when Customers table doesn't exist at seed time. The Sequelize association
+      // (Lead.belongsTo Customer) handles the relationship at the ORM level.
+    },
+    tags: {
+      type: DataTypes.JSON,
+      defaultValue: [],
+    },
+    // Additional contacts beyond the primary contactName/email fields.
+    // Format: [{ name: string, jobTitle?: string, email?: string, phone?: string }]
+    // Added via autoMigrateSchema — no manual migration needed.
+    additionalContacts: {
+      type: DataTypes.JSON,
+      defaultValue: [],
+    },
+    leadType: {
+      type: DataTypes.ENUM('inbound', 'outbound_prospect'),
+      defaultValue: 'inbound',
+    },
+    vertical: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    // Array of sub-category slugs from the product taxonomy (e.g. ["spc", "lvt"])
+    // Complements the parent-level `vertical` field with precise product interest tagging.
+    productInterests: {
+      type: DataTypes.JSON,
+      defaultValue: [],
+    },
+    website: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    sanctionsScreened: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    emailVerified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    linkedinUrl: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+  }, {
+    tableName: 'Leads',
+    timestamps: true,
+  });
+
+  Lead.associate = (models) => {
+    Lead.belongsTo(models.User, { foreignKey: 'assignedToId', as: 'assignedTo' });
+    Lead.belongsTo(models.Customer, { foreignKey: 'convertedCustomerId', as: 'convertedCustomer' });
+  };
+
+  return Lead;
+};

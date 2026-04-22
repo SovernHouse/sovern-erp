@@ -1,0 +1,9 @@
+{
+  "name": "warehouse",
+  "version": "1.0.0",
+  "description": "Warehouse Module - Warehouse Management and Stock Levels",
+  "dependencies": ["core", "products"],
+  "routes": ["warehouseRoutes"],
+  "models": [],
+  "config": {}
+}

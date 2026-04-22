@@ -1,0 +1,9 @@
+{
+  "name": "procurement",
+  "version": "1.0.0",
+  "description": "Procurement Module - Purchase Orders, Factory Management",
+  "dependencies": ["core", "products"],
+  "routes": ["purchaseOrderRoutes", "factoryRoutes", "factoryPortalRoutes"],
+  "models": ["PurchaseOrder", "PurchaseOrderItem", "Factory"],
+  "config": {}
+}

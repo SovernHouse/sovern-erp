@@ -1,0 +1,9 @@
+{
+  "name": "documents",
+  "version": "1.0.0",
+  "description": "Document Module - PDF, Export, Backup",
+  "dependencies": ["core"],
+  "routes": ["pdfRoutes", "exportRoutes", "backupRoutes"],
+  "models": ["Document"],
+  "config": {}
+}

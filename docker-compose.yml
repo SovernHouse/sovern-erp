@@ -1,0 +1,161 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: trading_erp_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-trading_erp}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trading_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: trading_erp_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trading_network
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: trading_erp_backend
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-trading_erp}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      API_URL: ${API_URL:-http://localhost:3001}
+      ADMIN_URL: ${ADMIN_URL:-http://localhost:3000}
+      CUSTOMER_URL: ${CUSTOMER_URL:-http://localhost:3002}
+      FACTORY_URL: ${FACTORY_URL:-http://localhost:3003}
+      UPLOAD_DIR: /app/uploads
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-10485760}
+    volumes:
+      - ./backend:/app
+      - ./uploads:/app/uploads
+      - /app/node_modules
+    networks:
+      - trading_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  admin-portal:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: trading_erp_admin_portal
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:3001
+      NODE_ENV: ${NODE_ENV:-development}
+    volumes:
+      - ./portals/admin:/app
+      - /app/node_modules
+    networks:
+      - trading_network
+
+  customer-portal:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: trading_erp_customer_portal
+    ports:
+      - "3002:3002"
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:3001
+      VITE_PORT: 3002
+      NODE_ENV: ${NODE_ENV:-development}
+    volumes:
+      - ./portals/customer:/app
+      - /app/node_modules
+    networks:
+      - trading_network
+
+  factory-portal:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: trading_erp_factory_portal
+    ports:
+      - "3003:3003"
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:3001
+      VITE_PORT: 3003
+      NODE_ENV: ${NODE_ENV:-development}
+    volumes:
+      - ./portals/factory:/app
+      - /app/node_modules
+    networks:
+      - trading_network
+
+  nginx:
+    image: nginx:latest
+    container_name: trading_erp_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - admin-portal
+      - customer-portal
+      - factory-portal
+    networks:
+      - trading_network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  trading_network:
+    driver: bridge

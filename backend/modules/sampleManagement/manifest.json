@@ -1,0 +1,10 @@
+{
+  "name": "sampleManagement",
+  "version": "1.0.0",
+  "description": "Sample Management Module - Track sample requests, shipments, and customer feedback",
+  "dependencies": ["core", "crm", "products", "warehouse"],
+  "routes": ["sampleRoutes"],
+  "models": ["SampleRequest", "SampleShipment", "SampleFeedback"],
+  "enabled": true,
+  "config": {}
+}

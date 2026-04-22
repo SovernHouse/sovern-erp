@@ -1,0 +1,10 @@
+{
+  "name": "tradeFinance",
+  "version": "1.0.0",
+  "description": "Trade Finance Module - Letter of Credit (LC) lifecycle management, import/export financing",
+  "dependencies": ["core", "products", "sales"],
+  "routes": ["letterOfCreditRoutes"],
+  "models": ["LetterOfCredit", "LetterOfCreditDocument"],
+  "enabled": true,
+  "config": {}
+}

@@ -1,0 +1,10 @@
+{
+  "name": "landedCost",
+  "version": "1.0.0",
+  "description": "Landed Cost Calculator Module - Calculate total landed cost including freight, insurance, duties, and handling charges",
+  "dependencies": ["core", "products", "procurement"],
+  "routes": ["landedCostRoutes"],
+  "models": ["LandedCostTemplate", "LandedCostCalculation"],
+  "enabled": true,
+  "config": {}
+}

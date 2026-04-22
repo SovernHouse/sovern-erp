@@ -1,0 +1,992 @@
+# Trading ERP System - User Guide
+
+Comprehensive user guide for all portals of the Trading ERP System.
+
+---
+
+## Table of Contents
+
+1. [Admin Portal Guide](#admin-portal-guide)
+2. [Customer Portal Guide](#customer-portal-guide)
+3. [Factory Portal Guide](#factory-portal-guide)
+4. [Common Workflows](#common-workflows)
+5. [FAQs](#faqs)
+
+---
+
+## Admin Portal Guide
+
+### Overview
+
+The Admin Portal is the central management interface for internal staff. It provides complete control over the entire trading operation including customer management, order processing, shipment tracking, and financial reporting.
+
+**Access**: http://localhost:3000
+
+**Default Credentials**:
+- Email: admin@floortrading.com
+- Password: admin123
+
+### Dashboard
+
+Upon login, you'll see the Admin Dashboard with key performance indicators:
+
+**Dashboard Widgets**:
+- **Total Orders**: Count and value of all orders
+- **Pending Orders**: Orders awaiting confirmation
+- **In-Transit Shipments**: Real-time shipment status
+- **Outstanding Invoices**: AP/AR aging summary
+- **Revenue This Month**: YTD revenue tracker
+- **New Customers**: Recent customer additions
+
+**Quick Actions**:
+- Create new order
+- View pending approvals
+- Check shipment status
+- Generate reports
+
+### Navigation Menu
+
+**1. Customer Management**
+   - View all customers
+   - Create new customer
+   - Manage contacts
+   - Track customer interactions
+   - View customer history
+
+**2. Sales Management**
+   - Inquiries → Track incoming product requests
+   - Quotations → Create and manage quotations
+   - Orders → Full sales order management
+   - Proforma Invoices → PI creation and tracking
+
+**3. Operations**
+   - Purchase Orders → Factory orders
+   - Packing Lists → Package allocation
+   - Shipments → Track shipments end-to-end
+   - Inspection → QC results and reports
+
+**4. Finance**
+   - Invoices → Sales/Purchase invoicing
+   - Payments → Payment recording and tracking
+   - Aging Reports → AR/AP aging analysis
+   - P&L Statements → Financial reporting
+
+**5. Inventory**
+   - Stock Levels → Current inventory status
+   - Movements → Stock transaction history
+   - Adjustments → Manual stock adjustments
+   - Reorder Alerts → Low stock notifications
+
+**6. Support**
+   - Claims → Customer claim management
+   - Documents → Centralized document storage
+   - Communications → Messages and notifications
+
+**7. Settings**
+   - Users → User management
+   - Roles → Role and permission management
+   - Company Settings → Branding and configuration
+   - API Keys → Integration settings
+
+### Managing Customers
+
+#### Creating a New Customer
+
+1. Navigate to **Customer Management** → **New Customer**
+2. Fill in customer information:
+   - Company name (required)
+   - Contact email and phone
+   - Business address
+   - Payment terms and credit limit
+3. Add contact persons:
+   - Click "Add Contact"
+   - Enter name, position, email, phone
+   - Mark as primary if needed
+4. Click "Save Customer"
+
+#### Viewing Customer Details
+
+1. Go to **Customer Management** → **Customers**
+2. Search or browse the customer list
+3. Click on customer name to view:
+   - Full profile
+   - Contact information
+   - Order history
+   - Activities
+   - Outstanding balance
+   - Communication history
+
+#### Managing Customer Contacts
+
+1. In customer profile, go to **Contacts** tab
+2. Add new contact:
+   - Click "Add Contact"
+   - Fill in details
+   - Mark primary contact if applicable
+3. Edit or delete existing contacts
+4. Track primary vs. secondary contacts
+
+#### Tracking Customer Activities
+
+1. In customer profile, go to **Activities** tab
+2. Log activities:
+   - Call (log date, time, notes)
+   - Email (reference email content)
+   - Meeting (date, attendees, discussion)
+   - Note (internal notes)
+3. Assign follow-ups
+4. Set reminders for next action
+
+### Managing Sales Orders
+
+#### Creating a Sales Order (from Quotation)
+
+1. Navigate to **Sales Management** → **Quotations**
+2. Find quotation with status "Accepted"
+3. Click "Convert to Sales Order"
+4. Fill in order details:
+   - Delivery address
+   - Delivery date
+   - Special instructions
+5. Review items and pricing
+6. Click "Create Sales Order"
+
+#### Confirming a Sales Order
+
+1. Go to **Sales Management** → **Orders**
+2. Find order with status "Pending"
+3. Click order to open details
+4. Review all information:
+   - Customer details
+   - Order items and quantities
+   - Total amount and payment terms
+   - Delivery date
+5. Click "Confirm Order"
+6. System automatically creates purchase orders
+
+#### Tracking Order Status
+
+1. In **Orders**, orders show status:
+   - **Pending**: Awaiting confirmation
+   - **Confirmed**: Ready for production
+   - **Processing**: Being produced
+   - **Shipped**: In transit
+   - **Delivered**: Received by customer
+   - **Cancelled**: Order cancelled
+
+2. Click order to see:
+   - Related purchase orders
+   - Packing lists
+   - Shipment information
+   - Invoice and payment status
+
+### Managing Quotations
+
+#### Creating a Quotation
+
+1. Go to **Sales Management** → **Quotations**
+2. Click "New Quotation"
+3. Select customer
+4. Add line items:
+   - Product name
+   - Quantity and unit
+   - Unit price
+   - Notes
+5. Set commercial terms:
+   - Payment terms
+   - Valid until date
+   - Currency
+6. Add notes or terms & conditions
+7. Save as draft or directly send to customer
+
+#### Sending Quotation to Customer
+
+1. Open quotation in Draft status
+2. Click "Send to Customer"
+3. Enter recipient email(s)
+4. Add message (optional)
+5. Click "Send"
+6. Status changes to "Sent"
+7. System sends email with PDF quotation
+
+#### Managing Quotation Versions
+
+1. Open quotation
+2. Go to **Revisions** tab
+3. View all previous versions
+4. Create new revision:
+   - Click "Create Revision"
+   - Update items/pricing
+   - Add change summary
+   - Save
+5. New revision becomes current version
+6. Can revert to previous revision if needed
+
+### Managing Shipments
+
+#### Creating a Shipment
+
+1. Go to **Operations** → **Shipments**
+2. Click "New Shipment"
+3. Select sales order
+4. Enter shipment details:
+   - Vessel name and type
+   - Container number and type
+   - Departure port
+   - Destination port
+   - Departure date
+   - Expected arrival date (ETA)
+5. Link packing list
+6. Click "Create Shipment"
+
+#### Tracking Shipment Status
+
+1. Go to **Shipments**
+2. View all shipments with current status:
+   - **Booked**: Container booked, awaiting loading
+   - **Shipped**: Loaded and departed
+   - **In Transit**: On the way
+   - **Arrived**: Arrived at destination port
+   - **Delivered**: Delivered to customer
+
+3. Click shipment for tracking details:
+   - Full shipment route
+   - Current location
+   - Estimated arrival
+   - Container and vessel info
+   - Bill of Lading
+   - All related documents
+
+#### Updating Shipment Status
+
+1. Open shipment
+2. Click "Update Status"
+3. Select new status
+4. Add location and notes
+5. Update ETA if changed
+6. System sends customer notification
+7. Historical tracking maintained
+
+### Financial Management
+
+#### Creating an Invoice
+
+1. Go to **Finance** → **Invoices**
+2. Click "New Invoice"
+3. Select sales order or shipment
+4. System auto-populates:
+   - Customer information
+   - Items and pricing
+   - Total amount
+5. Set invoice date and due date
+6. Add payment terms
+7. Click "Create Invoice"
+
+#### Recording Payments
+
+1. Open invoice with "Sent" status
+2. Click "Record Payment"
+3. Enter payment details:
+   - Payment amount
+   - Payment date
+   - Payment method (bank transfer, check, etc.)
+   - Reference number
+   - Notes
+4. Click "Record"
+5. Invoice status updates to "Paid" if fully paid
+6. Status changes to "Partially Paid" if partial payment
+
+#### Running Financial Reports
+
+1. Go to **Finance** → **Reports**
+2. Select report type:
+   - **P&L Statement**: Revenue and expenses
+   - **AR Aging**: Customer payment aging
+   - **AP Aging**: Vendor payment aging
+   - **Revenue Analysis**: Sales trends
+
+3. Set date range
+4. Choose filters (customer, product category, etc.)
+5. Click "Generate Report"
+6. View, print, or export results
+
+### User Management
+
+#### Creating a New User
+
+1. Go to **Settings** → **Users**
+2. Click "New User"
+3. Enter user details:
+   - Email address
+   - First and last name
+   - Phone number
+4. Assign role:
+   - Admin
+   - Sales Manager
+   - Operations Manager
+   - Finance Manager
+   - Inspector
+   - Other
+5. Click "Create User"
+6. System sends welcome email with temporary password
+7. User must change password on first login
+
+#### Managing User Permissions
+
+1. Go to **Settings** → **Roles**
+2. Select role to edit
+3. View current permissions
+4. Add/remove permissions:
+   - Check box to grant permission
+   - Uncheck to remove
+5. Save changes
+6. All users with that role immediately get new permissions
+
+#### Deactivating Users
+
+1. Go to **Settings** → **Users**
+2. Find user to deactivate
+3. Click user to open details
+4. Click "Deactivate User"
+5. User cannot login but data remains preserved
+6. Can reactivate later if needed
+
+---
+
+## Customer Portal Guide
+
+### Overview
+
+The Customer Portal provides self-service access for customers to:
+- Submit and track inquiries
+- Review quotations
+- Place orders
+- Track shipments
+- Manage invoices and payments
+- Submit claims
+
+**Access**: http://localhost:3002
+
+**Navigation**:
+- Dashboard
+- Inquiries
+- Quotations
+- Orders
+- Shipments
+- Documents
+- Invoices
+- Claims
+- Profile
+
+### Dashboard
+
+The customer dashboard shows:
+
+**Summary Cards**:
+- **Active Orders**: Count of undelivered orders
+- **Pending Shipments**: Orders in transit
+- **Outstanding Invoices**: Amount due
+- **My Recent Activity**: Latest transactions
+
+**Quick Actions**:
+- Submit new inquiry
+- View pending quotations
+- Track shipments
+- Pay invoices
+
+### Submitting an Inquiry
+
+1. Click **Inquiries** in navigation
+2. Click "New Inquiry"
+3. Fill in product details:
+   - Product category
+   - Product description
+   - Quantity and unit (meters, tons, etc.)
+   - Specifications
+   - Required delivery date
+4. Add attachments (sample images, detailed specs)
+5. Click "Submit Inquiry"
+6. You'll receive confirmation email
+
+### Reviewing Quotations
+
+1. Go to **Quotations**
+2. View all quotations received from sales team
+3. Each quotation shows:
+   - Quotation number
+   - Items and quantities
+   - Unit prices
+   - Total amount
+   - Valid until date
+   - Status (Draft, Sent, Accepted, Rejected)
+
+4. To review details:
+   - Click quotation to open
+   - See all line items with pricing
+   - Download PDF version
+5. To accept quotation:
+   - Click "Accept"
+   - Confirm acceptance
+   - Confirmation sent to sales team
+6. To reject quotation:
+   - Click "Reject"
+   - Add rejection reason (optional)
+
+### Placing Orders
+
+1. Go to **Orders**
+2. Click "New Order"
+3. Select accepted quotation
+4. Review order details:
+   - Items and quantities
+   - Pricing
+   - Total amount
+5. Enter delivery details:
+   - Delivery address
+   - Delivery date preference
+   - Special instructions
+6. Click "Place Order"
+7. Order sent to internal team for confirmation
+
+### Tracking Shipments
+
+1. Go to **Shipments**
+2. View all shipments for your orders
+3. Each shipment shows:
+   - Shipment number
+   - Current status
+   - Vessel name (if available)
+   - Current location
+   - Expected arrival date (ETA)
+   - Departure date
+
+4. Click shipment for detailed tracking:
+   - Complete route information
+   - Real-time location updates
+   - Container/vessel details
+   - Estimated time of arrival
+   - Port of origin and destination
+   - Bill of Lading
+   - Other shipping documents
+
+### Managing Invoices
+
+1. Go to **Invoices**
+2. View all sales invoices
+3. Each invoice shows:
+   - Invoice number
+   - Invoice date
+   - Due date
+   - Amount due
+   - Status (Sent, Partially Paid, Paid, Overdue)
+
+4. To view invoice details:
+   - Click invoice number
+   - See all items and pricing
+   - Download PDF invoice
+5. To pay invoice:
+   - Click "Pay Now"
+   - Select payment method
+   - Enter payment details
+   - Confirm payment
+6. To view payment history:
+   - Go to "Payment History" tab
+   - See all previous payments
+
+### Accessing Documents
+
+1. Go to **Documents**
+2. Browse all documents:
+   - Bill of Lading
+   - Certificate of Origin
+   - Invoices
+   - Packing Lists
+   - Other shipping docs
+3. Filter by document type or date range
+4. Click to view or download
+
+### Submitting Claims
+
+1. Go to **Claims**
+2. Click "Submit New Claim"
+3. Select claim type:
+   - Quality issue
+   - Shortage
+   - Damage
+   - Late delivery
+   - Other
+4. Select related shipment or invoice
+5. Enter claim details:
+   - Description of issue
+   - Claimed amount (if applicable)
+   - Supporting documentation
+6. Upload photos/evidence
+7. Click "Submit Claim"
+8. Claim sent to operations team for investigation
+
+### Managing Profile
+
+1. Click profile icon (top right)
+2. Go to **My Profile**
+3. View/edit company information:
+   - Company name
+   - Contact details
+   - Billing address
+   - Primary contact person
+4. Update personal information:
+   - Name
+   - Phone
+   - Email
+5. Change password:
+   - Click "Change Password"
+   - Enter current password
+   - Enter new password twice
+   - Click "Update Password"
+6. Manage notification preferences:
+   - Email notifications (orders, shipments, invoices)
+   - SMS alerts (optional)
+   - Frequency preferences
+
+---
+
+## Factory Portal Guide
+
+### Overview
+
+The Factory Portal is designed for suppliers and factories to:
+- Receive purchase orders
+- Provide production updates
+- Submit shipping documents
+- Record quality inspection results
+- Manage communication with operations team
+
+**Access**: http://localhost:3003
+
+### Dashboard
+
+Factory dashboard provides:
+
+**Summary Cards**:
+- **Open POs**: Active purchase orders
+- **In Production**: Orders currently being manufactured
+- **Ready for Shipment**: Completed orders awaiting pickup
+- **Overdue Orders**: Orders past delivery date
+
+**Quick Actions**:
+- View new purchase orders
+- Submit production update
+- Upload shipping documents
+- Report quality issues
+
+### Managing Purchase Orders
+
+#### Viewing Purchase Orders
+
+1. Go to **Purchase Orders**
+2. View all POs assigned to your factory
+3. Each PO shows:
+   - PO number
+   - Sales order reference
+   - Order date
+   - Required delivery date
+   - Items and quantities
+   - Status (Draft, Sent, Confirmed, In Production, Ready, Shipped)
+
+#### Confirming Purchase Order
+
+1. Open PO with "Sent" status
+2. Review:
+   - Items and quantities
+   - Unit prices and total
+   - Delivery date and address
+   - Any special instructions
+3. Click "Confirm Receipt"
+4. PO status changes to "Confirmed"
+5. Confirmation sent to operations team
+
+#### Providing Production Updates
+
+1. Open confirmed PO
+2. Go to **Production Updates** tab
+3. Click "Add Update"
+4. Select update type:
+   - Production started
+   - Work in progress (% complete)
+   - Quality check completed
+   - Ready for shipment
+   - Other milestone
+5. Enter details and upload photos if needed
+6. Click "Submit Update"
+7. Operations team receives notification
+
+### Quality Control
+
+#### Recording Inspection Results
+
+1. Go to **Quality Control**
+2. Find PO requiring inspection
+3. Click "Record Inspection"
+4. Select inspection type:
+   - In-process (during manufacturing)
+   - Final inspection (before shipment)
+5. For each item:
+   - Mark quantity inspected
+   - Record pass/fail
+   - Note any defects
+   - Attach photos of defects
+6. Enter overall assessment
+7. Click "Submit Inspection"
+
+#### Handling Defects
+
+1. If defects found during inspection:
+2. Go to **Defect Report**
+3. Enter defect details:
+   - Item affected
+   - Defect type and severity
+   - Quantity affected
+   - Photos
+   - Proposed solution
+4. Submit report
+5. Operations team reviews and decides:
+   - Rework required
+   - Accept with discount
+   - Reject and return
+
+### Shipping Management
+
+#### Preparing Shipment
+
+1. Go to **Shipments**
+2. Find PO marked "Ready for Shipment"
+3. Click "Prepare Shipment"
+4. Enter shipment details:
+   - Shipment date
+   - Carrier/freight forwarder
+   - Estimated delivery date
+5. Confirm quantities for each item
+6. Click "Confirm Shipment"
+
+#### Uploading Shipping Documents
+
+1. Go to **Documents**
+2. Click "Upload Document"
+3. Select document type:
+   - Packing List
+   - Bill of Lading
+   - Commercial Invoice
+   - Certificate of Origin
+   - Inspection Certificate
+   - Other
+4. Upload PDF document
+5. Add reference information
+6. Click "Upload"
+7. Documents available for customer download
+
+#### Tracking Shipment Status
+
+1. Go to **Shipments** → **My Shipments**
+2. View all shipments sent from your factory
+3. See current status:
+   - Shipped: Departed factory
+   - In Transit: On the way
+   - Arrived: At destination
+4. Click shipment to see:
+   - Carrier tracking number
+   - Current location
+   - Expected arrival
+   - Linked customer order
+
+### Communication
+
+#### Messaging with Operations Team
+
+1. Click **Messages** (or notification bell icon)
+2. View all messages from operations team
+3. To send message:
+   - Click "New Message"
+   - Select recipient (e.g., Operations Manager)
+   - Type message
+   - Attach file if needed (e.g., document, photo)
+   - Click "Send"
+4. Messages are timestamped and logged
+
+#### Viewing PO Comments
+
+1. Open purchase order
+2. Go to **Comments** tab
+3. View any notes from operations team
+4. Add your response if needed
+5. All communication is recorded
+
+### Profile Management
+
+1. Click profile icon (top right)
+2. Go to **Factory Profile**
+3. View/edit factory information:
+   - Factory name
+   - Contact person
+   - Phone and email
+   - Factory address
+   - Website
+4. Update production capabilities
+5. Change password if needed
+
+---
+
+## Common Workflows
+
+### Complete Order Workflow: From Inquiry to Delivery
+
+This is the typical end-to-end process for a trading order.
+
+**Step 1: Customer Submits Inquiry (Customer Portal)**
+1. Customer logs in to portal
+2. Goes to Inquiries → New Inquiry
+3. Fills in product details
+4. Submits inquiry
+5. Operations team receives notification
+
+**Step 2: Sales Team Creates Quotation (Admin Portal)**
+1. Admin views inquiry in system
+2. Goes to Sales → Quotations → New
+3. Links to inquiry
+4. Adds product items with pricing
+5. Sets validity period
+6. Sends quotation to customer via email
+
+**Step 3: Customer Reviews & Accepts (Customer Portal)**
+1. Customer receives quotation email
+2. Logs in to portal
+3. Reviews quotation details
+4. Clicks "Accept Quotation"
+5. Confirmation sent to sales team
+
+**Step 4: Sales Order Creation (Admin Portal)**
+1. Admin confirms quotation acceptance
+2. Creates Sales Order from quotation
+3. Confirms delivery date and address
+4. Confirms sales order
+
+**Step 5: Purchase Order to Factory (Admin Portal)**
+1. System automatically creates purchase order
+2. Admin selects appropriate factory
+3. Confirms purchase order details
+4. Sends PO to factory
+
+**Step 6: Factory Production (Factory Portal)**
+1. Factory receives PO notification
+2. Confirms receipt of PO
+3. Provides production updates
+4. Conducts quality inspection
+5. Reports ready for shipment
+
+**Step 7: Packing & Shipment (Admin Portal)**
+1. Admin creates packing list
+2. Allocates products to packages
+3. Records weight and dimensions
+4. Creates shipment
+5. Assigns carrier/vessel
+6. Marks as shipped
+
+**Step 8: In-Transit Tracking (Both Portals)**
+1. System tracks shipment location
+2. Admin receives tracking updates
+3. Customer can view status in portal
+4. ETA updated as shipment progresses
+
+**Step 9: Delivery & Invoicing (Admin Portal)**
+1. Shipment arrives at destination
+2. Customer confirms delivery
+3. Admin creates invoice
+4. Invoice sent to customer
+
+**Step 10: Payment (Customer Portal)**
+1. Customer receives invoice
+2. Reviews payment terms and due date
+3. Records payment in portal
+4. Provides reference number
+5. Invoice marked as paid
+
+**Optional Step 11: Claims (If Issues)**
+1. If quality or delivery issues:
+2. Customer submits claim in portal
+3. Provides photos and description
+4. Operations team investigates
+5. Resolution negotiated
+6. Claim closed
+
+---
+
+## FAQs
+
+### General Questions
+
+**Q: How do I reset my password?**
+
+A:
+1. Click "Forgot Password" on login page
+2. Enter your email address
+3. Click "Send Reset Link"
+4. Check your email for reset link
+5. Click link and enter new password
+
+**Q: How do I change the language?**
+
+A: Click the language selector icon (usually top right) and select your preferred language from:
+- English
+- 中文 (Mandarin)
+- Español (Spanish)
+- Français (French)
+- Deutsch (German)
+- Português (Portuguese)
+
+**Q: Can I export data to Excel?**
+
+A: Yes, most list views have an "Export" button that downloads data as Excel file.
+
+### Admin Portal Questions
+
+**Q: How do I create multiple purchase orders for one sales order?**
+
+A:
+1. Open sales order
+2. Go to "Purchase Orders" tab
+3. Click "New Purchase Order"
+4. Select subset of items and factory
+5. Create PO for split
+6. Repeat for other factories
+
+**Q: How do I handle partial shipments?**
+
+A:
+1. Create first shipment with partial quantities
+2. Mark sales order as "Partially Shipped"
+3. Create second shipment for remaining items
+4. Both shipments link to same sales order
+5. Invoice after all shipments received
+
+**Q: Can I modify an order after confirming it?**
+
+A: Confirmed orders have limited modification. If needed:
+1. Go to order
+2. Click "Amend Order"
+3. Make changes
+4. System creates amendment record
+5. Customer notified of changes
+
+### Customer Portal Questions
+
+**Q: Why can't I download an invoice?**
+
+A:
+- Invoice must have "Sent" status or later
+- Check your user permissions
+- Contact admin if you lack access
+
+**Q: How do I know my shipment is arriving?**
+
+A:
+1. Go to Shipments
+2. Find shipment with status "In Transit"
+3. Click shipment for tracking details
+4. Check current location and ETA
+5. System sends email notification when arriving
+
+**Q: Can I modify my order after placing it?**
+
+A: Orders can't be modified after confirmation. If needed:
+1. Submit claim for quantity issue
+2. Create new inquiry for additional items
+3. Contact sales team directly
+
+### Factory Portal Questions
+
+**Q: How do I indicate production is delayed?**
+
+A:
+1. Go to Production Updates
+2. Click "Add Update"
+3. Select "Delay Report"
+4. Enter new expected date
+5. Explain reason
+6. Submit report
+7. Operations team notified immediately
+
+**Q: What if quality inspection fails?**
+
+A:
+1. Go to Quality Control
+2. Report defects with photos
+3. Specify severity
+4. Wait for operations team instructions
+5. Either rework, accept with discount, or full rejection
+
+**Q: How do I upload shipping documents?**
+
+A:
+1. Go to Documents
+2. Click "Upload Document"
+3. Select document type
+4. Choose PDF file
+5. Add reference info
+6. Upload and confirm
+
+---
+
+## Troubleshooting
+
+### I can't login
+
+**Check**:
+1. Correct email address
+2. Correct password (case-sensitive)
+3. Account is active (not suspended)
+4. Browser cookies enabled
+5. No 2FA lock
+
+**Solution**:
+1. Try "Forgot Password"
+2. Reset password
+3. Contact IT if issue persists
+
+### Shipment status not updating
+
+**Check**:
+1. Refresh page (F5)
+2. Check internet connection
+3. Clear browser cache
+4. Try different browser
+
+**If still not updating**:
+1. Contact tracking provider
+2. Verify shipment details
+3. Check with operations team
+
+### Invoice not showing payment
+
+**Check**:
+1. Payment was recorded
+2. Payment date matches actual date
+3. Amount matches invoice amount
+4. Currency is correct
+
+**If payment still not showing**:
+1. Submit support ticket
+2. Provide invoice and payment reference
+3. Admin will investigate
+
+### Document not downloading
+
+**Check**:
+1. Document exists and is uploaded
+2. You have permission to view
+3. File is not corrupted
+4. Try different browser
+5. Disable popup blockers
+
+---
+
+**For additional support, contact**: support@tradingerp.com
+
+**Last Updated**: March 16, 2024

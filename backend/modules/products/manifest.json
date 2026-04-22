@@ -1,0 +1,9 @@
+{
+  "name": "products",
+  "version": "1.0.0",
+  "description": "Product Management Module - Products, Categories, Pricing, Inventory",
+  "dependencies": ["core"],
+  "routes": ["productRoutes", "inventoryRoutes"],
+  "models": ["Product", "ProductCategory", "ProductPrice", "InventoryItem", "InventoryTransaction"],
+  "config": {}
+}

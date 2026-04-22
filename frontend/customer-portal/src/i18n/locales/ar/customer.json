@@ -1,0 +1,74 @@
+{
+  "customer": {
+    "title": "بوابة العميل",
+    "dashboard": {
+      "title": "لوحة التحكم",
+      "myOrders": "طلباتي",
+      "ordersSummary": "ملخص الطلبات",
+      "totalSpent": "إجمالي المصروفات",
+      "recentOrders": "الطلبات الأخيرة",
+      "quotations": "العروض",
+      "invoices": "الفواتير",
+      "shipments": "الشحنات"
+    },
+    "orders": {
+      "title": "طلباتي",
+      "orderId": "رقم الطلب",
+      "date": "التاريخ",
+      "status": "الحالة",
+      "total": "المجموع",
+      "actions": "الإجراءات",
+      "viewDetails": "عرض التفاصيل",
+      "downloadInvoice": "تحميل الفاتورة"
+    },
+    "quotations": {
+      "title": "العروض",
+      "quotationId": "رقم العرض",
+      "date": "التاريخ",
+      "status": "الحالة",
+      "validUntil": "صالح حتى",
+      "total": "المجموع",
+      "acceptQuotation": "قبول العرض",
+      "rejectQuotation": "رفض العرض",
+      "downloadPDF": "تحميل PDF"
+    },
+    "inquiries": {
+      "title": "الاستفسارات",
+      "createInquiry": "إنشاء استفسار",
+      "inquiryDetails": "تفاصيل الاستفسار",
+      "products": "المنتجات",
+      "quantity": "الكمية",
+      "specifications": "المواصفات",
+      "deliveryDate": "تاريخ التسليم",
+      "submit": "إرسال"
+    },
+    "invoices": {
+      "title": "الفواتير",
+      "invoiceId": "رقم الفاتورة",
+      "date": "التاريخ",
+      "amount": "المبلغ",
+      "status": "الحالة",
+      "dueDate": "تاريخ الاستحقاق",
+      "downloadPDF": "تحميل PDF",
+      "recordPayment": "تسجيل الدفع"
+    },
+    "shipments": {
+      "title": "الشحنات",
+      "shipmentId": "رقم الشحنة",
+      "orderId": "رقم الطلب",
+      "status": "الحالة",
+      "trackingNumber": "رقم التتبع",
+      "estimatedDelivery": "التسليم المتوقع",
+      "trackShipment": "تتبع الشحنة"
+    },
+    "profile": {
+      "title": "ملفي الشخصي",
+      "personalInfo": "المعلومات الشخصية",
+      "companyInfo": "معلومات الشركة",
+      "billingAddress": "عنوان الفواتير",
+      "shippingAddress": "عنوان الشحن",
+      "changePassword": "تغيير كلمة المرور",
+      "editProfile": "تحرير الملف الشخصي"
+    }
+  }
+}

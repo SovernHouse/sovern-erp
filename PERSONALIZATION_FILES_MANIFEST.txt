@@ -1,0 +1,230 @@
+PERSONALIZATION FEATURES - FILES MANIFEST
+==========================================
+
+BACKEND FILES (Node.js/Express)
+===============================
+
+1. Database Models (backend/models/):
+   ✓ DashboardLayout.js - User dashboard configuration storage
+   ✓ NotificationPreference.js - User notification settings
+   ✓ CommissionRule.js - Commission calculation rules
+   ✓ CommissionTracking.js - Individual commission records
+   ✓ FilterPreset.js - Saved filter presets
+   • models/index.js - UPDATED with new model registration and relationships
+
+2. Routes (backend/routes/):
+   ✓ personalizationRoutes.js - NEW route file with all personalization endpoints
+   • dashboardRoutes.js - UPDATED with role-specific and layout management routes
+
+3. Server Configuration:
+   • server.js - UPDATED to register new personalization routes
+
+FRONTEND FILES (React/Vite)
+===========================
+
+1. Pages:
+   ✓ frontend/admin-portal/src/pages/Dashboard/ConfigurableDashboard.jsx
+     - Main dashboard with widget management
+     - Role-based default layouts
+     - Save/reset functionality
+     - Add widget dialog
+
+   ✓ frontend/admin-portal/src/pages/Settings/NotificationPreferences.jsx
+     - Notification channel matrix (email, inApp, SMS)
+     - 6 notification categories with toggles
+     - Digest frequency selector
+     - Scheduled delivery time
+
+   ✓ frontend/admin-portal/src/pages/Commissions/CommissionDashboard.jsx
+     - Commission statistics cards
+     - Commission rules display
+     - Commission history table
+     - Performance metrics
+
+2. Dashboard Widget Components (frontend/admin-portal/src/components/DashboardWidgets/):
+   ✓ WidgetGrid.jsx
+     - HTML5 Drag API implementation
+     - 12-column responsive grid
+     - Drag-to-reorder functionality
+     
+   ✓ WidgetCard.jsx
+     - Widget container wrapper
+     - Drag handle with visual feedback
+     - Minimize/remove controls
+     
+   ✓ WidgetSelector.jsx
+     - Modal for adding widgets
+     - Widget categorization
+     - Duplicate prevention
+     
+   ✓ KPIWidget.jsx
+     - Key performance indicators display
+     - Trend indicators
+     - Role-specific KPI data
+     
+   ✓ ChartWidget.jsx
+     - Line, bar, and pie charts
+     - Recharts integration
+     - Color-coded visualization
+     
+   ✓ TableWidget.jsx
+     - Dynamic table generation
+     - Status color-coding
+     - Horizontal scrolling
+     
+   ✓ AlertWidget.jsx
+     - System alerts display
+     - Type-based styling
+     - Scrollable alert list
+
+3. Reusable Components:
+   ✓ frontend/admin-portal/src/components/FilterPresets.jsx
+     - Filter preset management
+     - Save current filters
+     - Load saved presets
+     - Share preset links
+
+4. API Service:
+   • frontend/admin-portal/src/services/api.js - UPDATED with personalizationAPI
+
+DOCUMENTATION FILES
+===================
+
+✓ PERSONALIZATION_IMPLEMENTATION_SUMMARY.md - Comprehensive implementation guide
+✓ PERSONALIZATION_FILES_MANIFEST.txt - This file
+
+TOTAL FILES CREATED/MODIFIED
+============================
+
+Backend:
+- New Models: 5
+- New Routes: 1 file + dashboard.js updates
+- Server: 1 updated
+
+Frontend:
+- New Pages: 3
+- New Components: 8 (7 widgets + 1 filter presets)
+- API Service: 1 updated
+
+Documentation: 2
+
+API ENDPOINTS ADDED
+===================
+
+Dashboard Configuration:
+- GET /api/dashboard/role/:role
+- GET /api/dashboard/layout
+- POST /api/dashboard/layout
+- GET /api/dashboard/widgets
+
+Notification Preferences:
+- GET /api/personalization/notification-preferences/:userId
+- PUT /api/personalization/notification-preferences/:userId
+
+Commission Tracking:
+- GET /api/personalization/commissions/rules
+- POST /api/personalization/commissions/rules
+- GET /api/personalization/commissions/my
+- GET /api/personalization/commissions
+
+Filter Presets:
+- GET /api/personalization/filter-presets
+- POST /api/personalization/filter-presets
+- PUT /api/personalization/filter-presets/:id
+- DELETE /api/personalization/filter-presets/:id
+- GET /api/personalization/filter-presets/shared/:shareToken
+
+KEY FEATURES IMPLEMENTED
+========================
+
+1. Role-Specific Configurable Dashboards
+   - Admin, Sales, Operations, Finance roles
+   - Drag-and-drop widget arrangement
+   - Widget minimization
+   - Save custom layouts
+   - Role-based defaults
+
+2. Drag-and-Drop Widget Arrangement
+   - HTML5 Drag API (no external libs)
+   - Visual feedback
+   - Responsive grid system
+   - Multiple widget types
+
+3. Saved Filter Presets
+   - Save current filter combinations
+   - Load saved presets
+   - Share presets with secure tokens
+   - Default preset support
+
+4. Notification Preference Center
+   - Per-channel settings (email, inApp, SMS)
+   - Per-category toggles (6 categories)
+   - Digest frequency options
+   - Scheduled delivery times
+
+5. Commission Tracking for Sales
+   - Commission rules engine
+   - Individual commission records
+   - Commission statistics
+   - Performance metrics
+
+IMPLEMENTATION PATTERNS
+=======================
+
+Backend:
+- Standard response format: { success, message, data }
+- Error format: { success: false, error: { message, statusCode } }
+- Role-based access control
+- Cache invalidation on updates
+- Proper error handling
+
+Frontend:
+- React hooks (useState, useEffect)
+- Component composition
+- Toast notifications
+- Loading states
+- Responsive Tailwind CSS
+- Controlled components
+
+DEPENDENCIES
+============
+
+No new external dependencies required for core functionality:
+- Backend: Uses existing (express, sequelize, dayjs, crypto)
+- Frontend: Uses existing (react, axios, recharts, lucide-react, react-hot-toast)
+
+DEPLOYMENT NOTES
+================
+
+1. Run database migrations to create new tables
+2. Update environment variables if needed
+3. No breaking changes to existing functionality
+4. All features are backward compatible
+
+TESTING RECOMMENDATIONS
+=======================
+
+Backend:
+- Test all routes with proper authentication
+- Test permission checks
+- Test cache invalidation
+- Test error handling
+
+Frontend:
+- Test drag-and-drop functionality
+- Test responsive design on mobile
+- Test API integration
+- Test form validation
+- Test error/success notifications
+
+ESTIMATED IMPACT
+================
+
+Database: 5 new tables, ~100 new indexes
+Backend: ~400 lines of route code
+Frontend: ~1,800 lines of component code
+Total: ~2,200 lines of production code
+
+Performance: Minimal impact - proper indexing on frequently queried fields
+Security: Enhanced with role-based access control
+

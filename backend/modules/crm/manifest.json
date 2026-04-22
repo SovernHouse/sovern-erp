@@ -1,0 +1,9 @@
+{
+  "name": "crm",
+  "version": "1.0.0",
+  "description": "CRM Module - Customers, Contacts, Leads, Deals, Campaigns",
+  "dependencies": ["core"],
+  "routes": ["customerRoutes", "crm"],
+  "models": ["Customer", "Contact", "Lead", "Deal", "Campaign", "Activity"],
+  "config": {}
+}

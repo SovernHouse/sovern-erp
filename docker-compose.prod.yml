@@ -1,0 +1,162 @@
+version: '3.9'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: trading_erp_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-trading_redis_password}
+    volumes:
+      - trading_erp_redis:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trading_erp_backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: postgres://${DB_USER:-trading_user}:${DB_PASSWORD:-change_me_in_production}@postgres:5432/${DB_NAME:-trading_erp}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-trading_erp}
+      DB_USER: ${DB_USER:-trading_user}
+      DB_PASSWORD: ${DB_PASSWORD:-change_me_in_production}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-trading_redis_password}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
+      JWT_EXPIRY: ${JWT_EXPIRY:-7d}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change_me_in_production}
+      JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY:-30d}
+      EMAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@tradingErp.com}
+      SOCKET_IO_CORS_ORIGIN: ${SOCKET_IO_CORS_ORIGIN:-http://localhost}
+      ENABLE_EMAIL_NOTIFICATIONS: ${ENABLE_EMAIL_NOTIFICATIONS:-true}
+      ENABLE_SOCKET_IO: ${ENABLE_SOCKET_IO:-true}
+      ENABLE_PDF_GENERATION: ${ENABLE_PDF_GENERATION:-true}
+      ENABLE_AUTO_BACKUP: ${ENABLE_AUTO_BACKUP:-true}
+      ENABLE_SCHEDULED_BACKUP: ${ENABLE_SCHEDULED_BACKUP:-true}
+      ENABLE_EXCHANGE_RATE_SCHEDULER: ${ENABLE_EXCHANGE_RATE_SCHEDULER:-true}
+      EXCHANGE_RATE_API_URL: ${EXCHANGE_RATE_API_URL:-https://api.exchangerate-api.com/v4/latest/USD}
+      EXCHANGE_RATE_UPDATE_INTERVAL_MS: ${EXCHANGE_RATE_UPDATE_INTERVAL_MS:-21600000}
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-52428800}
+      UPLOAD_DIR: /app/uploads
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - trading_erp_uploads:/app/uploads
+      - trading_erp_logs:/app/logs
+      - trading_erp_backups:/app/backups
+    networks:
+      - frontend
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: trading_erp_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-trading_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me_in_production}
+      POSTGRES_DB: ${DB_NAME:-trading_erp}
+    volumes:
+      - trading_erp_db:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-trading_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Uncomment to expose for development
+    # ports:
+    #   - "5432:5432"
+
+  nginx:
+    image: nginx:alpine
+    container_name: trading_erp_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+      - trading_erp_nginx_cache:/var/cache/nginx
+    depends_on:
+      - backend
+    networks:
+      - frontend
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  trading_erp_db:
+    driver: local
+  trading_erp_redis:
+    driver: local
+  trading_erp_uploads:
+    driver: local
+  trading_erp_logs:
+    driver: local
+  trading_erp_backups:
+    driver: local
+  trading_erp_nginx_cache:
+    driver: local
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true

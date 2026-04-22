@@ -1,0 +1,9 @@
+{
+  "name": "compliance",
+  "version": "1.0.0",
+  "description": "Compliance Module - Compliance Management and Requirements",
+  "dependencies": ["core", "sales", "logistics"],
+  "routes": ["complianceRoutes"],
+  "models": [],
+  "config": {}
+}

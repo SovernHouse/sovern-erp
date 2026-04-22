@@ -1,0 +1,698 @@
+/* Responsive CSS Utilities for Trading ERP */
+
+/* ============================================
+   MEDIA QUERY BREAKPOINTS
+   ============================================ */
+/* Mobile: < 640px (max-width: 639px) */
+/* Tablet: 640px - 1024px (min-width: 640px, max-width: 1023px) */
+/* Desktop: >= 1024px (min-width: 1024px) */
+
+/* ============================================
+   MOBILE-FIRST UTILITIES
+   ============================================ */
+
+/* Show/Hide Classes */
+.mobile-only {
+  display: block;
+}
+
+.tablet-only {
+  display: none;
+}
+
+.desktop-only {
+  display: none;
+}
+
+.tablet-up {
+  display: none;
+}
+
+.desktop-up {
+  display: none;
+}
+
+/* Tablet breakpoint (640px) */
+@media (min-width: 640px) {
+  .mobile-only {
+    display: none;
+  }
+
+  .tablet-only {
+    display: block;
+  }
+
+  .tablet-up {
+    display: block;
+  }
+}
+
+/* Desktop breakpoint (1024px) */
+@media (min-width: 1024px) {
+  .tablet-only {
+    display: none;
+  }
+
+  .desktop-only {
+    display: block;
+  }
+
+  .desktop-up {
+    display: block;
+  }
+}
+
+/* ============================================
+   TOUCH-FRIENDLY TAP TARGETS
+   ============================================ */
+
+/* Minimum tap target size: 44x44px (Apple HIG standard) */
+.tap-target {
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Touch-friendly buttons and clickable elements */
+button,
+a[role='button'],
+[role='button'] {
+  position: relative;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  /* Touch devices */
+  button,
+  a[role='button'],
+  [role='button'] {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 10px 16px;
+  }
+
+  /* Increase touchable areas */
+  input[type='radio'],
+  input[type='checkbox'] {
+    min-height: 44px;
+    min-width: 44px;
+    cursor: pointer;
+  }
+}
+
+/* ============================================
+   SAFE AREA INSETS (Notched Devices)
+   ============================================ */
+
+/* Support for notched and dynamic safe areas (iPhone X+, Android devices) */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+  }
+
+  .safe-area-top {
+    padding-top: max(0px, env(safe-area-inset-top));
+  }
+
+  .safe-area-bottom {
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+
+  .safe-area-left {
+    padding-left: max(0px, env(safe-area-inset-left));
+  }
+
+  .safe-area-right {
+    padding-right: max(0px, env(safe-area-inset-right));
+  }
+
+  /* Full safe area padding */
+  .safe-area-full {
+    padding: max(0px, env(safe-area-inset-top))
+      max(0px, env(safe-area-inset-right))
+      max(0px, env(safe-area-inset-bottom))
+      max(0px, env(safe-area-inset-left));
+  }
+
+  /* Safe area margins */
+  .safe-area-margin-top {
+    margin-top: max(0px, env(safe-area-inset-top));
+  }
+
+  .safe-area-margin-bottom {
+    margin-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ============================================
+   RESPONSIVE TYPOGRAPHY SCALE
+   ============================================ */
+
+/* Mobile-first typography scaling */
+html {
+  /* Base font size: 16px on mobile */
+  font-size: 16px;
+}
+
+/* Tablet typography adjustments */
+@media (min-width: 640px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+/* Desktop typography adjustments */
+@media (min-width: 1024px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+/* Responsive heading sizes */
+h1 {
+  font-size: 1.875rem; /* 30px */
+  line-height: 2rem;
+  margin-bottom: 1rem;
+}
+
+h2 {
+  font-size: 1.5rem; /* 24px */
+  line-height: 1.75rem;
+  margin-bottom: 0.875rem;
+}
+
+h3 {
+  font-size: 1.25rem; /* 20px */
+  line-height: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+h4 {
+  font-size: 1.125rem; /* 18px */
+  line-height: 1.5rem;
+  margin-bottom: 0.625rem;
+}
+
+h5 {
+  font-size: 1rem; /* 16px */
+  line-height: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+h6 {
+  font-size: 0.875rem; /* 14px */
+  line-height: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Responsive body text */
+body {
+  font-size: 0.9375rem; /* 15px */
+  line-height: 1.5;
+}
+
+/* Small text */
+small,
+.text-sm {
+  font-size: 0.875rem; /* 14px */
+  line-height: 1.25rem;
+}
+
+/* Extra small text */
+.text-xs {
+  font-size: 0.75rem; /* 12px */
+  line-height: 1rem;
+}
+
+/* Mobile-specific heading sizes */
+@media (max-width: 639px) {
+  h1 {
+    font-size: 1.5rem; /* 24px */
+    line-height: 1.75rem;
+  }
+
+  h2 {
+    font-size: 1.25rem; /* 20px */
+    line-height: 1.5rem;
+  }
+
+  h3 {
+    font-size: 1.125rem; /* 18px */
+    line-height: 1.5rem;
+  }
+
+  body {
+    font-size: 0.875rem; /* 14px */
+  }
+}
+
+/* ============================================
+   RESPONSIVE SPACING
+   ============================================ */
+
+/* Mobile-first padding and margins */
+.p-mobile {
+  padding: 1rem;
+}
+
+.p-tablet {
+  padding: 1.5rem;
+}
+
+.p-desktop {
+  padding: 2rem;
+}
+
+@media (min-width: 640px) {
+  .p-mobile {
+    padding: 1.5rem;
+  }
+
+  .p-tablet {
+    padding: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .p-mobile {
+    padding: 2rem;
+  }
+
+  .p-desktop {
+    padding: 2.5rem;
+  }
+}
+
+/* ============================================
+   RESPONSIVE FLEX UTILITIES
+   ============================================ */
+
+/* Responsive flex direction: column on mobile, row on desktop */
+.flex-col-mobile {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 640px) {
+  .flex-row-tablet {
+    display: flex;
+    flex-direction: row;
+  }
+}
+
+@media (min-width: 1024px) {
+  .flex-col-mobile {
+    flex-direction: row;
+  }
+}
+
+/* ============================================
+   RESPONSIVE GRID
+   ============================================ */
+
+/* Mobile: 1 column, Tablet: 2 columns, Desktop: 3+ columns */
+.grid-responsive {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .grid-responsive {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .grid-responsive {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+/* ============================================
+   RESPONSIVE MODALS & OVERLAYS
+   ============================================ */
+
+/* Modal full-screen on mobile */
+.modal-responsive {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+@media (min-width: 640px) {
+  .modal-responsive {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.5);
+  }
+
+  .modal-responsive .modal-content {
+    max-height: 80vh;
+    max-width: 90vw;
+    border-radius: 0.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .modal-responsive .modal-content {
+    max-height: 70vh;
+    max-width: 600px;
+  }
+}
+
+/* ============================================
+   CONTAINER QUERIES SUPPORT
+   ============================================ */
+
+/* Responsive container for content */
+.container-responsive {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .container-responsive {
+    max-width: 640px;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .container-responsive {
+    max-width: 768px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container-responsive {
+    max-width: 1024px;
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .container-responsive {
+    max-width: 1280px;
+  }
+}
+
+@media (min-width: 1536px) {
+  .container-responsive {
+    max-width: 1536px;
+  }
+}
+
+/* ============================================
+   ORIENTATION-SPECIFIC STYLES
+   ============================================ */
+
+/* Landscape mode adjustments */
+@media (orientation: landscape) and (max-height: 500px) {
+  .hide-on-landscape {
+    display: none;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+}
+
+/* Portrait mode */
+@media (orientation: portrait) {
+  .landscape-only {
+    display: none;
+  }
+}
+
+/* ============================================
+   PRINT MEDIA
+   ============================================ */
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    font-size: 12pt;
+    color: #000;
+    background: #fff;
+  }
+
+  a {
+    color: #000;
+    text-decoration: none;
+  }
+
+  /* Show URLs in print */
+  a[href]:after {
+    content: ' (' attr(href) ')';
+  }
+}
+
+/* ============================================
+   SCROLLING BEHAVIOR
+   ============================================ */
+
+/* Smooth scrolling support */
+@supports (scroll-behavior: smooth) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Disable smooth scrolling for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================
+   DARK MODE SUPPORT
+   ============================================ */
+
+/* Light mode (default) */
+@media (prefers-color-scheme: light) {
+  body {
+    background-color: #ffffff;
+    color: #000000;
+  }
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #1a1a1a;
+    color: #ffffff;
+  }
+
+  .dark-mode-invert {
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
+
+/* ============================================
+   HIGH CONTRAST MODE
+   ============================================ */
+
+@media (prefers-contrast: more) {
+  button,
+  a {
+    text-decoration: underline;
+  }
+
+  .border {
+    border-width: 2px;
+  }
+}
+
+/* ============================================
+   FOCUS STYLES FOR ACCESSIBILITY
+   ============================================ */
+
+/* Enhanced focus visible for keyboard navigation */
+:focus-visible {
+  outline: 2px solid #0066cc;
+  outline-offset: 2px;
+}
+
+/* ============================================
+   RESPONSIVE IMAGES
+   ============================================ */
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Responsive aspect ratio containers */
+.aspect-video {
+  aspect-ratio: 16 / 9;
+}
+
+.aspect-square {
+  aspect-ratio: 1 / 1;
+}
+
+.aspect-portrait {
+  aspect-ratio: 3 / 4;
+}
+
+/* ============================================
+   RESPONSIVE TABLES
+   ============================================ */
+
+/* Stack tables on mobile */
+@media (max-width: 639px) {
+  table,
+  thead,
+  tbody,
+  th,
+  td,
+  tr {
+    display: block;
+    width: 100%;
+  }
+
+  thead {
+    display: none;
+  }
+
+  tr {
+    margin-bottom: 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+  }
+
+  td {
+    padding: 0.75rem;
+    padding-left: 50%;
+    text-align: right;
+    border: none;
+    border-bottom: 1px solid #f3f4f6;
+    position: relative;
+  }
+
+  td:before {
+    content: attr(data-label);
+    position: absolute;
+    left: 0.75rem;
+    font-weight: 600;
+    text-align: left;
+  }
+}
+
+/* ============================================
+   Z-INDEX SCALE
+   ============================================ */
+
+/* Responsive z-index stacking context */
+.z-mobile {
+  z-index: 10;
+}
+
+.z-mobile-modal {
+  z-index: 40;
+}
+
+.z-mobile-overlay {
+  z-index: 30;
+}
+
+.z-sticky {
+  z-index: 20;
+}
+
+.z-dropdown {
+  z-index: 35;
+}
+
+/* ============================================
+   UTILITY: RESPONSIVE DISPLAY
+   ============================================ */
+
+/* Responsive display none for specific breakpoints */
+@media (max-width: 639px) {
+  .hidden-mobile {
+    display: none;
+  }
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+  .hidden-tablet {
+    display: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .hidden-desktop {
+    display: none;
+  }
+}
+
+/* ============================================
+   RESPONSIVE BORDER RADIUS
+   ============================================ */
+
+.rounded-responsive {
+  border-radius: 0.25rem;
+}
+
+@media (min-width: 640px) {
+  .rounded-responsive {
+    border-radius: 0.375rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .rounded-responsive {
+    border-radius: 0.5rem;
+  }
+}
+
+/* ============================================
+   RESPONSIVE SHADOWS
+   ============================================ */
+
+.shadow-responsive {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+@media (min-width: 640px) {
+  .shadow-responsive {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+}
+
+@media (min-width: 1024px) {
+  .shadow-responsive {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "factory": {
+    "title": "بوابة المصنع",
+    "dashboard": {
+      "title": "لوحة التحكم",
+      "production": "الإنتاج",
+      "purchaseOrders": "أوامر الشراء",
+      "inventory": "المخزون",
+      "quality": "مراقبة الجودة",
+      "performance": "مؤشرات الأداء"
+    },
+    "purchaseOrders": {
+      "title": "أوامر الشراء",
+      "orderId": "رقم الأمر",
+      "supplier": "المورد",
+      "date": "التاريخ",
+      "status": "الحالة",
+      "total": "المجموع",
+      "dueDate": "تاريخ الاستحقاق",
+      "items": "العناصر",
+      "quantity": "الكمية",
+      "unitPrice": "السعر الوحدة"
+    },
+    "production": {
+      "title": "جدول الإنتاج",
+      "batchId": "رقم الدفعة",
+      "orderId": "رقم الأمر",
+      "product": "المنتج",
+      "quantity": "الكمية",
+      "startDate": "تاريخ البداية",
+      "completionDate": "تاريخ الإنجاز",
+      "status": "الحالة",
+      "progress": "التقدم"
+    },
+    "inventory": {
+      "title": "المخزون",
+      "productId": "رقم المنتج",
+      "productName": "اسم المنتج",
+      "quantity": "الكمية",
+      "location": "الموقع",
+      "lastUpdated": "آخر تحديث",
+      "adjustStock": "تعديل المخزون"
+    },
+    "quality": {
+      "title": "مراقبة الجودة",
+      "inspectionId": "رقم الفحص",
+      "batchId": "رقم الدفعة",
+      "inspectionDate": "تاريخ الفحص",
+      "status": "الحالة",
+      "notes": "الملاحظات",
+      "uploadPhotos": "رفع الصور",
+      "approveQuality": "الموافقة على الجودة"
+    },
+    "shipments": {
+      "title": "الشحنات",
+      "shipmentId": "رقم الشحنة",
+      "orderId": "رقم الأمر",
+      "status": "الحالة",
+      "readyToShip": "جاهز للشحن",
+      "shipped": "تم الشحن",
+      "trackingNumber": "رقم التتبع",
+      "markAsShipped": "وضع علامة كمرسل"
+    },
+    "reports": {
+      "title": "التقارير",
+      "productionReport": "تقرير الإنتاج",
+      "qualityReport": "تقرير الجودة",
+      "performanceReport": "تقرير الأداء",
+      "inventoryReport": "تقرير المخزون"
+    }
+  }
+}
