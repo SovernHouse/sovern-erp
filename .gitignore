@@ -61,6 +61,11 @@ tmp/
 *.sqlite
 *.sqlite3
 *.db
+*.sqlite-shm
+*.sqlite-wal
+
+# Linux temp files
+.fuse_hidden*
 
 # Testing
 coverage/
