@@ -16,6 +16,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import ConfirmDialog from '../../components/ConfirmDialog'
 import {
   ArrowLeft,
   Upload,
@@ -196,6 +197,7 @@ export default function BulkImport() {
   const [results, setResults] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [fileName, setFileName] = useState('')
+  const [showImportConfirm, setShowImportConfirm] = useState(false)
 
   const typeConfig = IMPORT_TYPES.find((t) => t.id === importType)
 
@@ -239,7 +241,12 @@ export default function BulkImport() {
   }
 
   // ── Step 2: column mapping → confirm ─────────────────────────────────────────
+  const handleRequestConfirm = () => {
+    setShowImportConfirm(true)
+  }
+
   const handleConfirmImport = async () => {
+    setShowImportConfirm(false)
     setIsLoading(true)
     try {
       const apiModule = importType === 'leads' ? crmImportAPI : productImportAPI
@@ -247,6 +254,8 @@ export default function BulkImport() {
       const res = await apiModule.confirm(rows, columnMapping)
       setResults(res.data)
       setStep(3)
+      const created = res.data?.created || 0
+      if (created > 0) toast.success(`Successfully imported ${created} record${created !== 1 ? 's' : ''}.`)
     } catch (err) {
       toast.error(err.response?.data?.message || 'Import failed')
     } finally {
@@ -444,7 +453,7 @@ export default function BulkImport() {
               Back
             </button>
             <button
-              onClick={handleConfirmImport}
+              onClick={handleRequestConfirm}
               disabled={isLoading}
               className="flex items-center space-x-2 px-6 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors disabled:opacity-50"
             >
@@ -540,6 +549,15 @@ export default function BulkImport() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={showImportConfirm}
+        title="Confirm Import"
+        message={`You are about to import ${preview?.allRows?.length || preview?.totalRows || 0} ${typeConfig?.label || 'records'} into the system. This action cannot be undone. Proceed?`}
+        confirmLabel="Import Now"
+        onConfirm={handleConfirmImport}
+        onCancel={() => setShowImportConfirm(false)}
+      />
     </div>
   )
 }
