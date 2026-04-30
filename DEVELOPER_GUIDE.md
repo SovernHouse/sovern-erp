@@ -504,16 +504,33 @@ All endpoints are prefixed with `/api`. Auth required unless noted.
 
 **File**: `backend/services/schedulerService.js`
 
-Runs four daily cron jobs. Each job can be individually disabled via env vars.
+Runs five cron jobs. Each can be individually disabled via env vars.
 
-| Job | Schedule | Env flag | Description |
-|---|---|---|---|
-| `checkOverdueActivities` | Daily 08:00 | `SCHEDULER_OVERDUE_ACTIVITIES` | Flags activities past due date |
-| `checkFollowups` | Daily 08:00 | `SCHEDULER_FOLLOWUPS` | Sends follow-up reminders |
-| `transitionOverdueInvoices` | Hourly | `SCHEDULER_OVERDUE_INVOICES` | Sets Invoice status → `overdue` when past due |
-| `checkProductionDelays` | Daily 08:00 | `SCHEDULER_PRODUCTION_DELAYS` | Flags orders past estimated delivery |
+| Job | Schedule | Env flag | Default | Description |
+|---|---|---|---|---|
+| `checkOverdueActivities` | Daily 08:00 | `SCHEDULER_ACTIVITY_REMINDERS` | `true` | Flags CRM activities past due date; sends in-app notification |
+| `checkFollowups` | Daily 08:00 | `SCHEDULER_FOLLOWUP_REMINDERS` | `true` | Sends follow-up reminders for outreach emails due today |
+| `transitionOverdueInvoices` | Hourly | `SCHEDULER_INVOICE_OVERDUE` | `true` | Auto-transitions Invoice status `sent`/`pending` → `overdue` |
+| `checkProductionDelays` | Daily 08:00 | `SCHEDULER_PRODUCTION_ALERTS` | `true` | Alerts when a Sales Order has been `in_production` > `PRODUCTION_ALERT_DAYS` (default 45) |
+| `purgeExpiredSoftDeletes` | Nightly 02:00 | `SCHEDULER_DATA_RETENTION` | `true` | Hard-deletes soft-deleted records older than `DATA_RETENTION_DAYS` (default 365) — GDPR right-to-erasure |
 
-Set `SCHEDULER_ENABLED=false` to disable all jobs (e.g. in test environments).
+To disable an individual job, set its env flag to `'false'` in `.env`.
+
+### Data retention job
+
+The `purgeExpiredSoftDeletes` job permanently removes records from all paranoid models (those using `paranoid: true` in Sequelize) whose `deletedAt` timestamp is older than `DATA_RETENTION_DAYS` days.
+
+**Paranoid models covered**: `Customer`, `Factory`, `SalesOrder`, `PurchaseOrder`, `Invoice`, `Payment`, `SpecTemplate`.
+
+**Adding a new paranoid model**: add the model name to the `PARANOID_MODELS` array at the top of `purgeExpiredSoftDeletes()`.
+
+**Configuration** (`.env` / `.env.example`):
+```
+SCHEDULER_DATA_RETENTION=true     # set to 'false' to disable
+DATA_RETENTION_DAYS=365           # hard-delete after this many days post soft-delete
+```
+
+The job runs at 02:00 server time (off-peak) to avoid contention with daytime queries. It logs a per-model count summary. Missing models skip with a warning rather than crashing.
 
 ---
 

@@ -83,7 +83,7 @@ module.exports = (sequelize) => {
     timestamps: true,
     indexes: [
       { fields: ['token'] },
-      { fields: ['entityType', 'entityId'] },
+      { fields: ['entity_type', 'entity_id'] },
       { fields: ['status'] },
     ],
   });
