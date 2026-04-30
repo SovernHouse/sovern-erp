@@ -8,9 +8,11 @@ const emailService = require('../services/emailService');
 const notificationService = require('../services/notificationService');
 const { generateNumberWithCounter, incrementCounter } = require('../services/numberGenerator');
 const auditService = require('../services/auditService');
+const { validateFinancials } = require('../utils/validateFinancials');
 
 const create = async (req, res, next) => {
   try {
+    validateFinancials(req.body);
     const { customerId, inquiryId, salesPersonId, items, discount, discountType, taxRate, terms } = req.body;
 
     const customer = await db.Customer.findByPk(customerId);

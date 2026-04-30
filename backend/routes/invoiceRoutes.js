@@ -18,12 +18,17 @@ const { getPagination, getPaginatedResponse, getSuccessResponse, generateDocumen
 const { v4: uuidv4 } = require('uuid');
 const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
 const dayjs = require('dayjs');
+const utc = require('dayjs/plugin/utc');
+const timezone = require('dayjs/plugin/timezone');
+dayjs.extend(utc);
+dayjs.extend(timezone);
 const { Op } = require('sequelize');
 const auditService = require('../services/auditService');
 const emailService = require('../services/emailService');
 const documentGenerator = require('../services/documentGenerator');
 const notificationService = require('../services/notificationService');
 const webhookService = require('../services/webhookService');
+const { validateFinancials } = require('../utils/validateFinancials');
 
 /**
  * List all invoices with pagination and filtering
@@ -74,11 +79,12 @@ router.get('/aging-report', requireAuth, async (req, res, next) => {
       ]
     });
 
-    const now = dayjs();
+    const userTimezone = req.user?.timezone || process.env.DEFAULT_TIMEZONE || 'Asia/Taipei';
+    const now = dayjs().tz(userTimezone);
     const agingReport = { current: [], '30_days': [], '60_days': [], '90_plus': [] };
 
     invoices.forEach(invoice => {
-      const daysDue = now.diff(dayjs(invoice.dueDate), 'day');
+      const daysDue = now.diff(dayjs(invoice.dueDate).tz(userTimezone), 'day');
       const invoiceData = {
         id: invoice.id,
         invoiceNumber: invoice.invoiceNumber,
@@ -150,6 +156,7 @@ router.get('/summary', requireAuth, async (req, res, next) => {
 // POST / - Create invoice
 router.post('/', requireAuth, async (req, res, next) => {
   try {
+    validateFinancials(req.body);
     const { salesOrderId, customerId, type, subtotal, discount, tax, dueDate, paymentTerms } = req.body;
     const total = subtotal - (discount || 0) + (tax || 0);
 
@@ -352,6 +359,7 @@ router.patch('/:id/send', requireAuth, async (req, res, next) => {
 router.post('/:id/record-payment', requireAuth, async (req, res, next) => {
   const transaction = await db.sequelize.transaction();
   try {
+    validateFinancials(req.body);
     const { amount, method, reference } = req.body;
 
     // FIX BUG 1: Use transaction with row locking to prevent race conditions

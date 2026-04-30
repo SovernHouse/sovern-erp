@@ -12,6 +12,8 @@ const emailService = require('../services/emailService');
 const notificationService = require('../services/notificationService');
 const webhookService = require('../services/webhookService');
 const { validateTransition } = require('../utils/statusMachine');
+const { validateFinancials } = require('../utils/validateFinancials');
+const { validateTradeFields } = require('../utils/validateTradeFields');
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
@@ -196,6 +198,8 @@ router.get('/:id/documents', requireAuth, async (req, res, next) => {
 router.post('/', requireAuth, async (req, res, next) => {
   const transaction = await db.sequelize.transaction();
   try {
+    validateFinancials(req.body);
+    validateTradeFields(req.body);
     const { customerId, factoryId, items, estimatedDelivery, shippingMethod, notes, discount, tax, currency } = req.body;
 
     // Validation
