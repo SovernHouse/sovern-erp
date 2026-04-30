@@ -5,9 +5,15 @@ const { getPagination, getPaginatedResponse, getSuccessResponse } = require('../
 const { NotFoundError } = require('../middleware/errorHandler');
 const auditService = require('../services/auditService');
 
+const canViewFactory = (user, factory) => {
+  if (!factory.isConfidential) return true;
+  const allowed = Array.isArray(factory.allowedUserIds) ? factory.allowedUserIds : [];
+  return allowed.includes(user.id);
+};
+
 const create = async (req, res, next) => {
   try {
-    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations } = req.body;
+    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations, isConfidential, allowedUserIds } = req.body;
 
     const factory = await db.Factory.create({
       id: uuidv4(),
@@ -24,7 +30,9 @@ const create = async (req, res, next) => {
       certifications: certifications || [],
       specializations: specializations || [],
       rating: 5,
-      isActive: true
+      isActive: true,
+      isConfidential: isConfidential || false,
+      allowedUserIds: allowedUserIds || []
     });
 
     res.status(201).json(getSuccessResponse(factory, 'Factory created successfully'));
@@ -58,7 +66,11 @@ const getAll = async (req, res, next) => {
       order: [['companyName', 'ASC']]
     });
 
-    res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
+    // Filter out confidential factories the requesting user is not permitted to see
+    const visibleRows = rows.filter(f => canViewFactory(req.user, f));
+    const visibleCount = count - (rows.length - visibleRows.length);
+
+    res.json(getPaginatedResponse(visibleRows, visibleCount, parseInt(page), parseInt(limit)));
   } catch (error) {
     next(error);
   }
@@ -78,6 +90,10 @@ const getById = async (req, res, next) => {
       throw new NotFoundError('Factory not found');
     }
 
+    if (!canViewFactory(req.user, factory)) {
+      throw new NotFoundError('Factory not found');
+    }
+
     res.json(getSuccessResponse(factory));
   } catch (error) {
     next(error);
@@ -87,10 +103,14 @@ const getById = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations, rating, isActive } = req.body;
+    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations, rating, isActive, isConfidential, allowedUserIds } = req.body;
 
     const factory = await db.Factory.findByPk(id);
     if (!factory) {
+      throw new NotFoundError('Factory not found');
+    }
+
+    if (!canViewFactory(req.user, factory)) {
       throw new NotFoundError('Factory not found');
     }
 
@@ -110,7 +130,9 @@ const update = async (req, res, next) => {
       certifications: certifications || factory.certifications,
       specializations: specializations || factory.specializations,
       rating: rating !== undefined ? rating : factory.rating,
-      isActive: isActive !== undefined ? isActive : factory.isActive
+      isActive: isActive !== undefined ? isActive : factory.isActive,
+      isConfidential: isConfidential !== undefined ? isConfidential : factory.isConfidential,
+      allowedUserIds: allowedUserIds !== undefined ? allowedUserIds : factory.allowedUserIds
     });
 
     res.json(getSuccessResponse(factory, 'Factory updated successfully'));

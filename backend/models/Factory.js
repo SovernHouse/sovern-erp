@@ -75,12 +75,23 @@ module.exports = (sequelize) => {
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true
+    },
+    isConfidential: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      comment: 'If true, only users listed in allowedUserIds can view this factory'
+    },
+    allowedUserIds: {
+      type: DataTypes.JSON,
+      defaultValue: [],
+      comment: 'Array of User IDs permitted to view this factory when isConfidential=true'
     }
   }, {
     indexes: [
       { fields: ['email'] },
       { fields: ['company_name'] },
-      { fields: ['is_active'] }
+      { fields: ['is_active'] },
+      { fields: ['is_confidential'] }
     ]
   });
 
