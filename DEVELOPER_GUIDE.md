@@ -760,6 +760,25 @@ cd backend
 npx sequelize-cli db:migrate
 ```
 
+### Pre-push route smoke test
+
+Before pushing, verify all route files load without error. This catches two classes of bugs that code review misses:
+- A route callback referencing a controller method that doesn't exist (resolves to `undefined` at require-time → Express crash on startup)
+- File corruption (NUL bytes, encoding artifacts) that Node refuses to parse
+
+```bash
+# From repo root
+for f in backend/routes/*.js; do
+  node -e "require('./$f')" 2>&1 && echo "OK: $f" || echo "FAIL: $f"
+done
+```
+
+If a file fails and looks correct, check for binary corruption:
+```bash
+tail -c 40 backend/routes/yourFile.js | xxd
+```
+A clean file ends with `...;\n` (0x0a). Any `00` bytes after that are NUL corruption — strip them with `truncate` or re-save in your editor.
+
 ---
 
 ## 20. Known Limitations & Roadmap
