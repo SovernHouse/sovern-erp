@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 import {
   Search,
   Plus,
@@ -47,8 +47,8 @@ const ActivityList = () => {
       if (filters.assignedToId) params.append('assignedToId', filters.assignedToId);
       params.append('limit', 100);
 
-      const response = await axios.get(`/api/crm/activities?${params.toString()}`);
-      setActivities(response.data.data);
+      const response = await api.get(`/api/crm/activities?${params.toString()}`);
+      setActivities(response.data);
       setError(null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load activities');
@@ -60,8 +60,8 @@ const ActivityList = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await axios.get('/api/users?limit=100');
-      setUsers(response.data.data || []);
+      const response = await api.get('/api/users?limit=100');
+      setUsers(response.data || []);
     } catch (err) {
       console.error('Failed to load users:', err);
     }
@@ -82,7 +82,7 @@ const ActivityList = () => {
 
   const handleCompleteActivity = async (id) => {
     try {
-      await axios.post(`/api/crm/activities/${id}/complete`, {
+      await api.post(`/api/crm/activities/${id}/complete`, {
         outcome: 'Completed',
       });
       setActivities(activities.map(a =>
@@ -96,7 +96,7 @@ const ActivityList = () => {
   const handleDeleteActivity = async (id) => {
     if (window.confirm('Are you sure you want to delete this activity?')) {
       try {
-        await axios.delete(`/api/crm/activities/${id}`);
+        await api.delete(`/api/crm/activities/${id}`);
         setActivities(activities.filter(a => a.id !== id));
       } catch (err) {
         setError(err.response?.data?.message || 'Failed to delete activity');

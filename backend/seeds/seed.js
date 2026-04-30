@@ -16,7 +16,7 @@ const seed = async () => {
 
     const adminUser = await db.User.create({
       id: uuidv4(),
-      email: 'admin@sovernhouse.co',
+      email: process.env.ADMIN_EMAIL || 'admin@sovernhouse.co',
       password: 'admin123',
       firstName: 'Admin',
       lastName: 'User',

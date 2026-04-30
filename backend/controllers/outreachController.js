@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const db = require('../models');
 const { sendOutreachEmail } = require('../services/emailService');
 const dayjs = require('dayjs');
+const tenant = require('../config/tenant');
 
 /**
  * Default follow-up schedule by touch number (in days)
@@ -312,7 +313,7 @@ const sendCampaign = async (req, res) => {
     }
 
     // Validate FROM address is an authorised sending domain
-    const allowedDomains = ['sovernhouse.co', 'sovern-house.com'];
+    const allowedDomains = tenant.allowedSendingDomains;
     const fromDomain = (fromAddress || '').split('@')[1];
     if (!allowedDomains.includes(fromDomain)) {
       return res.status(400).json({

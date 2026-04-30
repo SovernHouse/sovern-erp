@@ -29,6 +29,20 @@ const getSuccessResponse = (data = null, message = 'Success') => {
   };
 };
 
+/**
+ * Build a standardised error response body.
+ * Shape: { success: false, message: string, error?: string }
+ * The optional `error` field carries raw error detail (e.g. err.message) for
+ * development-time debugging — omit or pass null to suppress it.
+ */
+const getErrorResponse = (message = 'An error occurred', error = null) => {
+  const response = { success: false, message };
+  if (error && process.env.NODE_ENV !== 'production') {
+    response.error = typeof error === 'string' ? error : error.message;
+  }
+  return response;
+};
+
 const calculateTotals = (items) => {
   let subtotal = 0;
   items.forEach(item => {
@@ -133,6 +147,7 @@ module.exports = {
   getPagination,
   getPaginatedResponse,
   getSuccessResponse,
+  getErrorResponse,
   calculateTotals,
   calculateDiscountedTotal,
   calculateTax,

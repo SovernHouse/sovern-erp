@@ -1,4 +1,5 @@
 const db = require('../models');
+const tenant = require('../config/tenant');
 
 /**
  * Generate branded Sovern House signature HTML from a stored signature record
@@ -15,7 +16,7 @@ const generateSignatureHtml = (sig) => `
       ${sig.website && sig.phone ? `<span style="color: #C8C4BC; margin: 0 8px;">&middot;</span>` : ''}
       ${sig.phone ? `<span style="color: #5A5855;">${sig.phone}</span>` : ''}
     </div>` : ''}
-    ${sig.logoUrl ? `<div style="margin-bottom: 14px;"><a href="https://${sig.website || 'sovernhouse.co'}" style="text-decoration: none; display: inline-block;"><img src="${sig.logoUrl}" alt="Sovern House" width="200" style="display: block; border: 0;"></a></div>` : ''}
+    ${sig.logoUrl ? `<div style="margin-bottom: 14px;"><a href="https://${sig.website || tenant.companyDomain}" style="text-decoration: none; display: inline-block;"><img src="${sig.logoUrl}" alt="${tenant.companyName}" width="200" style="display: block; border: 0;"></a></div>` : ''}
     ${sig.tagline ? `<div style="font-size: 12px; color: #5A5855; font-style: italic; letter-spacing: 0.01em; margin-bottom: 16px;">${sig.tagline}</div>` : ''}
     ${sig.legalText ? `<div style="font-size: 10px; color: #B0ABA4; border-top: 1px solid #EBEBEB; padding-top: 10px;">${sig.legalText}</div>` : ''}
   </div>
@@ -24,7 +25,7 @@ const generateSignatureHtml = (sig) => `
 const generateSignatureText = (sig) => [
   '--',
   sig.displayName,
-  [sig.title, 'Sovern House'].filter(Boolean).join(' · '),
+  [sig.title, tenant.companyName].filter(Boolean).join(' · '),
   [sig.website, sig.phone].filter(Boolean).join(' · '),
   sig.legalText || '',
 ].filter(Boolean).join('\n');

@@ -223,7 +223,7 @@ const deleteCategory = async (req, res) => {
 
 // ─── POST /api/products/categories/seed ───────────────────────────────────────
 // Seeds the Sovern House default taxonomy. Idempotent — skips existing slugs.
-const seedSovernHouseTemplate = async (req, res) => {
+const seedDefaultTemplate = async (req, res) => {
   try {
     const { overwrite } = req.body;
 
@@ -469,7 +469,7 @@ module.exports = {
   createCategory,
   updateCategory,
   deleteCategory,
-  seedSovernHouseTemplate,
+  seedDefaultTemplate,
   exportCategories,
   importCategories,
   getTemplates,

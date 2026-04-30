@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 import {
   TrendingUp,
   DollarSign,
@@ -49,8 +49,8 @@ const CRMDashboard = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('/api/crm/dashboard');
-      setDashboardData(response.data.data);
+      const response = await api.get('/api/crm/dashboard');
+      setDashboardData(response.data);
       setError(null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load dashboard data');

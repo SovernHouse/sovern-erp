@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../../hooks/useAuth'
 import { EmailInput, PasswordInput } from '../../components/FormFields'
+import tenant from '../../config/tenant'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -116,7 +117,7 @@ export default function Login() {
             <p className="text-xs text-slate-600 text-center mb-3">Demo Credentials</p>
             <div className="bg-slate-50 rounded p-3 space-y-1 text-xs">
               <p className="text-slate-700">
-                <span className="font-medium">Email:</span> admin@sovernhouse.co
+                <span className="font-medium">Email:</span> {tenant.adminEmail}
               </p>
               <p className="text-slate-700">
                 <span className="font-medium">Password:</span> admin123

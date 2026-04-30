@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 import {
   Search,
   Plus,
@@ -43,8 +43,8 @@ const ContactList = () => {
       params.append('isActive', filters.isActive);
       params.append('limit', 100);
 
-      const response = await axios.get(`/api/crm/contacts?${params.toString()}`);
-      setContacts(response.data.data);
+      const response = await api.get(`/api/crm/contacts?${params.toString()}`);
+      setContacts(response.data);
       setError(null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load contacts');
@@ -57,11 +57,11 @@ const ContactList = () => {
   const fetchCustomersAndFactories = async () => {
     try {
       const [customersRes, factoriesRes] = await Promise.all([
-        axios.get('/api/customers?limit=100'),
-        axios.get('/api/factories?limit=100'),
+        api.get('/api/customers?limit=100'),
+        api.get('/api/factories?limit=100'),
       ]);
-      setCustomers(customersRes.data.data || []);
-      setFactories(factoriesRes.data.data || []);
+      setCustomers(customersRes.data || []);
+      setFactories(factoriesRes.data || []);
     } catch (err) {
       console.error('Failed to load customers/factories:', err);
     }
@@ -88,7 +88,7 @@ const ContactList = () => {
   const handleDeleteContact = async (id) => {
     if (window.confirm('Are you sure you want to delete this contact?')) {
       try {
-        await axios.delete(`/api/crm/contacts/${id}`);
+        await api.delete(`/api/crm/contacts/${id}`);
         setContacts(contacts.filter(contact => contact.id !== id));
       } catch (err) {
         setError(err.response?.data?.message || 'Failed to delete contact');

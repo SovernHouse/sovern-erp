@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 import { ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -39,13 +39,13 @@ const DealForm = () => {
   const fetchCustomersContactsUsers = async () => {
     try {
       const [customersRes, contactsRes, usersRes] = await Promise.all([
-        axios.get('/api/customers?limit=100'),
-        axios.get('/api/crm/contacts?limit=100'),
-        axios.get('/api/users?limit=100'),
+        api.get('/api/customers?limit=100'),
+        api.get('/api/crm/contacts?limit=100'),
+        api.get('/api/users?limit=100'),
       ]);
-      setCustomers(customersRes.data.data || []);
-      setContacts(contactsRes.data.data || []);
-      setUsers(usersRes.data.data || []);
+      setCustomers(customersRes.data || []);
+      setContacts(contactsRes.data || []);
+      setUsers(usersRes.data || []);
     } catch (err) {
       console.error('Failed to load data:', err);
     }
@@ -54,8 +54,8 @@ const DealForm = () => {
   const fetchDeal = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`/api/crm/deals/${id}`);
-      const deal = response.data.data;
+      const response = await api.get(`/api/crm/deals/${id}`);
+      const deal = response.data;
       setFormData({
         title: deal.title,
         customerId: deal.customerId || '',
@@ -103,9 +103,9 @@ const DealForm = () => {
       };
 
       if (id) {
-        await axios.put(`/api/crm/deals/${id}`, submitData);
+        await api.put(`/api/crm/deals/${id}`, submitData);
       } else {
-        await axios.post('/api/crm/deals', submitData);
+        await api.post('/api/crm/deals', submitData);
       }
 
       setSuccess(true);

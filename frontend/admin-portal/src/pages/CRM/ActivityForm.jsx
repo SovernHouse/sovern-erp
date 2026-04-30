@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 import { ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -40,15 +40,15 @@ const ActivityForm = () => {
   const fetchData = async () => {
     try {
       const [contactsRes, customersRes, leadsRes, usersRes] = await Promise.all([
-        axios.get('/api/crm/contacts?limit=100'),
-        axios.get('/api/customers?limit=100'),
-        axios.get('/api/crm/leads?limit=100'),
-        axios.get('/api/users?limit=100'),
+        api.get('/api/crm/contacts?limit=100'),
+        api.get('/api/customers?limit=100'),
+        api.get('/api/crm/leads?limit=100'),
+        api.get('/api/users?limit=100'),
       ]);
-      setContacts(contactsRes.data.data || []);
-      setCustomers(customersRes.data.data || []);
-      setLeads(leadsRes.data.data || []);
-      setUsers(usersRes.data.data || []);
+      setContacts(contactsRes.data || []);
+      setCustomers(customersRes.data || []);
+      setLeads(leadsRes.data || []);
+      setUsers(usersRes.data || []);
     } catch (err) {
       console.error('Failed to load data:', err);
     }
@@ -57,8 +57,8 @@ const ActivityForm = () => {
   const fetchActivity = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`/api/crm/activities/${id}`);
-      const activity = response.data.data;
+      const response = await api.get(`/api/crm/activities/${id}`);
+      const activity = response.data;
       setFormData({
         type: activity.type,
         subject: activity.subject,
@@ -109,9 +109,9 @@ const ActivityForm = () => {
       };
 
       if (id) {
-        await axios.put(`/api/crm/activities/${id}`, submitData);
+        await api.put(`/api/crm/activities/${id}`, submitData);
       } else {
-        await axios.post('/api/crm/activities', submitData);
+        await api.post('/api/crm/activities', submitData);
       }
 
       setSuccess(true);

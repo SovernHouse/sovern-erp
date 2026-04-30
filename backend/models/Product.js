@@ -22,19 +22,11 @@ module.exports = (sequelize) => {
     },
     categoryId: {
       type: DataTypes.UUID,
-      allowNull: false,
-      references: {
-        model: 'ProductCategory',
-        key: 'id'
-      }
+      allowNull: false
     },
     factoryId: {
       type: DataTypes.UUID,
-      allowNull: false,
-      references: {
-        model: 'Factory',
-        key: 'id'
-      }
+      allowNull: false
     },
     unit: {
       type: DataTypes.ENUM('sqm', 'sqft', 'box', 'pallet', 'roll', 'piece'),

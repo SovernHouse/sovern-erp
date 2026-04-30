@@ -14,27 +14,15 @@ module.exports = (sequelize) => {
     },
     inquiryId: {
       type: DataTypes.UUID,
-      allowNull: true,
-      references: {
-        model: 'Inquiry',
-        key: 'id'
-      }
+      allowNull: true
     },
     customerId: {
       type: DataTypes.UUID,
-      allowNull: false,
-      references: {
-        model: 'Customer',
-        key: 'id'
-      }
+      allowNull: false
     },
     salesPersonId: {
       type: DataTypes.UUID,
-      allowNull: true,
-      references: {
-        model: 'User',
-        key: 'id'
-      }
+      allowNull: true
     },
     status: {
       type: DataTypes.ENUM('draft', 'sent', 'revised', 'accepted', 'rejected', 'expired'),
@@ -86,11 +74,7 @@ module.exports = (sequelize) => {
     },
     parentQuotationId: {
       type: DataTypes.UUID,
-      allowNull: true,
-      references: {
-        model: 'Quotation',
-        key: 'id'
-      }
+      allowNull: true
     },
     deletedAt: {
       type: DataTypes.DATE,

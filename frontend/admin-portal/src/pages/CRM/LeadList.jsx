@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 import {
   Search,
   Plus,
@@ -47,8 +47,8 @@ const LeadList = () => {
       if (filters.assignedToId) params.append('assignedToId', filters.assignedToId);
       params.append('limit', 100);
 
-      const response = await axios.get(`/api/crm/leads?${params.toString()}`);
-      setLeads(response.data.data);
+      const response = await api.get(`/api/crm/leads?${params.toString()}`);
+      setLeads(response.data);
       setError(null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load leads');
@@ -76,7 +76,7 @@ const LeadList = () => {
   const handleDeleteLead = async (id) => {
     if (window.confirm('Are you sure you want to delete this lead?')) {
       try {
-        await axios.delete(`/api/crm/leads/${id}`);
+        await api.delete(`/api/crm/leads/${id}`);
         setLeads(leads.filter(lead => lead.id !== id));
       } catch (err) {
         setError(err.response?.data?.message || 'Failed to delete lead');
@@ -86,7 +86,7 @@ const LeadList = () => {
 
   const handleUpdateStatus = async (leadId, newStatus) => {
     try {
-      await axios.put(`/api/crm/leads/${leadId}/status`, { status: newStatus });
+      await api.put(`/api/crm/leads/${leadId}/status`, { status: newStatus });
       setLeads(leads.map(lead =>
         lead.id === leadId ? { ...lead, status: newStatus } : lead
       ));

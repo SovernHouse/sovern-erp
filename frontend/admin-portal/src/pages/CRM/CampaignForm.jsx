@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 import { ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -35,8 +35,8 @@ const CampaignForm = () => {
   const fetchCampaign = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`/api/crm/campaigns/${id}`);
-      const campaign = response.data.data;
+      const response = await api.get(`/api/crm/campaigns/${id}`);
+      const campaign = response.data;
       setFormData({
         name: campaign.name,
         type: campaign.type,
@@ -88,9 +88,9 @@ const CampaignForm = () => {
       };
 
       if (id) {
-        await axios.put(`/api/crm/campaigns/${id}`, submitData);
+        await api.put(`/api/crm/campaigns/${id}`, submitData);
       } else {
-        await axios.post('/api/crm/campaigns', submitData);
+        await api.post('/api/crm/campaigns', submitData);
       }
 
       setSuccess(true);

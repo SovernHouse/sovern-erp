@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 import { ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -40,8 +40,8 @@ const LeadForm = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await axios.get('/api/users?limit=100');
-      setUsers(response.data.data || []);
+      const response = await api.get('/api/users?limit=100');
+      setUsers(response.data || []);
     } catch (err) {
       console.error('Failed to load users:', err);
     }
@@ -50,8 +50,8 @@ const LeadForm = () => {
   const fetchLead = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`/api/crm/leads/${id}`);
-      const lead = response.data.data;
+      const response = await api.get(`/api/crm/leads/${id}`);
+      const lead = response.data;
       setFormData({
         companyName: lead.companyName,
         contactName: lead.contactName,
@@ -103,9 +103,9 @@ const LeadForm = () => {
       };
 
       if (id) {
-        await axios.put(`/api/crm/leads/${id}`, submitData);
+        await api.put(`/api/crm/leads/${id}`, submitData);
       } else {
-        await axios.post('/api/crm/leads', submitData);
+        await api.post('/api/crm/leads', submitData);
       }
 
       setSuccess(true);

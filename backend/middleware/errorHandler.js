@@ -64,14 +64,17 @@ const errorHandler = (err, req, res, next) => {
 
   const response = {
     success: false,
-    error: {
-      message: err.message,
-      statusCode: err.statusCode
-    }
+    message: err.message
   };
 
+  // Include validation details when present (e.g. from ValidationError)
   if (err.details) {
-    response.error.details = err.details;
+    response.details = err.details;
+  }
+
+  // In non-production environments expose the stack for debugging
+  if (process.env.NODE_ENV !== 'production' && err.stack) {
+    response.error = err.stack;
   }
 
   res.status(err.statusCode).json(response);

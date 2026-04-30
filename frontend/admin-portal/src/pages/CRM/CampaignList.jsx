@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 import {
   Search,
   Plus,
@@ -41,8 +41,8 @@ const CampaignList = () => {
       if (filters.type) params.append('type', filters.type);
       params.append('limit', 100);
 
-      const response = await axios.get(`/api/crm/campaigns?${params.toString()}`);
-      setCampaigns(response.data.data);
+      const response = await api.get(`/api/crm/campaigns?${params.toString()}`);
+      setCampaigns(response.data);
       setError(null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load campaigns');
@@ -67,7 +67,7 @@ const CampaignList = () => {
   const handleDeleteCampaign = async (id) => {
     if (window.confirm('Are you sure you want to delete this campaign?')) {
       try {
-        await axios.delete(`/api/crm/campaigns/${id}`);
+        await api.delete(`/api/crm/campaigns/${id}`);
         setCampaigns(campaigns.filter(c => c.id !== id));
       } catch (err) {
         setError(err.response?.data?.message || 'Failed to delete campaign');

@@ -14,19 +14,11 @@ module.exports = (sequelize) => {
     },
     customerId: {
       type: DataTypes.UUID,
-      allowNull: false,
-      references: {
-        model: 'Customer',
-        key: 'id'
-      }
+      allowNull: false
     },
     salesPersonId: {
       type: DataTypes.UUID,
-      allowNull: true,
-      references: {
-        model: 'User',
-        key: 'id'
-      }
+      allowNull: true
     },
     status: {
       type: DataTypes.ENUM('new', 'in_review', 'quoted', 'follow_up', 'converted', 'lost', 'cancelled'),
@@ -50,11 +42,7 @@ module.exports = (sequelize) => {
     },
     convertedToQuotationId: {
       type: DataTypes.UUID,
-      allowNull: true,
-      references: {
-        model: 'Quotation',
-        key: 'id'
-      }
+      allowNull: true
     },
     estimatedValue: {
       type: DataTypes.DECIMAL(15, 2),

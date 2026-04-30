@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 import {
   ArrowRight,
   DollarSign,
@@ -38,8 +38,8 @@ const DealPipeline = () => {
   const fetchDeals = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('/api/crm/pipeline');
-      setDeals(response.data.data);
+      const response = await api.get('/api/crm/pipeline');
+      setDeals(response.data);
       setError(null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load deals');
@@ -51,8 +51,8 @@ const DealPipeline = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await axios.get('/api/users?limit=100');
-      setUsers(response.data.data || []);
+      const response = await api.get('/api/users?limit=100');
+      setUsers(response.data || []);
     } catch (err) {
       console.error('Failed to load users:', err);
     }
@@ -76,7 +76,7 @@ const DealPipeline = () => {
     }
 
     try {
-      await axios.put(`/api/crm/deals/${draggedDeal.id}/stage`, { stage: targetStage });
+      await api.put(`/api/crm/deals/${draggedDeal.id}/stage`, { stage: targetStage });
       setDraggedDeal(null);
       fetchDeals();
     } catch (err) {
