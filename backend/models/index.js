@@ -501,7 +501,8 @@ db.PriceListItem.belongsTo(db.Product, { foreignKey: 'productId' });
 db.Lead.hasMany(db.OutreachEmail, { foreignKey: 'leadId', as: 'outreachEmails' });
 
 // DocumentApproval relationships
+// NOTE: DocumentApproval.belongsTo(User, { as: 'requestedBy' }) is defined in
+// DocumentApproval.associate() and called above — do NOT redefine it here.
 db.User.hasMany(db.DocumentApproval, { as: 'documentApprovals', foreignKey: 'requestedByUserId' });
-db.DocumentApproval.belongsTo(db.User, { as: 'requestedBy', foreignKey: 'requestedByUserId' });
 
 module.exports = db;
