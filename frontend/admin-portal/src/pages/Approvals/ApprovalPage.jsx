@@ -92,6 +92,7 @@ export default function ApprovalPage() {
   const [approvalData, setApprovalData] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [isExpired, setIsExpired] = useState(false)
 
   const [clientName, setClientName] = useState('')
   const [isApproving, setIsApproving] = useState(false)
@@ -115,9 +116,14 @@ export default function ApprovalPage() {
         }
       } catch (err) {
         const status = err.response?.status
-        if (status === 404) setError('This approval link was not found. It may have been revoked.')
-        else if (status === 410) setError('This approval link has expired.')
-        else setError(err.response?.data?.message || 'Failed to load document. Please try again.')
+        if (status === 410) {
+          setError('This approval link has expired. Please contact your supplier to request a new one.')
+          setIsExpired(true)
+        } else if (status === 404) {
+          setError('This approval link was not found or has already been used.')
+        } else {
+          setError(err.response?.data?.message || 'Unable to load approval. Please try again.')
+        }
       } finally {
         setIsLoading(false)
       }
@@ -162,6 +168,19 @@ export default function ApprovalPage() {
         <div className="text-center space-y-3">
           <Loader className="w-8 h-8 animate-spin text-gray-400 mx-auto" />
           <p className="text-gray-500 text-sm">Loading document...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Expired link ────────────────────────────────────────────────────────────────────
+  if (isExpired) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center p-8 bg-white rounded-lg shadow max-w-md">
+          <div className="text-amber-500 text-5xl mb-4">⏰</div>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">Approval Link Expired</h2>
+          <p className="text-gray-600">This approval link has expired. Please contact your supplier to request a new approval link.</p>
         </div>
       </div>
     )
