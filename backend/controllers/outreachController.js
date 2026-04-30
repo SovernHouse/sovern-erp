@@ -97,6 +97,16 @@ const sendOutreachEmailToLead = async (req, res) => {
       }
     }
 
+    // Build final BCC — Egypt rule: always include Mohannad Fanzey
+    let finalBcc = bcc ? (Array.isArray(bcc) ? [...bcc] : [bcc]) : [];
+    if (
+      lead.country &&
+      lead.country.toLowerCase() === 'egypt' &&
+      !finalBcc.map(e => e.toLowerCase()).includes('mohanadfanzey@gmail.com')
+    ) {
+      finalBcc.push('mohanadfanzey@gmail.com');
+    }
+
     // Send email via SMTP
     let messageId;
     let accepted;
@@ -110,7 +120,7 @@ const sendOutreachEmailToLead = async (req, res) => {
         bodyText,
         replyTo: fromAddress,
         cc: cc || null,
-        bcc: bcc || null,
+        bcc: finalBcc.length > 0 ? finalBcc : null,
         signatureHtml: resolvedSignatureHtml,
         signatureText: resolvedSignatureText,
       });
@@ -388,6 +398,16 @@ const sendCampaign = async (req, res) => {
         const now = dayjs();
         const followUpDueAt = daysToAdd ? now.add(daysToAdd, 'day').toDate() : null;
 
+        // Build final BCC — Egypt rule: always include Mohannad Fanzey
+        let finalCampaignBcc = bcc ? (Array.isArray(bcc) ? [...bcc] : [bcc]) : [];
+        if (
+          lead.country &&
+          lead.country.toLowerCase() === 'egypt' &&
+          !finalCampaignBcc.map(e => e.toLowerCase()).includes('mohanadfanzey@gmail.com')
+        ) {
+          finalCampaignBcc.push('mohanadfanzey@gmail.com');
+        }
+
         let messageId = null;
         let status = 'failed';
         let errorMessage = null;
@@ -401,7 +421,7 @@ const sendCampaign = async (req, res) => {
             bodyText: mergedBody,
             replyTo: fromAddress,
             cc: cc || null,
-            bcc: bcc || null,
+            bcc: finalCampaignBcc.length > 0 ? finalCampaignBcc : null,
             signatureHtml: campaignSignatureHtml,
             signatureText: campaignSignatureText,
           });
