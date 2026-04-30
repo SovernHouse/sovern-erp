@@ -19,37 +19,27 @@ module.exports = (sequelize) => {
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    // FK references intentionally omitted — relationships are declared via
+    // Sequelize associations below. Inline `references:` blocks were causing
+    // INSERTs to fail because SQLite resolves the referenced table name at
+    // statement time, and freezeTableName: true means the actual tables are
+    // singular (`User`, `Customer`) rather than the pluralized names this
+    // file previously used. See Lead.js for the same pattern.
     contactId: {
       type: DataTypes.UUID,
       allowNull: true,
-      references: {
-        model: 'Contacts',
-        key: 'id',
-      },
     },
     customerId: {
       type: DataTypes.UUID,
       allowNull: true,
-      references: {
-        model: 'Customers',
-        key: 'id',
-      },
     },
     leadId: {
       type: DataTypes.UUID,
       allowNull: true,
-      references: {
-        model: 'Leads',
-        key: 'id',
-      },
     },
     userId: {
       type: DataTypes.UUID,
       allowNull: false,
-      references: {
-        model: 'Users',
-        key: 'id',
-      },
     },
     scheduledAt: {
       type: DataTypes.DATE,

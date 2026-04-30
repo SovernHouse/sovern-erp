@@ -155,6 +155,11 @@ module.exports = (sequelize) => {
   Lead.associate = (models) => {
     Lead.belongsTo(models.User, { foreignKey: 'assignedToId', as: 'assignedTo' });
     Lead.belongsTo(models.Customer, { foreignKey: 'convertedCustomerId', as: 'convertedCustomer' });
+    // Inverse of Activity.belongsTo(Lead). Required for getLeadById's
+    // include: [{ model: Activity, as: 'activities' }] to resolve.
+    if (models.Activity) {
+      Lead.hasMany(models.Activity, { foreignKey: 'leadId', as: 'activities' });
+    }
   };
 
   return Lead;

@@ -99,16 +99,33 @@ db.EmailSignature = require('./EmailSignature')(sequelize);
 db.EmailTemplate = require('./EmailTemplate')(sequelize);
 db.RolePermission = require('./RolePermission')(sequelize);
 
-// Load CRM models if they exist
-try {
-  db.Lead = require('./Lead')(sequelize);
-  db.Deal = require('./Deal')(sequelize);
-  db.Contact = require('./Contact')(sequelize);
-  db.Activity = require('./Activity')(sequelize);
-  db.Campaign = require('./Campaign')(sequelize);
-  db.OutreachEmail = require('./OutreachEmail')(sequelize);
-} catch (e) {
-  // CRM models not available - skip
+// Load CRM models if they exist.
+// Tolerate missing files (MODULE_NOT_FOUND, e.g. CRM module disabled),
+// but surface any other error (syntax error, runtime throw inside the
+// model factory) immediately. Previously this catch was a silent skip,
+// which masked load-time failures and produced confusing downstream
+// errors like "Cannot read properties of undefined (reading 'hasMany')"
+// hundreds of lines later.
+const _crmModels = {
+  Lead: './Lead',
+  Deal: './Deal',
+  Contact: './Contact',
+  Activity: './Activity',
+  Campaign: './Campaign',
+  OutreachEmail: './OutreachEmail',
+};
+for (const [name, modulePath] of Object.entries(_crmModels)) {
+  try {
+    db[name] = require(modulePath)(sequelize);
+  } catch (e) {
+    if (e.code === 'MODULE_NOT_FOUND' && e.message.includes(modulePath)) {
+      console.warn(`[models] CRM model ${name} (${modulePath}) not present — skipping.`);
+      continue;
+    }
+    console.error(`[models] Failed to load CRM model ${name} from ${modulePath}:`);
+    console.error(e);
+    throw e;
+  }
 }
 
 Object.keys(db).forEach(modelName => {
