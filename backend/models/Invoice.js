@@ -1,4 +1,5 @@
 const { DataTypes } = require('sequelize');
+const { statusTransitionHook } = require('../utils/statusTransitions');
 
 module.exports = (sequelize) => {
   const Invoice = sequelize.define('Invoice', {
@@ -75,13 +76,9 @@ module.exports = (sequelize) => {
     notes: {
       type: DataTypes.TEXT,
       allowNull: true
-    },
-    deletedAt: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      defaultValue: null
     }
   }, {
+    paranoid: true, // soft deletes — sets deletedAt instead of hard-deleting
     indexes: [
       { fields: ['invoice_number'] },
       { fields: ['status'] },
@@ -92,6 +89,8 @@ module.exports = (sequelize) => {
       { fields: ['customer_id', 'status'] }
     ]
   });
+
+  Invoice.addHook('beforeUpdate', statusTransitionHook('Invoice'));
 
   return Invoice;
 };

@@ -1,4 +1,5 @@
 const { DataTypes } = require('sequelize');
+const { statusTransitionHook } = require('../utils/statusTransitions');
 
 module.exports = (sequelize) => {
   const ProformaInvoice = sequelize.define('ProformaInvoice', {
@@ -69,6 +70,8 @@ module.exports = (sequelize) => {
       allowNull: true
     }
   });
+
+  ProformaInvoice.addHook('beforeUpdate', statusTransitionHook('ProformaInvoice'));
 
   return ProformaInvoice;
 };

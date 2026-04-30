@@ -85,6 +85,7 @@ module.exports = (sequelize) => {
       allowNull: true
     }
   }, {
+    paranoid: true, // soft deletes — sets deletedAt instead of hard-deleting
     indexes: [
       { fields: ['email'] },
       { fields: ['company_name'] },

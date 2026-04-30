@@ -44,6 +44,7 @@ module.exports = (sequelize) => {
       defaultValue: 'pending'
     }
   }, {
+    paranoid: true, // soft deletes — sets deletedAt instead of hard-deleting
     indexes: [
       { fields: ['status'] },
       { fields: ['invoice_id'] },

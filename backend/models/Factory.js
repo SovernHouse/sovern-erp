@@ -87,6 +87,7 @@ module.exports = (sequelize) => {
       comment: 'Array of User IDs permitted to view this factory when isConfidential=true'
     }
   }, {
+    paranoid: true, // soft deletes — sets deletedAt instead of hard-deleting
     indexes: [
       { fields: ['email'] },
       { fields: ['company_name'] },

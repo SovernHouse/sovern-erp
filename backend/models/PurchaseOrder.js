@@ -1,4 +1,5 @@
 const { DataTypes } = require('sequelize');
+const { statusTransitionHook } = require('../utils/statusTransitions');
 
 module.exports = (sequelize) => {
   const PurchaseOrder = sequelize.define('PurchaseOrder', {
@@ -53,6 +54,7 @@ module.exports = (sequelize) => {
       allowNull: true
     }
   }, {
+    paranoid: true, // soft deletes — sets deletedAt instead of hard-deleting
     indexes: [
       { fields: ['po_number'] },
       { fields: ['status'] },
@@ -62,6 +64,8 @@ module.exports = (sequelize) => {
       { fields: ['factory_id', 'status'] }
     ]
   });
+
+  PurchaseOrder.addHook('beforeUpdate', statusTransitionHook('PurchaseOrder'));
 
   return PurchaseOrder;
 };

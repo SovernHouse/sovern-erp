@@ -1,4 +1,5 @@
 const { DataTypes } = require('sequelize');
+const { statusTransitionHook } = require('../utils/statusTransitions');
 
 module.exports = (sequelize) => {
   const Shipment = sequelize.define('Shipment', {
@@ -99,6 +100,8 @@ module.exports = (sequelize) => {
       { fields: ['created_at'] }
     ]
   });
+
+  Shipment.addHook('beforeUpdate', statusTransitionHook('Shipment'));
 
   return Shipment;
 };
