@@ -43,7 +43,7 @@ router.get('/categories/tree', requireAuth, categoryController.getCategoryTree);
 router.get('/categories/flat', requireAuth, categoryController.getCategoriesFlat);
 router.get('/categories/export', requireAuth, requireRole('admin', 'manager'), categoryController.exportCategories);
 router.post('/categories/import', requireAuth, requireRole('admin'), categoryController.importCategories);
-router.post('/categories/seed', requireAuth, requireRole('admin'), categoryController.seedSovernHouseTemplate);
+router.post('/categories/seed', requireAuth, requireRole('admin'), categoryController.seedDefaultTemplate);
 router.get('/categories/templates', requireAuth, categoryController.getTemplates);
 router.post('/categories/templates', requireAuth, requireRole('admin'), categoryController.saveAsTemplate);
 router.post('/categories/templates/:id/load', requireAuth, requireRole('admin'), categoryController.loadTemplate);
