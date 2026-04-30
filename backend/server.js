@@ -144,6 +144,7 @@ const sustainabilityRoutes = require('./routes/sustainabilityRoutes');
 const emailRoutes = require('./routes/emailRoutes');
 const bankIntegrationRoutes = require('./routes/bankIntegrationRoutes');
 const crmRoutes = require('./routes/crm');
+const approvalRoutes = require('./routes/approvalRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/sso', ssoRoutes);
@@ -193,6 +194,7 @@ app.use('/api/emails', emailRoutes);
 app.use('/api/pdf', pdfRoutes);
 app.use('/api/bank', bankIntegrationRoutes);
 app.use('/api/crm', crmRoutes);
+app.use('/api/approvals', approvalRoutes);
 
 // Compliance & Regulatory routes
 const complianceRoutes = require('./modules/compliance/complianceRoutes');
@@ -454,6 +456,22 @@ db.sequelize.authenticate()
         console.log('Exchange rate scheduler initialized');
       } catch (error) {
         console.error('Failed to initialize exchange rate scheduler:', error.message);
+      }
+    }
+
+    // Initialize business automation scheduler (node-cron)
+    // Jobs: overdue activities, follow-up reminders, invoice overdue transitions, production alerts
+    if (process.env.DISABLE_SCHEDULER !== 'true') {
+      try {
+        const schedulerService = require('./services/schedulerService');
+        schedulerService.startScheduler();
+      } catch (error) {
+        // Graceful degradation — the server still starts if node-cron isn't installed yet
+        if (error.code === 'MODULE_NOT_FOUND' && error.message.includes('node-cron')) {
+          console.warn('[SCHEDULER] node-cron not installed. Run: npm install (in backend directory)');
+        } else {
+          console.error('Failed to initialize scheduler:', error.message);
+        }
       }
     }
 

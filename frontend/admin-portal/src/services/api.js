@@ -138,7 +138,9 @@ export const proformaAPI = {
   create: (data) => api.post('/proforma-invoices', data),
   update: (id, data) => api.put(`/proforma-invoices/${id}`, data),
   delete: (id) => api.delete(`/proforma-invoices/${id}`),
-  convertToOrder: (id) => api.post(`/proforma-invoices/${id}/convert-order`),
+  send: (id) => api.post(`/proforma-invoices/${id}/send`),
+  // data: { factoryId (required), estimatedDelivery? }
+  convertToOrder: (id, data) => api.post(`/proforma-invoices/${id}/convert-order`, data),
   getPDF: (id) =>
     api.get(`/proforma-invoices/${id}/pdf`, { responseType: 'blob' }),
 }
@@ -155,6 +157,7 @@ export const ordersAPI = {
   createShipment: (id, data) => api.post(`/sales-orders/${id}/shipment`, data),
   createPO: (id, data) => api.post(`/sales-orders/${id}/purchase-order`, data),
   getTimeline: (id) => api.get(`/sales-orders/${id}/timeline`),
+  createPackingList: (id) => api.post(`/sales-orders/${id}/create-packing-list`),
 }
 
 // Purchase Orders endpoints
@@ -417,6 +420,17 @@ export const personalizationAPI = {
     api.delete(`/personalization/filter-presets/${id}`),
   getSharedFilterPreset: (shareToken) =>
     api.get(`/personalization/filter-presets/shared/${shareToken}`),
+}
+
+// Document Approval endpoints
+export const approvalAPI = {
+  generate: (data) => api.post('/approvals/generate', data),
+  getAll: (params) => api.get('/approvals', { params }),
+  getById: (id) => api.get(`/approvals/${id}`),
+  // Public (token-based) — no auth required, called from the public approval page
+  getByToken: (token) => api.get(`/approvals/public/${token}`),
+  approve: (token, data) => api.post(`/approvals/public/${token}/approve`, data),
+  reject: (token, data) => api.post(`/approvals/public/${token}/reject`, data),
 }
 
 export default api

@@ -27,6 +27,7 @@ db.Sequelize = Sequelize;
 
 db.User = require('./User')(sequelize);
 db.SSOAccount = require('./SSOAccount')(sequelize);
+db.DocumentApproval = require('./DocumentApproval')(sequelize);
 db.Customer = require('./Customer')(sequelize);
 db.Factory = require('./Factory')(sequelize);
 db.ProductCategory = require('./ProductCategory')(sequelize);
@@ -498,5 +499,9 @@ db.PriceListItem.belongsTo(db.Product, { foreignKey: 'productId' });
 
 // OutreachEmail relationships
 db.Lead.hasMany(db.OutreachEmail, { foreignKey: 'leadId', as: 'outreachEmails' });
+
+// DocumentApproval relationships
+db.User.hasMany(db.DocumentApproval, { as: 'documentApprovals', foreignKey: 'requestedByUserId' });
+db.DocumentApproval.belongsTo(db.User, { as: 'requestedBy', foreignKey: 'requestedByUserId' });
 
 module.exports = db;

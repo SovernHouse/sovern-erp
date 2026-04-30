@@ -7,6 +7,7 @@ import {
   Trash2,
   ChevronDown,
   Loader,
+  Package,
 } from 'lucide-react'
 import { ordersAPI } from '../../services/api'
 import StatusBadge from '../../components/StatusBadge'
@@ -27,6 +28,7 @@ export default function OrderDetail() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showStatusDropdown, setShowStatusDropdown] = useState(false)
   const [isChangingStatus, setIsChangingStatus] = useState(false)
+  const [isCreatingPackingList, setIsCreatingPackingList] = useState(false)
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -66,6 +68,28 @@ export default function OrderDetail() {
       toast.error(err.response?.data?.message || 'Failed to change status')
     } finally {
       setIsChangingStatus(false)
+    }
+  }
+
+  const handleCreatePackingList = async () => {
+    try {
+      setIsCreatingPackingList(true)
+      const res = await ordersAPI.createPackingList(id)
+      toast.success('Packing List created')
+      const plId = res.data?.id || res.id
+      if (plId) navigate(`/packing-lists/${plId}`)
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to create Packing List'
+      // If one already exists, offer to navigate there
+      const existingId = err.response?.data?.data?.packingListId
+      if (existingId) {
+        toast.error('A Packing List already exists for this order')
+        navigate(`/packing-lists/${existingId}`)
+      } else {
+        toast.error(msg)
+      }
+    } finally {
+      setIsCreatingPackingList(false)
     }
   }
 
@@ -156,6 +180,20 @@ export default function OrderDetail() {
             <Edit2 className="w-4 h-4" />
             <span>Edit</span>
           </button>
+          {order.status !== 'cancelled' && (
+            <button
+              onClick={handleCreatePackingList}
+              disabled={isCreatingPackingList}
+              className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+            >
+              {isCreatingPackingList ? (
+                <Loader className="w-4 h-4 animate-spin" />
+              ) : (
+                <Package className="w-4 h-4" />
+              )}
+              <span>Create Packing List</span>
+            </button>
+          )}
           <div className="relative">
             <button
               onClick={() => setShowStatusDropdown(!showStatusDropdown)}

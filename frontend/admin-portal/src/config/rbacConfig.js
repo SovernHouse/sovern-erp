@@ -188,6 +188,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Email Signatures', path: '/settings/email-signatures', permission: 'settings' },
         { label: 'Role Permissions', path: '/settings/role-permissions', permission: 'settings' },
         { label: 'Product Taxonomy', path: '/settings/product-taxonomy', permission: 'settings' },
+        { label: 'Bulk Import', path: '/settings/bulk-import', permission: 'settings' },
       ],
     },
   ],
@@ -707,6 +708,7 @@ const buildNavFromPermissions = (permissions) => {
     { label: 'Email Signatures', path: '/settings/email-signatures', permission: 'settings' },
     { label: 'Role Permissions', path: '/settings/role-permissions', permission: 'settings' },
     { label: 'Product Taxonomy', path: '/settings/product-taxonomy', permission: 'settings' },
+    { label: 'Bulk Import', path: '/settings/bulk-import', permission: 'settings' },
   ]})
   return nav
 }

@@ -7,130 +7,140 @@ import ErrorBoundary from './components/ErrorBoundary'
 import RoleGuard from './components/RoleGuard'
 import LoadingFallback from './components/LoadingFallback'
 
-// Pages
-const Login = React.lazy(() => import('./pages/Auth/Login'))
+// ─── Lazy page imports ────────────────────────────────────────────────────────
+
+const Login          = React.lazy(() => import('./pages/Auth/Login'))
 const ForgotPassword = React.lazy(() => import('./pages/Auth/ForgotPassword'))
-const Dashboard = React.lazy(() => import('./pages/Dashboard'))
+const Dashboard      = React.lazy(() => import('./pages/Dashboard'))
 
 // Customers
-const CustomerList = React.lazy(() => import('./pages/Customers/CustomerList'))
+const CustomerList   = React.lazy(() => import('./pages/Customers/CustomerList'))
 const CustomerDetail = React.lazy(() => import('./pages/Customers/CustomerDetail'))
-const CustomerForm = React.lazy(() => import('./pages/Customers/CustomerForm'))
+const CustomerForm   = React.lazy(() => import('./pages/Customers/CustomerForm'))
 
 // Factories
-const FactoryList = React.lazy(() => import('./pages/Factories/FactoryList'))
-const FactoryDetail = React.lazy(() => import('./pages/Factories/FactoryDetail'))
-const FactoryForm = React.lazy(() => import('./pages/Factories/FactoryForm'))
+const FactoryList    = React.lazy(() => import('./pages/Factories/FactoryList'))
+const FactoryDetail  = React.lazy(() => import('./pages/Factories/FactoryDetail'))
+const FactoryForm    = React.lazy(() => import('./pages/Factories/FactoryForm'))
 
 // Products
-const ProductList = React.lazy(() => import('./pages/Products/ProductList'))
-const ProductDetail = React.lazy(() => import('./pages/Products/ProductDetail'))
-const ProductForm = React.lazy(() => import('./pages/Products/ProductForm'))
+const ProductList       = React.lazy(() => import('./pages/Products/ProductList'))
+const ProductDetail     = React.lazy(() => import('./pages/Products/ProductDetail'))
+const ProductForm       = React.lazy(() => import('./pages/Products/ProductForm'))
 const ProductCategories = React.lazy(() => import('./pages/Products/ProductCategories'))
+const SpecTemplates     = React.lazy(() => import('./pages/Products/SpecTemplates'))
 
 // Inquiries
-const InquiryList = React.lazy(() => import('./pages/Inquiries/InquiryList'))
+const InquiryList   = React.lazy(() => import('./pages/Inquiries/InquiryList'))
 const InquiryDetail = React.lazy(() => import('./pages/Inquiries/InquiryDetail'))
-const InquiryForm = React.lazy(() => import('./pages/Inquiries/InquiryForm'))
+const InquiryForm   = React.lazy(() => import('./pages/Inquiries/InquiryForm'))
 
 // Quotations
-const QuotationList = React.lazy(() => import('./pages/Quotations/QuotationList'))
+const QuotationList   = React.lazy(() => import('./pages/Quotations/QuotationList'))
 const QuotationDetail = React.lazy(() => import('./pages/Quotations/QuotationDetail'))
-const QuotationForm = React.lazy(() => import('./pages/Quotations/QuotationForm'))
+const QuotationForm   = React.lazy(() => import('./pages/Quotations/QuotationForm'))
 
 // Proforma Invoices
-const ProformaList = React.lazy(() => import('./pages/ProformaInvoices/ProformaList'))
+const ProformaList   = React.lazy(() => import('./pages/ProformaInvoices/ProformaList'))
 const ProformaDetail = React.lazy(() => import('./pages/ProformaInvoices/ProformaDetail'))
-const ProformaForm = React.lazy(() => import('./pages/ProformaInvoices/ProformaForm'))
+const ProformaForm   = React.lazy(() => import('./pages/ProformaInvoices/ProformaForm'))
 
 // Sales Orders
-const OrderList = React.lazy(() => import('./pages/SalesOrders/OrderList'))
+const OrderList   = React.lazy(() => import('./pages/SalesOrders/OrderList'))
 const OrderDetail = React.lazy(() => import('./pages/SalesOrders/OrderDetail'))
-const OrderForm = React.lazy(() => import('./pages/SalesOrders/OrderForm'))
+const OrderForm   = React.lazy(() => import('./pages/SalesOrders/OrderForm'))
 
 // Purchase Orders
-const PurchaseOrderList = React.lazy(() => import('./pages/PurchaseOrders/PurchaseOrderList'))
+const PurchaseOrderList   = React.lazy(() => import('./pages/PurchaseOrders/PurchaseOrderList'))
 const PurchaseOrderDetail = React.lazy(() => import('./pages/PurchaseOrders/PurchaseOrderDetail'))
-const PurchaseOrderForm = React.lazy(() => import('./pages/PurchaseOrders/PurchaseOrderForm'))
+const PurchaseOrderForm   = React.lazy(() => import('./pages/PurchaseOrders/PurchaseOrderForm'))
 
 // Packing Lists
-const PackingListList = React.lazy(() => import('./pages/PackingLists/PackingListList'))
+const PackingListList   = React.lazy(() => import('./pages/PackingLists/PackingListList'))
 const PackingListDetail = React.lazy(() => import('./pages/PackingLists/PackingListDetail'))
-const PackingListForm = React.lazy(() => import('./pages/PackingLists/PackingListForm'))
+const PackingListForm   = React.lazy(() => import('./pages/PackingLists/PackingListForm'))
 
 // Shipments
-const ShipmentList = React.lazy(() => import('./pages/Shipments/ShipmentList'))
+const ShipmentList   = React.lazy(() => import('./pages/Shipments/ShipmentList'))
 const ShipmentDetail = React.lazy(() => import('./pages/Shipments/ShipmentDetail'))
-const ShipmentForm = React.lazy(() => import('./pages/Shipments/ShipmentForm'))
+const ShipmentForm   = React.lazy(() => import('./pages/Shipments/ShipmentForm'))
 
 // Inspections
-const InspectionList = React.lazy(() => import('./pages/Inspections/InspectionList'))
+const InspectionList   = React.lazy(() => import('./pages/Inspections/InspectionList'))
 const InspectionDetail = React.lazy(() => import('./pages/Inspections/InspectionDetail'))
-const InspectionForm = React.lazy(() => import('./pages/Inspections/InspectionForm'))
+const InspectionForm   = React.lazy(() => import('./pages/Inspections/InspectionForm'))
 
 // Claims
-const ClaimList = React.lazy(() => import('./pages/Claims/ClaimList'))
+const ClaimList   = React.lazy(() => import('./pages/Claims/ClaimList'))
 const ClaimDetail = React.lazy(() => import('./pages/Claims/ClaimDetail'))
-const ClaimForm = React.lazy(() => import('./pages/Claims/ClaimForm'))
+const ClaimForm   = React.lazy(() => import('./pages/Claims/ClaimForm'))
 
 // Invoices
-const InvoiceList = React.lazy(() => import('./pages/Invoices/InvoiceList'))
+const InvoiceList   = React.lazy(() => import('./pages/Invoices/InvoiceList'))
 const InvoiceDetail = React.lazy(() => import('./pages/Invoices/InvoiceDetail'))
-const InvoiceForm = React.lazy(() => import('./pages/Invoices/InvoiceForm'))
+const InvoiceForm   = React.lazy(() => import('./pages/Invoices/InvoiceForm'))
 
 // Payments
-const PaymentList = React.lazy(() => import('./pages/Payments/PaymentList'))
+const PaymentList   = React.lazy(() => import('./pages/Payments/PaymentList'))
 const PaymentDetail = React.lazy(() => import('./pages/Payments/PaymentDetail'))
-const PaymentForm = React.lazy(() => import('./pages/Payments/PaymentForm'))
+const PaymentForm   = React.lazy(() => import('./pages/Payments/PaymentForm'))
 
 // Inventory
-const InventoryList = React.lazy(() => import('./pages/Inventory/InventoryList'))
+const InventoryList       = React.lazy(() => import('./pages/Inventory/InventoryList'))
 const InventoryAdjustment = React.lazy(() => import('./pages/Inventory/InventoryAdjustment'))
 
 // Reports
-const SalesReport = React.lazy(() => import('./pages/Reports/SalesReport'))
-const PurchaseReport = React.lazy(() => import('./pages/Reports/PurchaseReport'))
+const SalesReport     = React.lazy(() => import('./pages/Reports/SalesReport'))
+const PurchaseReport  = React.lazy(() => import('./pages/Reports/PurchaseReport'))
 const FinancialReport = React.lazy(() => import('./pages/Reports/FinancialReport'))
 const InventoryReport = React.lazy(() => import('./pages/Reports/InventoryReport'))
-const CustomerReport = React.lazy(() => import('./pages/Reports/CustomerReport'))
-const FactoryReport = React.lazy(() => import('./pages/Reports/FactoryReport'))
+const CustomerReport  = React.lazy(() => import('./pages/Reports/CustomerReport'))
+const FactoryReport   = React.lazy(() => import('./pages/Reports/FactoryReport'))
 
 // Documents
 const TemplateManager = React.lazy(() => import('./pages/Documents/TemplateManager'))
 
-// Personalization
-const ProductAttributes = React.lazy(() => import('./pages/Settings/ProductAttributes'))
-const PriceListManager = React.lazy(() => import('./pages/Settings/PriceListManager'))
-const SpecTemplates = React.lazy(() => import('./pages/Products/SpecTemplates'))
-
 // Settings
-const GeneralSettings = React.lazy(() => import('./pages/Settings/GeneralSettings'))
-const UserManagement = React.lazy(() => import('./pages/Settings/UserManagement'))
-const UserForm = React.lazy(() => import('./pages/Settings/UserForm'))
-const EmailTemplates = React.lazy(() => import('./pages/Settings/EmailTemplates'))
-const EmailSignatures = React.lazy(() => import('./pages/Settings/EmailSignatures'))
-const RolePermissions = React.lazy(() => import('./pages/Settings/RolePermissions'))
-const ProductTaxonomy = React.lazy(() => import('./pages/Settings/ProductTaxonomy'))
-const SystemLog = React.lazy(() => import('./pages/Settings/SystemLog'))
+const GeneralSettings  = React.lazy(() => import('./pages/Settings/GeneralSettings'))
+const UserManagement   = React.lazy(() => import('./pages/Settings/UserManagement'))
+const UserForm         = React.lazy(() => import('./pages/Settings/UserForm'))
+const EmailTemplates   = React.lazy(() => import('./pages/Settings/EmailTemplates'))
+const EmailSignatures  = React.lazy(() => import('./pages/Settings/EmailSignatures'))
+const RolePermissions  = React.lazy(() => import('./pages/Settings/RolePermissions'))
+const ProductTaxonomy  = React.lazy(() => import('./pages/Settings/ProductTaxonomy'))
+const SystemLog        = React.lazy(() => import('./pages/Settings/SystemLog'))
+const BulkImport       = React.lazy(() => import('./pages/Settings/BulkImport'))
+const ProductAttributes = React.lazy(() => import('./pages/Settings/ProductAttributes'))
+const PriceListManager  = React.lazy(() => import('./pages/Settings/PriceListManager'))
+
+// Analytics & BI
+const AnalyticsDashboard = React.lazy(() => import('./pages/Analytics/AnalyticsDashboard'))
+const BIDashboard        = React.lazy(() => import('./pages/BI/BIDashboard'))
 
 // Audit Trail
 const AuditTrailPage = React.lazy(() => import('./pages/AuditTrail/AuditTrailPage'))
 
-// Analytics
-const AnalyticsDashboard = React.lazy(() => import('./pages/Analytics/AnalyticsDashboard'))
-
-// BI Dashboard
-const BIDashboard = React.lazy(() => import('./pages/BI/BIDashboard'))
-
 // GRN
-const GRNList = React.lazy(() => import('./pages/GRN/GRNList'))
+const GRNList   = React.lazy(() => import('./pages/GRN/GRNList'))
 const GRNDetail = React.lazy(() => import('./pages/GRN/GRNDetail'))
 
 // CRM
 const ClientContacts = React.lazy(() => import('./pages/CRM/ClientContacts'))
 
-// Protected Route Wrapper with Role-Based Access Control
-const ProtectedRoute = ({ children, allowedRoles = ['*'] }) => {
+// Public — no auth required
+const ApprovalPage = React.lazy(() => import('./pages/Approvals/ApprovalPage'))
+
+// ─── ProtectedRoute ───────────────────────────────────────────────────────────
+// Handles auth redirect + RBAC check in one wrapper.
+//
+// Props:
+//   permission   — a permission key string (e.g. 'customers'). Checked against
+//                  ROLE_PERMISSIONS[user.role] via canAccessRoute().
+//   allowedRoles — legacy explicit role whitelist (e.g. ['admin', 'manager']).
+//                  Only consulted when `permission` is not provided.
+//
+// When neither is provided, any authenticated user is allowed through.
+const ProtectedRoute = ({ children, permission, allowedRoles }) => {
   const { isAuthenticated, isLoading } = useAuth()
 
   if (isLoading) {
@@ -148,7 +158,7 @@ const ProtectedRoute = ({ children, allowedRoles = ['*'] }) => {
   return (
     <Layout>
       <ErrorBoundary>
-        <RoleGuard allowedRoles={allowedRoles}>
+        <RoleGuard permission={permission} allowedRoles={allowedRoles ?? ['*']}>
           {children}
         </RoleGuard>
       </ErrorBoundary>
@@ -156,1367 +166,173 @@ const ProtectedRoute = ({ children, allowedRoles = ['*'] }) => {
   )
 }
 
+// Shorthand: ProtectedRoute + Suspense in one line per route.
+const P = ({ permission, roles, children }) => (
+  <ProtectedRoute permission={permission} allowedRoles={roles}>
+    <Suspense fallback={<LoadingFallback />}>
+      {children}
+    </Suspense>
+  </ProtectedRoute>
+)
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
 function AppRoutes() {
   const { isAuthenticated } = useAuth()
 
   return (
     <Routes>
-      {/* Auth Routes */}
+      {/* ── Auth (public) ── */}
       <Route
         path="/login"
-        element={isAuthenticated ? <Navigate to="/" replace /> : <Suspense fallback={<LoadingFallback />}><Login /></Suspense>}
-      />
-      <Route path="/forgot-password" element={<Suspense fallback={<LoadingFallback />}><ForgotPassword /></Suspense>} />
-
-      {/* Dashboard */}
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <Dashboard />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Customers */}
-      <Route
-        path="/customers"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <CustomerList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/customers/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <CustomerForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/customers/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <CustomerDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/customers/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <CustomerForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Factories */}
-      <Route
-        path="/factories"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <FactoryList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/factories/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <FactoryForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/factories/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <FactoryDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/factories/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <FactoryForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Products */}
-      <Route
-        path="/products"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ProductList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/products/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ProductForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/products/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ProductDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/products/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ProductForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/products/categories"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ProductCategories />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Inquiries */}
-      <Route
-        path="/inquiries"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InquiryList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/inquiries/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InquiryForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/inquiries/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InquiryDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/inquiries/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InquiryForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Quotations */}
-      <Route
-        path="/quotations"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <QuotationList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/quotations/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <QuotationForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/quotations/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <QuotationDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/quotations/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <QuotationForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Proforma Invoices */}
-      <Route
-        path="/proforma-invoices"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ProformaList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/proforma-invoices/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ProformaForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/proforma-invoices/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ProformaDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/proforma-invoices/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ProformaForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Sales Orders */}
-      <Route
-        path="/orders"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <OrderList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/orders/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <OrderForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/orders/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <OrderDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/orders/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <OrderForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Purchase Orders */}
-      <Route
-        path="/purchase-orders"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <PurchaseOrderList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/purchase-orders/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <PurchaseOrderForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/purchase-orders/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <PurchaseOrderDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/purchase-orders/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <PurchaseOrderForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Packing Lists */}
-      <Route
-        path="/packing-lists"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <PackingListList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/packing-lists/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <PackingListForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/packing-lists/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <PackingListDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/packing-lists/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <PackingListForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Shipments */}
-      <Route
-        path="/shipments"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ShipmentList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/shipments/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ShipmentForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/shipments/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ShipmentDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/shipments/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ShipmentForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Inspections */}
-      <Route
-        path="/inspections"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InspectionList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/inspections/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InspectionForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/inspections/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InspectionDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/inspections/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InspectionForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Claims */}
-      <Route
-        path="/claims"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ClaimList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/claims/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ClaimForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/claims/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ClaimDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/claims/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <ClaimForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Invoices */}
-      <Route
-        path="/invoices"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InvoiceList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/invoices/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InvoiceForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/invoices/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InvoiceDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/invoices/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InvoiceForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Payments */}
-      <Route
-        path="/payments"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <PaymentList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/payments/new"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <PaymentForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/payments/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <PaymentDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Inventory */}
-      <Route
-        path="/inventory"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InventoryList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/inventory/adjustment"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InventoryAdjustment />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Reports */}
-      <Route
-        path="/reports"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <SalesReport />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/reports/purchase"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <PurchaseReport />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/reports/financial"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <FinancialReport />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/reports/inventory"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <InventoryReport />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/reports/customer"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <CustomerReport />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/reports/factory"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <FactoryReport />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Settings */}
-      <Route
-        path="/settings"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <GeneralSettings />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings/users"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <UserManagement />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings/users/new"
         element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <UserForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings/users/:id/edit"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <UserForm />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings/email-templates"
-        element={
-          <ProtectedRoute>
-            <Suspense fallback={<LoadingFallback />}>
-              <EmailTemplates />
-            </Suspense>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings/email-signatures"
-        element={
-          <ProtectedRoute>
-            <Suspense fallback={<LoadingFallback />}>
-              <EmailSignatures />
-            </Suspense>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings/role-permissions"
-        element={
-          <ProtectedRoute>
-            <Suspense fallback={<LoadingFallback />}>
-              <RolePermissions />
-            </Suspense>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings/product-taxonomy"
-        element={
-          <ProtectedRoute>
-            <Suspense fallback={<LoadingFallback />}>
-              <ProductTaxonomy />
-            </Suspense>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings/logs"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <SystemLog />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Audit Trail */}
-      <Route
-        path="/audit-trail"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <AuditTrailPage />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Analytics */}
-      <Route
-        path="/analytics"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <AnalyticsDashboard />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* BI Dashboard */}
-      <Route
-        path="/bi-dashboard"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <BIDashboard />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* GRN (Goods Received Notes) */}
-      <Route
-        path="/grns"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <GRNList />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/grns/:id"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <GRNDetail />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Documents */}
-      <Route
-        path="/documents/templates"
-        element={
-          <ProtectedRoute>
-
-            <Suspense fallback={<LoadingFallback />}>
-
-              <TemplateManager />
-
-            </Suspense>
-
-
-
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Spec Templates */}
-      <Route
-        path="/products/spec-templates"
-        element={
-          <ProtectedRoute>
-            <Suspense fallback={<LoadingFallback />}>
-              <SpecTemplates />
-            </Suspense>
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Personalization */}
-      <Route
-        path="/settings/product-attributes"
-        element={
-          <ProtectedRoute>
-            <Suspense fallback={<LoadingFallback />}>
-              <ProductAttributes />
-            </Suspense>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings/price-lists"
-        element={
-          <ProtectedRoute>
-            <Suspense fallback={<LoadingFallback />}>
-              <PriceListManager />
-            </Suspense>
-          </ProtectedRoute>
-        }
-      />
-
-      {/* CRM — Outreach */}
-      <Route
-        path="/client-contacts"
-        element={
-          <ProtectedRoute allowedRoles={['admin', 'sales', 'manager']}>
-            <Suspense fallback={<LoadingFallback />}>
-              <ClientContacts />
-            </Suspense>
-          </ProtectedRoute>
-        }
-      />
-
-      {/* 404 */}
+          isAuthenticated
+            ? <Navigate to="/" replace />
+            : <Suspense fallback={<LoadingFallback />}><Login /></Suspense>
+        }
+      />
+      <Route
+        path="/forgot-password"
+        element={<Suspense fallback={<LoadingFallback />}><ForgotPassword /></Suspense>}
+      />
+
+      {/* ── Dashboard ── */}
+      <Route path="/" element={<P permission="dashboard"><Dashboard /></P>} />
+
+      {/* ── Customers ── */}
+      <Route path="/customers"          element={<P permission="customers"><CustomerList /></P>} />
+      <Route path="/customers/new"      element={<P permission="customers"><CustomerForm /></P>} />
+      <Route path="/customers/:id"      element={<P permission="customers"><CustomerDetail /></P>} />
+      <Route path="/customers/:id/edit" element={<P permission="customers"><CustomerForm /></P>} />
+
+      {/* ── Factories ── */}
+      <Route path="/factories"          element={<P permission="factories"><FactoryList /></P>} />
+      <Route path="/factories/new"      element={<P permission="factories"><FactoryForm /></P>} />
+      <Route path="/factories/:id"      element={<P permission="factories"><FactoryDetail /></P>} />
+      <Route path="/factories/:id/edit" element={<P permission="factories"><FactoryForm /></P>} />
+
+      {/* ── Products ── */}
+      <Route path="/products"                  element={<P permission="products"><ProductList /></P>} />
+      <Route path="/products/new"              element={<P permission="products"><ProductForm /></P>} />
+      <Route path="/products/categories"       element={<P permission="products"><ProductCategories /></P>} />
+      <Route path="/products/spec-templates"   element={<P permission="products"><SpecTemplates /></P>} />
+      <Route path="/products/:id"              element={<P permission="products"><ProductDetail /></P>} />
+      <Route path="/products/:id/edit"         element={<P permission="products"><ProductForm /></P>} />
+
+      {/* ── Inquiries ── */}
+      <Route path="/inquiries"          element={<P permission="inquiries"><InquiryList /></P>} />
+      <Route path="/inquiries/new"      element={<P permission="inquiries"><InquiryForm /></P>} />
+      <Route path="/inquiries/:id"      element={<P permission="inquiries"><InquiryDetail /></P>} />
+      <Route path="/inquiries/:id/edit" element={<P permission="inquiries"><InquiryForm /></P>} />
+
+      {/* ── Quotations ── */}
+      <Route path="/quotations"          element={<P permission="quotations"><QuotationList /></P>} />
+      <Route path="/quotations/new"      element={<P permission="quotations"><QuotationForm /></P>} />
+      <Route path="/quotations/:id"      element={<P permission="quotations"><QuotationDetail /></P>} />
+      <Route path="/quotations/:id/edit" element={<P permission="quotations"><QuotationForm /></P>} />
+
+      {/* ── Proforma Invoices ── */}
+      <Route path="/proforma-invoices"          element={<P permission="proforma"><ProformaList /></P>} />
+      <Route path="/proforma-invoices/new"      element={<P permission="proforma"><ProformaForm /></P>} />
+      <Route path="/proforma-invoices/:id"      element={<P permission="proforma"><ProformaDetail /></P>} />
+      <Route path="/proforma-invoices/:id/edit" element={<P permission="proforma"><ProformaForm /></P>} />
+
+      {/* ── Sales Orders ── */}
+      <Route path="/orders"          element={<P permission="orders"><OrderList /></P>} />
+      <Route path="/orders/new"      element={<P permission="orders"><OrderForm /></P>} />
+      <Route path="/orders/:id"      element={<P permission="orders"><OrderDetail /></P>} />
+      <Route path="/orders/:id/edit" element={<P permission="orders"><OrderForm /></P>} />
+
+      {/* ── Purchase Orders ── */}
+      <Route path="/purchase-orders"          element={<P permission="purchase-orders"><PurchaseOrderList /></P>} />
+      <Route path="/purchase-orders/new"      element={<P permission="purchase-orders"><PurchaseOrderForm /></P>} />
+      <Route path="/purchase-orders/:id"      element={<P permission="purchase-orders"><PurchaseOrderDetail /></P>} />
+      <Route path="/purchase-orders/:id/edit" element={<P permission="purchase-orders"><PurchaseOrderForm /></P>} />
+
+      {/* ── Packing Lists ── */}
+      <Route path="/packing-lists"          element={<P permission="packing-lists"><PackingListList /></P>} />
+      <Route path="/packing-lists/new"      element={<P permission="packing-lists"><PackingListForm /></P>} />
+      <Route path="/packing-lists/:id"      element={<P permission="packing-lists"><PackingListDetail /></P>} />
+      <Route path="/packing-lists/:id/edit" element={<P permission="packing-lists"><PackingListForm /></P>} />
+
+      {/* ── Shipments ── */}
+      <Route path="/shipments"          element={<P permission="shipments"><ShipmentList /></P>} />
+      <Route path="/shipments/new"      element={<P permission="shipments"><ShipmentForm /></P>} />
+      <Route path="/shipments/:id"      element={<P permission="shipments"><ShipmentDetail /></P>} />
+      <Route path="/shipments/:id/edit" element={<P permission="shipments"><ShipmentForm /></P>} />
+
+      {/* ── Inspections ── */}
+      <Route path="/inspections"          element={<P permission="inspections"><InspectionList /></P>} />
+      <Route path="/inspections/new"      element={<P permission="inspections"><InspectionForm /></P>} />
+      <Route path="/inspections/:id"      element={<P permission="inspections"><InspectionDetail /></P>} />
+      <Route path="/inspections/:id/edit" element={<P permission="inspections"><InspectionForm /></P>} />
+
+      {/* ── Claims ── */}
+      <Route path="/claims"          element={<P permission="claims"><ClaimList /></P>} />
+      <Route path="/claims/new"      element={<P permission="claims"><ClaimForm /></P>} />
+      <Route path="/claims/:id"      element={<P permission="claims"><ClaimDetail /></P>} />
+      <Route path="/claims/:id/edit" element={<P permission="claims"><ClaimForm /></P>} />
+
+      {/* ── Invoices ── */}
+      <Route path="/invoices"          element={<P permission="invoices"><InvoiceList /></P>} />
+      <Route path="/invoices/new"      element={<P permission="invoices"><InvoiceForm /></P>} />
+      <Route path="/invoices/:id"      element={<P permission="invoices"><InvoiceDetail /></P>} />
+      <Route path="/invoices/:id/edit" element={<P permission="invoices"><InvoiceForm /></P>} />
+
+      {/* ── Payments ── */}
+      <Route path="/payments"          element={<P permission="payments"><PaymentList /></P>} />
+      <Route path="/payments/new"      element={<P permission="payments"><PaymentForm /></P>} />
+      <Route path="/payments/:id"      element={<P permission="payments"><PaymentDetail /></P>} />
+
+      {/* ── Inventory ── */}
+      <Route path="/inventory"            element={<P permission="inventory"><InventoryList /></P>} />
+      <Route path="/inventory/adjustment" element={<P permission="inventory"><InventoryAdjustment /></P>} />
+
+      {/* ── GRN ── */}
+      <Route path="/grns"     element={<P permission="inventory"><GRNList /></P>} />
+      <Route path="/grns/:id" element={<P permission="inventory"><GRNDetail /></P>} />
+
+      {/* ── Reports ── */}
+      <Route path="/reports"            element={<P permission="reports"><SalesReport /></P>} />
+      <Route path="/reports/purchase"   element={<P permission="reports"><PurchaseReport /></P>} />
+      <Route path="/reports/financial"  element={<P permission="reports"><FinancialReport /></P>} />
+      <Route path="/reports/inventory"  element={<P permission="reports"><InventoryReport /></P>} />
+      <Route path="/reports/customer"   element={<P permission="reports"><CustomerReport /></P>} />
+      <Route path="/reports/factory"    element={<P permission="reports"><FactoryReport /></P>} />
+
+      {/* ── Analytics / BI ── */}
+      <Route path="/analytics"    element={<P permission="analytics"><AnalyticsDashboard /></P>} />
+      <Route path="/bi-dashboard" element={<P permission="bi-dashboard"><BIDashboard /></P>} />
+
+      {/* ── Documents ── */}
+      <Route path="/documents/templates" element={<P permission="documents"><TemplateManager /></P>} />
+
+      {/* ── Audit Trail ── */}
+      <Route path="/audit-trail" element={<P permission="settings"><AuditTrailPage /></P>} />
+
+      {/* ── Settings ── */}
+      <Route path="/settings"                       element={<P permission="settings"><GeneralSettings /></P>} />
+      <Route path="/settings/users"                 element={<P permission="settings"><UserManagement /></P>} />
+      <Route path="/settings/users/new"             element={<P permission="settings"><UserForm /></P>} />
+      <Route path="/settings/users/:id/edit"        element={<P permission="settings"><UserForm /></P>} />
+      <Route path="/settings/email-templates"       element={<P permission="settings"><EmailTemplates /></P>} />
+      <Route path="/settings/email-signatures"      element={<P permission="settings"><EmailSignatures /></P>} />
+      <Route path="/settings/role-permissions"      element={<P permission="settings"><RolePermissions /></P>} />
+      <Route path="/settings/product-taxonomy"      element={<P permission="settings"><ProductTaxonomy /></P>} />
+      <Route path="/settings/logs"                  element={<P permission="settings"><SystemLog /></P>} />
+      <Route path="/settings/bulk-import"           element={<P permission="settings"><BulkImport /></P>} />
+      <Route path="/settings/product-attributes"    element={<P permission="settings"><ProductAttributes /></P>} />
+      <Route path="/settings/price-lists"           element={<P permission="settings"><PriceListManager /></P>} />
+
+      {/* ── CRM / Outreach ── */}
+      <Route path="/client-contacts" element={<P permission="outreach"><ClientContacts /></P>} />
+
+      {/* ── Public: document approval — no auth required ── */}
+      <Route
+        path="/approve/:token"
+        element={<Suspense fallback={<LoadingFallback />}><ApprovalPage /></Suspense>}
+      />
+
+      {/* ── Fallback ── */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

@@ -525,4 +525,94 @@ router.get('/:id/pdf', requireAuth, async (req, res, next) => {
   }
 });
 
+/**
+ * POST /:id/create-packing-list
+ * Auto-create a draft PackingList from a Sales Order's line items.
+ *
+ * Weights and dimensions default to 0 — the user fills them in after creation.
+ * Returns the new PackingList so the frontend can navigate directly to it.
+ *
+ * Guards:
+ *   - SO must exist and must not be cancelled
+ *   - A PackingList for this SO must not already exist in draft/confirmed state
+ */
+router.post('/:id/create-packing-list', requireAuth, async (req, res, next) => {
+  const t = await db.sequelize.transaction();
+  try {
+    const so = await db.SalesOrder.findByPk(req.params.id, {
+      include: [{ association: 'items', include: [{ model: db.Product, as: 'product' }] }],
+      transaction: t,
+    });
+
+    if (!so) {
+      await t.rollback();
+      return res.status(404).json({ success: false, message: 'Sales Order not found' });
+    }
+
+    if (so.status === 'cancelled') {
+      await t.rollback();
+      return res.status(409).json({ success: false, message: 'Cannot create a Packing List for a cancelled Sales Order' });
+    }
+
+    // Guard: prevent duplicate packing lists per order
+    const existing = await db.PackingList.findOne({
+      where: { salesOrderId: so.id, deletedAt: null },
+      transaction: t,
+    });
+    if (existing) {
+      await t.rollback();
+      return res.status(409).json({
+        success: false,
+        message: 'A Packing List already exists for this Sales Order',
+        data: { packingListId: existing.id },
+      });
+    }
+
+    const items = so.items || [];
+
+    const pl = await db.PackingList.create({
+      id: uuidv4(),
+      packingListNumber: generateDocumentNumber('PL'),
+      salesOrderId: so.id,
+      status: 'draft',
+      totalPackages: items.length,
+      totalGrossWeight: 0,
+      totalNetWeight: 0,
+      totalVolume: 0,
+    }, { transaction: t });
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      await db.PackingListItem.create({
+        id: uuidv4(),
+        packingListId: pl.id,
+        productId: item.productId || null,
+        description: item.product?.name || item.description || '',
+        quantity: item.quantity,
+        unit: item.unit || 'pcs',
+        packageNumber: i + 1,
+        grossWeight: 0,
+        netWeight: 0,
+        dimensions: {},
+        marks: null,
+      }, { transaction: t });
+    }
+
+    await t.commit();
+
+    // Return the full packing list with items
+    const completePL = await db.PackingList.findByPk(pl.id, {
+      include: [
+        { association: 'items', include: [{ model: db.Product, as: 'product' }] },
+        { model: db.SalesOrder, as: 'salesOrder', attributes: ['orderNumber'] },
+      ],
+    });
+
+    res.status(201).json(getSuccessResponse(completePL, 'Packing List created from Sales Order'));
+  } catch (error) {
+    await t.rollback();
+    next(error);
+  }
+});
+
 module.exports = router;
