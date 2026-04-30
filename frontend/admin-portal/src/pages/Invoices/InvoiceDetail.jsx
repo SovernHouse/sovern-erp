@@ -29,6 +29,8 @@ export default function InvoiceDetail() {
   const [isDownloading, setIsDownloading] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [showLargePaymentConfirm, setShowLargePaymentConfirm] = useState(false)
+  const LARGE_PAYMENT_THRESHOLD = 10000
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
     paymentDate: new Date().toISOString().split('T')[0],
@@ -66,12 +68,19 @@ export default function InvoiceDetail() {
   }, [id])
 
   const handleRecordPayment = async (e) => {
-    e.preventDefault()
+    if (e && e.preventDefault) e.preventDefault()
 
     if (!paymentForm.amount || parseFloat(paymentForm.amount) <= 0) {
       toast.error('Please enter a valid payment amount')
       return
     }
+
+    // Require explicit confirmation for large payments
+    if (parseFloat(paymentForm.amount) >= LARGE_PAYMENT_THRESHOLD && !showLargePaymentConfirm) {
+      setShowLargePaymentConfirm(true)
+      return
+    }
+    setShowLargePaymentConfirm(false)
 
     try {
       setIsRecordingPayment(true)
@@ -551,6 +560,18 @@ export default function InvoiceDetail() {
         cancelText="Cancel"
         isLoading={isDeleting}
         isDangerous={true}
+      />
+
+      {/* Large payment confirmation — fires for amounts >= $10,000 */}
+      <ConfirmDialog
+        isOpen={showLargePaymentConfirm}
+        onClose={() => setShowLargePaymentConfirm(false)}
+        onConfirm={() => handleRecordPayment(null)}
+        title="Confirm Large Payment"
+        message={`You are recording a payment of $${parseFloat(paymentForm.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} USD. Please verify the amount and reference number before proceeding.`}
+        confirmText="Confirm Payment"
+        cancelText="Go Back"
+        isDangerous={false}
       />
     </div>
   )
