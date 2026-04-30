@@ -21,12 +21,21 @@
 
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
 const db = require('../models');
 const dayjs = require('dayjs');
 const { requireAuth } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 const { getSuccessResponse, getPagination, getPaginatedResponse } = require('../utils/helpers');
 const emailService = require('../services/emailService');
+
+const publicApprovalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests. Please try again in 15 minutes.' },
+});
 
 const EXPIRY_DAYS = parseInt(process.env.APPROVAL_LINK_EXPIRY_DAYS || '30', 10);
 
@@ -227,7 +236,7 @@ router.get('/:id', requireAuth, async (req, res, next) => {
  * Public endpoint — no auth required.
  * Returns document summary for the client approval page.
  */
-router.get('/public/:token', async (req, res, next) => {
+router.get('/public/:token', publicApprovalLimiter, async (req, res, next) => {
   try {
     const approval = await db.DocumentApproval.findOne({
       where: { token: req.params.token },
@@ -265,7 +274,7 @@ router.get('/public/:token', async (req, res, next) => {
  * Public endpoint — client approves the document.
  * Body: { clientName, clientEmail? }
  */
-router.post('/public/:token/approve', async (req, res, next) => {
+router.post('/public/:token/approve', publicApprovalLimiter, async (req, res, next) => {
   try {
     const approval = await db.DocumentApproval.findOne({
       where: { token: req.params.token },
@@ -322,7 +331,7 @@ router.post('/public/:token/approve', async (req, res, next) => {
  * Public endpoint — client rejects the document.
  * Body: { clientName, clientEmail?, rejectionReason? }
  */
-router.post('/public/:token/reject', async (req, res, next) => {
+router.post('/public/:token/reject', publicApprovalLimiter, async (req, res, next) => {
   try {
     const approval = await db.DocumentApproval.findOne({
       where: { token: req.params.token },
