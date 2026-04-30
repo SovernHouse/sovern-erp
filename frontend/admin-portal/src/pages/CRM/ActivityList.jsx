@@ -14,6 +14,8 @@ import {
   LayoutGrid,
   LayoutList,
 } from 'lucide-react';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import EmptyState from '../../components/EmptyState';
 
 const ActivityList = () => {
   const [activities, setActivities] = useState([]);
@@ -21,6 +23,8 @@ const ActivityList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [viewMode, setViewMode] = useState('list');
+  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, activity: null });
+  const [completeConfirm, setCompleteConfirm] = useState({ isOpen: false, activity: null });
   const [filters, setFilters] = useState({
     type: null,
     assignedToId: null,
@@ -88,19 +92,19 @@ const ActivityList = () => {
       setActivities(activities.map(a =>
         a.id === id ? { ...a, isCompleted: true, completedAt: new Date() } : a
       ));
+      setCompleteConfirm({ isOpen: false, activity: null });
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to complete activity');
     }
   };
 
   const handleDeleteActivity = async (id) => {
-    if (window.confirm('Are you sure you want to delete this activity?')) {
-      try {
-        await api.delete(`/api/crm/activities/${id}`);
-        setActivities(activities.filter(a => a.id !== id));
-      } catch (err) {
-        setError(err.response?.data?.message || 'Failed to delete activity');
-      }
+    try {
+      await api.delete(`/api/crm/activities/${id}`);
+      setActivities(activities.filter(a => a.id !== id));
+      setDeleteConfirm({ isOpen: false, activity: null });
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete activity');
     }
   };
 
@@ -271,9 +275,9 @@ const ActivityList = () => {
                     <td className="px-6 py-4 text-sm flex gap-2">
                       {!activity.isCompleted && (
                         <button
-                          onClick={() => handleCompleteActivity(activity.id)}
+                          onClick={() => setCompleteConfirm({ isOpen: true, activity })}
                           className="text-green-600 hover:text-green-800"
-                          title="Complete"
+                          title="Mark Complete"
                         >
                           <CheckCircle size={16} />
                         </button>
@@ -282,8 +286,9 @@ const ActivityList = () => {
                         <Edit2 size={16} />
                       </button>
                       <button
-                        onClick={() => handleDeleteActivity(activity.id)}
+                        onClick={() => setDeleteConfirm({ isOpen: true, activity })}
                         className="text-red-600 hover:text-red-800"
+                        title="Delete"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -292,10 +297,14 @@ const ActivityList = () => {
                 ))}
               </tbody>
             </table>
-            {filteredActivities.length === 0 && (
-              <div className="p-6 text-center text-gray-500">
-                <p>No activities found.</p>
-              </div>
+            {!loading && filteredActivities.length === 0 && (
+              <tr><td colSpan={6} className="p-0">
+                <EmptyState
+                  icon={Clock}
+                  title="No activities found"
+                  description={filters.status === 'pending' ? 'No pending activities. All caught up!' : 'No activities match the current filters.'}
+                />
+              </td></tr>
             )}
           </div>
         )}
@@ -339,7 +348,7 @@ const ActivityList = () => {
                           {new Date(activity.scheduledAt).toLocaleDateString()} {new Date(activity.scheduledAt).toLocaleTimeString()}
                         </p>
                         <button
-                          onClick={() => handleCompleteActivity(activity.id)}
+                          onClick={() => setCompleteConfirm({ isOpen: true, activity })}
                           className="text-xs bg-blue-600 text-white px-2 py-1 rounded mt-2 hover:bg-blue-700"
                         >
                           Mark Complete
@@ -352,6 +361,27 @@ const ActivityList = () => {
           </div>
         )}
       </div>
+
+      {/* Complete confirmation */}
+      <ConfirmDialog
+        isOpen={completeConfirm.isOpen}
+        title="Mark Activity Complete"
+        message={`Mark "${completeConfirm.activity?.subject}" as complete? It will be removed from your pending activities list.`}
+        confirmLabel="Mark Complete"
+        onConfirm={() => handleCompleteActivity(completeConfirm.activity?.id)}
+        onCancel={() => setCompleteConfirm({ isOpen: false, activity: null })}
+      />
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        title="Delete Activity"
+        message={`Delete "${deleteConfirm.activity?.subject}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        isDangerous={true}
+        onConfirm={() => handleDeleteActivity(deleteConfirm.activity?.id)}
+        onCancel={() => setDeleteConfirm({ isOpen: false, activity: null })}
+      />
     </div>
   );
 };

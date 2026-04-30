@@ -10,6 +10,8 @@ import {
   Eye,
   TrendingUp,
 } from 'lucide-react';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import EmptyState from '../../components/EmptyState';
 
 const CampaignList = () => {
   const [campaigns, setCampaigns] = useState([]);
@@ -21,6 +23,7 @@ const CampaignList = () => {
     status: null,
     type: null,
   });
+  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, campaign: null });
 
   const statuses = ['draft', 'active', 'paused', 'completed', 'cancelled'];
   const types = ['email', 'trade_show', 'advertisement', 'social_media', 'referral', 'other'];
@@ -65,13 +68,12 @@ const CampaignList = () => {
   };
 
   const handleDeleteCampaign = async (id) => {
-    if (window.confirm('Are you sure you want to delete this campaign?')) {
-      try {
-        await api.delete(`/api/crm/campaigns/${id}`);
-        setCampaigns(campaigns.filter(c => c.id !== id));
-      } catch (err) {
-        setError(err.response?.data?.message || 'Failed to delete campaign');
-      }
+    try {
+      await api.delete(`/api/crm/campaigns/${id}`);
+      setCampaigns(campaigns.filter(c => c.id !== id));
+      setDeleteConfirm({ isOpen: false, campaign: null });
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete campaign');
     }
   };
 
@@ -245,8 +247,9 @@ const CampaignList = () => {
                   Edit
                 </button>
                 <button
-                  onClick={() => handleDeleteCampaign(campaign.id)}
+                  onClick={() => setDeleteConfirm({ isOpen: true, campaign })}
                   className="text-red-600 hover:bg-red-50 px-3 py-2 rounded text-sm font-medium"
+                  title="Delete campaign"
                 >
                   <Trash2 size={16} />
                 </button>
@@ -255,13 +258,26 @@ const CampaignList = () => {
           ))}
         </div>
 
-        {filteredCampaigns.length === 0 && (
-          <div className="bg-white rounded-lg shadow p-12 text-center">
-            <BarChart3 size={48} className="mx-auto text-gray-400 mb-4" />
-            <p className="text-gray-600">No campaigns found. Try adjusting your filters.</p>
+        {!loading && filteredCampaigns.length === 0 && (
+          <div className="bg-white rounded-lg shadow">
+            <EmptyState
+              icon={BarChart3}
+              title="No campaigns found"
+              description="No campaigns match your current filters, or none have been created yet."
+            />
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        title="Delete Campaign"
+        message={`Delete "${deleteConfirm.campaign?.name}"? All associated lead data will be unlinked. This cannot be undone.`}
+        confirmLabel="Delete"
+        isDangerous={true}
+        onConfirm={() => handleDeleteCampaign(deleteConfirm.campaign?.id)}
+        onCancel={() => setDeleteConfirm({ isOpen: false, campaign: null })}
+      />
     </div>
   );
 };

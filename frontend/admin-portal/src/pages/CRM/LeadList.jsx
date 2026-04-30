@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import {
   Search,
   Plus,
@@ -26,6 +27,8 @@ const LeadList = () => {
     source: null,
     assignedToId: null,
   });
+  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, lead: null });
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const statuses = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
   const sources = ['website', 'referral', 'trade_show', 'cold_call', 'social_media', 'advertisement', 'other'];
@@ -73,14 +76,21 @@ const LeadList = () => {
     setFilteredLeads(filtered);
   };
 
-  const handleDeleteLead = async (id) => {
-    if (window.confirm('Are you sure you want to delete this lead?')) {
-      try {
-        await api.delete(`/api/crm/leads/${id}`);
-        setLeads(leads.filter(lead => lead.id !== id));
-      } catch (err) {
-        setError(err.response?.data?.message || 'Failed to delete lead');
-      }
+  const handleDeleteClick = (lead) => {
+    setDeleteConfirm({ isOpen: true, lead });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirm.lead) return;
+    try {
+      setIsDeleting(true);
+      await api.delete(`/api/crm/leads/${deleteConfirm.lead.id}`);
+      setLeads(leads.filter(lead => lead.id !== deleteConfirm.lead.id));
+      setDeleteConfirm({ isOpen: false, lead: null });
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete lead');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -247,7 +257,10 @@ const LeadList = () => {
                             <Phone size={12} className="inline mr-1" />
                             Call
                           </button>
-                          <button className="text-xs bg-gray-50 text-gray-600 px-2 py-1 rounded hover:bg-gray-100">
+                          <button
+                            onClick={() => handleDeleteClick(lead)}
+                            className="text-xs bg-gray-50 text-gray-600 px-2 py-1 rounded hover:bg-gray-100"
+                          >
                             <Trash2 size={12} />
                           </button>
                         </div>
@@ -304,7 +317,7 @@ const LeadList = () => {
                         <Edit2 size={16} />
                       </button>
                       <button
-                        onClick={() => handleDeleteLead(lead.id)}
+                        onClick={() => handleDeleteClick(lead)}
                         className="text-red-600 hover:text-red-800"
                       >
                         <Trash2 size={16} />
@@ -321,6 +334,18 @@ const LeadList = () => {
             )}
           </div>
         )}
+
+        <ConfirmDialog
+          isOpen={deleteConfirm.isOpen}
+          title="Delete Lead"
+          message={`Delete ${deleteConfirm.lead?.companyName}? This will also remove all associated outreach emails and activities.`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          isDangerous={true}
+          isLoading={isDeleting}
+          onConfirm={handleConfirmDelete}
+          onClose={() => setDeleteConfirm({ isOpen: false, lead: null })}
+        />
       </div>
     </div>
   );
