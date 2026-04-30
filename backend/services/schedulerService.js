@@ -19,6 +19,12 @@
  *      users when an order has been in 'in_production' status for more than the
  *      expected lead time (configurable via PRODUCTION_ALERT_DAYS, default 45).
  *
+ *   5. [Every night 02:00] Data retention hard-delete — permanently remove
+ *      soft-deleted records (paranoid models) whose deletedAt is older than
+ *      DATA_RETENTION_DAYS (default 365). Covers: Customer, Factory, SalesOrder,
+ *      PurchaseOrder, Invoice, Payment, SpecTemplate. Logs a summary of what
+ *      was purged. Supports GDPR right-to-erasure workflows.
+ *
  * All jobs are silent on success; errors are logged but never crash the server.
  *
  * To disable individual jobs, set the corresponding env var to 'false':
@@ -26,6 +32,10 @@
  *   SCHEDULER_FOLLOWUP_REMINDERS=false
  *   SCHEDULER_INVOICE_OVERDUE=false
  *   SCHEDULER_PRODUCTION_ALERTS=false
+ *   SCHEDULER_DATA_RETENTION=false
+ *
+ * Data retention window:
+ *   DATA_RETENTION_DAYS=365   (default — hard-delete after 1 year)
  *
  * Requires: npm install node-cron
  */
@@ -194,6 +204,69 @@ async function checkProductionDelays() {
   }
 }
 
+// ─── Job 5: Data retention hard-delete ───────────────────────────────────────
+/**
+ * Permanently purge soft-deleted records that are older than DATA_RETENTION_DAYS.
+ *
+ * Why: paranoid:true keeps deletedAt rows indefinitely by default. Without a
+ * hard-delete policy, the DB grows unbounded and GDPR right-to-erasure requests
+ * cannot be fulfilled. This job runs nightly at 02:00 and permanently removes
+ * any record whose deletedAt < (now - retentionDays).
+ *
+ * Paranoid models covered: Customer, Factory, SalesOrder, PurchaseOrder,
+ * Invoice, Payment, SpecTemplate.
+ *
+ * To disable: SCHEDULER_DATA_RETENTION=false
+ * To change window: DATA_RETENTION_DAYS=180  (default 365)
+ */
+async function purgeExpiredSoftDeletes() {
+  const db = getDB();
+  const retentionDays = parseInt(process.env.DATA_RETENTION_DAYS || '365', 10);
+  const cutoff = dayjs().subtract(retentionDays, 'day').toDate();
+
+  // All models that use paranoid:true — add any new ones here
+  const PARANOID_MODELS = [
+    'Customer',
+    'Factory',
+    'SalesOrder',
+    'PurchaseOrder',
+    'Invoice',
+    'Payment',
+    'SpecTemplate',
+  ];
+
+  const summary = [];
+
+  for (const modelName of PARANOID_MODELS) {
+    const model = db[modelName];
+    if (!model) {
+      console.warn(`[SCHEDULER][RETENTION] Model "${modelName}" not found — skipping.`);
+      continue;
+    }
+
+    try {
+      const count = await model.destroy({
+        where: {
+          deletedAt: { [Op.lt]: cutoff },
+        },
+        force: true, // hard delete — bypasses paranoid
+      });
+
+      if (count > 0) {
+        summary.push(`${modelName}: ${count}`);
+      }
+    } catch (err) {
+      console.error(`[SCHEDULER][RETENTION] Failed to purge ${modelName}:`, err.message);
+    }
+  }
+
+  if (summary.length > 0) {
+    console.log(`[SCHEDULER][RETENTION] Hard-deleted expired records (>${retentionDays} days old): ${summary.join(', ')}`);
+  } else {
+    console.log(`[SCHEDULER][RETENTION] No expired soft-deleted records found (retention window: ${retentionDays} days).`);
+  }
+}
+
 // ─── Scheduler bootstrap ──────────────────────────────────────────────────────
 function startScheduler() {
   const enabled = {
@@ -201,6 +274,7 @@ function startScheduler() {
     followupReminders: process.env.SCHEDULER_FOLLOWUP_REMINDERS !== 'false',
     invoiceOverdue:    process.env.SCHEDULER_INVOICE_OVERDUE    !== 'false',
     productionAlerts:  process.env.SCHEDULER_PRODUCTION_ALERTS  !== 'false',
+    dataRetention:     process.env.SCHEDULER_DATA_RETENTION     !== 'false',
   };
 
   // Jobs that run every morning at 08:00 server time
@@ -221,6 +295,11 @@ function startScheduler() {
     cron.schedule('0 * * * *', transitionOverdueInvoices, { name: 'invoice-overdue' });
   }
 
+  // Data retention hard-delete runs nightly at 02:00 — off-peak to avoid query contention
+  if (enabled.dataRetention) {
+    cron.schedule('0 2 * * *', purgeExpiredSoftDeletes, { name: 'data-retention' });
+  }
+
   const activeJobs = Object.entries(enabled)
     .filter(([, v]) => v)
     .map(([k]) => k);
@@ -237,4 +316,5 @@ module.exports = {
   checkFollowups,
   transitionOverdueInvoices,
   checkProductionDelays,
+  purgeExpiredSoftDeletes,
 };
