@@ -22,11 +22,13 @@ import {
   BarChart3,
   Cog,
   TrendingUp,
+  HelpCircle,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useNotifications } from '../hooks/useNotifications'
 import { getAllowedNavItems } from '../config/rbacConfig'
 import { LanguageSwitcher } from '@shared/components'
+import HelpPanel, { useHelpPanel } from './HelpPanel'
 
 // ── Brand tokens ─────────────────────────────────────────────────────────────
 const INK     = '#0E0D0C'
@@ -92,6 +94,7 @@ export default function Layout({ children }) {
   const [showNotifications, setShowNotifications] = useState(false)
   const [showUserMenu, setShowUserMenu]     = useState(false)
   const [menuItems, setMenuItems]           = useState([])
+  const { isOpen: helpOpen, toggle: toggleHelp, close: closeHelp } = useHelpPanel()
 
   const { user, logout }                        = useAuth()
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications()
@@ -415,6 +418,23 @@ export default function Layout({ children }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <LanguageSwitcher className="hidden md:block" />
 
+            {/* Help panel toggle */}
+            <button
+              onClick={toggleHelp}
+              title="Help & User Guide"
+              aria-label="Open help panel"
+              style={{
+                padding: 8, borderRadius: 8, border: 'none', cursor: 'pointer',
+                background: helpOpen ? c(FOREST, 0.10) : 'transparent',
+                color: helpOpen ? FOREST : c(INK, 0.50),
+                transition: 'background 0.15s, color 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = c(FOREST, 0.08); e.currentTarget.style.color = FOREST }}
+              onMouseLeave={e => { e.currentTarget.style.background = helpOpen ? c(FOREST, 0.10) : 'transparent'; e.currentTarget.style.color = helpOpen ? FOREST : c(INK, 0.50) }}
+            >
+              <HelpCircle size={18} />
+            </button>
+
             {/* Notifications */}
             <div style={{ position: 'relative', marginLeft: 4 }}>
               <button
@@ -541,6 +561,9 @@ export default function Layout({ children }) {
           <div style={{ padding: '24px 28px 48px' }}>{children}</div>
         </main>
       </div>
+
+      {/* Help panel — slides in from right, portal-level z-index */}
+      <HelpPanel open={helpOpen} onClose={closeHelp} />
     </div>
   )
 }
