@@ -493,7 +493,12 @@ db.sequelize.authenticate()
   })
   .catch(err => {
     console.error('Database connection error:', err);
-    process.exit(1);
+    // Do NOT process.exit during tests. Jest treats it as a fatal failure
+    // before any test assertions can run. In production, exit so the process
+    // manager (PM2, systemd, Docker) can restart with backoff.
+    if (process.env.NODE_ENV !== 'test') {
+      process.exit(1);
+    }
   });
 
 process.on('unhandledRejection', (err) => {
