@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const triageController = require('../controllers/triageController');
 const { requireAuth } = require('../middleware/auth');
-const asyncHandler = require('express-async-handler');
+const asyncHandler = require('../middleware/asyncHandler');
 
 // All triage routes require authentication
 router.use(requireAuth);
