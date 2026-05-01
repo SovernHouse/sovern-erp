@@ -349,12 +349,17 @@ describe('Sales Orders Integration Tests', () => {
     });
 
     it('should update item status when order is shipped', async () => {
+      // State machine: in_production → ready → shipped (cannot skip ready)
+      const readyResponse = await request
+        .patch(`/api/sales-orders/${salesOrderId}/status`)
+        .set('Authorization', `Bearer ${testData.authToken}`)
+        .send({ status: 'ready' });
+      expect(readyResponse.status).toBe(200);
+
       const response = await request
         .patch(`/api/sales-orders/${salesOrderId}/status`)
         .set('Authorization', `Bearer ${testData.authToken}`)
-        .send({
-          status: 'shipped'
-        });
+        .send({ status: 'shipped' });
 
       expect(response.status).toBe(200);
       expect(response.body.data.status).toBe('shipped');
