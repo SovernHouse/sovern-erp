@@ -52,7 +52,7 @@ jobs:
           JWT_SECRET: test-secret
           JWT_REFRESH_SECRET: test-refresh-secret
           RATE_LIMIT_MAX_REQUESTS: '10000'
-        run: cd backend && NODE_ENV=test JWT_SECRET=test-secret JWT_REFRESH_SECRET=test-refresh-secret RATE_LIMIT_MAX_REQUESTS=10000 npx jest --passWithNoTests --forceExit
+        run: cd backend && NODE_ENV=test JWT_SECRET=test-secret JWT_REFRESH_SECRET=test-refresh-secret RATE_LIMIT_MAX_REQUESTS=10000 npx jest --passWithNoTests --forceExit --runInBand
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
