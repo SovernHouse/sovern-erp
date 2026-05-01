@@ -70,13 +70,21 @@ Public routes (document approval pages at `/approve/:token`) do NOT require auth
 |---|---|
 | Frontend | React 18, React Router 6, Vite, Tailwind CSS |
 | Backend | Node.js 18+, Express 4 |
-| ORM | Sequelize 6 (PostgreSQL dialect) |
-| Database | PostgreSQL 14+ |
+| ORM | Sequelize 6 |
+| Database | **SQLite** (current; `pg` driver also installed for future Postgres migration). DB file at `backend/database.sqlite`. Auto-migration logic in `server.js` handles schema diffs on startup. |
 | Auth | JWT (access token in localStorage, refresh not yet implemented) |
 | Email | Nodemailer or Resend (configured via env vars) |
-| Scheduler | node-cron |
+| Validation | Zod 4 (financial fields and trade fields enforced; CRM entities not yet covered) |
+| Scheduler | node-cron (5 jobs: overdue activities, follow-up reminders, invoice transitions, production alerts, GDPR retention purge) |
+| Real-time | Socket.IO 4 (notifications, shipment updates) |
+| Webhooks | Custom service with HMAC-SHA256 signing, exponential retry, delivery audit (Phase 5) |
+| Rate limiting | express-rate-limit, three configurations: general API, auth (5 per 15 min in prod), public approval endpoints (15 per 15 min) |
+| Testing | Jest (backend unit), Playwright (E2E). 219 backend tests passing as of Phase 6. |
+| CI/CD | GitHub Actions: ci.yml, deploy.yml, security.yml (Trivy + CodeQL + TruffleHog) |
+| API docs | Swagger/OpenAPI 3.0 at `/api-docs`, 95+ endpoints documented |
 | MCP Server | TypeScript, `@modelcontextprotocol/sdk`, zod, axios |
 | Build | Vite (frontend), tsc (MCP server) |
+| Containers | Docker multi-stage builds, docker-compose for dev and prod |
 
 ---
 
@@ -595,7 +603,19 @@ npm install
 npm run build
 ```
 
-Configure via the Cowork plugin or by adding to Claude Code's MCP config. The server reads `ERP_API_URL` and `ERP_JWT_TOKEN` from its environment.
+Configure via the Cowork plugin or by adding to Claude Code's MCP config. The server reads three environment variables (per `mcp-server/src/index.ts:10-26`):
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ERP_URL` | Base URL of the ERP backend | `http://localhost:5000` |
+| `ERP_EMAIL` | Admin email for backend login | `admin@sovernhouse.co` |
+| `ERP_PASSWORD` | Admin password for backend login | (required, no default) |
+
+The MCP server logs in to the backend on first request and caches the JWT internally. There is no separate `ERP_JWT_TOKEN` env var (older versions of this guide referenced one, it is incorrect).
+
+### Related: Sovern Cross-Venture MCP Server (different project, do not confuse)
+
+Separate from `Trading ERP/mcp-server` (this section), there is a second MCP server at `International Trade Company/sovern-mcp-server/`. That one is a unified dev-infrastructure MCP connecting Claude to GitHub (VendettaGamesHQ org), Vercel, MongoDB (Vendetta Saloon DB, read-only), Sentry, Context7 (live library docs), Google Drive, and Gmail. Live as of 2026-05-01. It is for cross-venture dev workflows (CI checks before push, deployment status, library doc lookups, error triage), not for ERP trade operations. Both MCPs are useful in their own contexts; tools from the cross-venture MCP are prefixed `mcp__sovern__*` while ERP-internal tools are prefixed `mcp__sovern-erp__*`.
 
 ---
 
@@ -735,13 +755,58 @@ Both files read from environment variables with Sovern House defaults. Override 
 
 ---
 
+## 17.5 Sentry Error Tracking
+
+**Live as of 2026-05-01.** The ERP backend and admin frontend are wired to Sentry for production error tracking, performance monitoring, and session replay (frontend only).
+
+### Organization
+
+- Sentry org: `sovern-house` (EU data storage region for GDPR alignment)
+- Free Developer plan after 14-day trial expires. Quotas: 5,000 errors/month, 10,000 performance events/month, 50 session replays/month.
+
+### Projects
+
+| Project | Stack | DSN env var |
+|---|---|---|
+| `node-express` | Backend (Express on Node) | `SENTRY_DSN` (set in `backend/.env`) |
+| `sovern-erp-admin-frontend` | Frontend (React + Vite) | `VITE_SENTRY_DSN` (set in `frontend/admin-portal/.env`) |
+
+### Files
+
+- `backend/instrument.js` — Sentry initialization. **MUST be the first require in `backend/server.js`** so SDK can auto-instrument Express, HTTP, and other modules.
+- `backend/server.js` — calls `Sentry.setupExpressErrorHandler(app)` AFTER all routes and BEFORE the existing `app.use(errorHandler)`.
+- `frontend/admin-portal/src/index.jsx` — calls `Sentry.init()` and wraps `<App />` in `<Sentry.ErrorBoundary>` with a custom fallback component.
+
+### Behavior
+
+- **Local development:** Sentry is disabled by default. Set `SENTRY_FORCE_ENABLE=true` (backend) or `VITE_SENTRY_FORCE_ENABLE=true` (frontend) to test against the real Sentry org.
+- **Production:** Sentry is enabled when `NODE_ENV=production` (backend) or when the Vite build is in production mode (frontend).
+- **Sample rates:** Performance traces sampled at 10% in production. Session replays sampled at 1% in production (rare to stay within free-plan quota), but errors trigger a 100% replay regardless.
+
+### Querying Sentry from Claude
+
+The Sovern MCP server has `mcp__sovern__sentry_*` tools for `list_projects`, `list_issues`, `issue_details`, `latest_event`. Requires `SENTRY_AUTH_TOKEN` and `SENTRY_ORG=sovern-house` set in the MCP server's environment (via Claude Desktop config). Use these tools to triage production errors directly from chat.
+
+### Common operations
+
+- **Trigger a test error in development:** add `app.get('/debug-sentry', () => { throw new Error('Sentry test'); });` to backend, then GET that URL.
+- **Filter known noisy errors:** add to the `ignoreErrors` array in `instrument.js` (backend) or `index.jsx` (frontend).
+- **Source map upload (optional):** for production builds, set `SENTRY_RELEASE` and `VITE_SENTRY_RELEASE` to the git SHA in CI, and use `@sentry/vite-plugin` for automatic source map upload (not yet wired; add when error stack traces become hard to read).
+
+---
+
 ## 18. Security Notes
 
-- JWT tokens are stored in `localStorage` — acceptable for internal tools, but consider httpOnly cookies for higher-security deployments.
-- The `DocumentApproval` token provides 256 bits of entropy — brute-force resistant. Expiry is enforced server-side.
-- All factory endpoints check `isConfidential` + `allowedUserIds` — confidential factories return 403 to unauthorised users.
-- Input validation is minimal (Sequelize validators only). Consider adding `joi` or `zod` validation at the route level for external-facing endpoints.
+- JWT tokens are stored in `localStorage`. Acceptable for internal tools, but consider httpOnly cookies for higher-security deployments.
+- The `DocumentApproval` token provides 256 bits of entropy. Brute-force resistant. Expiry is enforced server-side.
+- All factory endpoints check `isConfidential` plus `allowedUserIds`. Confidential factories return 403 to unauthorised users.
+- **Input validation:** Zod schemas enforce financial fields (`backend/utils/validateFinancials.js`) and trade fields (`backend/utils/validateTradeFields.js`, covering Incoterms, currency, shipping method enums). CRM entities (Lead, Contact, Activity, Deal, Campaign) do not yet have route-level Zod validation; this is the next gap to close.
+- **Rate limiting:** general API limiter, auth limiter (stricter in production), public approval endpoint limiter (`backend/middleware/rateLimiter.js` plus `backend/routes/approvalRoutes.js`).
+- **Egypt BCC enforcement:** automatic in `backend/controllers/outreachController.js` for both single-lead outreach (lines 100-108) and campaigns (lines 401-408). Adds `mohanadfanzey@gmail.com` to BCC when `lead.country === 'egypt'`.
+- **Sanctions screening flag:** `Lead.sanctionsScreened` boolean exists. Manual update flow at present; automated screening is roadmapped (see Section 20 and the upcoming AI sanctions screening feature).
+- **Timezone handling:** invoice aging report uses `dayjs` UTC plus timezone plugins, reads from `req.user?.timezone` or `DEFAULT_TIMEZONE` env var.
 - API versioning is not yet implemented. Breaking changes will require coordination across all clients.
+- Error envelope inconsistency: middleware (e.g. `auth.js`) returns `{error: '...'}` while controllers return `{success, data, message}`. Frontend's API service handles both, but the inconsistency should be normalised.
 
 ---
 
@@ -800,19 +865,28 @@ A clean file ends with `...;\n` (0x0a). Any `00` bytes after that are NUL corrup
 
 ## 20. Known Limitations & Roadmap
 
-| Item | Notes |
-|---|---|
-| API versioning | Not implemented. All routes are `/api/...` with no version prefix. |
-| JWT refresh tokens | Not implemented. Access tokens expire and require re-login. |
-| Financial fields in DECIMAL | Correct for display. Production-scale financial systems may prefer integer cents — evaluate when volumes increase. |
-| Sanctions screening | No automated screening on lead creation. Manual process via compliance officer role. |
-| Customer portal | The `client-contacts` / outreach module is internal only. A separate buyer-facing portal is on the roadmap. |
-| Audit trail | `DocumentApproval` has IP/UA logging. Full field-level audit trail across all models is not yet implemented. |
-| i18n | Frontend has a `LanguageSwitcher` component. Translation strings are not fully implemented. |
-| Rate limiting | No rate limiting on the API. Add `express-rate-limit` before exposing externally. |
-| Tests | No automated test suite currently. Priority for next sprint. |
+| Item | Status | Notes |
+|---|---|---|
+| API versioning | Open | Not implemented. All routes are `/api/...` with no version prefix. |
+| JWT refresh tokens | Open | Not implemented. Access tokens expire and require re-login. |
+| Financial fields in DECIMAL | OK for now | Correct for display at current volumes. Production-scale financial systems may prefer integer cents. Re-evaluate when volumes increase. |
+| Sanctions screening | Partial | `Lead.sanctionsScreened` boolean field exists. Manual update flow only. Automated screening (OFAC SDN, EU consolidated, UN consolidated) is the next AI feature to build (Feature 2 of the AI roadmap). |
+| GDPR consent flag | Open | `Lead.gdprConsent`, `gdprConsentObtainedAt`, `gdprConsentChannel` fields not yet added. Required before EU/UK outbound at scale. |
+| Customer portal | In progress | Standalone customer portal exists at `frontend/customer-portal/` (separate from the `client-contacts` admin module). |
+| Factory portal | In progress | Standalone factory portal at `frontend/factory-portal/`. Includes warehouse scan-receive and scan-inventory features (Phase 8). |
+| Audit trail | Partial | `DocumentApproval` has IP/UA logging. `auditService.logAction()` exists for manual audit calls in controllers. Auto-hooks on financial models are not yet implemented; logging is opportunistic. |
+| i18n | Partial | Frontend has a `LanguageSwitcher` component. Translation strings not fully populated. |
+| Rate limiting | Done | Implemented across general API, auth (stricter in production), and public approval endpoints. |
+| Tests | Done (backend) | 219 backend tests passing as of Phase 6. Playwright E2E infrastructure in `backend/e2e/helpers/` (Phase 7). Coverage gaps remain on CRM, outreach, financial validation routes. |
+| CI/CD | Done | GitHub Actions: ci.yml, deploy.yml, security.yml. CodeQL plus Trivy plus TruffleHog scanning weekly and on PRs. |
+| API documentation | Done | Swagger UI at `/api-docs`. 95+ endpoints documented in OpenAPI 3.0 (Phase 6). |
+| Webhooks | Done | Phase 5: 7 supported events, HMAC signing, exponential retry, delivery audit. |
+| Exchange rates | Done | Phase 5: live API with 6-hour scheduler, fallback to hardcoded rates. |
+| Docker production stack | Done | Phase 5: multi-stage build, nginx reverse proxy, health checks, SSL/TLS. |
+| Bank integration (LC) | Simulated | Phase 8: 6 endpoints simulated against a real bank API. Real bank integration requires credentials and contracts. |
+| AI features | In planning | Phase 9 roadmap: inbound email triage, sanctions screening, supplier memory search, document parsing, reply categorization, smart alerts. Built on local LLM (Ollama) plus LiteLLM proxy plus LangFuse self-hosted plus Promptfoo to keep zero recurring cost. |
 
 ---
 
-*Last updated: 2026-04-30 — Tasks 48–65 sprint.*
+*Last updated: 2026-05-01. Catch-up edit after the April 30 audit fixes shipped without the doc being updated. Drift items corrected: SQLite (was wrongly described as Postgres), MCP env vars (was wrongly listed as ERP_API_URL/ERP_JWT_TOKEN), rate limiting (was listed as missing), tests (was listed as missing), sanctions flag, validation, security notes, and the limitations table.*
 *Maintainer: Sovern House Engineering*

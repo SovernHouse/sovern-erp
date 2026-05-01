@@ -1,3 +1,8 @@
+// Sentry instrumentation MUST be the first require in this file. Loading order
+// is critical so the SDK can auto-instrument Express, HTTP, and other modules
+// before they are loaded. Do not move this line.
+const Sentry = require('./instrument');
+
 const express = require('express');
 const http = require('http');
 const socketIO = require('socket.io');
@@ -293,6 +298,12 @@ app.use((req, res, next) => {
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
+
+// Sentry's Express error handler must be registered BEFORE the app's own
+// errorHandler. It captures uncaught errors and forwards them to Sentry,
+// then passes the error along to the app's errorHandler for the actual
+// HTTP response. If SENTRY_DSN is unset (e.g. local dev), this is a no-op.
+Sentry.setupExpressErrorHandler(app);
 
 app.use(errorHandler);
 
