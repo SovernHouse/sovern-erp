@@ -393,6 +393,13 @@ async function autoMigrateSchema() {
   if (fixCount > 0) console.log('[Schema] Auto-migrated ' + fixCount + ' missing columns');
 }
 
+// In test mode, skip the DB startup chain entirely.
+// setup.js (__tests__/setup.js) owns DB initialization: it calls
+// sequelize.sync({ force: true }) directly and wraps the Express app with
+// supertest — no port binding needed. Running authenticate/sync/listen here
+// during tests causes port collisions across Jest workers and races against
+// setup.js's own sync call on the shared in-memory SQLite instance.
+if (process.env.NODE_ENV !== 'test') {
 db.sequelize.authenticate()
   .then(() => {
     console.log('Database connected successfully');
@@ -404,21 +411,19 @@ db.sequelize.authenticate()
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {
-    // Load modules after database is ready (skip in test environment for faster startup)
-    if (process.env.NODE_ENV !== 'test') {
-      try {
-        await moduleLoader.loadAll(app, db.sequelize, db);
-        moduleRegistry = moduleLoader.getRegistry();
-        moduleFeatureFlags = moduleLoader.getFeatureFlags();
+    // Load modules after database is ready
+    try {
+      await moduleLoader.loadAll(app, db.sequelize, db);
+      moduleRegistry = moduleLoader.getRegistry();
+      moduleFeatureFlags = moduleLoader.getFeatureFlags();
 
-        // Register module management API routes
-        const moduleRoutes = createModuleRoutes(moduleRegistry, moduleFeatureFlags, configManager);
-        app.use('/api/modules', moduleRoutes);
+      // Register module management API routes
+      const moduleRoutes = createModuleRoutes(moduleRegistry, moduleFeatureFlags, configManager);
+      app.use('/api/modules', moduleRoutes);
 
-        console.log('Module system initialized');
-      } catch (error) {
-        console.error('Failed to initialize module system:', error.message);
-      }
+      console.log('Module system initialized');
+    } catch (error) {
+      console.error('Failed to initialize module system:', error.message);
     }
   })
   .then(async () => {
@@ -493,13 +498,9 @@ db.sequelize.authenticate()
   })
   .catch(err => {
     console.error('Database connection error:', err);
-    // Do NOT process.exit during tests. Jest treats it as a fatal failure
-    // before any test assertions can run. In production, exit so the process
-    // manager (PM2, systemd, Docker) can restart with backoff.
-    if (process.env.NODE_ENV !== 'test') {
-      process.exit(1);
-    }
+    process.exit(1);
   });
+} // end if (NODE_ENV !== 'test')
 
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled Rejection:', err);
