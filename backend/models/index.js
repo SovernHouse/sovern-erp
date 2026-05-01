@@ -497,6 +497,17 @@ db.PriceListItem.belongsTo(db.PriceList, { foreignKey: 'priceListId' });
 db.Product.hasMany(db.PriceListItem, { as: 'priceListItems', foreignKey: 'productId' });
 db.PriceListItem.belongsTo(db.Product, { foreignKey: 'productId' });
 
+// TriageItem model
+db.TriageItem = require('./TriageItem')(sequelize);
+
+// TriageItem relationships
+if (db.OutreachEmail) {
+  db.TriageItem.belongsTo(db.OutreachEmail, { foreignKey: 'matchedOutreachEmailId', as: 'matchedOutreachEmail' });
+}
+if (db.Lead) {
+  db.TriageItem.belongsTo(db.Lead, { foreignKey: 'promotedLeadId', as: 'promotedLead' });
+}
+
 // OutreachEmail relationships
 db.Lead.hasMany(db.OutreachEmail, { foreignKey: 'leadId', as: 'outreachEmails' });
 

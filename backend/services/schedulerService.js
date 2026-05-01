@@ -267,6 +267,17 @@ async function purgeExpiredSoftDeletes() {
   }
 }
 
+// ─── Job 6: Triage auto-archive ───────────────────────────────────────────────
+// Runs every hour. Archives pending TriageItems whose autoArchiveAt has passed.
+async function autoArchiveTriageItems() {
+  try {
+    const triageController = require('../controllers/triageController');
+    await triageController.runAutoArchive();
+  } catch (err) {
+    console.error('[SCHEDULER][TRIAGE-ARCHIVE] Error:', err.message);
+  }
+}
+
 // ─── Scheduler bootstrap ──────────────────────────────────────────────────────
 function startScheduler() {
   const enabled = {
@@ -275,6 +286,7 @@ function startScheduler() {
     invoiceOverdue:    process.env.SCHEDULER_INVOICE_OVERDUE    !== 'false',
     productionAlerts:  process.env.SCHEDULER_PRODUCTION_ALERTS  !== 'false',
     dataRetention:     process.env.SCHEDULER_DATA_RETENTION     !== 'false',
+    triageAutoArchive: process.env.SCHEDULER_TRIAGE_ARCHIVE     !== 'false',
   };
 
   // Jobs that run every morning at 08:00 server time
@@ -300,6 +312,11 @@ function startScheduler() {
     cron.schedule('0 2 * * *', purgeExpiredSoftDeletes, { name: 'data-retention' });
   }
 
+  // Triage auto-archive runs every hour alongside invoice overdue check
+  if (enabled.triageAutoArchive) {
+    cron.schedule('0 * * * *', autoArchiveTriageItems, { name: 'triage-auto-archive' });
+  }
+
   const activeJobs = Object.entries(enabled)
     .filter(([, v]) => v)
     .map(([k]) => k);
@@ -317,4 +334,5 @@ module.exports = {
   transitionOverdueInvoices,
   checkProductionDelays,
   purgeExpiredSoftDeletes,
+  autoArchiveTriageItems,
 };

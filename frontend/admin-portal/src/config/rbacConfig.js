@@ -163,6 +163,7 @@ export const NAV_ITEMS_BY_ROLE = {
       label: 'Outreach',
       icon: 'Users2',
       submenu: [
+        { label: 'Email Inbox',     path: '/crm/inbox',        permission: 'outreach' },
         { label: 'Client Contacts', path: '/client-contacts', permission: 'outreach' },
       ],
     },
@@ -282,6 +283,7 @@ export const NAV_ITEMS_BY_ROLE = {
       label: 'Outreach',
       icon: 'Users2',
       submenu: [
+        { label: 'Email Inbox',     path: '/crm/inbox',        permission: 'outreach' },
         { label: 'Client Contacts', path: '/client-contacts', permission: 'outreach' },
       ],
     },

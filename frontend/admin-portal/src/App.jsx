@@ -126,6 +126,7 @@ const GRNDetail = React.lazy(() => import('./pages/GRN/GRNDetail'))
 
 // CRM
 const ClientContacts = React.lazy(() => import('./pages/CRM/ClientContacts'))
+const TriageInbox    = React.lazy(() => import('./pages/CRM/TriageInbox'))
 
 // Public — no auth required
 const ApprovalPage = React.lazy(() => import('./pages/Approvals/ApprovalPage'))
@@ -325,6 +326,7 @@ function AppRoutes() {
 
       {/* ── CRM / Outreach ── */}
       <Route path="/client-contacts" element={<P permission="outreach"><ClientContacts /></P>} />
+      <Route path="/crm/inbox"       element={<P permission="outreach"><TriageInbox /></P>} />
 
       {/* ── Public: document approval — no auth required ── */}
       <Route

@@ -16,7 +16,7 @@ module.exports = (sequelize) => {
       }
     },
     type: {
-      type: DataTypes.ENUM('inquiry', 'quotation', 'order', 'shipment', 'inspection', 'claim', 'payment', 'system'),
+      type: DataTypes.ENUM('inquiry', 'quotation', 'order', 'shipment', 'inspection', 'claim', 'payment', 'system', 'triage'),
       allowNull: false
     },
     title: {

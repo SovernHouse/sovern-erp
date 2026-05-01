@@ -150,6 +150,7 @@ const emailRoutes = require('./routes/emailRoutes');
 const bankIntegrationRoutes = require('./routes/bankIntegrationRoutes');
 const crmRoutes = require('./routes/crm');
 const approvalRoutes = require('./routes/approvalRoutes');
+const triageRoutes = require('./routes/triageRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/sso', ssoRoutes);
@@ -200,6 +201,7 @@ app.use('/api/pdf', pdfRoutes);
 app.use('/api/bank', bankIntegrationRoutes);
 app.use('/api/crm', crmRoutes);
 app.use('/api/approvals', approvalRoutes);
+app.use('/api/triage', triageRoutes);
 
 // Compliance & Regulatory routes
 const complianceRoutes = require('./modules/compliance/complianceRoutes');
