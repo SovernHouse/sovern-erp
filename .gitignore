@@ -1,8 +1,9 @@
 # Dependencies
 node_modules/
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
+# Lock files MUST be committed for reproducible CI builds (npm ci requires them).
+# Previously gitignored due to platform-specific binary pollution; that issue is
+# solved by always running npm install on a clean node_modules, not by excluding
+# the lock file. See DEVELOPER_GUIDE.md and lessons.md L-033.
 
 # Environment variables
 .env
