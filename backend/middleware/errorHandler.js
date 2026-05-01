@@ -62,20 +62,26 @@ const errorHandler = (err, req, res, next) => {
     err.message = 'Token expired';
   }
 
-  const response = {
-    success: false,
-    message: err.message
+  // Structured error object — message + statusCode always present
+  const errorObj = {
+    message: err.message,
+    statusCode: err.statusCode
   };
 
-  // Include validation details when present (e.g. from ValidationError)
+  // Include validation details inside the error object
   if (err.details) {
-    response.details = err.details;
+    errorObj.details = err.details;
   }
 
   // In non-production environments expose the stack for debugging
   if (process.env.NODE_ENV !== 'production' && err.stack) {
-    response.error = err.stack;
+    errorObj.stack = err.stack;
   }
+
+  const response = {
+    success: false,
+    error: errorObj
+  };
 
   res.status(err.statusCode).json(response);
 };
