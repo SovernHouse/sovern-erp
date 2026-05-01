@@ -223,12 +223,19 @@ let moduleFeatureFlags = null;
 const healthRoutes = require('./routes/healthRoutes');
 app.use('/api/health', healthRoutes);
 
-// Swagger API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  swaggerOptions: {
-    persistAuthorization: true
-  }
-}));
+// Swagger API Documentation — only in non-production to avoid the memory overhead
+// of the full Swagger UI bundle running 24/7 on the live server.
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    swaggerOptions: {
+      persistAuthorization: true
+    }
+  }));
+} else {
+  app.get('/api-docs', (req, res) => {
+    res.status(200).send('API documentation is disabled in production. Set NODE_ENV=development to enable.');
+  });
+}
 
 // Portal switcher: serve built frontend portals from dist
 // Access via: http://localhost:5000/?portal=factory or ?portal=admin or ?portal=customer

@@ -256,7 +256,15 @@ class APMService {
         ? ((recentRequests.filter(r => !r.success).length) / recentRequests.length) * 100
         : 0;
 
-      const memPercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
+      // Use RSS (Resident Set Size) — the actual physical RAM this process occupies.
+      // heapUsed/heapTotal is V8 heap fill ratio; it naturally stays near 90% before GC
+      // fires and is NOT a signal of memory pressure. RSS is the real footprint.
+      const rssMB = Math.round(memUsage.rss / 1024 / 1024);
+      const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+      const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+      // Alert threshold: 500 MB RSS. A well-run Node ERP should stay under this.
+      const RSS_ALERT_MB = parseInt(process.env.MEMORY_ALERT_RSS_MB || '500');
+      const memPercent = Math.round((rssMB / RSS_ALERT_MB) * 100);
 
       return {
         status: 'healthy',
@@ -264,11 +272,12 @@ class APMService {
         uptime: Math.floor(uptime / 1000), // seconds
         nodejs: process.version,
         memory: {
-          heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024), // MB
-          heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024), // MB
+          rss: rssMB,                // MB — actual process RAM usage
+          heapUsed: heapUsedMB,      // MB
+          heapTotal: heapTotalMB,    // MB
           external: Math.round(memUsage.external / 1024 / 1024), // MB
-          percentUsed: Math.round(memPercent),
-          isHealthy: memPercent < 80
+          percentUsed: memPercent,   // % of RSS alert threshold (500 MB default)
+          isHealthy: rssMB < RSS_ALERT_MB
         },
         requests: {
           total: this.metrics.requestCount,
