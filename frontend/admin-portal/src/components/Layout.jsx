@@ -23,6 +23,8 @@ import {
   Cog,
   TrendingUp,
   HelpCircle,
+  ExternalLink,
+  Layers,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useNotifications } from '../hooks/useNotifications'
@@ -159,7 +161,20 @@ export default function Layout({ children }) {
         }}>
           {sidebarOpen ? (
             <>
-              <SovernWordmark />
+              <div>
+                <SovernWordmark />
+                <div style={{
+                  marginTop: 6,
+                  fontFamily: "'Arsenal SC', serif",
+                  fontSize: 9,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  color: c(CREAM, 0.30),
+                  fontWeight: 400,
+                }}>
+                  SOVERN PORTAL
+                </div>
+              </div>
               <button
                 className="md:hidden"
                 onClick={() => setSidebarOpen(false)}
@@ -529,7 +544,7 @@ export default function Layout({ children }) {
               {showUserMenu && (
                 <div style={{
                   position: 'absolute', right: 0, top: 'calc(100% + 8px)',
-                  width: 180, background: '#fff',
+                  width: 210, background: '#fff',
                   border: '1px solid rgba(14,13,12,0.10)', borderRadius: 10,
                   boxShadow: '0 8px 24px rgba(14,13,12,0.12)', zIndex: 40, overflow: 'hidden',
                 }}>
@@ -542,6 +557,42 @@ export default function Layout({ children }) {
                   >
                     <Settings size={14} style={{ color: c(INK, 0.50) }} /> Settings
                   </Link>
+
+                  {/* Portal switcher — admin only */}
+                  {user?.role === 'admin' && (
+                    <>
+                      <div style={{ padding: '8px 14px 3px', fontSize: 9.5, color: c(INK, 0.35), letterSpacing: '0.07em', textTransform: 'uppercase', fontWeight: 600 }}>
+                        Switch Portal
+                      </div>
+                      <a
+                        href="https://client.sovernhouse.co"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setShowUserMenu(false)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', fontSize: 13, color: INK, textDecoration: 'none' }}
+                        onMouseEnter={e => e.currentTarget.style.background = c(INK, 0.04)}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <Users size={14} style={{ color: c(INK, 0.50) }} />
+                        <span style={{ flex: 1 }}>Client Portal</span>
+                        <ExternalLink size={11} style={{ color: c(INK, 0.28) }} />
+                      </a>
+                      <a
+                        href="https://factory.sovernhouse.co"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setShowUserMenu(false)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', fontSize: 13, color: INK, textDecoration: 'none', borderBottom: '1px solid rgba(14,13,12,0.06)' }}
+                        onMouseEnter={e => e.currentTarget.style.background = c(INK, 0.04)}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <Building2 size={14} style={{ color: c(INK, 0.50) }} />
+                        <span style={{ flex: 1 }}>Factory Portal</span>
+                        <ExternalLink size={11} style={{ color: c(INK, 0.28) }} />
+                      </a>
+                    </>
+                  )}
+
                   <button
                     onClick={handleLogout}
                     style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', fontSize: 13, color: '#C0392B', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
