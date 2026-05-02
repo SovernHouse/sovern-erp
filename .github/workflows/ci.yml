@@ -44,7 +44,9 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Rebuild native modules for Linux
-        run: npm rebuild sqlite3 --legacy-peer-deps
+        run: |
+          npm rebuild sqlite3 --legacy-peer-deps
+          cd backend && npm rebuild sqlite3 --legacy-peer-deps 2>/dev/null || true
 
       - name: Lint
         run: npm run lint || echo "Linting skipped - not configured"
