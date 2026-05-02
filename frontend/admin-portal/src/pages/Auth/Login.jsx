@@ -3,7 +3,60 @@ import { useNavigate, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../../hooks/useAuth'
 import { EmailInput, PasswordInput } from '../../components/FormFields'
-import tenant from '../../config/tenant'
+
+// Sovern House brand tokens
+const SH = {
+  forest: '#1D5A32',
+  forestLight: '#2A7040',
+  cream: '#F1EEE7',
+  creamDark: '#E4E0D8',
+  ink: '#0E0D0C',
+  inkMuted: 'rgba(14,13,12,0.55)',
+}
+
+// Sovern House wordmark — three stacked elements sharing identical width
+function Wordmark({ size = 'md' }) {
+  const sovern = size === 'lg' ? 52 : 36
+  const rule = size === 'lg' ? 3 : 2
+  const house = size === 'lg' ? 13 : 9
+
+  return (
+    <div style={{ display: 'inline-block', textAlign: 'left' }}>
+      {/* SOVERN */}
+      <div
+        style={{
+          fontFamily: "'Big Shoulders Display', sans-serif",
+          fontWeight: 700,
+          fontSize: sovern,
+          lineHeight: 1,
+          color: SH.cream,
+          letterSpacing: '0.01em',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        SOVERN
+      </div>
+      {/* Rule */}
+      <div style={{ height: rule, background: SH.cream, width: '100%', margin: '3px 0' }} />
+      {/* HOUSE — flex space-between to match SOVERN width exactly */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          fontFamily: "'Arsenal SC', sans-serif",
+          fontWeight: 400,
+          fontSize: house,
+          lineHeight: 1,
+          color: SH.cream,
+          letterSpacing: 0,
+          textTransform: 'uppercase',
+        }}
+      >
+        {'HOUSE'.split('').map((l, i) => <span key={i}>{l}</span>)}
+      </div>
+    </div>
+  )
+}
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -38,27 +91,55 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center p-4">
+    <div
+      style={{ background: SH.forest, minHeight: '100vh' }}
+      className="flex items-center justify-center p-4"
+    >
       <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <span className="text-2xl font-bold text-primary-600">ERP</span>
-          </div>
-          <h1 className="text-3xl font-bold text-white">Trading ERP</h1>
-          <p className="text-primary-100 mt-2">Admin Portal</p>
+
+        {/* Wordmark */}
+        <div className="text-center mb-10">
+          <Wordmark size="lg" />
+          <p
+            style={{
+              fontFamily: "'Arsenal SC', sans-serif",
+              fontSize: 11,
+              letterSpacing: '0.18em',
+              textTransform: 'uppercase',
+              color: 'rgba(241,238,231,0.55)',
+              marginTop: 10,
+            }}
+          >
+            Operations Platform
+          </p>
         </div>
 
         {/* Login Card */}
-        <div className="bg-white rounded-lg shadow-xl p-8">
-          <h2 className="text-2xl font-bold text-slate-900 mb-6">Sign In</h2>
+        <div style={{ background: SH.cream, padding: '36px 40px' }}>
+
+          <h2
+            style={{
+              fontFamily: "'Arsenal SC', sans-serif",
+              fontSize: 13,
+              fontWeight: 400,
+              letterSpacing: '0.18em',
+              textTransform: 'uppercase',
+              color: SH.inkMuted,
+              marginBottom: 24,
+            }}
+          >
+            Sign In
+          </h2>
 
           {loginError && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-              <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div
+              className="mb-4 p-3 flex items-start gap-2"
+              style={{ background: '#fef2f2', border: '1px solid #fecaca' }}
+            >
+              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#ef4444' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-sm text-red-700">{loginError}</p>
+              <p className="text-sm" style={{ color: '#b91c1c' }}>{loginError}</p>
             </div>
           )}
 
@@ -71,7 +152,7 @@ export default function Login() {
                 if (errors.email) setErrors({ ...errors, email: '' })
               }}
               error={errors.email}
-              placeholder="admin@example.com"
+              placeholder="admin@sovernhouse.co"
               required
             />
 
@@ -87,17 +168,15 @@ export default function Login() {
               required
             />
 
-            <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 rounded border-slate-300"
-                />
-                <span className="ml-2 text-slate-700">Remember me</span>
+            <div className="flex items-center justify-between text-sm" style={{ marginTop: 8 }}>
+              <label className="flex items-center" style={{ cursor: 'pointer' }}>
+                <input type="checkbox" className="w-4 h-4 border-slate-300" style={{ accentColor: SH.forest }} />
+                <span className="ml-2" style={{ color: SH.inkMuted, fontSize: 13 }}>Remember me</span>
               </label>
               <Link
                 to="/forgot-password"
-                className="text-primary-600 hover:text-primary-700 font-medium"
+                style={{ color: SH.forest, fontSize: 13, fontWeight: 500 }}
+                className="hover:underline"
               >
                 Forgot Password?
               </Link>
@@ -106,30 +185,44 @@ export default function Login() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-primary-600 text-white py-2 rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-6"
+              style={{
+                width: '100%',
+                background: isLoading ? SH.forestLight : SH.forest,
+                color: SH.cream,
+                fontFamily: "'Arsenal SC', sans-serif",
+                fontSize: 13,
+                letterSpacing: '0.18em',
+                textTransform: 'uppercase',
+                padding: '12px 0',
+                border: 'none',
+                borderRadius: 0,
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                opacity: isLoading ? 0.7 : 1,
+                marginTop: 8,
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => { if (!isLoading) e.target.style.background = SH.forestLight }}
+              onMouseLeave={e => { if (!isLoading) e.target.style.background = SH.forest }}
             >
               {isLoading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
-
-          {/* Demo Credentials */}
-          <div className="mt-6 pt-6 border-t border-slate-200">
-            <p className="text-xs text-slate-600 text-center mb-3">Demo Credentials</p>
-            <div className="bg-slate-50 rounded p-3 space-y-1 text-xs">
-              <p className="text-slate-700">
-                <span className="font-medium">Email:</span> {tenant.adminEmail}
-              </p>
-              <p className="text-slate-700">
-                <span className="font-medium">Password:</span> admin123
-              </p>
-            </div>
-          </div>
         </div>
 
         {/* Footer */}
-        <p className="text-center text-primary-100 text-sm mt-6">
-          © 2024 Trading ERP. All rights reserved.
+        <p
+          className="text-center mt-8"
+          style={{
+            fontFamily: "'Arsenal SC', sans-serif",
+            fontSize: 11,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: 'rgba(241,238,231,0.35)',
+          }}
+        >
+          © {new Date().getFullYear()} Sovern House. All rights reserved.
         </p>
+
       </div>
     </div>
   )

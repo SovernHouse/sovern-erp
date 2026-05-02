@@ -1,45 +1,84 @@
 import { TrendingUp, TrendingDown } from 'lucide-react'
 
+const SH = {
+  forest: '#1D5A32',
+  forestLight: '#2A7040',
+  cream: '#F1EEE7',
+  creamDark: '#E4E0D8',
+  ink: '#0E0D0C',
+  inkMuted: 'rgba(14,13,12,0.55)',
+}
+
+// All KPI cards use Sovern House forest/cream palette regardless of the color prop
 export default function StatsCard({
   icon: Icon,
   label,
   value,
   trend,
   trendLabel,
-  color = 'primary',
 }) {
-  const colorClasses = {
-    primary: 'bg-primary-50 text-primary-600',
-    green: 'bg-green-50 text-green-600',
-    blue: 'bg-blue-50 text-blue-600',
-    orange: 'bg-orange-50 text-orange-600',
-    red: 'bg-red-50 text-red-600',
-  }
-
-  const trendColor = trend > 0 ? 'text-green-600' : 'text-red-600'
-  const TrendIcon = trend > 0 ? TrendingUp : TrendingDown
+  const trendPositive = trend > 0
+  const trendColor = trendPositive ? SH.forest : '#dc2626'
+  const TrendIcon = trendPositive ? TrendingUp : TrendingDown
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-primary-500 hover:shadow-lg transition-shadow">
+    <div
+      style={{
+        background: SH.cream,
+        borderLeft: `3px solid ${SH.forest}`,
+        padding: '20px 24px',
+        transition: 'box-shadow 0.15s',
+      }}
+    >
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-slate-600 font-medium">{label}</p>
-          <h3 className="text-2xl font-bold text-slate-900 mt-2">{value}</h3>
+        <div style={{ flex: 1 }}>
+          <p
+            style={{
+              fontFamily: "'Arsenal SC', sans-serif",
+              fontSize: 11,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: SH.inkMuted,
+              margin: 0,
+            }}
+          >
+            {label}
+          </p>
+          <h3
+            style={{
+              fontFamily: "'Big Shoulders Display', sans-serif",
+              fontWeight: 700,
+              fontSize: 26,
+              color: SH.ink,
+              margin: '6px 0 0',
+              lineHeight: 1,
+            }}
+          >
+            {value}
+          </h3>
           {trend !== undefined && (
             <div className="flex items-center mt-2">
-              <TrendIcon className={`w-4 h-4 ${trendColor}`} />
-              <span className={`ml-1 text-sm ${trendColor}`}>
+              <TrendIcon style={{ width: 14, height: 14, color: trendColor }} />
+              <span style={{ marginLeft: 4, fontSize: 12, color: trendColor }}>
                 {trend > 0 ? '+' : ''}{trend}%
               </span>
               {trendLabel && (
-                <span className="text-xs text-slate-500 ml-2">{trendLabel}</span>
+                <span style={{ fontSize: 11, color: SH.inkMuted, marginLeft: 6 }}>{trendLabel}</span>
               )}
             </div>
           )}
         </div>
         {Icon && (
-          <div className={`p-3 rounded-full ${colorClasses[color]}`}>
-            <Icon className="w-6 h-6" />
+          <div
+            style={{
+              padding: 10,
+              background: SH.creamDark,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Icon style={{ width: 20, height: 20, color: SH.forest }} />
           </div>
         )}
       </div>
