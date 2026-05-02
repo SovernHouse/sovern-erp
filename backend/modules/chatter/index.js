@@ -16,4 +16,4 @@ async function initChatter(app, sequelize, models, registry) {
   }
 }
 
-module.exports = initChatter;
+module.expor

@@ -5,5 +5,4 @@
   "dependencies": ["core"],
   "routes": ["chatterRoutes"],
   "models": ["ChatterMessage"],
-  "config": {}
-}
+  "config"

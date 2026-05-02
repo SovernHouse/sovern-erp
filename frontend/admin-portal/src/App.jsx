@@ -112,6 +112,7 @@ const SystemLog        = React.lazy(() => import('./pages/Settings/SystemLog'))
 const BulkImport       = React.lazy(() => import('./pages/Settings/BulkImport'))
 const ProductAttributes = React.lazy(() => import('./pages/Settings/ProductAttributes'))
 const PriceListManager  = React.lazy(() => import('./pages/Settings/PriceListManager'))
+const ModulesManager    = React.lazy(() => import('./pages/Settings/ModulesManager'))
 
 // Analytics & BI
 const AnalyticsDashboard = React.lazy(() => import('./pages/Analytics/AnalyticsDashboard'))
@@ -323,6 +324,7 @@ function AppRoutes() {
       <Route path="/settings/bulk-import"           element={<P permission="settings"><BulkImport /></P>} />
       <Route path="/settings/product-attributes"    element={<P permission="settings"><ProductAttributes /></P>} />
       <Route path="/settings/price-lists"           element={<P permission="settings"><PriceListManager /></P>} />
+      <Route path="/settings/modules"              element={<P roles={['admin']}><ModulesManager /></P>} />
 
       {/* ── CRM / Outreach ── */}
       <Route path="/client-contacts" element={<P permission="outreach"><ClientContacts /></P>} />

@@ -113,11 +113,4 @@ module.exports = (sequelize) => {
       foreignKey: 'assignedToUserId',
       as: 'assignedTo',
     });
-    InternalApproval.belongsTo(models.User, {
-      foreignKey: 'decidedByUserId',
-      as: 'decidedBy',
-    });
-  };
-
-  return InternalApproval;
-};
+    InternalApproval.belongsTo(mode

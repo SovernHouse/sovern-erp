@@ -503,24 +503,4 @@ db.sequelize.authenticate()
         if (error.code === 'MODULE_NOT_FOUND' && error.message.includes('node-cron')) {
           console.warn('[SCHEDULER] node-cron not installed. Run: npm install (in backend directory)');
         } else {
-          console.error('Failed to initialize scheduler:', error.message);
-        }
-      }
-    }
-
-    server.listen(PORT, () => {
-      console.log(`Trading ERP Server running on port ${PORT}`);
-      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    });
-  })
-  .catch(err => {
-    console.error('Database connection error:', err);
-    process.exit(1);
-  });
-} // end if (NODE_ENV !== 'test')
-
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Rejection:', err);
-});
-
-module.exports = { app, server, io };
+          console.error('Failed to initialize sc

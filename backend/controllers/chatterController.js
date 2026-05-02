@@ -175,9 +175,4 @@ exports.postSystemEvent = async (entityType, entityId, messageType, body, metada
       authorName,
       metadata,
       attachments: [],
-    });
-  } catch (err) {
-    // Never throw from system event logging — it must not break the parent action
-    console.error('[chatter.postSystemEvent]', err.message);
-  }
-};
+  

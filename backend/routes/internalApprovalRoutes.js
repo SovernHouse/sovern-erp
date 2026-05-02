@@ -24,5 +24,3 @@ router.post('/',                          requireAuth, ctrl.request);
 router.post('/:id/approve',               requireAuth, ctrl.approve);
 router.post('/:id/reject',                requireAuth, ctrl.reject);
 router.post('/:id/cancel',                requireAuth, ctrl.cancel);
-
-module.exports = router;

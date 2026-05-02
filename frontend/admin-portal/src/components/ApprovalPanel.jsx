@@ -14,7 +14,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CheckCircle, XCircle, Clock, AlertCircle, ChevronDown, ChevronUp, UserCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { api } from '../services/api'
+import api from '../services/api'
 
 const PRIORITY_COLORS = {
   low:    'text-slate-500 bg-slate-100',
@@ -312,17 +312,4 @@ export default function ApprovalPanel({
               {/* Re-submit after rejection */}
               {latest?.status === 'rejected' && !isManager && (
                 <button
-                  onClick={() => setShowRequestForm(true)}
-                  className="w-full py-2 text-sm text-white rounded-lg"
-                  style={{ backgroundColor: '#2D5A27' }}
-                >
-                  Re-submit for Review
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
+                  onClick={() => setShowRequ

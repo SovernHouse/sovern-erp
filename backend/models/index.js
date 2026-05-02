@@ -516,12 +516,11 @@ db.Lead.hasMany(db.OutreachEmail, { foreignKey: 'leadId', as: 'outreachEmails' }
 // DocumentApproval.associate() and called above — do NOT redefine it here.
 db.User.hasMany(db.DocumentApproval, { as: 'documentApprovals', foreignKey: 'requestedByUserId' });
 
-// ── Chatter (polymorphic message thread) ───────────────────────────────────
+// Chatter & Internal Approvals
 db.ChatterMessage = require('./ChatterMessage')(sequelize);
 db.ChatterMessage.associate(db);
 
-// ── Internal Approvals (manager sign-off on staff work) ────────────────────
 db.InternalApproval = require('./InternalApproval')(sequelize);
 db.InternalApproval.associate(db);
 
-module.exports = db;
+module.exports = db; 

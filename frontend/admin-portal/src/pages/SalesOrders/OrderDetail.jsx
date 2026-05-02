@@ -440,18 +440,4 @@ export default function OrderDetail() {
       {/* Chatter */}
       <Chatter entityType="SalesOrder" entityId={id} className="mt-6" />
 
-      {/* Delete Confirmation Dialog */}
-      <ConfirmDialog
-        isOpen={showDeleteConfirm}
-        onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={handleDelete}
-        title="Delete Order"
-        message="Are you sure you want to delete this order? This action cannot be undone."
-        confirmText="Delete"
-        cancelText="Cancel"
-        isLoading={isDeleting}
-        isDangerous={true}
-      />
-    </div>
-  )
-}
+  

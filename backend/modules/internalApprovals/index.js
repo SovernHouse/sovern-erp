@@ -16,4 +16,4 @@ async function initInternalApprovals(app, sequelize, models, registry) {
   }
 }
 
-module.exports = initInternalApprovals;
+module.exports = initI

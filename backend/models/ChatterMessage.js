@@ -104,11 +104,4 @@ module.exports = (sequelize) => {
       foreignKey: 'parentId',
       as: 'parent',
     });
-    ChatterMessage.hasMany(models.ChatterMessage, {
-      foreignKey: 'parentId',
-      as: 'replies',
-    });
-  };
-
-  return ChatterMessage;
-};
+    ChatterMessage.hasMany(models.Chatt

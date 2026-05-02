@@ -131,12 +131,4 @@ export default function WorkflowStatusBar({
 
               {/* Connector line (skip after last visible node) */}
               {!isLast && !stage.negative && (
-                <div className={`flex-1 h-0.5 mx-1 mb-4 transition-colors ${lineColor}`} />
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+                <div className={`flex-1 h-0.5 mx-

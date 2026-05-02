@@ -551,12 +551,25 @@ export default function Layout({ children }) {
                   <Link
                     to="/settings"
                     onClick={() => setShowUserMenu(false)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', fontSize: 13, color: INK, textDecoration: 'none', borderBottom: '1px solid rgba(14,13,12,0.06)' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', fontSize: 13, color: INK, textDecoration: 'none' }}
                     onMouseEnter={e => e.currentTarget.style.background = c(INK, 0.04)}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
                     <Settings size={14} style={{ color: c(INK, 0.50) }} /> Settings
                   </Link>
+
+                  {/* Modules — admin only */}
+                  {user?.role === 'admin' && (
+                    <Link
+                      to="/settings/modules"
+                      onClick={() => setShowUserMenu(false)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', fontSize: 13, color: INK, textDecoration: 'none', borderBottom: '1px solid rgba(14,13,12,0.06)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = c(INK, 0.04)}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Layers size={14} style={{ color: c(INK, 0.50) }} /> Modules
+                    </Link>
+                  )}
 
                   {/* Portal switcher — admin only */}
                   {user?.role === 'admin' && (

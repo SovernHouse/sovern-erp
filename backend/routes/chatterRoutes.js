@@ -15,4 +15,4 @@ router.get('/:entityType/:entityId', requireAuth, chatterController.getMessages)
 router.post('/:entityType/:entityId', requireAuth, chatterController.postMessage);
 router.delete('/:entityType/:entityId/:messageId', requireAuth, chatterController.deleteMessage);
 
-module.exports = router;
+module.e

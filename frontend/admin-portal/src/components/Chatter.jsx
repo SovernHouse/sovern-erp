@@ -16,7 +16,7 @@ import {
   Calendar, FileText, AlertCircle, RefreshCw,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { api } from '../services/api'
+import api from '../services/api'
 import { formatRelativeTime } from '../utils/formatters'
 
 // ── Message type metadata ───────────────────────────────────────────────────
@@ -274,15 +274,4 @@ export default function Chatter({ entityType, entityId, className = '' }) {
               style={{ backgroundColor: body.trim() ? '#2D5A27' : undefined }}
             >
               {submitting ? (
-                <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-              Send
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
+                <div
