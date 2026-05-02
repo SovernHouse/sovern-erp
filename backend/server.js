@@ -1,3 +1,4 @@
+process.stderr.write("[ZZ] server.js loaded at " + new Date().toISOString() + "\n");
 // Sentry instrumentation MUST be the first require in this file. Loading order
 // is critical so the SDK can auto-instrument Express, HTTP, and other modules
 // before they are loaded. Do not move this line.
@@ -420,11 +421,11 @@ if (process.env.NODE_ENV !== 'test') {
 db.sequelize.authenticate()
   .then(() => {
     console.log('Database connected successfully');
-    return autoMigrateSchema();
+    process.stderr.write('[A] before autoMigrate\n'); return autoMigrateSchema().then(()=>{process.stderr.write('[B] autoMigrate ok\n');}).catch(e=>{process.stderr.write('[B!] autoMigrate fail: '+e.message+'\n');});
   })
   .then(() => {
-    // IMPORTANT: Do NOT use sync({ alter: true }) with SQLite - it recreates tables and wipes data
-    return db.sequelize.sync();
+    process.stderr.write('[C] before sync\n');
+    return db.sequelize.sync().then(()=>{process.stderr.write('[D] sync ok\n');}).catch(e => { process.stderr.write('[D!] sync fail: '+e.message+'\n'); return null; });
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {
@@ -503,4 +504,24 @@ db.sequelize.authenticate()
         if (error.code === 'MODULE_NOT_FOUND' && error.message.includes('node-cron')) {
           console.warn('[SCHEDULER] node-cron not installed. Run: npm install (in backend directory)');
         } else {
-          console.error('Failed to initialize sc
+          console.error('Failed to initialize scheduler:', error.message);
+        }
+      }
+    }
+
+    server.listen(PORT, () => {
+      console.log(`Trading ERP Server running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+  })
+  .catch(err => {
+    console.error('Database connection error:', err);
+    process.exit(1);
+  });
+} // end if (NODE_ENV !== 'test')
+
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled Rejection:', err);
+});
+
+module.exports = { app, server, io };

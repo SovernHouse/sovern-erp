@@ -571,40 +571,7 @@ export default function Layout({ children }) {
                     </Link>
                   )}
 
-                  {/* Portal switcher — admin only */}
-                  {user?.role === 'admin' && (
-                    <>
-                      <div style={{ padding: '8px 14px 3px', fontSize: 9.5, color: c(INK, 0.35), letterSpacing: '0.07em', textTransform: 'uppercase', fontWeight: 600 }}>
-                        Switch Portal
-                      </div>
-                      <a
-                        href="https://client.sovernhouse.co"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setShowUserMenu(false)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', fontSize: 13, color: INK, textDecoration: 'none' }}
-                        onMouseEnter={e => e.currentTarget.style.background = c(INK, 0.04)}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                      >
-                        <Users size={14} style={{ color: c(INK, 0.50) }} />
-                        <span style={{ flex: 1 }}>Client Portal</span>
-                        <ExternalLink size={11} style={{ color: c(INK, 0.28) }} />
-                      </a>
-                      <a
-                        href="https://factory.sovernhouse.co"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setShowUserMenu(false)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', fontSize: 13, color: INK, textDecoration: 'none', borderBottom: '1px solid rgba(14,13,12,0.06)' }}
-                        onMouseEnter={e => e.currentTarget.style.background = c(INK, 0.04)}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                      >
-                        <Building2 size={14} style={{ color: c(INK, 0.50) }} />
-                        <span style={{ flex: 1 }}>Factory Portal</span>
-                        <ExternalLink size={11} style={{ color: c(INK, 0.28) }} />
-                      </a>
-                    </>
-                  )}
+                  {/* Portal switcher — TODO: wire up client.sovernhouse.co + factory.sovernhouse.co (DNS + deploy) on 2026-05-05 */}
 
                   <button
                     onClick={handleLogout}
