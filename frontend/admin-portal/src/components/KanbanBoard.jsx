@@ -201,4 +201,8 @@ export const LEAD_KANBAN_COLUMNS = [
   { key: 'new',         label: 'New',         color: '#94a3b8' },
   { key: 'contacted',   label: 'Contacted',   color: '#60a5fa' },
   { key: 'qualified',   label: 'Qualified',   color: '#a78bfa' },
-  { key: 'proposal',    label: 'Proposal',    color: '#fb923c' 
+  { key: 'proposal',    label: 'Proposal',    color: '#fb923c' },
+  { key: 'negotiation', label: 'Negotiation', color: '#f59e0b' },
+  { key: 'won',         label: 'Won',         color: '#22c55e' },
+  { key: 'lost',        label: 'Lost',        color: '#f87171' },
+]

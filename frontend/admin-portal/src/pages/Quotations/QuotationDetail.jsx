@@ -469,4 +469,21 @@ export default function QuotationDetail() {
         message="Are you sure you want to convert this quotation to a Proforma Invoice? This action is typically irreversible."
         confirmText="Convert"
         cancelText="Cancel"
-        isLoading={isCon
+        isLoading={isConverting}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Delete Quotation"
+        message="Are you sure you want to delete this quotation? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        isLoading={isDeleting}
+        isDangerous={true}
+      />
+    </div>
+  )
+}

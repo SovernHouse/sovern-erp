@@ -447,4 +447,13 @@ export const chatterAPI = {
 export const internalApprovalAPI = {
   getAll: (params) => api.get('/internal-approvals', { params }),
   getById: (id) => api.get(`/internal-approvals/${id}`),
-  getForEntity: (entityType, enti
+  getForEntity: (entityType, entityId) =>
+    api.get(`/internal-approvals/entity/${entityType}/${entityId}`),
+  getPendingCount: () => api.get('/internal-approvals/pending-count'),
+  request: (data) => api.post('/internal-approvals', data),
+  approve: (id, data) => api.post(`/internal-approvals/${id}/approve`, data),
+  reject: (id, data) => api.post(`/internal-approvals/${id}/reject`, data),
+  cancel: (id) => api.post(`/internal-approvals/${id}/cancel`),
+}
+
+export default api

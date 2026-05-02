@@ -421,4 +421,20 @@ const LeadForm = () => {
             <button
               type="button"
               onClick={() => navigate('/crm/leads')}
-              
+              className="flex-1 border border-gray-300 text-gray-700 px-6 py-2 rounded-lg font-medium hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+
+        {/* Chatter — only shown when editing an existing lead */}
+        {id && (
+          <Chatter entityType="Lead" entityId={id} className="mt-6" />
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default LeadForm;

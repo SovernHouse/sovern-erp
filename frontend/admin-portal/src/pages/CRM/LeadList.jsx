@@ -301,4 +301,16 @@ const LeadList = () => {
           isOpen={deleteConfirm.isOpen}
           title="Delete Lead"
           message={`Delete ${deleteConfirm.lead?.companyName}? This will also remove all associated outreach emails and activities.`}
-     
+          confirmText="Delete"
+          cancelText="Cancel"
+          isDangerous={true}
+          isLoading={isDeleting}
+          onConfirm={handleConfirmDelete}
+          onClose={() => setDeleteConfirm({ isOpen: false, lead: null })}
+        />
+      </div>
+    </div>
+  );
+};
+
+export default LeadList;
