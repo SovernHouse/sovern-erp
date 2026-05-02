@@ -121,4 +121,12 @@ class FeatureFlags {
   getModuleFlags(moduleName) {
     const moduleFlags = {};
     for (const [flag, value] of Object.entries(this.flags)) {
-      if (flag.endsWith(`:${modul
+      if (flag.endsWith(`:${moduleName}`)) {
+        moduleFlags[flag] = value;
+      }
+    }
+    return moduleFlags;
+  }
+}
+
+module.exports = FeatureFlags;

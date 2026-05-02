@@ -36,12 +36,17 @@ jobs:
             frontend/admin-portal/node_modules
             frontend/customer-portal/node_modules
             frontend/factory-portal/node_modules
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-npm-v3-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
-            ${{ runner.os }}-npm-
+            ${{ runner.os }}-npm-v3-
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        run: |
+          npm install --legacy-peer-deps
+          # Backstop: root package-lock.json may still resolve zod@4.x from a
+          # previous lockfile. Force zod v3 in the backend workspace explicitly
+          # so Jest can require it (zod v4 is ESM-only and breaks CommonJS Jest).
+          npm install zod@3.22.4 --legacy-peer-deps --workspace=backend
 
       - name: Lint
         run: npm run lint || echo "Linting skipped - not configured"
