@@ -274,4 +274,15 @@ export default function Chatter({ entityType, entityId, className = '' }) {
               style={{ backgroundColor: body.trim() ? '#2D5A27' : undefined }}
             >
               {submitting ? (
-                <div
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+              <span>{submitting ? 'Sending…' : 'Send'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}

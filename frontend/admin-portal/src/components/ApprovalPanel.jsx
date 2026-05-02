@@ -312,4 +312,17 @@ export default function ApprovalPanel({
               {/* Re-submit after rejection */}
               {latest?.status === 'rejected' && !isManager && (
                 <button
-                  onClick={() => setShowRequ
+                  onClick={() => setShowRequestForm(true)}
+                  className="text-sm hover:underline"
+                  style={{ color: '#2D5A27' }}
+                >
+                  Re-submit for Review
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
