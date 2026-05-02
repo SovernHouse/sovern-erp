@@ -97,10 +97,10 @@ module.exports = (sequelize) => {
     tableName: 'InternalApprovals',
     timestamps: true,
     indexes: [
-      { fields: ['entityType', 'entityId'] },
+      { fields: ['entity_type', 'entity_id'] },
       { fields: ['status'] },
-      { fields: ['assignedToUserId'] },
-      { fields: ['requestedByUserId'] },
+      { fields: ['assigned_to_user_id'] },
+      { fields: ['requested_by_user_id'] },
     ],
   });
 
@@ -113,4 +113,14 @@ module.exports = (sequelize) => {
       foreignKey: 'assignedToUserId',
       as: 'assignedTo',
     });
-    InternalApproval.belongsTo(mode
+    InternalApproval.belongsTo(models.User, {
+      foreignKey: 'decidedByUserId',
+      as: 'decidedBy',
+    });
+  };
+
+  return InternalApproval;
+};
+
+l;
+};

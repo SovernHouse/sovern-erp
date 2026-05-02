@@ -89,9 +89,9 @@ module.exports = (sequelize) => {
     timestamps: true,
     indexes: [
       // Fast lookup: all messages on a given record
-      { fields: ['entityType', 'entityId'] },
+      { fields: ['entity_type', 'entity_id'] },
       // All messages by a given user
-      { fields: ['userId'] },
+      { fields: ['user_id'] },
     ],
   });
 
@@ -104,4 +104,11 @@ module.exports = (sequelize) => {
       foreignKey: 'parentId',
       as: 'parent',
     });
-    ChatterMessage.hasMany(models.Chatt
+    ChatterMessage.hasMany(models.ChatterMessage, {
+      foreignKey: 'parentId',
+      as: 'replies',
+    });
+  };
+
+  return ChatterMessage;
+};

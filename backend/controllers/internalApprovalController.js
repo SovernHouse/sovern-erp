@@ -231,4 +231,12 @@ exports.getPendingCount = async (req, res) => {
         status: 'pending',
         [Op.or]: [
           { assignedToUserId: req.user.id },
-          { assignedToUserId:
+          { assignedToUserId: null },
+        ],
+      },
+    });
+    return res.json({ success: true, data: { pendingCount: count } });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to count pending approvals.' });
+  }
+};
