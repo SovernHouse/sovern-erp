@@ -1,0 +1,9 @@
+{
+  "name": "internalApprovals",
+  "version": "1.0.0",
+  "description": "Internal Approvals — manager sign-off workflow on staff-initiated actions (quotations, SOs, POs, stage advancement)",
+  "dependencies": ["core", "chatter"],
+  "routes": ["internalApprovalRoutes"],
+  "models": ["InternalApproval"],
+  "config": {}
+}

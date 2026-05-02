@@ -18,7 +18,9 @@ class FeatureFlags {
       'module:compliance': false,
       'module:warehouse': false,
       'module:analytics': true,
-      'module:documents': true
+      'module:documents': true,
+      'module:chatter': true,
+      'module:internalApprovals': true,
     };
 
     this.initializeFlags();

@@ -10,6 +10,8 @@ import {
   Package,
 } from 'lucide-react'
 import { ordersAPI } from '../../services/api'
+import Chatter from '../../components/Chatter'
+import WorkflowStatusBar, { SALES_ORDER_STAGES } from '../../components/WorkflowStatusBar'
 import StatusBadge from '../../components/StatusBadge'
 import DocumentGenerateButton from '../../components/DocumentGenerateButton'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -228,6 +230,9 @@ export default function OrderDetail() {
         </div>
       </div>
 
+      {/* Workflow Stage Bar */}
+      <WorkflowStatusBar stages={SALES_ORDER_STAGES} currentStatus={order.status} />
+
       {/* Main Content */}
       <div className="grid grid-cols-3 gap-6">
         {/* Left Column - Order Details */}
@@ -431,6 +436,9 @@ export default function OrderDetail() {
           </div>
         </div>
       </div>
+
+      {/* Chatter */}
+      <Chatter entityType="SalesOrder" entityId={id} className="mt-6" />
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
+import Chatter from '../../components/Chatter';
 
 const LeadForm = () => {
   const navigate = useNavigate();
@@ -426,6 +427,11 @@ const LeadForm = () => {
             </button>
           </div>
         </form>
+
+        {/* Chatter — only shown when editing an existing lead */}
+        {id && (
+          <Chatter entityType="Lead" entityId={id} className="mt-6" />
+        )}
       </div>
     </div>
   );

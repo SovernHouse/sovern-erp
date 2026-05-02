@@ -433,4 +433,27 @@ export const approvalAPI = {
   reject: (token, data) => api.post(`/approvals/public/${token}/reject`, data),
 }
 
+// Chatter (polymorphic message thread on any record)
+export const chatterAPI = {
+  getMessages: (entityType, entityId) =>
+    api.get(`/chatter/${entityType}/${entityId}`),
+  postMessage: (entityType, entityId, data) =>
+    api.post(`/chatter/${entityType}/${entityId}`, data),
+  deleteMessage: (entityType, entityId, messageId) =>
+    api.delete(`/chatter/${entityType}/${entityId}/${messageId}`),
+}
+
+// Internal Approvals (manager sign-off)
+export const internalApprovalAPI = {
+  getAll: (params) => api.get('/internal-approvals', { params }),
+  getById: (id) => api.get(`/internal-approvals/${id}`),
+  getForEntity: (entityType, entityId) =>
+    api.get(`/internal-approvals/entity/${entityType}/${entityId}`),
+  getPendingCount: () => api.get('/internal-approvals/pending-count'),
+  request: (data) => api.post('/internal-approvals', data),
+  approve: (id, data) => api.post(`/internal-approvals/${id}/approve`, data),
+  reject: (id, data) => api.post(`/internal-approvals/${id}/reject`, data),
+  cancel: (id) => api.post(`/internal-approvals/${id}/cancel`),
+}
+
 export default api

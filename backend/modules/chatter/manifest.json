@@ -1,0 +1,9 @@
+{
+  "name": "chatter",
+  "version": "1.0.0",
+  "description": "Chatter — polymorphic message thread on every ERP record (comments, system events, audit trail)",
+  "dependencies": ["core"],
+  "routes": ["chatterRoutes"],
+  "models": ["ChatterMessage"],
+  "config": {}
+}

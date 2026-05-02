@@ -12,6 +12,9 @@ import {
   Loader,
 } from 'lucide-react'
 import { quotationsAPI } from '../../services/api'
+import Chatter from '../../components/Chatter'
+import WorkflowStatusBar, { QUOTATION_STAGES } from '../../components/WorkflowStatusBar'
+import ApprovalPanel from '../../components/ApprovalPanel'
 import StatusBadge from '../../components/StatusBadge'
 import DocumentGenerateButton from '../../components/DocumentGenerateButton'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -270,6 +273,9 @@ export default function QuotationDetail() {
         </div>
       </div>
 
+      {/* Workflow Stage Bar */}
+      <WorkflowStatusBar stages={QUOTATION_STAGES} currentStatus={quotation.status} />
+
       {/* Main Content */}
       <div className="grid grid-cols-3 gap-6">
         {/* Left Column - Quotation Details */}
@@ -373,8 +379,15 @@ export default function QuotationDetail() {
           </div>
         </div>
 
-        {/* Right Column - Financial Summary */}
+        {/* Right Column - Financial Summary + Approval */}
         <div className="space-y-6">
+          {/* Internal Approval Panel */}
+          <ApprovalPanel
+            entityType="Quotation"
+            entityId={quotation.id}
+            approvalType="send_quotation"
+          />
+
           <div className="bg-white rounded-lg shadow p-6 sticky top-6">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">Financial Summary</h2>
             <div className="space-y-3">
@@ -431,6 +444,9 @@ export default function QuotationDetail() {
           </div>
         </div>
       </div>
+
+      {/* Chatter */}
+      <Chatter entityType="Quotation" entityId={quotation.id} className="mt-6" />
 
       {/* Send Confirmation Dialog */}
       <ConfirmDialog

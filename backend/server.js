@@ -203,6 +203,14 @@ app.use('/api/crm', crmRoutes);
 app.use('/api/approvals', approvalRoutes);
 app.use('/api/triage', triageRoutes);
 
+// Chatter (polymorphic message thread)
+const chatterRoutes = require('./routes/chatterRoutes');
+app.use('/api/chatter', chatterRoutes);
+
+// Internal Approvals (manager sign-off)
+const internalApprovalRoutes = require('./routes/internalApprovalRoutes');
+app.use('/api/internal-approvals', internalApprovalRoutes);
+
 // Compliance & Regulatory routes
 const complianceRoutes = require('./modules/compliance/complianceRoutes');
 app.use('/api/compliance', complianceRoutes);

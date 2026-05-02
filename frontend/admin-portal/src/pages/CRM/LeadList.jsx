@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import KanbanBoard, { LEAD_KANBAN_COLUMNS } from '../../components/KanbanBoard';
 import {
   Search,
   Plus,
@@ -16,6 +18,7 @@ import {
 } from 'lucide-react';
 
 const LeadList = () => {
+  const navigate = useNavigate();
   const [leads, setLeads] = useState([]);
   const [filteredLeads, setFilteredLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -221,55 +224,14 @@ const LeadList = () => {
 
         {/* Kanban View */}
         {viewMode === 'kanban' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {statuses.map(status => (
-              <div key={status} className="bg-gray-100 rounded-lg p-4">
-                <h3 className={`font-semibold text-gray-900 mb-4 p-2 rounded ${getStatusColor(status)}`}>
-                  {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
-                </h3>
-                <div className="space-y-3">
-                  {filteredLeads
-                    .filter(lead => lead.status === status)
-                    .map(lead => (
-                      <div key={lead.id} className="bg-white rounded-lg p-4 shadow-sm hover:shadow-md transition cursor-move">
-                        <h4 className="font-semibold text-gray-900 text-sm">{lead.companyName}</h4>
-                        <p className="text-xs text-gray-600 mt-1">{lead.contactName}</p>
-                        <div className="mt-3 space-y-2">
-                          <div className="flex items-center text-xs text-gray-600">
-                            <Mail size={14} className="mr-1" />
-                            {lead.email}
-                          </div>
-                          {lead.phone && (
-                            <div className="flex items-center text-xs text-gray-600">
-                              <Phone size={14} className="mr-1" />
-                              {lead.phone}
-                            </div>
-                          )}
-                        </div>
-                        <div className="mt-3 flex items-center justify-between">
-                          <span className="text-xs font-bold text-blue-600">
-                            ${parseFloat(lead.estimatedValue || 0).toLocaleString()}
-                          </span>
-                          <span className="text-xs text-gray-500">{lead.score}% score</span>
-                        </div>
-                        <div className="mt-3 flex gap-2">
-                          <button className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100">
-                            <Phone size={12} className="inline mr-1" />
-                            Call
-                          </button>
-                          <button
-                            onClick={() => handleDeleteClick(lead)}
-                            className="text-xs bg-gray-50 text-gray-600 px-2 py-1 rounded hover:bg-gray-100"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          <KanbanBoard
+            columns={LEAD_KANBAN_COLUMNS}
+            cards={filteredLeads}
+            statusField="status"
+            onMove={handleUpdateStatus}
+            onCardClick={(lead) => navigate(`/crm/leads/${lead.id}/edit`)}
+            groupValueFn={(lead) => parseFloat(lead.estimatedValue || 0)}
+          />
         ) : (
           /* List View */
           <div className="bg-white rounded-lg shadow overflow-hidden">
