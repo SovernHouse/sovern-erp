@@ -44,6 +44,11 @@ router.delete('/leads/:id', crmController.deleteLead);
 router.put('/leads/:id/status', crmController.updateLeadStatus);
 router.post('/leads/:id/convert', crmController.convertLead);
 router.get('/leads/:leadId/timeline', crmController.getLeadTimeline);
+// Convenience route — post a note/activity directly against a lead (used by Sovern Ops mobile app)
+router.post('/leads/:id/activities', async (req, res, next) => {
+  req.body.leadId = req.params.id;
+  crmController.createActivity(req, res, next);
+});
 
 // ACTIVITY ROUTES
 // Static paths MUST come before /:id to prevent shadowing

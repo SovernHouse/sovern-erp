@@ -186,6 +186,65 @@ router.post('/generate', requireAuth, async (req, res, next) => {
 });
 
 /**
+ * GET /api/approvals/pending
+ * Returns all pending DocumentApprovals with document number, customer, and value.
+ * Used by the Sovern Ops mobile app Approvals tab.
+ * MUST be registered before /:id to avoid 'pending' being treated as an ID.
+ */
+router.get('/pending', requireAuth, async (req, res, next) => {
+  try {
+    const approvals = await db.DocumentApproval.findAll({
+      where: { status: 'pending' },
+      order: [['createdAt', 'DESC']],
+    });
+
+    // Enrich each approval with customer name and total from the referenced document
+    const data = await Promise.all(
+      approvals.map(async (a) => {
+        let customerName  = '';
+        let totalValueUSD = 0;
+
+        try {
+          if (a.entityType === 'ProformaInvoice' && db.ProformaInvoice) {
+            const doc = await db.ProformaInvoice.findByPk(a.entityId, {
+              include: [{ model: db.Customer, as: 'customer', attributes: ['companyName'] }],
+            });
+            customerName  = doc?.customer?.companyName || '';
+            totalValueUSD = doc?.total || 0;
+          } else if (a.entityType === 'Quotation' && db.Quotation) {
+            const doc = await db.Quotation.findByPk(a.entityId, {
+              include: [{ model: db.Customer, as: 'customer', attributes: ['companyName'] }],
+            });
+            customerName  = doc?.customer?.companyName || '';
+            totalValueUSD = doc?.total || 0;
+          } else if (a.entityType === 'SalesOrder' && db.SalesOrder) {
+            const doc = await db.SalesOrder.findByPk(a.entityId, {
+              include: [{ model: db.Customer, as: 'customer', attributes: ['companyName'] }],
+            });
+            customerName  = doc?.customer?.companyName || '';
+            totalValueUSD = doc?.total || 0;
+          }
+        } catch { /* lookup failure — return partial data */ }
+
+        return {
+          id:            a.id,
+          documentType:  a.entityType === 'ProformaInvoice' ? 'PI' : a.entityType,
+          documentNumber:a.documentLabel || a.entityId,
+          customerName,
+          totalValueUSD,
+          createdAt:     a.createdAt,
+          status:        a.status,
+        };
+      })
+    );
+
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * GET /api/approvals
  * List approvals with optional filters.
  * Query params: entityType, entityId, status, page, limit
@@ -224,6 +283,71 @@ router.get('/:id', requireAuth, async (req, res, next) => {
     });
     if (!approval) return res.status(404).json({ success: false, message: 'Approval not found' });
     res.json(getSuccessResponse(approval));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/approvals/:id/approve
+ * Authenticated — manager/internal override approval.
+ * Used by Sovern Ops mobile app when a manager confirms a document internally.
+ */
+router.post('/:id/approve', requireAuth, async (req, res, next) => {
+  try {
+    const approval = await db.DocumentApproval.findByPk(req.params.id);
+    if (!approval) return res.status(404).json({ success: false, message: 'Approval not found' });
+
+    if (approval.status !== 'pending') {
+      return res.status(409).json({
+        success: false,
+        message: `This document has already been ${approval.status}`,
+      });
+    }
+
+    const { comment } = req.body;
+    await approval.update({
+      status: 'approved',
+      clientName: req.user?.firstName ? `${req.user.firstName} ${req.user.lastName || ''}`.trim() : 'Manager',
+      respondedAt: new Date(),
+      notes: comment ? `[Internal] ${comment}` : approval.notes,
+    });
+
+    res.json(getSuccessResponse({ status: 'approved' }, 'Document approved'));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/approvals/:id/flag
+ * Authenticated — manager flags a document for revision before sending to client.
+ * Body: { comment: string (required) }
+ */
+router.post('/:id/flag', requireAuth, async (req, res, next) => {
+  try {
+    const approval = await db.DocumentApproval.findByPk(req.params.id);
+    if (!approval) return res.status(404).json({ success: false, message: 'Approval not found' });
+
+    if (approval.status !== 'pending') {
+      return res.status(409).json({
+        success: false,
+        message: `This document has already been ${approval.status}`,
+      });
+    }
+
+    const { comment } = req.body;
+    if (!comment?.trim()) {
+      return res.status(400).json({ success: false, message: 'A comment is required when flagging a document' });
+    }
+
+    await approval.update({
+      status: 'rejected',
+      rejectionReason: comment.trim(),
+      respondedAt: new Date(),
+    });
+
+    res.json(getSuccessResponse({ status: 'flagged' }, 'Document flagged for revision'));
   } catch (error) {
     next(error);
   }
