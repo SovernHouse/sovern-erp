@@ -43,10 +43,6 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Install sqlite3 from source
-        working-directory: backend
-        run: npm install sqlite3 --build-from-source --legacy-peer-deps
-
       - name: Lint
         run: npm run lint || echo "Linting skipped - not configured"
 
