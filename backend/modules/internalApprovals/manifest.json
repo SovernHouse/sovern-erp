@@ -5,4 +5,5 @@
   "dependencies": ["core", "chatter"],
   "routes": ["internalApprovalRoutes"],
   "models": ["InternalApproval"],
-  "config"
+  "config": {}
+}
