@@ -121,6 +121,3 @@ module.exports = (sequelize) => {
 
   return InternalApproval;
 };
-
-l;
-};
