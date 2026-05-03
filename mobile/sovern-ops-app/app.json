@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Sovern Ops",
+    "slug": "sovern-ops",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1B2E1E"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "co.sovernhouse.ops"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1B2E1E"
+      },
+      "package": "co.sovernhouse.ops"
+    },
+    "scheme": "sovern-ops",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font"
+    ],
+    "newArchEnabled": true
+  }
+}
