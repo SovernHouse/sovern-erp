@@ -19,6 +19,7 @@ export default function TabLayout() {
           backgroundColor: COLORS.white,
           borderTopColor: COLORS.border,
         },
+        tabBarScrollEnabled: true,
         headerStyle: { backgroundColor: COLORS.forest },
         headerTintColor: COLORS.white,
         headerTitleStyle: { fontWeight: '700' },
@@ -50,6 +51,20 @@ export default function TabLayout() {
         options={{
           title: 'Approvals',
           tabBarIcon: ({ focused }) => <TabIcon icon="✅" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="products"
+        options={{
+          title: 'Products',
+          tabBarIcon: ({ focused }) => <TabIcon icon="📦" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="customers"
+        options={{
+          title: 'Customers',
+          tabBarIcon: ({ focused }) => <TabIcon icon="🏢" focused={focused} />,
         }}
       />
       <Tabs.Screen
