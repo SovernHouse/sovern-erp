@@ -20,8 +20,16 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 30m
           script: |
-            ~/deploy.sh
-            # Force a clean PM2 reset — restart alone doesn't recover from crash loops
+            set -e
+            cd ~/sovern-erp
+            git pull origin main
+            # Use npm install (not npm ci) from workspace root — ensures all deps
+            # are hoisted correctly into ~/sovern-erp/node_modules
+            npm install --legacy-peer-deps
+            # Build frontend
+            cd frontend/admin-portal && npm run build && cd ~/sovern-erp
+            # Hard reset PM2 — delete stale process entry, start fresh from root cwd
+            # Running from ~/sovern-erp means Node finds node_modules immediately
             pm2 delete sovern-erp 2>/dev/null || true
-            pm2 start ~/sovern-erp/backend/server.js --name sovern-erp --cwd ~/sovern-erp/backend
+            NODE_ENV=production pm2 start backend/server.js --name sovern-erp
             pm2 save
