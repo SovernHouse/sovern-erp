@@ -6,6 +6,7 @@
 
 const https = require('https');
 const http = require('http');
+const { v4: uuidv4 } = require('uuid');
 
 // Supported currencies
 const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'CNY', 'AED', 'INR', 'SAR'];
@@ -352,7 +353,6 @@ const stopScheduledRateUpdate = () => {
  */
 const persistRatesToDatabase = async () => {
   const db = require('../models');
-  const { v4: uuidv4 } = require('uuid');
 
   try {
     for (const [currency, rate] of Object.entries(exchangeRates)) {

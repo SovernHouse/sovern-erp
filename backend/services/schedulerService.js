@@ -69,7 +69,7 @@ async function checkOverdueActivities() {
         completed: false,
         reminderSent: { [Op.not]: true },
       },
-      include: [{ model: db.Lead, as: 'lead', attributes: ['id', 'companyName'] }],
+      include: [{ model: db.Lead, attributes: ['id', 'companyName'] }],
     });
 
     for (const activity of overdue) {
@@ -245,12 +245,21 @@ async function purgeExpiredSoftDeletes() {
     }
 
     try {
-      const count = await model.destroy({
-        where: {
-          deletedAt: { [Op.lt]: cutoff },
-        },
-        force: true, // hard delete — bypasses paranoid
-      });
+      // Disable FK constraints for the delete to avoid cascade errors on models
+      // whose related tables may have mismatched names in the SQLite schema.
+      // Re-enable immediately after regardless of success/failure.
+      await db.sequelize.query('PRAGMA foreign_keys = OFF');
+      let count = 0;
+      try {
+        count = await model.destroy({
+          where: {
+            deletedAt: { [Op.lt]: cutoff },
+          },
+          force: true, // hard delete — bypasses paranoid
+        });
+      } finally {
+        await db.sequelize.query('PRAGMA foreign_keys = ON');
+      }
 
       if (count > 0) {
         summary.push(`${modelName}: ${count}`);

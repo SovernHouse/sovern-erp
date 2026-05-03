@@ -47,7 +47,7 @@ class APMService {
         statusCode,
         responseTimeMs,
         timestamp,
-        success: statusCode < 400
+        success: statusCode < 500  // 4xx are client errors (expected); only 5xx are server failures
       };
 
       // Add to main requests array
