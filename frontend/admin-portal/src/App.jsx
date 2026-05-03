@@ -126,6 +126,14 @@ const GRNList   = React.lazy(() => import('./pages/GRN/GRNList'))
 const GRNDetail = React.lazy(() => import('./pages/GRN/GRNDetail'))
 
 // CRM
+const CRMDashboard   = React.lazy(() => import('./pages/CRM/CRMDashboard'))
+const LeadList       = React.lazy(() => import('./pages/CRM/LeadList'))
+const LeadForm       = React.lazy(() => import('./pages/CRM/LeadForm'))
+const DealPipeline   = React.lazy(() => import('./pages/CRM/DealPipeline'))
+const ActivityList   = React.lazy(() => import('./pages/CRM/ActivityList'))
+const ActivityForm   = React.lazy(() => import('./pages/CRM/ActivityForm'))
+const ContactList    = React.lazy(() => import('./pages/CRM/ContactList'))
+const ContactForm    = React.lazy(() => import('./pages/CRM/ContactForm'))
 const ClientContacts = React.lazy(() => import('./pages/CRM/ClientContacts'))
 const TriageInbox    = React.lazy(() => import('./pages/CRM/TriageInbox'))
 
@@ -326,9 +334,20 @@ function AppRoutes() {
       <Route path="/settings/price-lists"           element={<P permission="settings"><PriceListManager /></P>} />
       <Route path="/settings/modules"              element={<P roles={['admin']}><ModulesManager /></P>} />
 
-      {/* ── CRM / Outreach ── */}
-      <Route path="/client-contacts" element={<P permission="outreach"><ClientContacts /></P>} />
-      <Route path="/crm/inbox"       element={<P permission="outreach"><TriageInbox /></P>} />
+      {/* ── CRM / Pipeline ── */}
+      <Route path="/crm"                       element={<P permission="outreach"><CRMDashboard /></P>} />
+      <Route path="/crm/leads"                 element={<P permission="outreach"><LeadList /></P>} />
+      <Route path="/crm/leads/new"             element={<P permission="outreach"><LeadForm /></P>} />
+      <Route path="/crm/leads/:id"             element={<P permission="outreach"><LeadForm /></P>} />
+      <Route path="/crm/pipeline"              element={<P permission="outreach"><DealPipeline /></P>} />
+      <Route path="/crm/activities"            element={<P permission="outreach"><ActivityList /></P>} />
+      <Route path="/crm/activities/new"        element={<P permission="outreach"><ActivityForm /></P>} />
+      <Route path="/crm/activities/:id"        element={<P permission="outreach"><ActivityForm /></P>} />
+      <Route path="/crm/contacts"              element={<P permission="outreach"><ContactList /></P>} />
+      <Route path="/crm/contacts/new"          element={<P permission="outreach"><ContactForm /></P>} />
+      <Route path="/crm/contacts/:id"          element={<P permission="outreach"><ContactForm /></P>} />
+      <Route path="/client-contacts"           element={<P permission="outreach"><ClientContacts /></P>} />
+      <Route path="/crm/inbox"                 element={<P permission="outreach"><TriageInbox /></P>} />
 
       {/* ── Public: document approval — no auth required ── */}
       <Route
