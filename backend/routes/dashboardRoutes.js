@@ -22,6 +22,52 @@ const { cacheRoute, invalidateCache } = require('../middleware/cacheMiddleware')
 const dashboardCacheTTL = 60;
 
 /**
+ * GET /api/dashboard — Mobile consolidated summary
+ * Single-call endpoint used by Sovern Ops mobile app.
+ * Returns open leads, pending approvals, pending activities, and pipeline value.
+ */
+router.get('/', requireAuth, async (req, res, next) => {
+  try {
+    const { Op } = require('sequelize');
+
+    const [openLeads, pendingApprovals, pendingActivities, pipelineValue] = await Promise.all([
+      db.Lead
+        ? db.Lead.count({ where: { status: { [Op.notIn]: ['won', 'lost'] } } })
+        : Promise.resolve(0),
+      db.InternalApproval
+        ? db.InternalApproval.count({ where: { status: 'pending' } })
+        : Promise.resolve(0),
+      db.Activity
+        ? db.Activity.count({
+            where: {
+              completedAt: null,
+              scheduledAt: { [Op.lte]: dayjs().endOf('day').toDate() },
+            },
+          })
+        : Promise.resolve(0),
+      db.Lead
+        ? db.Lead.sum('estimatedValue', {
+            where: { status: { [Op.notIn]: ['won', 'lost'] } },
+          })
+        : Promise.resolve(0),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        openLeads:        openLeads        || 0,
+        pendingApprovals: pendingApprovals || 0,
+        pendingActivities:pendingActivities|| 0,
+        pipelineValueUSD: pipelineValue    || 0,
+        lastUpdated:      new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * Get admin dashboard with key metrics
  * @route GET /api/dashboard/admin
  * @description Provides metrics including customer count, revenue, orders, and inventory status

@@ -234,4 +234,10 @@ core
  ├── quality (inspections, claims)
  ├── products (catalogue, pricing)
  ├── tradeFinance (LC, landed cost)
- ├── documents (templates, gene
+ ├── documents (templates, generation)
+ ├── analytics (dashboard, reports)
+ ├── chatter (message thread — cross-module)
+ │    └── internalApprovals (events logged via chatter)
+ ├── compliance [disabled]
+ └── warehouse [disabled]
+```

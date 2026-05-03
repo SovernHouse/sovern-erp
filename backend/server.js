@@ -1,4 +1,3 @@
-process.stderr.write("[ZZ] server.js loaded at " + new Date().toISOString() + "\n");
 // Sentry instrumentation MUST be the first require in this file. Loading order
 // is critical so the SDK can auto-instrument Express, HTTP, and other modules
 // before they are loaded. Do not move this line.
@@ -421,11 +420,11 @@ if (process.env.NODE_ENV !== 'test') {
 db.sequelize.authenticate()
   .then(() => {
     console.log('Database connected successfully');
-    process.stderr.write('[A] before autoMigrate\n'); return autoMigrateSchema().then(()=>{process.stderr.write('[B] autoMigrate ok\n');}).catch(e=>{process.stderr.write('[B!] autoMigrate fail: '+e.message+'\n');});
+    return autoMigrateSchema();
   })
   .then(() => {
-    process.stderr.write('[C] before sync\n');
-    return db.sequelize.sync().then(()=>{process.stderr.write('[D] sync ok\n');}).catch(e => { process.stderr.write('[D!] sync fail: '+e.message+'\n'); return null; });
+    // IMPORTANT: Do NOT use sync({ alter: true }) with SQLite - it recreates tables and wipes data
+    return db.sequelize.sync();
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {
