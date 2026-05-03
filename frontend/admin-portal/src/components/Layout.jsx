@@ -31,6 +31,7 @@ import { useNotifications } from '../hooks/useNotifications'
 import { getAllowedNavItems } from '../config/rbacConfig'
 import { LanguageSwitcher } from '@shared/components'
 import HelpPanel, { useHelpPanel } from './HelpPanel'
+import InstallPWA from './InstallPWA'
 
 // ── Brand tokens ─────────────────────────────────────────────────────────────
 const INK     = '#0E0D0C'
@@ -432,6 +433,9 @@ export default function Layout({ children }) {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <LanguageSwitcher className="hidden md:block" />
+
+            {/* Install as desktop app (PWA) — only visible when browser supports it */}
+            <InstallPWA />
 
             {/* Help panel toggle */}
             <button

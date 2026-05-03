@@ -63,6 +63,17 @@ const FallbackComponent = ({ error, resetError }) => (
   </div>
 )
 
+// ── PWA: Register service worker for installability ───────────────────────────
+// Chrome requires a registered SW before it will show the install prompt.
+// The SW itself is at /public/sw.js — a vanilla JS file, no build step.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('[SW] Registration failed:', err)
+    })
+  })
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <Sentry.ErrorBoundary fallback={FallbackComponent} showDialog={false}>
