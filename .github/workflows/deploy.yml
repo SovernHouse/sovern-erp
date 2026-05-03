@@ -19,4 +19,9 @@ jobs:
           username: alex
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 30m
-          script: ~/deploy.sh
+          script: |
+            ~/deploy.sh
+            # Force a clean PM2 reset — restart alone doesn't recover from crash loops
+            pm2 delete sovern-erp 2>/dev/null || true
+            pm2 start ~/sovern-erp/backend/server.js --name sovern-erp --cwd ~/sovern-erp/backend
+            pm2 save
