@@ -13,7 +13,8 @@ const path = require('path');
 const hpp = require('hpp');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
-require('dotenv').config();
+// Use __dirname so .env is always found relative to server.js regardless of PM2 cwd
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const db = require('./models');
 const { errorHandler } = require('./middleware/errorHandler');

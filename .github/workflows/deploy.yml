@@ -33,5 +33,5 @@ jobs:
             # Hard reset PM2 — delete stale process entry, start fresh from root cwd
             # Running from ~/sovern-erp means Node finds node_modules immediately
             pm2 delete sovern-erp 2>/dev/null || true
-            NODE_ENV=production pm2 start backend/server.js --name sovern-erp
+            NODE_ENV=production pm2 start backend/server.js --name sovern-erp --cwd ~/sovern-erp/backend
             pm2 save
