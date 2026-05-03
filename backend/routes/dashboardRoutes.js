@@ -493,7 +493,7 @@ router.post('/custom-chart', requireAuth, async (req, res, next) => {
 router.get('/role/:role', cacheRoute(dashboardCacheTTL), requireAuth, async (req, res, next) => {
   try {
     const { role } = req.params;
-    const validRoles = ['ceo', 'cfo', 'coo', 'cmo', 'sales', 'operations', 'finance'];
+    const validRoles = ['admin', 'ceo', 'cfo', 'coo', 'cmo', 'sales', 'operations', 'finance'];
 
     if (!validRoles.includes(role)) {
       return res.status(400).json({ error: `role must be one of: ${validRoles.join(', ')}` });
@@ -502,6 +502,20 @@ router.get('/role/:role', cacheRoute(dashboardCacheTTL), requireAuth, async (req
     let dashboardConfig = {};
 
     switch (role) {
+      case 'admin':
+        dashboardConfig = {
+          role: 'admin',
+          title: 'Sovern Portal',
+          widgets: [
+            { id: 'revenue',        name: 'Revenue',            category: 'metrics',     size: 'medium', endpoint: '/api/reports/financial' },
+            { id: 'pipeline',       name: 'Sales Pipeline',     category: 'sales',       size: 'large',  endpoint: '/api/reports/pipeline' },
+            { id: 'kpis',           name: 'Company KPIs',       category: 'metrics',     size: 'large',  endpoint: '/api/dashboard/kpi' },
+            { id: 'cashFlow',       name: 'Cash Flow',          category: 'finance',     size: 'medium', endpoint: '/api/dashboard/finance' },
+            { id: 'recentInquiries',name: 'Recent Inquiries',   category: 'sales',       size: 'medium', endpoint: '/api/dashboard/recent-inquiries' },
+            { id: 'shipments',      name: 'Upcoming Shipments', category: 'operations',  size: 'medium', endpoint: '/api/dashboard/upcoming-shipments' },
+          ]
+        };
+        break;
       case 'ceo':
         dashboardConfig = {
           role: 'ceo',
