@@ -119,9 +119,10 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
-            # Backend deps. Constrain to the backend workspace so we don't
-            # also reinstall the mobile/mcp-server workspaces every deploy.
-            npm install --workspace=backend --include-workspace-root --legacy-peer-deps
+            # Backend deps. Use the workspace install from root — installs
+            # all workspaces but that's a small fixed cost; the sqlite3
+            # skip below is what saves the meaningful time.
+            npm install --legacy-peer-deps
 
             # Skip sqlite3 source rebuild when a working binary is already
             # on disk. The full rebuild is 8-12m on this VM and is only
