@@ -105,8 +105,11 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: alex
           key: ${{ secrets.SERVER_SSH_KEY }}
-          # 30m needed: VM still runs npm install + sqlite3 rebuild from source on 1GB RAM
-          command_timeout: 30m
+          # 45m: backend npm install + sqlite3-from-source on the e2-micro
+          # (1GB RAM, burstable CPU) regularly takes 25-30m. Last deploy of
+          # c0a9d67 hit the 30m wall mid-rebuild. Plus we skip the sqlite3
+          # rebuild whenever a working binary is already on disk.
+          command_timeout: 45m
           script: |
             set -e
             cd ~/sovern-erp
@@ -116,10 +119,20 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
-            # Backend deps (workspace-aware install handles all packages,
-            # but we only really need backend + native sqlite3 here)
-            npm install --legacy-peer-deps
-            npm rebuild sqlite3 --build-from-source
+            # Backend deps. Constrain to the backend workspace so we don't
+            # also reinstall the mobile/mcp-server workspaces every deploy.
+            npm install --workspace=backend --include-workspace-root --legacy-peer-deps
+
+            # Skip sqlite3 source rebuild when a working binary is already
+            # on disk. The full rebuild is 8-12m on this VM and is only
+            # needed once per package.json change. We probe by requiring
+            # the module from node — if it loads, we trust it.
+            if node -e "require('sqlite3'); process.exit(0)" 2>/dev/null; then
+              echo "sqlite3 native binding present and loadable — skipping rebuild"
+            else
+              echo "sqlite3 binding missing or broken — rebuilding from source"
+              npm rebuild sqlite3 --build-from-source
+            fi
 
             # Atomic swap: replace the live dist with the freshly uploaded one
             DIST=~/sovern-erp/frontend/admin-portal/dist
