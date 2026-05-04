@@ -144,7 +144,7 @@ router.get('/top-products', requireAuth, async (req, res, next) => {
         p.name,
         p.sku,
         SUM(soi.quantity) as totalQuantity,
-        SUM(soi.line_total) as totalRevenue,
+        SUM(soi.total) as totalRevenue,
         COUNT(DISTINCT so.id) as orderCount
       FROM Product p
       LEFT JOIN SalesOrderItem soi ON p.id = soi.product_id
