@@ -36,7 +36,6 @@ export default function ProductList() {
     {
       key: 'category',
       label: 'Category',
-      // category may be either a plain string or an object {id,name,slug}; render safely
       render: (row) => {
         const c = row.category
         if (!c) return '—'
@@ -47,7 +46,6 @@ export default function ProductList() {
     {
       key: 'factory',
       label: 'Factory',
-      // factory comes back as an object via the Sequelize include; render its name
       render: (row) => {
         const f = row.factory
         if (!f) return '—'
@@ -85,3 +83,24 @@ export default function ProductList() {
           onClick={() => navigate('/products/new')}
           className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
         >
+          <Plus className="w-4 h-4" />
+          <span>New Product</span>
+        </button>
+      </div>
+
+      <div className="bg-white rounded-lg shadow p-4">
+        <SearchBar onSearch={setSearchQuery} placeholder="Search products..." />
+      </div>
+
+      <div className="bg-white rounded-lg shadow">
+        <DataTable
+          columns={columns}
+          data={products}
+          isLoading={isLoading}
+          onEdit={(product) => navigate(`/products/${product.id}`)}
+          onDelete={() => toast.info('Delete functionality')}
+        />
+      </div>
+    </div>
+  )
+}
