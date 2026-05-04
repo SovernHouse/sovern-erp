@@ -429,8 +429,21 @@ db.sequelize.authenticate()
     return autoMigrateSchema();
   })
   .then(() => {
-    // IMPORTANT: Do NOT use sync({ alter: true }) with SQLite - it recreates tables and wipes data
-    return db.sequelize.sync();
+    // IMPORTANT: Do NOT use sync({ alter: true }) with SQLite - it recreates tables and wipes data.
+    // Plain sync() is also imperfect: when a model declares an explicit
+    // `indexes:` block (e.g. ProductSpecification's unique product_id),
+    // sync() issues CREATE UNIQUE INDEX every boot and SQLite throws if
+    // the index already exists. This is harmless but spams Sentry. Catch
+    // and rethrow only for non-"already exists" errors.
+    return db.sequelize.sync().catch(err => {
+      const msg = (err && err.message) || '';
+      const inner = (err && err.parent && err.parent.message) || '';
+      if (/already exists/i.test(msg) || /already exists/i.test(inner)) {
+        console.warn('sync(): ignoring benign "already exists" error:', inner || msg);
+        return;
+      }
+      throw err;
+    });
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {

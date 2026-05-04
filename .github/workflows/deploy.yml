@@ -150,15 +150,21 @@ jobs:
               exit 1
             fi
 
-            # Restart backend. The systemd-managed pm2 daemon was restoring
-            # zombie 'sovern-erp' duplicates from dump.pm2 even after
-            # 'pm2 delete all', because the daemon's in-memory state raced
-            # the new 'pm2 start'. Hard-kill the whole daemon so it cold-
-            # restarts with no app state, then start a single instance.
-            pm2 kill 2>/dev/null || true
-            sleep 2
+            # Restart backend.
+            # Two reasons we don't 'pm2 kill' here:
+            #  - it tears down the systemd-managed daemon; the next start
+            #    spawns an unmanaged child of the SSH session which dies
+            #    when SSH closes, taking the app with it.
+            #  - 'pm2 save --force' on a fresh daemon has been observed to
+            #    hang the whole deploy script (deploy 25316008991).
+            # Instead: wipe the persisted dump.pm2 *first* so the daemon
+            # has nothing to resurrect, then delete in-memory state, then
+            # start one clean instance, then save the new state.
+            rm -f ~/.pm2/dump.pm2
+            pm2 delete all 2>/dev/null || true
+            sleep 1
             NODE_ENV=production pm2 start server.js --name sovern-erp --cwd ~/sovern-erp/backend
-            pm2 save --force
+            pm2 save 2>/dev/null || true
 
             # Wait long enough for the app to actually start listening.
             # 4s wasn't enough on the constrained VM.
