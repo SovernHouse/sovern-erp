@@ -518,4 +518,3 @@ export default function TriageInbox() {
     </div>
   );
 }
-     
