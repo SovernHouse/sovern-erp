@@ -76,7 +76,12 @@ app.use(cors({
 
 app.use(hpp());
 app.use(require('cookie-parser')());
-app.use(morgan('dev'));
+// PERF: morgan and requestLogging both log every request. In production we
+// only need requestLogging (Winston, structured, file transport). Keeping
+// morgan in dev for human-readable terminal output.
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'));
+}
 app.use(requestId);
 app.use(requestLogging);
 app.use(express.json({ limit: '50mb' }));

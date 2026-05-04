@@ -159,15 +159,24 @@ exports.getLeads = async (req, res) => {
     if (assignedToId) where.assignedToId = assignedToId;
     if (leadType) where.leadType = leadType;
 
-    const { count, rows } = await db.Lead.findAndCountAll({
-      where,
-      offset,
-      limit: parseInt(limit),
-      order: [['createdAt', 'DESC']],
-      include: [
-        { model: db.User, as: 'assignedTo', attributes: ['id', 'firstName', 'lastName', 'email'] },
-      ],
-    });
+    // PERF: split findAndCountAll into two parallel queries.
+    // findAndCountAll with `include` makes Sequelize emit
+    // SELECT COUNT(DISTINCT lead.id) FROM leads LEFT JOIN users ...
+    // which on the e2-micro VM was the dominant cost on /leads (24s observed).
+    // Counting without the JOIN is ~100x faster; we do not need the assignedTo
+    // user to count rows.
+    const [count, rows] = await Promise.all([
+      db.Lead.count({ where }),
+      db.Lead.findAll({
+        where,
+        offset,
+        limit: parseInt(limit),
+        order: [['createdAt', 'DESC']],
+        include: [
+          { model: db.User, as: 'assignedTo', attributes: ['id', 'firstName', 'lastName', 'email'] },
+        ],
+      }),
+    ]);
 
     const leadsWithScore = rows.map(lead => ({
       ...lead.toJSON(),
