@@ -38,10 +38,10 @@ export default function ProductList() {
       label: 'Category',
       // category may be either a plain string or an object {id,name,slug}; render safely
       render: (row) => {
-        const c = row.category;
-        if (!c) return '—';
-        if (typeof c === 'string') return c;
-        return c.name || c.label || c.slug || '—';
+        const c = row.category
+        if (!c) return '—'
+        if (typeof c === 'string') return c
+        return c.name || c.label || c.slug || '—'
       },
     },
     {
@@ -49,10 +49,10 @@ export default function ProductList() {
       label: 'Factory',
       // factory comes back as an object via the Sequelize include; render its name
       render: (row) => {
-        const f = row.factory;
-        if (!f) return '—';
-        if (typeof f === 'string') return f;
-        return f.name || f.companyName || '—';
+        const f = row.factory
+        if (!f) return '—'
+        if (typeof f === 'string') return f
+        return f.name || f.companyName || '—'
       },
     },
     {
@@ -84,4 +84,4 @@ export default function ProductList() {
         <button
           onClick={() => navigate('/products/new')}
           className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-  
+        >
