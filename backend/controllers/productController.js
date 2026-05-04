@@ -73,17 +73,21 @@ const getAll = async (req, res, next) => {
       ];
     }
 
-    const { count, rows } = await db.Product.findAndCountAll({
-      where,
-      include: [
-        { model: db.ProductCategory, as: 'category' },
-        { model: db.Factory, as: 'factory' },
-        { model: db.ProductPrice, as: 'prices', attributes: ['sellingPrice', 'currency'] }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['name', 'ASC']]
-    });
+    // PERF: split count from data fetch.
+    const [count, rows] = await Promise.all([
+      db.Product.count({ where }),
+      db.Product.findAll({
+        where,
+        include: [
+          { model: db.ProductCategory, as: 'category' },
+          { model: db.Factory, as: 'factory' },
+          { model: db.ProductPrice, as: 'prices', attributes: ['sellingPrice', 'currency'] }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['name', 'ASC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
   } catch (error) {
@@ -163,16 +167,20 @@ const getByCategory = async (req, res, next) => {
       throw new NotFoundError('Category not found');
     }
 
-    const { count, rows } = await db.Product.findAndCountAll({
-      where: { categoryId, deletedAt: null },
-      include: [
-        { model: db.Factory, as: 'factory' },
-        { model: db.ProductPrice, as: 'prices' }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['name', 'ASC']]
-    });
+    // PERF: split count from data fetch.
+    const [count, rows] = await Promise.all([
+      db.Product.count({ where: { categoryId, deletedAt: null } }),
+      db.Product.findAll({
+        where: { categoryId, deletedAt: null },
+        include: [
+          { model: db.Factory, as: 'factory' },
+          { model: db.ProductPrice, as: 'prices' }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['name', 'ASC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
   } catch (error) {

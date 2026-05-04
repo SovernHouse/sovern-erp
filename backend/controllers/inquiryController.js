@@ -82,17 +82,21 @@ const getAll = async (req, res, next) => {
       ];
     }
 
-    const { count, rows } = await db.Inquiry.findAndCountAll({
-      where,
-      include: [
-        { model: db.Customer, as: 'customer', attributes: ['companyName'] },
-        { model: db.User, as: 'salesPerson', attributes: ['firstName', 'lastName'] },
-        { association: 'items', attributes: ['id', 'productId', 'quantity'] }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['createdAt', 'DESC']]
-    });
+    // PERF: split count from data fetch.
+    const [count, rows] = await Promise.all([
+      db.Inquiry.count({ where }),
+      db.Inquiry.findAll({
+        where,
+        include: [
+          { model: db.Customer, as: 'customer', attributes: ['companyName'] },
+          { model: db.User, as: 'salesPerson', attributes: ['firstName', 'lastName'] },
+          { association: 'items', attributes: ['id', 'productId', 'quantity'] }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['createdAt', 'DESC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
   } catch (error) {

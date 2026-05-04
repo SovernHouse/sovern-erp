@@ -217,16 +217,20 @@ const getOrderHistory = async (req, res, next) => {
       throw new NotFoundError('Customer not found');
     }
 
-    const { count, rows } = await db.SalesOrder.findAndCountAll({
-      where: { customerId: id },
-      include: [
-        { model: db.Factory, as: 'factory', attributes: ['companyName'] },
-        { association: 'items', attributes: ['id', 'productId', 'quantity', 'total'] }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['createdAt', 'DESC']]
-    });
+    // PERF: split count from data fetch.
+    const [count, rows] = await Promise.all([
+      db.SalesOrder.count({ where: { customerId: id } }),
+      db.SalesOrder.findAll({
+        where: { customerId: id },
+        include: [
+          { model: db.Factory, as: 'factory', attributes: ['companyName'] },
+          { association: 'items', attributes: ['id', 'productId', 'quantity', 'total'] }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['createdAt', 'DESC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
   } catch (error) {

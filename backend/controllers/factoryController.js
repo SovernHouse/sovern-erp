@@ -58,13 +58,17 @@ const getAll = async (req, res, next) => {
       ];
     }
 
-    const { count, rows } = await db.Factory.findAndCountAll({
-      where,
-      include: [{ model: db.Product, as: 'products', attributes: ['id', 'name', 'sku'] }],
-      offset,
-      limit: parseInt(limit),
-      order: [['companyName', 'ASC']]
-    });
+    // PERF: split count from data fetch.
+    const [count, rows] = await Promise.all([
+      db.Factory.count({ where }),
+      db.Factory.findAll({
+        where,
+        include: [{ model: db.Product, as: 'products', attributes: ['id', 'name', 'sku'] }],
+        offset,
+        limit: parseInt(limit),
+        order: [['companyName', 'ASC']]
+      }),
+    ]);
 
     // Filter out confidential factories the requesting user is not permitted to see
     const visibleRows = rows.filter(f => canViewFactory(req.user, f));
@@ -155,16 +159,20 @@ const getProducts = async (req, res, next) => {
       throw new NotFoundError('Factory not found');
     }
 
-    const { count, rows } = await db.Product.findAndCountAll({
-      where: { factoryId: id },
-      include: [
-        { model: db.ProductCategory, as: 'category' },
-        { model: db.ProductPrice, as: 'prices' }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['name', 'ASC']]
-    });
+    // PERF: split count from data fetch.
+    const [count, rows] = await Promise.all([
+      db.Product.count({ where: { factoryId: id } }),
+      db.Product.findAll({
+        where: { factoryId: id },
+        include: [
+          { model: db.ProductCategory, as: 'category' },
+          { model: db.ProductPrice, as: 'prices' }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['name', 'ASC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
   } catch (error) {

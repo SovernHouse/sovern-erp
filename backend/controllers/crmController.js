@@ -58,16 +58,20 @@ exports.getContacts = async (req, res) => {
     if (factoryId) where.factoryId = factoryId;
     if (isActive !== undefined) where.isActive = isActive === 'true';
 
-    const { count, rows } = await db.Contact.findAndCountAll({
-      where,
-      offset,
-      limit: parseInt(limit),
-      order: [['createdAt', 'DESC']],
-      include: [
-        { model: db.Customer, attributes: ['id', 'companyName'] },
-        { model: db.Factory, attributes: ['id', 'companyName'] },
-      ],
-    });
+    // PERF: split count from data fetch — see getLeads for rationale.
+    const [count, rows] = await Promise.all([
+      db.Contact.count({ where }),
+      db.Contact.findAll({
+        where,
+        offset,
+        limit: parseInt(limit),
+        order: [['createdAt', 'DESC']],
+        include: [
+          { model: db.Customer, attributes: ['id', 'companyName'] },
+          { model: db.Factory, attributes: ['id', 'companyName'] },
+        ],
+      }),
+    ]);
 
     res.json({
       success: true,
@@ -388,18 +392,22 @@ exports.getActivities = async (req, res) => {
       where.scheduledAt = { [Op.lt]: new Date() };
     }
 
-    const { count, rows } = await db.Activity.findAndCountAll({
-      where,
-      offset,
-      limit: parseInt(limit),
-      order: [['scheduledAt', 'ASC']],
-      include: [
-        { model: db.Contact, attributes: ['id', 'firstName', 'lastName'] },
-        { model: db.Customer, attributes: ['id', 'companyName'] },
-        { model: db.Lead, attributes: ['id', 'companyName'] },
-        { model: db.User, as: 'assignedUser', attributes: ['id', 'firstName', 'lastName', 'email'] },
-      ],
-    });
+    // PERF: split count from data fetch — 4 joins on COUNT was the heaviest in CRM.
+    const [count, rows] = await Promise.all([
+      db.Activity.count({ where }),
+      db.Activity.findAll({
+        where,
+        offset,
+        limit: parseInt(limit),
+        order: [['scheduledAt', 'ASC']],
+        include: [
+          { model: db.Contact, attributes: ['id', 'firstName', 'lastName'] },
+          { model: db.Customer, attributes: ['id', 'companyName'] },
+          { model: db.Lead, attributes: ['id', 'companyName'] },
+          { model: db.User, as: 'assignedUser', attributes: ['id', 'firstName', 'lastName', 'email'] },
+        ],
+      }),
+    ]);
 
     res.json({
       success: true,
@@ -582,17 +590,21 @@ exports.getDeals = async (req, res) => {
     if (stage) where.stage = stage;
     if (assignedToId) where.assignedToId = assignedToId;
 
-    const { count, rows } = await db.Deal.findAndCountAll({
-      where,
-      offset,
-      limit: parseInt(limit),
-      order: [['createdAt', 'DESC']],
-      include: [
-        { model: db.Customer, attributes: ['id', 'companyName'] },
-        { model: db.Contact, attributes: ['id', 'firstName', 'lastName'] },
-        { model: db.User, as: 'assignedTo', attributes: ['id', 'firstName', 'lastName', 'email'] },
-      ],
-    });
+    // PERF: split count from data fetch.
+    const [count, rows] = await Promise.all([
+      db.Deal.count({ where }),
+      db.Deal.findAll({
+        where,
+        offset,
+        limit: parseInt(limit),
+        order: [['createdAt', 'DESC']],
+        include: [
+          { model: db.Customer, attributes: ['id', 'companyName'] },
+          { model: db.Contact, attributes: ['id', 'firstName', 'lastName'] },
+          { model: db.User, as: 'assignedTo', attributes: ['id', 'firstName', 'lastName', 'email'] },
+        ],
+      }),
+    ]);
 
     res.json({
       success: true,
