@@ -513,4 +513,9 @@ export default function TriageInbox() {
       )}
 
       <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
+    </div>
+  );
+}
      

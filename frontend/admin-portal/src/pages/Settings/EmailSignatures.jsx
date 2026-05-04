@@ -335,4 +335,13 @@ export default function EmailSignatures() {
                   >
                     <Trash2 size={15} />
                   </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
  
