@@ -47,6 +47,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="triage"
+        options={{
+          title: 'Inbox',
+          tabBarIcon: ({ focused }) => <TabIcon icon="📥" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
         name="approvals"
         options={{
           title: 'Approvals',
@@ -68,12 +75,4 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ focused }) => <TabIcon icon="⚙️" focused={focused} />,
-        }}
-      />
-    </Tabs>
-  );
-}
+       

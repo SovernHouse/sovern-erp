@@ -286,3 +286,87 @@ export interface Customer {
   createdAt: string;
   updatedAt: string;
 }
+
+// ─── Triage Inbox ────────────────────────────────────────────────────────
+// Inbound emails detected by the Cowork triage task and parked here pending
+// a decision (promote → lead, forward to Fanzey, mark spam, dismiss, archive).
+// Backend mounted at /api/triage.
+
+export async function getTriageItems(
+  status: 'pending' | 'forwarded' | 'archived' | 'all' = 'pending'
+) {
+  const res = await request<{
+    success: boolean;
+    data: TriageItem[];
+    pagination: { total: number; page: number; pages: number; pageSize: number };
+    pendingCount: number;
+  }>(`/api/triage?status=${status}&limit=50`);
+  return { items: res.data, pendingCount: res.pendingCount };
+}
+
+export async function getTriagePendingCount() {
+  const res = await request<{ count: number }>('/api/triage/pending-count');
+  return res.count ?? 0;
+}
+
+export function promoteTriageToLead(id: string) {
+  return request(`/api/triage/${id}/promote`, { method: 'PATCH' });
+}
+
+export function forwardTriageToFanzey(id: string) {
+  return request(`/api/triage/${id}/forward-fanzey`, { method: 'PATCH' });
+}
+
+export function markTriageSpam(id: string) {
+  return request(`/api/triage/${id}/spam`, { method: 'PATCH' });
+}
+
+export function dismissTriage(id: string) {
+  return request(`/api/triage/${id}/dismiss`, { method: 'PATCH' });
+}
+
+export function archiveTriage(id: string) {
+  return request(`/api/triage/${id}/archive`, { method: 'PATCH' });
+}
+
+export function requestTriageSync() {
+  return request('/api/triage/sync-requested', { method: 'POST' });
+}
+
+// Triage item — inbound email awaiting Alex's decision.
+// Maps to backend/models/TriageItem.js.
+export interface TriageItem {
+  id: string;
+  gmailMessageId: string;
+  inReplyToMessageId?: string | null;
+  isReplyToOutreach?: boolean;
+  matchedOutreachEmailId?: string | null;
+  matchedOutreachEmail?: {
+    id: string;
+    subject: string;
+    toAddress: string;
+    sentAt: string;
+  } | null;
+  senderName?: string | null;
+  senderCompany?: string | null;
+  senderEmail: string;
+  country?: string | null;
+  productInterest?: string | null;
+  intentScore?: 'high' | 'medium' | 'low' | 'spam' | null;
+  suggestedAction?:
+    | 'create_lead'
+    | 'request_info'
+    | 'forward_fanzey'
+    | 'mark_spam'
+    | 'dismiss'
+    | null;
+  detectedLanguage?: string | null;
+  subject: string;
+  bodySnippet?: string | null;
+  status: 'pending' | 'promoted' | 'forwarded' | 'spam' | 'dismissed' | 'archived';
+  autoArchiveAt: string;
+  decidedAt?: string | null;
+  decidedBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
