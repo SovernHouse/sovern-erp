@@ -198,7 +198,8 @@ export default function EmailSignatures() {
   const load = async () => {
     try {
       const res = await api.get('/crm/email-signatures')
-      setSignatures(res.data?.data || [])
+      // api.js auto-unwraps {success,data} so res.data is the array directly
+      setSignatures(Array.isArray(res.data) ? res.data : (res.data?.data || []))
     } catch {
       toast.error('Failed to load signatures')
     } finally {
@@ -334,12 +335,4 @@ export default function EmailSignatures() {
                   >
                     <Trash2 size={15} />
                   </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
+ 

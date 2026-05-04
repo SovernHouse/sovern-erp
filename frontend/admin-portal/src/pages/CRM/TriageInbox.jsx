@@ -325,10 +325,11 @@ export default function TriageInbox() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get(`/api/triage?status=${tab}&limit=50`);
-      setItems(res.data.data || []);
-      setPagination(res.data.pagination || {});
-      setPendingCount(res.data.pendingCount ?? 0);
+      const res = await api.get(`/triage?status=${tab}&limit=50`);
+      // api.js auto-unwraps {success,data} so res.data is the items array directly
+      setItems(Array.isArray(res.data) ? res.data : []);
+      setPagination(res.pagination || {});
+      setPendingCount(res.pendingCount ?? 0);
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Failed to load triage inbox');
     } finally {
@@ -342,8 +343,8 @@ export default function TriageInbox() {
   useEffect(() => {
     const timer = setInterval(async () => {
       try {
-        const res = await api.get('/api/triage/pending-count');
-        setPendingCount(res.data.count ?? 0);
+        const res = await api.get('/triage/pending-count');
+        setPendingCount(res.data?.count ?? res.data ?? 0);
       } catch {}
     }, 120000);
     return () => clearInterval(timer);
@@ -352,7 +353,7 @@ export default function TriageInbox() {
   const handleAction = async (id, action) => {
     setActionLoading(id);
     try {
-      await api.patch(`/api/triage/${id}/${action}`);
+      await api.patch(`/triage/${id}/${action}`);
       await fetchItems(activeTab);
     } catch (err) {
       alert(err.response?.data?.error?.message || `Action failed: ${action}`);
@@ -365,8 +366,8 @@ export default function TriageInbox() {
     setSyncing(true);
     setSyncMessage('');
     try {
-      const res = await api.post('/api/triage/sync-requested');
-      setSyncMessage(res.data.message || 'Sync requested. Check back shortly.');
+      const res = await api.post('/triage/sync-requested');
+      setSyncMessage(res.data?.message || 'Sync requested. Check back shortly.');
       // Refresh after 3s to catch any items the Cowork task may have already posted
       setTimeout(() => { fetchItems(activeTab); setSyncMessage(''); }, 3000);
     } catch (err) {
@@ -512,8 +513,4 @@ export default function TriageInbox() {
       )}
 
       <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
-    </div>
-  );
-}
+     
