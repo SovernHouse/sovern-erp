@@ -63,16 +63,16 @@ const FallbackComponent = ({ error, resetError }) => (
   </div>
 )
 
-// ── PWA: Register service worker for installability ───────────────────────────
-// Chrome requires a registered SW before it will show the install prompt.
-// The SW itself is at /public/sw.js — a vanilla JS file, no build step.
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
-      console.warn('[SW] Registration failed:', err)
-    })
-  })
-}
+
+// ── Service worker: disabled ──────────────────────────────────────────────
+// The previous SW was caching index.html + hashed bundles aggressively, which
+// caused every UI deploy to ship to users only after a manual cache clear.
+// Worse, it had a bug (POST cannot be cached) that threw on every POST.
+// We kept /sw.js on disk as a kill-switch (installs, deletes all caches,
+// unregisters itself, force-reloads clients) so existing browsers with the
+// old SW will self-heal on next visit. We do NOT register a new SW here.
+// If/when a real PWA cache strategy is needed, use vite-plugin-pwa with a
+// proper precache manifest, not a hand-rolled sw.js.
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

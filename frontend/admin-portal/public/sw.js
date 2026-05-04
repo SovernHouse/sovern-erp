@@ -1,104 +1,32 @@
-// ─── Sovern ERP Service Worker ────────────────────────────────────────────────
-// Enables PWA installability (Chrome requires a registered SW).
-// Strategy:
-//   - App shell (HTML/CSS/JS/icons): cache on install, serve from cache
-//   - API calls (/api/*): always network — never serve stale data
-//   - Navigation requests: network-first, fall back to cached index.html
+// ─── Kill-switch service worker ──────────────────────────────────────────────
+// Replaces the previous PWA cache layer that was serving stale index.html and
+// hashed bundle filenames, breaking every UI deploy. The cache strategy was
+// also buggy (POST cannot be cached → unhandled promise rejection in sw.js:98).
 //
-// Bump CACHE_NAME on deploy to force clients to pick up new assets.
+// On install: skip waiting so this SW takes over immediately.
+// On activate: delete every Cache Storage entry and unregister this SW so the
+// browser stops intercepting fetches entirely. After one page load + reload,
+// the browser is back to a vanilla no-SW state.
+//
+// Pair with: removing the navigator.serviceWorker.register() call in index.jsx
+// so future page loads don't re-register a SW at all. The fetch-event listener
+// is intentionally a no-op so the browser doesn't flag the SW as a network
+// proxy during the brief window before unregister completes.
 
-const CACHE_NAME = 'sovern-erp-v1';
+self.addEventListener('install', (e) => {
+  e.waitUntil(self.skipWaiting())
+})
 
-const SHELL_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/favicon.ico',
-  '/favicon-32x32.png',
-  '/favicon-48x48.png',
-  '/favicon-96x96.png',
-  '/android-chrome-192x192.png',
-  '/android-chrome-512x512.png',
-  '/apple-touch-icon.png',
-];
+self.addEventListener('activate', (e) => {
+  e.waitUntil((async () => {
+    const keys = await caches.keys()
+    await Promise.all(keys.map((k) => caches.delete(k)))
+    await self.registration.unregister()
+    const clients = await self.clients.matchAll({ type: 'window' })
+    for (const c of clients) {
+      try { c.navigate(c.url) } catch {}
+    }
+  })())
+})
 
-// ── Install: pre-cache the app shell ─────────────────────────────────────────
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) =>
-      // addAll is all-or-nothing — if one asset fails, the install fails.
-      // Use individual add() calls to be resilient if a non-critical asset 404s.
-      Promise.allSettled(SHELL_ASSETS.map((url) => cache.add(url)))
-    )
-  );
-  // Skip the waiting state so the new SW activates immediately on page reload.
-  self.skipWaiting();
-});
-
-// ── Activate: delete old caches ───────────────────────────────────────────────
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
-      )
-    )
-  );
-  // Take control of all open pages immediately (don't wait for a reload).
-  self.clients.claim();
-});
-
-// ── Fetch: routing strategy ───────────────────────────────────────────────────
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
-
-  // 1. API calls — always go to the network, never cache.
-  //    Stale trade data (prices, statuses) would be dangerous.
-  if (url.pathname.startsWith('/api/')) {
-    return; // fall through to the browser's default network fetch
-  }
-
-  // 2. Cross-origin requests — don't interfere.
-  if (url.origin !== self.location.origin) {
-    return;
-  }
-
-  // 3. Navigation requests (HTML pages) — network-first with cache fallback.
-  //    This ensures the user always gets a fresh page when online, but can
-  //    still load the cached shell when offline.
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          // Cache a fresh copy on each successful navigation.
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('/', clone));
-          return response;
-        })
-        .catch(() =>
-          // Offline: serve the cached app shell so React Router can handle routing.
-          caches.match('/').then((cached) => cached || caches.match('/index.html'))
-        )
-    );
-    return;
-  }
-
-  // 4. Static assets — cache-first.
-  //    JS/CSS/images are fingerprinted by Vite, so stale content isn't a concern.
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      // Not in cache — fetch and cache it for next time.
-      return fetch(request).then((response) => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-        }
-        return response;
-      });
-    })
-  );
-});
+self.addEventListener('fetch', () => {})
