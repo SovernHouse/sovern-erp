@@ -31,7 +31,7 @@ jobs:
             # Rebuild sqlite3 from source — prebuilt binary inchompatible with server glibc
             npm rebuild sqlite3 --build-from-source
             # Build frontend
-            cd frontend/admin-portal && npm run build && cd ~/sovern-erp
-            # Hard reset PM2 — delete stale process entry, start fresh from root cwd
-            # Running from ~/sovern-erp means Node finds node_modules immediately
-            pm2 delete sovern-erp 2>/dev/null || true
+            # NODE_OPTIONS bumps the V8 heap limit — the e2-micro VM has only
+            # ~1GB RAM, and vite+rollup tree-shaking OOMs at the default 512MB
+            # heap. With --max-old-space-size=1536 the build completes in ~52s
+            # using swap. Builds without this silently OOM

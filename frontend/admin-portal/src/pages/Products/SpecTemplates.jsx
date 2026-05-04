@@ -273,7 +273,7 @@ export default function SpecTemplates() {
               </div>
               <div className="flex items-center gap-2 ml-4 shrink-0">
                 <button onClick={() => openApply(tpl.id)} title="Apply to Product"
-                  className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg" title="Apply to product">
+                  className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg">
                   <Copy className="w-4 h-4" />
                 </button>
                 <button onClick={() => openEdit(tpl)} title="Edit"
