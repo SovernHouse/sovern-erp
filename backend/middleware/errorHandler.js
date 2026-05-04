@@ -38,6 +38,15 @@ class ConflictError extends AppError {
 }
 
 const errorHandler = (err, req, res, next) => {
+  // If a response has already been sent (e.g. controller succeeded and
+  // a downstream timeout/middleware later called next(err)), do NOT try
+  // to send a second one. Express's default handler will swallow it.
+  // This was the source of repeated 'Cannot set headers after they are
+  // sent to the client' fatals in Sentry.
+  if (res.headersSent) {
+    return next(err);
+  }
+
   err.statusCode = err.statusCode || 500;
   err.message = err.message || 'Internal Server Error';
 
