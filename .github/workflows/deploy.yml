@@ -150,13 +150,28 @@ jobs:
               exit 1
             fi
 
-            # Restart backend
-            # Using systemd-managed pm2 daemon (pm2-alex.service) — process
-            # auto-restarts on crash and survives reboot. See L-008.
-            pm2 delete sovern-erp 2>/dev/null || true
+            # Restart backend.
+            # IMPORTANT: pm2 delete by NAME only kills one instance, but
+            # repeated deploys had been stacking duplicate sovern-erp entries
+            # (different IDs, same name, all fighting for port 3001). Wipe
+            # everything pm2 is tracking before starting fresh.
+            pm2 delete all 2>/dev/null || true
             NODE_ENV=production pm2 start server.js --name sovern-erp --cwd ~/sovern-erp/backend
             pm2 save
 
-            # Sanity check
-            sleep 4
-            curl -s -o /dev/null -w 'health %{http_code} %{time_total}s\n' http://localhost:3001/api/health
+            # Wait long enough for the app to actually start listening.
+            # 4s wasn't enough on the constrained VM.
+
+            # Sanity check — give the app 12s to bind to the port and
+            # respond, then probe health. If still 000, fail loudly so the
+            # workflow shows red instead of silently shipping a dead VM.
+            sleep 12
+            HEALTH=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/api/health || echo "000")
+            echo "health $HEALTH"
+            if [ "$HEALTH" != "200" ]; then
+              echo "ERROR: backend health check failed (got $HEALTH). pm2 status:"
+              pm2 status
+              echo "Tailing pm2 logs:"
+              pm2 logs sovern-erp --lines 50 --nostream || true
+              exit 1
+            fi
