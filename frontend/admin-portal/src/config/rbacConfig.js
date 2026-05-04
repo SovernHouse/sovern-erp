@@ -163,8 +163,13 @@ export const NAV_ITEMS_BY_ROLE = {
       label: 'Outreach',
       icon: 'Users2',
       submenu: [
+        { label: 'CRM Dashboard',   path: '/crm',              permission: 'outreach' },
+        { label: 'Leads',           path: '/crm/leads',        permission: 'outreach' },
+        { label: 'Pipeline',        path: '/crm/pipeline',     permission: 'outreach' },
+        { label: 'Activities',      path: '/crm/activities',   permission: 'outreach' },
+        { label: 'Contacts',        path: '/crm/contacts',     permission: 'outreach' },
         { label: 'Email Inbox',     path: '/crm/inbox',        permission: 'outreach' },
-        { label: 'Client Contacts', path: '/client-contacts', permission: 'outreach' },
+        { label: 'Client Contacts', path: '/client-contacts',  permission: 'outreach' },
       ],
     },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
@@ -283,8 +288,13 @@ export const NAV_ITEMS_BY_ROLE = {
       label: 'Outreach',
       icon: 'Users2',
       submenu: [
+        { label: 'CRM Dashboard',   path: '/crm',              permission: 'outreach' },
+        { label: 'Leads',           path: '/crm/leads',        permission: 'outreach' },
+        { label: 'Pipeline',        path: '/crm/pipeline',     permission: 'outreach' },
+        { label: 'Activities',      path: '/crm/activities',   permission: 'outreach' },
+        { label: 'Contacts',        path: '/crm/contacts',     permission: 'outreach' },
         { label: 'Email Inbox',     path: '/crm/inbox',        permission: 'outreach' },
-        { label: 'Client Contacts', path: '/client-contacts', permission: 'outreach' },
+        { label: 'Client Contacts', path: '/client-contacts',  permission: 'outreach' },
       ],
     },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
@@ -424,7 +434,15 @@ export const NAV_ITEMS_BY_ROLE = {
     },
     {
       label: 'Outreach', icon: 'Users2',
-      submenu: [{ label: 'Client Contacts', path: '/client-contacts', permission: 'outreach' }],
+      submenu: [
+        { label: 'CRM Dashboard',   path: '/crm',              permission: 'outreach' },
+        { label: 'Leads',           path: '/crm/leads',        permission: 'outreach' },
+        { label: 'Pipeline',        path: '/crm/pipeline',     permission: 'outreach' },
+        { label: 'Activities',      path: '/crm/activities',   permission: 'outreach' },
+        { label: 'Contacts',        path: '/crm/contacts',     permission: 'outreach' },
+        { label: 'Email Inbox',     path: '/crm/inbox',        permission: 'outreach' },
+        { label: 'Client Contacts', path: '/client-contacts',  permission: 'outreach' },
+      ],
     },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
     { label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' },
@@ -469,7 +487,15 @@ export const NAV_ITEMS_BY_ROLE = {
     },
     {
       label: 'Outreach', icon: 'Users2',
-      submenu: [{ label: 'Client Contacts', path: '/client-contacts', permission: 'outreach' }],
+      submenu: [
+        { label: 'CRM Dashboard',   path: '/crm',              permission: 'outreach' },
+        { label: 'Leads',           path: '/crm/leads',        permission: 'outreach' },
+        { label: 'Pipeline',        path: '/crm/pipeline',     permission: 'outreach' },
+        { label: 'Activities',      path: '/crm/activities',   permission: 'outreach' },
+        { label: 'Contacts',        path: '/crm/contacts',     permission: 'outreach' },
+        { label: 'Email Inbox',     path: '/crm/inbox',        permission: 'outreach' },
+        { label: 'Client Contacts', path: '/client-contacts',  permission: 'outreach' },
+      ],
     },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
     { label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' },
@@ -492,7 +518,15 @@ export const NAV_ITEMS_BY_ROLE = {
     { label: 'Products', icon: 'Package', path: '/products', permission: 'products' },
     {
       label: 'Outreach', icon: 'Users2',
-      submenu: [{ label: 'Client Contacts', path: '/client-contacts', permission: 'outreach' }],
+      submenu: [
+        { label: 'CRM Dashboard',   path: '/crm',              permission: 'outreach' },
+        { label: 'Leads',           path: '/crm/leads',        permission: 'outreach' },
+        { label: 'Pipeline',        path: '/crm/pipeline',     permission: 'outreach' },
+        { label: 'Activities',      path: '/crm/activities',   permission: 'outreach' },
+        { label: 'Contacts',        path: '/crm/contacts',     permission: 'outreach' },
+        { label: 'Email Inbox',     path: '/crm/inbox',        permission: 'outreach' },
+        { label: 'Client Contacts', path: '/client-contacts',  permission: 'outreach' },
+      ],
     },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
   ],
@@ -693,39 +727,4 @@ const buildNavFromPermissions = (permissions) => {
 
   const finItems = [
     has('invoices')  && { label: 'Invoices', path: '/invoices', permission: 'invoices' },
-    has('payments')  && { label: 'Payments', path: '/payments', permission: 'payments' },
-    has('claims')    && { label: 'Claims', path: '/claims', permission: 'claims' },
-  ].filter(Boolean)
-  if (finItems.length) nav.push({ label: 'Finance', icon: 'DollarSign', submenu: finItems })
-
-  if (has('inventory')) nav.push({ label: 'Operations', icon: 'CheckCircle', submenu: [{ label: 'Inventory', path: '/inventory', permission: 'inventory' }] })
-  if (has('outreach'))  nav.push({ label: 'Outreach', icon: 'Users2', submenu: [{ label: 'Client Contacts', path: '/client-contacts', permission: 'outreach' }] })
-  if (has('reports'))   nav.push({ label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' })
-  if (has('analytics')) nav.push({ label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' })
-  if (has('bi-dashboard')) nav.push({ label: 'BI Dashboard', icon: 'BarChart3', path: '/bi-dashboard', permission: 'bi-dashboard' })
-  if (has('documents')) nav.push({ label: 'Documents', icon: 'FileText', submenu: [{ label: 'Document Templates', path: '/documents/templates', permission: 'documents' }] })
-  if (has('settings'))  nav.push({ label: 'Settings', icon: 'Cog', submenu: [
-    { label: 'General', path: '/settings', permission: 'settings' },
-    { label: 'Users', path: '/settings/users', permission: 'settings' },
-    { label: 'Email Signatures', path: '/settings/email-signatures', permission: 'settings' },
-    { label: 'Role Permissions', path: '/settings/role-permissions', permission: 'settings' },
-    { label: 'Product Taxonomy', path: '/settings/product-taxonomy', permission: 'settings' },
-    { label: 'Bulk Import', path: '/settings/bulk-import', permission: 'settings' },
-  ]})
-  return nav
-}
-
-// Helper function to get allowed items for a specific role.
-// If the role has a hardcoded nav, use it. Otherwise auto-build from permission strings.
-export const getAllowedNavItems = (role, dynamicPermissions = null) => {
-  if (NAV_ITEMS_BY_ROLE[role]) return NAV_ITEMS_BY_ROLE[role]
-  // Dynamic fallback — used for custom roles loaded from the DB
-  if (dynamicPermissions) return buildNavFromPermissions(dynamicPermissions)
-  return [{ label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' }]
-}
-
-// Helper function to check if user can access a route
-export const canAccessRoute = (userRole, requiredPermission, dynamicPermissions = null) => {
-  const permissions = dynamicPermissions || ROLE_PERMISSIONS[userRole] || []
-  return permissions.includes('*') || permissions.includes(requiredPermission)
-}
+    has('payments')  && { label: 'Payment
