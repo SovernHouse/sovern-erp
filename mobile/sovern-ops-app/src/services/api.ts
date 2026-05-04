@@ -471,3 +471,54 @@ export interface PurchaseOrder {
   updatedAt: string
   factory?: { id: string; name?: string; companyName?: string }
 }
+
+// ─── Inquiries (RFQs) ────────────────────────────────────────────────────
+// Inbound inquiries from web forms, email, phone, portal. Reps can read +
+// assign on the road. Updating status moves them through the funnel:
+// new → in_review → quoted → follow_up → converted/lost.
+
+export async function getInquiries(params?: { search?: string; status?: string; page?: number; limit?: number }) {
+  const qs = new URLSearchParams(
+    Object.entries(params ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+  ).toString()
+  return request<PaginatedResponse<Inquiry>>(`/api/inquiries${qs ? `?${qs}` : ''}`)
+}
+
+export async function getInquiry(id: string) {
+  const res = await request<{ success: boolean; data: Inquiry }>(`/api/inquiries/${id}`)
+  return res.data
+}
+
+export async function updateInquiryStatus(id: string, status: string) {
+  const res = await request<{ success: boolean; data: Inquiry }>(`/api/inquiries/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  })
+  return res.data
+}
+
+export interface Inquiry {
+  id: string
+  inquiryNumber: string
+  customerId?: string
+  salesPersonId?: string
+  status: 'new' | 'in_review' | 'quoted' | 'follow_up' | 'converted' | 'lost' | 'cancelled' | string
+  source?: 'web' | 'email' | 'phone' | 'portal' | string
+  priority?: 'low' | 'medium' | 'high' | 'urgent' | string
+  notes?: string
+  followUpDate?: string
+  estimatedValue?: number
+  createdAt: string
+  updatedAt: string
+  customer?: { id: string; companyName: string; email?: string; country?: string }
+  salesPerson?: { id: string; firstName: string; lastName: string }
+}
+
+// ─── Auth: forgot-password ───────────────────────────────────────────────
+
+export async function requestPasswordReset(email: string) {
+  return request<{ success: boolean; message?: string }>('/api/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}

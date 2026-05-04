@@ -32,6 +32,7 @@ export default function TabLayout() {
       <Tabs.Screen name="activities" options={{ title: 'Activities', tabBarIcon: ({ focused }) => <TabIcon icon="🗓️" focused={focused} /> }} />
 
       {/* — CRM — */}
+      <Tabs.Screen name="inquiries" options={{ title: 'Inquiries', tabBarIcon: ({ focused }) => <TabIcon icon="📨" focused={focused} /> }} />
       <Tabs.Screen name="leads" options={{ title: 'Leads', tabBarIcon: ({ focused }) => <TabIcon icon="👥" focused={focused} /> }} />
 
       {/* — Operations (read-only on the road) — */}

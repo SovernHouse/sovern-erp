@@ -5,7 +5,7 @@ import {
   StyleSheet, ActivityIndicator, KeyboardAvoidingView,
   Platform, Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { login } from '../../src/services/api';
 import { useAuthStore } from '../../src/store/authStore';
 import { COLORS, CONFIG } from '../../src/constants/config';
@@ -81,6 +81,14 @@ export default function LoginScreen() {
             : <Text style={styles.buttonText}>Sign in</Text>
           }
         </TouchableOpacity>
+
+        <Link href="/(auth)/forgot-password" asChild>
+          <TouchableOpacity style={{ marginTop: 16, alignSelf: 'center' }}>
+            <Text style={{ color: COLORS.cream, fontSize: 13, fontWeight: '600', opacity: 0.85 }}>
+              Forgot password?
+            </Text>
+          </TouchableOpacity>
+        </Link>
       </View>
 
       <Text style={styles.footer}>Sovern Ops · Internal access only</Text>
