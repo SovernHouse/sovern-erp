@@ -139,6 +139,7 @@ const TriageInbox    = React.lazy(() => import('./pages/CRM/TriageInbox'))
 
 // Public — no auth required
 const ApprovalPage = React.lazy(() => import('./pages/Approvals/ApprovalPage'))
+const InternalApprovalsList = React.lazy(() => import('./pages/InternalApprovals/InternalApprovalsList'))
 
 // ─── ProtectedRoute ───────────────────────────────────────────────────────────
 // Handles auth redirect + RBAC check in one wrapper.
@@ -317,6 +318,7 @@ function AppRoutes() {
       <Route path="/documents/templates" element={<P permission="documents"><TemplateManager /></P>} />
 
       {/* ── Audit Trail ── */}
+      <Route path="/internal-approvals" element={<P roles={['admin', 'manager', 'ceo', 'coo']}><InternalApprovalsList /></P>} />
       <Route path="/audit-trail" element={<P permission="settings"><AuditTrailPage /></P>} />
 
       {/* ── Settings ── */}
