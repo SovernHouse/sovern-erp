@@ -162,7 +162,13 @@ jobs:
             # start one clean instance, then save the new state.
             rm -f ~/.pm2/dump.pm2
             pm2 delete all 2>/dev/null || true
-            sleep 1
+            # pm2 delete only stops what pm2 knows about. Earlier failed
+            # deploys left orphan node processes bound to :3001 that pm2
+            # forgot, so the new pm2 start crashed loop on EADDRINUSE.
+            # Kill anything still on the port; ignore failures (nothing
+            # listening, fuser missing, etc.).
+            fuser -k 3001/tcp 2>/dev/null || true
+            sleep 2
             NODE_ENV=production pm2 start server.js --name sovern-erp --cwd ~/sovern-erp/backend
             pm2 save 2>/dev/null || true
 

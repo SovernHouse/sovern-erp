@@ -31,6 +31,12 @@ const ConfigManager = require('./modules/configManager');
 const createModuleRoutes = require('./modules/moduleRoutes');
 
 const app = express();
+
+// Production runs behind nginx (1 hop). Express needs to trust the proxy
+// so req.ip and req.protocol reflect the real client, and so libraries
+// like express-rate-limit don't throw ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
+app.set('trust proxy', 1);
+
 const server = http.createServer(app);
 
 const socketCorsOrigins = process.env.SOCKET_IO_CORS_ORIGIN
