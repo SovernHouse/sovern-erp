@@ -1,5 +1,20 @@
 name: Deploy to Sovern ERP
 
+# Two-stage deploy:
+#   1) build-frontend — runs on the GitHub Actions runner (free, 7GB RAM,
+#      no OOM). Produces frontend/admin-portal/dist/ and uploads it as a
+#      workflow artifact.
+#   2) deploy-to-vm — downloads the artifact, scp's it to the e2-micro VM,
+#      then SSH's in to git-pull the backend, npm install backend deps,
+#      and reload PM2. The VM never runs vite/rollup, so the 1GB RAM
+#      ceiling no longer matters.
+#
+# Why this matters: prior to this change, vite ran on the VM. Rollup
+# tree-shaking peaked >1GB → silent OOM. The script's && chain swallowed
+# the failure path so the workflow reported green while dist/ was never
+# updated. Symptoms: every "successful deploy" shipped nothing for hours.
+# See lessons.md L-005 / L-006 / L-007.
+
 on:
   push:
     branches:
@@ -7,31 +22,126 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
-    name: SSH deploy
+  build-frontend:
+    name: Build frontend on Actions runner
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy via SSH
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build admin-portal frontend
+        # NODE_OPTIONS keeps parity with the VM build command for any future
+        # debugging; on the runner the heap budget is way more than enough.
+        env:
+          NODE_OPTIONS: '--max-old-space-size=1536'
+        run: npm run build --workspace=frontend/admin-portal
+
+      - name: Verify dist was produced
+        # If anything in the build chain silently fails, fail the workflow
+        # explicitly instead of letting deploy-to-vm push an empty artifact.
+        run: |
+          test -f frontend/admin-portal/dist/index.html || (echo "ERROR: dist/index.html missing — build silently failed"; exit 1)
+          ls -la frontend/admin-portal/dist/
+          ls frontend/admin-portal/dist/assets/ | head -5
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-portal-dist
+          path: frontend/admin-portal/dist/
+          retention-days: 3
+          if-no-files-found: error
+
+  deploy-to-vm:
+    name: Ship dist to VM + reload backend
+    needs: build-frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: admin-portal-dist
+          path: dist/
+
+      - name: Sanity-check artifact before shipping
+        run: |
+          test -f dist/index.html || (echo "ERROR: artifact has no index.html"; exit 1)
+          echo "Artifact contents:"
+          ls -la dist/
+          # Confirm bundle has the expected URL shape (no /api/api/triage)
+          if grep -rq 'api/api/triage' dist/assets/ 2>/dev/null; then
+            echo "ERROR: dist still has /api/api/triage — bundle is stale or unfixed"
+            exit 1
+          fi
+
+      - name: Copy dist to VM
+        # Using scp-action because it's the standard pair to ssh-action.
+        # Target: ~/sovern-erp/frontend/admin-portal/dist/ on the VM.
+        # Strategy: stage to a tmp dir first, then atomic-swap. Avoids
+        # nginx serving a half-uploaded asset mid-deploy.
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: alex
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: 'dist/*'
+          target: '/home/alex/sovern-erp-dist-incoming/'
+          strip_components: 1
+
+      - name: SSH — atomic swap dist + reload backend
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: alex
           key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 30m
+          command_timeout: 10m
           script: |
             set -e
             cd ~/sovern-erp
-            # Hard-reset to origin/main so deploy never fails on diverged history
+
+            # Backend code: hard-reset to origin/main (frontend src is also
+            # pulled, but we ignore it — dist comes from the runner)
             git fetch origin
             git reset --hard origin/main
-            # Use npm install (not npm ci) from workspace root — ensures all deps
-            # are hoisted correctlhy into ~/sovern-erp/node_modulhes
+
+            # Backend deps (workspace-aware install handles all packages,
+            # but we only really need backend + native sqlite3 here)
             npm install --legacy-peer-deps
-            # Rebuild sqlite3 from source — prebuilt binary inchompatible with server glibc
             npm rebuild sqlite3 --build-from-source
-            # Build frontend
-            # NODE_OPTIONS bumps the V8 heap limit — the e2-micro VM has only
-            # ~1GB RAM, and vite+rollup tree-shaking OOMs at the default 512MB
-            # heap. With --max-old-space-size=1536 the build completes in ~52s
-            # using swap. Builds without this silently OOM
+
+            # Atomic swap: replace the live dist with the freshly uploaded one
+            DIST=~/sovern-erp/frontend/admin-portal/dist
+            STAGED=~/sovern-erp-dist-incoming
+            if [ -d "$STAGED" ] && [ -f "$STAGED/index.html" ]; then
+              # Backup current dist (one rotation only — disk is tight)
+              rm -rf "$DIST.prev" 2>/dev/null || true
+              [ -d "$DIST" ] && mv "$DIST" "$DIST.prev"
+              mv "$STAGED" "$DIST"
+              echo "Swapped fresh dist into place. Previous dist at $DIST.prev"
+              ls -la "$DIST/index.html"
+            else
+              echo "ERROR: staged dist at $STAGED is empty or missing index.html"
+              exit 1
+            fi
+
+            # Restart backend
+            # Using systemd-managed pm2 daemon (pm2-alex.service) — process
+            # auto-restarts on crash and survives reboot. See L-008.
+            pm2 delete sovern-erp 2>/dev/null || true
+            NODE_ENV=production pm2 start server.js --name sovern-erp --cwd ~/sovern-erp/backend
+            pm2 save
+
+            # Sanity check
+            sleep 4
+            curl -s -o /dev/null -w 'health %{http_code} %{time_total}s\n' http://localhost:3001/api/health
