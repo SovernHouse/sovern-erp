@@ -44,7 +44,7 @@ const CampaignList = () => {
       if (filters.type) params.append('type', filters.type);
       params.append('limit', 100);
 
-      const response = await api.get(`/api/crm/campaigns?${params.toString()}`);
+      const response = await api.get(`/crm/campaigns?${params.toString()}`);
       setCampaigns(response.data);
       setError(null);
     } catch (err) {
@@ -69,7 +69,7 @@ const CampaignList = () => {
 
   const handleDeleteCampaign = async (id) => {
     try {
-      await api.delete(`/api/crm/campaigns/${id}`);
+      await api.delete(`/crm/campaigns/${id}`);
       setCampaigns(campaigns.filter(c => c.id !== id));
       setDeleteConfirm({ isOpen: false, campaign: null });
     } catch (err) {

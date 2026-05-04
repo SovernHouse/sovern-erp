@@ -35,7 +35,7 @@ const CampaignForm = () => {
   const fetchCampaign = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/api/crm/campaigns/${id}`);
+      const response = await api.get(`/crm/campaigns/${id}`);
       const campaign = response.data;
       setFormData({
         name: campaign.name,
@@ -88,9 +88,9 @@ const CampaignForm = () => {
       };
 
       if (id) {
-        await api.put(`/api/crm/campaigns/${id}`, submitData);
+        await api.put(`/crm/campaigns/${id}`, submitData);
       } else {
-        await api.post('/api/crm/campaigns', submitData);
+        await api.post('/crm/campaigns', submitData);
       }
 
       setSuccess(true);

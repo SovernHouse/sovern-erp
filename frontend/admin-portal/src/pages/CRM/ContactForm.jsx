@@ -40,8 +40,8 @@ const ContactForm = () => {
   const fetchCustomersAndFactories = async () => {
     try {
       const [customersRes, factoriesRes] = await Promise.all([
-        api.get('/api/customers?limit=100'),
-        api.get('/api/factories?limit=100'),
+        api.get('/customers?limit=100'),
+        api.get('/factories?limit=100'),
       ]);
       setCustomers(customersRes.data || []);
       setFactories(factoriesRes.data || []);
@@ -53,7 +53,7 @@ const ContactForm = () => {
   const fetchContact = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/api/crm/contacts/${id}`);
+      const response = await api.get(`/crm/contacts/${id}`);
       const contact = response.data;
       setFormData({
         firstName: contact.firstName,
@@ -103,9 +103,9 @@ const ContactForm = () => {
       };
 
       if (id) {
-        await api.put(`/api/crm/contacts/${id}`, submitData);
+        await api.put(`/crm/contacts/${id}`, submitData);
       } else {
-        await api.post('/api/crm/contacts', submitData);
+        await api.post('/crm/contacts', submitData);
       }
 
       setSuccess(true);

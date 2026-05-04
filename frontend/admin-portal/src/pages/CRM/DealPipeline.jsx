@@ -38,7 +38,7 @@ const DealPipeline = () => {
   const fetchDeals = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/crm/pipeline');
+      const response = await api.get('/crm/pipeline');
       setDeals(response.data);
       setError(null);
     } catch (err) {
@@ -51,7 +51,7 @@ const DealPipeline = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await api.get('/api/users?limit=100');
+      const response = await api.get('/users?limit=100');
       setUsers(response.data || []);
     } catch (err) {
       console.error('Failed to load users:', err);
@@ -76,7 +76,7 @@ const DealPipeline = () => {
     }
 
     try {
-      await api.put(`/api/crm/deals/${draggedDeal.id}/stage`, { stage: targetStage });
+      await api.put(`/crm/deals/${draggedDeal.id}/stage`, { stage: targetStage });
       setDraggedDeal(null);
       fetchDeals();
     } catch (err) {

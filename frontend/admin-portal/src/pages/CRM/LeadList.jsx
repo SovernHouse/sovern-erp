@@ -53,7 +53,7 @@ const LeadList = () => {
       if (filters.assignedToId) params.append('assignedToId', filters.assignedToId);
       params.append('limit', 100);
 
-      const response = await api.get(`/api/crm/leads?${params.toString()}`);
+      const response = await api.get(`/crm/leads?${params.toString()}`);
       setLeads(response.data);
       setError(null);
     } catch (err) {
@@ -87,7 +87,7 @@ const LeadList = () => {
     if (!deleteConfirm.lead) return;
     try {
       setIsDeleting(true);
-      await api.delete(`/api/crm/leads/${deleteConfirm.lead.id}`);
+      await api.delete(`/crm/leads/${deleteConfirm.lead.id}`);
       setLeads(leads.filter(lead => lead.id !== deleteConfirm.lead.id));
       setDeleteConfirm({ isOpen: false, lead: null });
     } catch (err) {
@@ -99,7 +99,7 @@ const LeadList = () => {
 
   const handleUpdateStatus = async (leadId, newStatus) => {
     try {
-      await api.put(`/api/crm/leads/${leadId}/status`, { status: newStatus });
+      await api.put(`/crm/leads/${leadId}/status`, { status: newStatus });
       setLeads(leads.map(lead =>
         lead.id === leadId ? { ...lead, status: newStatus } : lead
       ));

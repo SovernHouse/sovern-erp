@@ -51,7 +51,7 @@ const ActivityList = () => {
       if (filters.assignedToId) params.append('assignedToId', filters.assignedToId);
       params.append('limit', 100);
 
-      const response = await api.get(`/api/crm/activities?${params.toString()}`);
+      const response = await api.get(`/crm/activities?${params.toString()}`);
       setActivities(response.data);
       setError(null);
     } catch (err) {
@@ -64,7 +64,7 @@ const ActivityList = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await api.get('/api/users?limit=100');
+      const response = await api.get('/users?limit=100');
       setUsers(response.data || []);
     } catch (err) {
       console.error('Failed to load users:', err);
@@ -86,7 +86,7 @@ const ActivityList = () => {
 
   const handleCompleteActivity = async (id) => {
     try {
-      await api.post(`/api/crm/activities/${id}/complete`, {
+      await api.post(`/crm/activities/${id}/complete`, {
         outcome: 'Completed',
       });
       setActivities(activities.map(a =>
@@ -100,7 +100,7 @@ const ActivityList = () => {
 
   const handleDeleteActivity = async (id) => {
     try {
-      await api.delete(`/api/crm/activities/${id}`);
+      await api.delete(`/crm/activities/${id}`);
       setActivities(activities.filter(a => a.id !== id));
       setDeleteConfirm({ isOpen: false, activity: null });
     } catch (err) {

@@ -40,10 +40,10 @@ const ActivityForm = () => {
   const fetchData = async () => {
     try {
       const [contactsRes, customersRes, leadsRes, usersRes] = await Promise.all([
-        api.get('/api/crm/contacts?limit=100'),
-        api.get('/api/customers?limit=100'),
-        api.get('/api/crm/leads?limit=100'),
-        api.get('/api/users?limit=100'),
+        api.get('/crm/contacts?limit=100'),
+        api.get('/customers?limit=100'),
+        api.get('/crm/leads?limit=100'),
+        api.get('/users?limit=100'),
       ]);
       setContacts(contactsRes.data || []);
       setCustomers(customersRes.data || []);
@@ -57,7 +57,7 @@ const ActivityForm = () => {
   const fetchActivity = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/api/crm/activities/${id}`);
+      const response = await api.get(`/crm/activities/${id}`);
       const activity = response.data;
       setFormData({
         type: activity.type,
@@ -109,9 +109,9 @@ const ActivityForm = () => {
       };
 
       if (id) {
-        await api.put(`/api/crm/activities/${id}`, submitData);
+        await api.put(`/crm/activities/${id}`, submitData);
       } else {
-        await api.post('/api/crm/activities', submitData);
+        await api.post('/crm/activities', submitData);
       }
 
       setSuccess(true);

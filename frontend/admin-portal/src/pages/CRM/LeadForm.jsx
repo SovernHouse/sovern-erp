@@ -41,7 +41,7 @@ const LeadForm = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await api.get('/api/users?limit=100');
+      const response = await api.get('/users?limit=100');
       setUsers(response.data || []);
     } catch (err) {
       console.error('Failed to load users:', err);
@@ -51,7 +51,7 @@ const LeadForm = () => {
   const fetchLead = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/api/crm/leads/${id}`);
+      const response = await api.get(`/crm/leads/${id}`);
       const lead = response.data;
       setFormData({
         companyName: lead.companyName,
@@ -104,9 +104,9 @@ const LeadForm = () => {
       };
 
       if (id) {
-        await api.put(`/api/crm/leads/${id}`, submitData);
+        await api.put(`/crm/leads/${id}`, submitData);
       } else {
-        await api.post('/api/crm/leads', submitData);
+        await api.post('/crm/leads', submitData);
       }
 
       setSuccess(true);

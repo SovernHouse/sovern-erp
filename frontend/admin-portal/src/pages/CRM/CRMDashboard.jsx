@@ -49,7 +49,7 @@ const CRMDashboard = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/crm/dashboard');
+      const response = await api.get('/crm/dashboard');
       setDashboardData(response.data);
       setError(null);
     } catch (err) {

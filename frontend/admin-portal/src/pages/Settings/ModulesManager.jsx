@@ -135,7 +135,7 @@ export default function ModulesManager() {
   async function load() {
     try {
       setLoading(true)
-      const res = await api.get('/api/modules')
+      const res = await api.get('/modules')
       setModules(res.data?.data || res.data || [])
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to load modules')
@@ -149,7 +149,7 @@ export default function ModulesManager() {
   async function handleToggle(name, enable) {
     setToggling(name)
     try {
-      await api.post(`/api/modules/${name}/${enable ? 'enable' : 'disable'}`)
+      await api.post(`/modules/${name}/${enable ? 'enable' : 'disable'}`)
       setModules(prev => prev.map(m => m.name === name ? { ...m, enabled: enable } : m))
       toast.success(`${MODULE_META[name]?.label || name} ${enable ? 'enabled' : 'disabled'}. Restart the server to apply route changes.`, { duration: 5000 })
     } catch (err) {

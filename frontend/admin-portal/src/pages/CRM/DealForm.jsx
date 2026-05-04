@@ -39,9 +39,9 @@ const DealForm = () => {
   const fetchCustomersContactsUsers = async () => {
     try {
       const [customersRes, contactsRes, usersRes] = await Promise.all([
-        api.get('/api/customers?limit=100'),
-        api.get('/api/crm/contacts?limit=100'),
-        api.get('/api/users?limit=100'),
+        api.get('/customers?limit=100'),
+        api.get('/crm/contacts?limit=100'),
+        api.get('/users?limit=100'),
       ]);
       setCustomers(customersRes.data || []);
       setContacts(contactsRes.data || []);
@@ -54,7 +54,7 @@ const DealForm = () => {
   const fetchDeal = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/api/crm/deals/${id}`);
+      const response = await api.get(`/crm/deals/${id}`);
       const deal = response.data;
       setFormData({
         title: deal.title,
@@ -103,9 +103,9 @@ const DealForm = () => {
       };
 
       if (id) {
-        await api.put(`/api/crm/deals/${id}`, submitData);
+        await api.put(`/crm/deals/${id}`, submitData);
       } else {
-        await api.post('/api/crm/deals', submitData);
+        await api.post('/crm/deals', submitData);
       }
 
       setSuccess(true);

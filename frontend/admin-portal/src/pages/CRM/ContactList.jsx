@@ -43,7 +43,7 @@ const ContactList = () => {
       params.append('isActive', filters.isActive);
       params.append('limit', 100);
 
-      const response = await api.get(`/api/crm/contacts?${params.toString()}`);
+      const response = await api.get(`/crm/contacts?${params.toString()}`);
       setContacts(response.data);
       setError(null);
     } catch (err) {
@@ -57,8 +57,8 @@ const ContactList = () => {
   const fetchCustomersAndFactories = async () => {
     try {
       const [customersRes, factoriesRes] = await Promise.all([
-        api.get('/api/customers?limit=100'),
-        api.get('/api/factories?limit=100'),
+        api.get('/customers?limit=100'),
+        api.get('/factories?limit=100'),
       ]);
       setCustomers(customersRes.data || []);
       setFactories(factoriesRes.data || []);
@@ -88,7 +88,7 @@ const ContactList = () => {
   const handleDeleteContact = async (id) => {
     if (window.confirm('Are you sure you want to delete this contact?')) {
       try {
-        await api.delete(`/api/crm/contacts/${id}`);
+        await api.delete(`/crm/contacts/${id}`);
         setContacts(contacts.filter(contact => contact.id !== id));
       } catch (err) {
         setError(err.response?.data?.message || 'Failed to delete contact');
