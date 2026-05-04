@@ -105,7 +105,8 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: alex
           key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 10m
+          # 30m needed: VM still runs npm install + sqlite3 rebuild from source on 1GB RAM
+          command_timeout: 30m
           script: |
             set -e
             cd ~/sovern-erp
