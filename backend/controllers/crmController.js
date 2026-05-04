@@ -143,7 +143,7 @@ exports.deleteContact = async (req, res) => {
 // LEAD CONTROLLERS
 exports.getLeads = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, status, source, assignedToId } = req.query;
+    const { page = 1, limit = 10, search, status, source, assignedToId, leadType } = req.query;
     const offset = (page - 1) * limit;
 
     const where = {};
@@ -157,6 +157,7 @@ exports.getLeads = async (req, res) => {
     if (status) where.status = status;
     if (source) where.source = source;
     if (assignedToId) where.assignedToId = assignedToId;
+    if (leadType) where.leadType = leadType;
 
     const { count, rows } = await db.Lead.findAndCountAll({
       where,
