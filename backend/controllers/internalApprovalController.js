@@ -26,16 +26,19 @@ exports.getAll = async (req, res) => {
       ];
     }
 
-    const { count, rows } = await InternalApproval.findAndCountAll({
-      where,
-      include: INCLUDE_USERS,
-      order: [
-        ['priority', 'DESC'],
-        ['createdAt', 'ASC'],
-      ],
-      limit: parseInt(limit),
-      offset: (parseInt(page) - 1) * parseInt(limit),
-    });
+    const [count, rows] = await Promise.all([
+      InternalApproval.count({ where }),
+      InternalApproval.findAll({
+        where,
+        include: INCLUDE_USERS,
+        order: [
+          ['priority', 'DESC'],
+          ['createdAt', 'ASC'],
+        ],
+        limit: parseInt(limit),
+        offset: (parseInt(page) - 1) * parseInt(limit),
+      }),
+    ]);
 
     return res.json({
       success: true,

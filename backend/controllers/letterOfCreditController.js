@@ -109,16 +109,19 @@ const getAll = async (req, res, next) => {
       if (endDate) where.issueDate[Op.lte] = new Date(endDate);
     }
 
-    const { count, rows } = await db.LetterOfCredit.findAndCountAll({
-      where,
-      include: [
-        { model: db.Factory, as: 'supplier', attributes: ['id', 'name'] },
-        { model: db.Customer, as: 'customer', attributes: ['id', 'companyName'] }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['createdAt', 'DESC']]
-    });
+    const [count, rows] = await Promise.all([
+      db.LetterOfCredit.count({ where }),
+      db.LetterOfCredit.findAll({
+        where,
+        include: [
+          { model: db.Factory, as: 'supplier', attributes: ['id', 'name'] },
+          { model: db.Customer, as: 'customer', attributes: ['id', 'companyName'] }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['createdAt', 'DESC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
   } catch (error) {

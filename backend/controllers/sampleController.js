@@ -98,15 +98,18 @@ const getRequests = async (req, res, next) => {
       if (endDate) where.requestDate[Op.lte] = new Date(endDate);
     }
 
-    const { count, rows } = await db.SampleRequest.findAndCountAll({
-      where,
-      include: [
-        { model: db.Customer, as: 'customer', attributes: ['id', 'companyName'] }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['createdAt', 'DESC']]
-    });
+    const [count, rows] = await Promise.all([
+      db.SampleRequest.count({ where }),
+      db.SampleRequest.findAll({
+        where,
+        include: [
+          { model: db.Customer, as: 'customer', attributes: ['id', 'companyName'] }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['createdAt', 'DESC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
   } catch (error) {
@@ -366,15 +369,18 @@ const getShipments = async (req, res, next) => {
     if (status) where.status = status;
     if (search) where.shipmentNumber = { [Op.like]: `%${search}%` };
 
-    const { count, rows } = await db.SampleShipment.findAndCountAll({
-      where,
-      include: [
-        { model: db.SampleRequest, as: 'sampleRequest', attributes: ['requestNumber', 'customerId'] }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['createdAt', 'DESC']]
-    });
+    const [count, rows] = await Promise.all([
+      db.SampleShipment.count({ where }),
+      db.SampleShipment.findAll({
+        where,
+        include: [
+          { model: db.SampleRequest, as: 'sampleRequest', attributes: ['requestNumber', 'customerId'] }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['createdAt', 'DESC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
   } catch (error) {
@@ -523,15 +529,18 @@ const getFeedback = async (req, res, next) => {
     if (sampleRequestId) where.sampleRequestId = sampleRequestId;
     if (status) where.status = status;
 
-    const { count, rows } = await db.SampleFeedback.findAndCountAll({
-      where,
-      include: [
-        { model: db.SampleRequest, as: 'sampleRequest', attributes: ['requestNumber', 'customerId'] }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['feedbackDate', 'DESC']]
-    });
+    const [count, rows] = await Promise.all([
+      db.SampleFeedback.count({ where }),
+      db.SampleFeedback.findAll({
+        where,
+        include: [
+          { model: db.SampleRequest, as: 'sampleRequest', attributes: ['requestNumber', 'customerId'] }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['feedbackDate', 'DESC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
   } catch (error) {

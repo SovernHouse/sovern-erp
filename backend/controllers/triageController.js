@@ -25,24 +25,27 @@ exports.listTriageItems = async (req, res) => {
 
   if (intentScore) where.intentScore = intentScore;
 
-  const { count, rows } = await db.TriageItem.findAndCountAll({
-    where,
-    order: [
-      // High intent first, then newest
-      [db.sequelize.literal(`CASE intent_score WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 ELSE 3 END`), 'ASC'],
-      ['createdAt', 'DESC'],
-    ],
-    limit: parseInt(limit),
-    offset,
-    include: [
-      {
-        model: db.OutreachEmail,
-        as: 'matchedOutreachEmail',
-        required: false,
-        attributes: ['id', 'subject', 'toAddress', 'sentAt'],
-      },
-    ],
-  });
+  const [count, rows] = await Promise.all([
+    db.TriageItem.count({ where }),
+    db.TriageItem.findAll({
+      where,
+      order: [
+        // High intent first, then newest
+        [db.sequelize.literal(`CASE intent_score WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 ELSE 3 END`), 'ASC'],
+        ['createdAt', 'DESC'],
+      ],
+      limit: parseInt(limit),
+      offset,
+      include: [
+        {
+          model: db.OutreachEmail,
+          as: 'matchedOutreachEmail',
+          required: false,
+          attributes: ['id', 'subject', 'toAddress', 'sentAt'],
+        },
+      ],
+    }),
+  ]);
 
   // Count pending + high-intent for notification badge
   const pendingCount = await db.TriageItem.count({

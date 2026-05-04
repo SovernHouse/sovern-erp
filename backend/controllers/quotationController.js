@@ -104,16 +104,19 @@ const getAll = async (req, res, next) => {
     if (customerId) where.customerId = customerId;
     if (search) where.quotationNumber = { [Op.like]: `%${search}%` };
 
-    const { count, rows } = await db.Quotation.findAndCountAll({
-      where,
-      include: [
-        { model: db.Customer, as: 'customer', attributes: ['companyName'] },
-        { model: db.User, as: 'salesPerson', attributes: ['firstName', 'lastName'] }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['createdAt', 'DESC']]
-    });
+    const [count, rows] = await Promise.all([
+      db.Quotation.count({ where }),
+      db.Quotation.findAll({
+        where,
+        include: [
+          { model: db.Customer, as: 'customer', attributes: ['companyName'] },
+          { model: db.User, as: 'salesPerson', attributes: ['firstName', 'lastName'] }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['createdAt', 'DESC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
   } catch (error) {

@@ -108,16 +108,19 @@ const getCalculations = async (req, res, next) => {
     if (purchaseOrderId) where.purchaseOrderId = purchaseOrderId;
     if (search) where.referenceNumber = { [Op.like]: `%${search}%` };
 
-    const { count, rows } = await db.LandedCostCalculation.findAndCountAll({
-      where,
-      include: [
-        { model: db.Product, as: 'product', attributes: ['id', 'name', 'sku'] },
-        { model: db.Factory, as: 'supplier', attributes: ['id', 'name'] }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['createdAt', 'DESC']]
-    });
+    const [count, rows] = await Promise.all([
+      db.LandedCostCalculation.count({ where }),
+      db.LandedCostCalculation.findAll({
+        where,
+        include: [
+          { model: db.Product, as: 'product', attributes: ['id', 'name', 'sku'] },
+          { model: db.Factory, as: 'supplier', attributes: ['id', 'name'] }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['createdAt', 'DESC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
   } catch (error) {
@@ -255,15 +258,18 @@ const getTemplates = async (req, res, next) => {
     if (active !== undefined) where.isActive = active === 'true' || active === true;
     if (search) where.name = { [Op.like]: `%${search}%` };
 
-    const { count, rows } = await db.LandedCostTemplate.findAndCountAll({
-      where,
-      include: [
-        { model: db.Factory, as: 'supplier', attributes: ['id', 'name'] }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['createdAt', 'DESC']]
-    });
+    const [count, rows] = await Promise.all([
+      db.LandedCostTemplate.count({ where }),
+      db.LandedCostTemplate.findAll({
+        where,
+        include: [
+          { model: db.Factory, as: 'supplier', attributes: ['id', 'name'] }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['createdAt', 'DESC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
   } catch (error) {

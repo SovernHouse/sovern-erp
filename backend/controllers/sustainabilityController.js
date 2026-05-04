@@ -107,13 +107,16 @@ const getSustainabilityReport = async (req, res, next) => {
     const { page = 1, limit = 10 } = req.query;
     const { offset } = getPagination(page, limit);
 
-    const { count, rows } = await db.SustainabilityRecord.findAndCountAll({
-      where: { isActive: true },
-      include: [{ model: db.Product, as: 'product', attributes: ['name', 'sku', 'category'] }],
-      offset,
-      limit: parseInt(limit),
-      order: [['createdAt', 'DESC']]
-    });
+    const [count, rows] = await Promise.all([
+      db.SustainabilityRecord.count({ where: { isActive: true } }),
+      db.SustainabilityRecord.findAll({
+        where: { isActive: true },
+        include: [{ model: db.Product, as: 'product', attributes: ['name', 'sku', 'category'] }],
+        offset,
+        limit: parseInt(limit),
+        order: [['createdAt', 'DESC']]
+      }),
+    ]);
 
     // Calculate summary statistics
     const summary = {

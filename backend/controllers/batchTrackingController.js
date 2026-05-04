@@ -93,15 +93,18 @@ const getBatches = async (req, res, next) => {
       ];
     }
 
-    const { count, rows } = await db.ProductBatch.findAndCountAll({
-      where,
-      include: [
-        { model: db.Product, as: 'product' }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['productionDate', 'DESC']]
-    });
+    const [count, rows] = await Promise.all([
+      db.ProductBatch.count({ where }),
+      db.ProductBatch.findAll({
+        where,
+        include: [
+          { model: db.Product, as: 'product' }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['productionDate', 'DESC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, page, limit));
   } catch (error) {
@@ -193,15 +196,18 @@ const getBatchesByProduct = async (req, res, next) => {
     if (status) where.status = status;
     if (shadeCode) where.shadeCode = shadeCode;
 
-    const { count, rows } = await db.ProductBatch.findAndCountAll({
-      where,
-      include: [
-        { model: db.Product, as: 'product' }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['productionDate', 'DESC']]
-    });
+    const [count, rows] = await Promise.all([
+      db.ProductBatch.count({ where }),
+      db.ProductBatch.findAll({
+        where,
+        include: [
+          { model: db.Product, as: 'product' }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['productionDate', 'DESC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, page, limit));
   } catch (error) {
@@ -218,15 +224,18 @@ const getBatchesByShade = async (req, res, next) => {
     const where = { shadeCode };
     if (productId) where.productId = productId;
 
-    const { count, rows } = await db.ProductBatch.findAndCountAll({
-      where,
-      include: [
-        { model: db.Product, as: 'product' }
-      ],
-      offset,
-      limit: parseInt(limit),
-      order: [['productionDate', 'DESC']]
-    });
+    const [count, rows] = await Promise.all([
+      db.ProductBatch.count({ where }),
+      db.ProductBatch.findAll({
+        where,
+        include: [
+          { model: db.Product, as: 'product' }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['productionDate', 'DESC']]
+      }),
+    ]);
 
     res.json(getPaginatedResponse(rows, count, page, limit));
   } catch (error) {
