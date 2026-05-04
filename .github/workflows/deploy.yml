@@ -150,14 +150,15 @@ jobs:
               exit 1
             fi
 
-            # Restart backend.
-            # IMPORTANT: pm2 delete by NAME only kills one instance, but
-            # repeated deploys had been stacking duplicate sovern-erp entries
-            # (different IDs, same name, all fighting for port 3001). Wipe
-            # everything pm2 is tracking before starting fresh.
-            pm2 delete all 2>/dev/null || true
+            # Restart backend. The systemd-managed pm2 daemon was restoring
+            # zombie 'sovern-erp' duplicates from dump.pm2 even after
+            # 'pm2 delete all', because the daemon's in-memory state raced
+            # the new 'pm2 start'. Hard-kill the whole daemon so it cold-
+            # restarts with no app state, then start a single instance.
+            pm2 kill 2>/dev/null || true
+            sleep 2
             NODE_ENV=production pm2 start server.js --name sovern-erp --cwd ~/sovern-erp/backend
-            pm2 save
+            pm2 save --force
 
             # Wait long enough for the app to actually start listening.
             # 4s wasn't enough on the constrained VM.
