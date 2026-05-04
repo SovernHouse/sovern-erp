@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   resolve: {
     alias: {
@@ -23,6 +23,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    // Use esbuild minifier (default; explicit for clarity).
+    minify: 'esbuild',
   },
   define: {
     'process.env': {},
@@ -31,6 +33,10 @@ export default defineConfig({
     loader: 'jsx',
     include: /src\/.*\.jsx?$/,
     exclude: [],
+    // Strip console.* and debugger from production bundles.
+    // 122 console calls in src/ as of 2026-05-04 leaked internal state to
+    // end users and bloated the bundle. Dev mode keeps them for debugging.
+    drop: mode === 'production' ? ['console', 'debugger'] : [],
   },
   optimizeDeps: {
     esbuild: {
@@ -39,4 +45,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))
