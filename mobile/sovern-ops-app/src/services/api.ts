@@ -370,3 +370,104 @@ export interface TriageItem {
   createdAt: string;
   updatedAt: string;
 }
+
+// ─── Shipments / Invoices / Purchase Orders (read-only) ──────────────────
+// Three backend modules used for on-the-road visibility. All read-only on
+// mobile — creation/edit happens on the desktop ERP.
+
+export async function getShipments(params?: { search?: string; status?: string; page?: number; limit?: number }) {
+  const qs = new URLSearchParams(
+    Object.entries(params ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+  ).toString()
+  return request<PaginatedResponse<Shipment>>(`/api/shipments${qs ? `?${qs}` : ''}`)
+}
+
+export async function getShipment(id: string) {
+  const res = await request<{ success: boolean; data: Shipment }>(`/api/shipments/${id}`)
+  return res.data
+}
+
+export async function getInvoices(params?: { search?: string; status?: string; page?: number; limit?: number }) {
+  const qs = new URLSearchParams(
+    Object.entries(params ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+  ).toString()
+  return request<PaginatedResponse<Invoice>>(`/api/invoices${qs ? `?${qs}` : ''}`)
+}
+
+export async function getInvoice(id: string) {
+  const res = await request<{ success: boolean; data: Invoice }>(`/api/invoices/${id}`)
+  return res.data
+}
+
+export async function getPurchaseOrders(params?: { search?: string; status?: string; page?: number; limit?: number }) {
+  const qs = new URLSearchParams(
+    Object.entries(params ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+  ).toString()
+  return request<PaginatedResponse<PurchaseOrder>>(`/api/purchase-orders${qs ? `?${qs}` : ''}`)
+}
+
+export async function getPurchaseOrder(id: string) {
+  const res = await request<{ success: boolean; data: PurchaseOrder }>(`/api/purchase-orders/${id}`)
+  return res.data
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────
+
+export interface Shipment {
+  id: string
+  shipmentNumber: string
+  salesOrderId?: string
+  carrier?: string
+  vesselName?: string
+  trackingNumber?: string
+  status?: string
+  originPort?: string
+  destinationPort?: string
+  estimatedDeparture?: string
+  actualDeparture?: string
+  estimatedArrival?: string
+  actualArrival?: string
+  containerNumber?: string
+  blNumber?: string
+  notes?: string
+  createdAt: string
+  updatedAt: string
+  // Optional includes
+  salesOrder?: { id: string; orderNumber: string; customer?: { companyName: string } }
+}
+
+export interface Invoice {
+  id: string
+  invoiceNumber: string
+  customerId?: string
+  salesOrderId?: string
+  status?: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled' | string
+  totalAmount?: number
+  paidAmount?: number
+  currency?: string
+  invoiceDate?: string
+  dueDate?: string
+  paidDate?: string
+  notes?: string
+  createdAt: string
+  updatedAt: string
+  customer?: { id: string; companyName: string }
+}
+
+export interface PurchaseOrder {
+  id: string
+  poNumber: string
+  factoryId?: string
+  salesOrderId?: string
+  status?: string
+  totalAmount?: number
+  currency?: string
+  expectedDeliveryDate?: string
+  actualDeliveryDate?: string
+  paymentTerms?: string
+  shippingTerms?: string
+  notes?: string
+  createdAt: string
+  updatedAt: string
+  factory?: { id: string; name?: string; companyName?: string }
+}
