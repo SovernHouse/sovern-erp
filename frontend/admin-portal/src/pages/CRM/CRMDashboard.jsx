@@ -3,7 +3,7 @@ import api from '../../services/api';
 import {
   TrendingUp,
   DollarSign,
-  HandHeart,
+  Users,
   AlertCircle,
   Calendar,
   Target,
@@ -124,7 +124,7 @@ const CRMDashboard = () => {
             bgColor="#10b981"
           />
           <StatCard
-            icon={HandHeart}
+            icon={Users}
             label="Avg Deal Size"
             value={`$${parseFloat(dashboardData.avgDealSize).toLocaleString('en-US', { minimumFractionDigits: 0 })}`}
             subtext="Average won deal"
