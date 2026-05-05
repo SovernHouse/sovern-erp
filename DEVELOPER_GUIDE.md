@@ -95,7 +95,14 @@ sovern-erp/
 ├── backend/
 │   ├── config/
 │   │   └── tenant.js           # Whitelabel company config
-│   ├── controllers/            # Route handler logic (thin wrappers)
+│   ├── controllers/            # Route handler logic — barrel pattern for large modules
+│   │   ├── crmController.js    # Barrel — re-exports all CRM sub-controllers
+│   │   ├── contactController.js
+│   │   ├── leadController.js
+│   │   ├── activityController.js
+│   │   ├── dealController.js
+│   │   ├── campaignController.js
+│   │   └── crmDashboardController.js
 │   ├── middleware/
 │   │   ├── auth.js             # JWT requireAuth middleware
 │   │   └── errorHandler.js     # Centralised error shape
@@ -116,12 +123,29 @@ sovern-erp/
 │   │   ├── DocumentApproval.js # 256-bit token, expiry, IP audit
 │   │   └── ...
 │   ├── routes/                 # Express routers (one file per resource)
+│   │   ├── personalization/    # Sub-routers mounted via barrel
+│   │   │   ├── notificationRoutes.js
+│   │   │   ├── commissionRoutes.js
+│   │   │   ├── filterPresetRoutes.js
+│   │   │   ├── templateRoutes.js
+│   │   │   ├── productAttributeRoutes.js
+│   │   │   └── priceListRoutes.js
+│   │   ├── personalizationRoutes.js  # Barrel — mounts personalization/ sub-routers
+│   │   └── dashboardRoutes.js  # Cleaned (#48) — duplicate routes removed, DashboardLayout storage
 │   ├── services/
+│   │   ├── pdf/                # PDF generators — barrel pattern
+│   │   │   ├── pdfHelpers.js        # Shared utilities (re-exported for all generators)
+│   │   │   ├── salesDocumentsPDF.js # Quotation, Proforma, Sales Note
+│   │   │   ├── orderDocumentsPDF.js # Sales Order, PO, Packing List
+│   │   │   ├── financeDocumentsPDF.js # Invoice, Credit Note, Statement
+│   │   │   └── logisticsDocumentsPDF.js # Inspection, Shipment, Product Spec
+│   │   ├── documentGenerator.js # Barrel — re-exports all PDF generators
 │   │   ├── emailService.js
 │   │   ├── notificationService.js
 │   │   └── schedulerService.js # node-cron background jobs
 │   ├── utils/
 │   │   ├── helpers.js          # Pagination, response shapes
+│   │   ├── logger.js           # Winston logger — JSON to stdout (GCP), pretty in dev, silent in test
 │   │   └── statusTransitions.js # State machine definitions + hooks
 │   ├── seeds/
 │   │   └── seed.js             # Development seed data
@@ -163,6 +187,42 @@ sovern-erp/
 ├── DEVELOPER_GUIDE.md          # This file
 └── git-push-erp-audit-2.ps1   # Commit script (PowerShell)
 ```
+
+### Barrel pattern (introduced in #48)
+
+Large files are split into focused modules; the original file becomes a **barrel** that re-exports everything. All existing importers are unchanged.
+
+**Controllers** (function exports) — barrel uses object spread:
+```js
+// crmController.js
+module.exports = {
+  ...require('./contactController'),
+  ...require('./leadController'),
+  // ...
+};
+```
+
+**Routes** (Express Router instances) — barrel mounts each sub-router:
+```js
+// personalizationRoutes.js
+const router = express.Router();
+router.use('/', require('./personalization/notificationRoutes'));
+router.use('/', require('./personalization/commissionRoutes'));
+// ...
+module.exports = router;
+```
+
+**PDF services** — barrel uses object spread (same as controllers):
+```js
+// documentGenerator.js
+module.exports = {
+  ...require('./pdf/salesDocumentsPDF'),
+  ...require('./pdf/orderDocumentsPDF'),
+  // ...
+};
+```
+
+When adding a new sub-file, register it in the barrel. Do not change the route registration in `server.js` or any controller imports in route files.
 
 ---
 
@@ -862,18 +922,18 @@ cd backend
 npx sequelize-cli db:migrate
 ```
 
-### Pre-push route smoke test
+### Pre-push syntax check
 
-Before pushing, verify all route files load without error. This catches two classes of bugs that code review misses:
-- A route callback referencing a controller method that doesn't exist (resolves to `undefined` at require-time → Express crash on startup)
-- File corruption (NUL bytes, encoding artifacts) that Node refuses to parse
+Before pushing, verify all route and service files parse without error. Use `node --check` (syntax only — no env dependencies, no require-time crashes):
 
 ```bash
-# From repo root
-for f in backend/routes/*.js; do
-  node -e "require('./$f')" 2>&1 && echo "OK: $f" || echo "FAIL: $f"
+# From repo root — covers top-level routes and personalization/ sub-routers
+for f in backend/routes/*.js backend/routes/**/*.js backend/services/pdf/*.js; do
+  node --check "$f" && echo "OK: $f" || echo "FAIL: $f"
 done
 ```
+
+`node --check` is the correct tool here. Do NOT use `node -e "require('./file')"` — that executes the module, pulling in Sequelize → sqlite3, which may not be installed locally and will produce a false FAIL.
 
 If a file fails and looks correct, check for binary corruption:
 ```bash
@@ -892,5 +952,8 @@ A clean file ends with `...;\n` (0x0a). Any `00` bytes after that are NUL corrup
 | Financial fields in DECIMAL | OK for now | Correct for display at current volumes. Production-scale financial systems may prefer integer cents. Re-evaluate when volumes increase. |
 | Sanctions screening | Partial | `Lead.sanctionsScreened` boolean field exists. Manual update flow only. Automated screening (OFAC SDN, EU consolidated, UN consolidated) is the next AI feature to build (Feature 2 of the AI roadmap). |
 | GDPR consent flag | Open | `Lead.gdprConsent`, `gdprConsentObtainedAt`, `gdprConsentChannel` fields not yet added. Required before EU/UK outbound at scale. |
+| Dashboard customization frontend | Planned | Backend complete (POST/GET `/api/dashboard/layout` → `DashboardLayout` model). Frontend widget picker and drag-and-drop layout (react-grid-layout) not yet built. |
+| Dashboard action reminder banner | Planned | Odoo-style banner at top of dashboard showing items assigned to the user requiring action (approve / check). Green = on time, yellow = approaching due, red = overdue. |
+| Internal chat + tagging | Planned | Per-record threaded comments, @mention notifications, unread indicators. Needs real-time (WebSocket or polling). Scope before building. |
 | Customer portal | In progress | Standalone customer portal exists at `frontend/customer-portal/` (separate from the `client-contacts` admin module). |
 | Factory portal 
