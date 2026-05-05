@@ -98,8 +98,17 @@ module.exports = (sequelize) => {
   });
 
   Contact.associate = (models) => {
-    Contact.belongsTo(models.Customer, { foreignKey: 'customerId' });
-    Contact.belongsTo(models.Factory, { foreignKey: 'factoryId' });
+    // constraints: false disables the DB-level FK CHECK that
+    // Sequelize would otherwise emit at sync(). Default Sequelize
+    // pluralizes the target tableName when generating FK references
+    // and on this DB the actual tables are singular (Customer / Factory)
+    // due to freezeTableName: true. The pluralized FK pointed at
+    // non-existent tables (Customers / Factories) and broke every
+    // INSERT. JS-side eager-loading via include still works fine
+    // without a DB FK; we just lose ON DELETE CASCADE — which we
+    // don't currently rely on.
+    Contact.belongsTo(models.Customer, { foreignKey: 'customerId', constraints: false });
+    Contact.belongsTo(models.Factory, { foreignKey: 'factoryId', constraints: false });
   };
 
   return Contact;
