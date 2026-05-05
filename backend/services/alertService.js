@@ -124,9 +124,10 @@ class AlertService {
           count: 1
         });
 
-        // Log alert to console
-        const logLevel = severity === 'error' ? console.error : console.warn;
-        logLevel(`[ALERT] ${alertId}: ${message}`);
+        // Log alert via structured logger
+        severity === 'error'
+          ? logger.error(`[ALERT] ${alertId}: ${message}`)
+          : logger.warn(`[ALERT] ${alertId}: ${message}`);
       }
     } catch (error) {
       logger.error('[AlertService] Error creating alert:', error.message);
