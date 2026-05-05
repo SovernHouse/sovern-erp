@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ArrowLeft, Edit2 } from 'lucide-react'
+import { ArrowLeft, Edit2, CalendarClock } from 'lucide-react'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import DataTable from '../../components/DataTable'
 import StatusBadge from '../../components/StatusBadge'
 import { factoriesAPI } from '../../services/api'
 import { formatDate } from '../../utils/formatters'
+import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 
 export default function FactoryDetail() {
   const { id } = useParams()
@@ -16,6 +17,7 @@ export default function FactoryDetail() {
   const [activeTab, setActiveTab] = useState('overview')
   const [products, setProducts] = useState([])
   const [purchaseOrders, setPurchaseOrders] = useState([])
+  const [showActivityModal, setShowActivityModal] = useState(false)
 
   useEffect(() => {
     fetchFactory()
@@ -67,13 +69,22 @@ export default function FactoryDetail() {
             <p className="text-slate-600 text-sm mt-1">{factory.country}</p>
           </div>
         </div>
-        <button
-          onClick={() => navigate(`/factories/${id}/edit`)}
-          className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-        >
-          <Edit2 className="w-4 h-4" />
-          <span>Edit</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setShowActivityModal(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            <CalendarClock className="w-4 h-4" />
+            <span>Schedule Activity</span>
+          </button>
+          <button
+            onClick={() => navigate(`/factories/${id}/edit`)}
+            className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+          >
+            <Edit2 className="w-4 h-4" />
+            <span>Edit</span>
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -193,6 +204,14 @@ export default function FactoryDetail() {
           )}
         </div>
       </div>
+      <ScheduleActivityModal
+        open={showActivityModal}
+        onClose={() => setShowActivityModal(false)}
+        onCreated={() => setShowActivityModal(false)}
+        entityType="Factory"
+        entityId={id}
+        entityLabel={factory?.name || 'Factory'}
+      />
     </div>
   )
 }

@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Edit2 } from 'lucide-react'
+import { ArrowLeft, Edit2, CalendarClock } from 'lucide-react'
+import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 
 export default function InquiryDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [showActivityModal, setShowActivityModal] = useState(false)
 
   return (
     <div className="space-y-6">
@@ -14,10 +17,19 @@ export default function InquiryDetail() {
           </button>
           <h1 className="text-3xl font-bold text-slate-900">Inquiry INQ-001</h1>
         </div>
-        <button onClick={() => navigate(`/inquiries/${id}/edit`)} className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700">
-          <Edit2 className="w-4 h-4" />
-          <span>Edit</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setShowActivityModal(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            <CalendarClock className="w-4 h-4" />
+            <span>Schedule Activity</span>
+          </button>
+          <button onClick={() => navigate(`/inquiries/${id}/edit`)} className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+            <Edit2 className="w-4 h-4" />
+            <span>Edit</span>
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow p-6">
@@ -32,6 +44,15 @@ export default function InquiryDetail() {
           </div>
         </div>
       </div>
+
+      <ScheduleActivityModal
+        open={showActivityModal}
+        onClose={() => setShowActivityModal(false)}
+        onCreated={() => setShowActivityModal(false)}
+        entityType="Inquiry"
+        entityId={id}
+        entityLabel={`Inquiry ${id}`}
+      />
     </div>
   )
 }
