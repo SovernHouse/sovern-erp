@@ -684,40 +684,32 @@ router.get('/widgets', cacheRoute(dashboardCacheTTL), requireAuth, async (req, r
   }
 });
 
-// PHASE 4: Save Dashboard Layout
+// Save user's dashboard layout
 router.post('/layout', requireAuth, async (req, res, next) => {
   try {
-    const { widgets, layout } = req.body;
+    const { layout } = req.body;
 
-    if (!widgets || !Array.isArray(widgets)) {
-      return res.status(400).json({ error: 'widgets array is required' });
+    let dashLayout = await db.DashboardLayout.findOne({
+      where: { userId: req.user.id }
+    });
+
+    if (dashLayout) {
+      dashLayout = await dashLayout.update({ layout });
+    } else {
+      dashLayout = await db.DashboardLayout.create({
+        userId: req.user.id,
+        role: req.user.role,
+        layout
+      });
     }
 
-    const user = await db.User.findByPk(req.user.id);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    // Invalidate cache for user's dashboard
+    await invalidateCache(`dashboard:user:${req.user.id}:*`);
 
-    let preferences = {};
-    try {
-      preferences = typeof user.preferences === 'string' ? JSON.parse(user.preferences) : (user.preferences || {});
-    } catch (e) {
-      preferences = {};
-    }
-
-    const updatedPreferences = {
-      ...preferences,
-      dashboard: {
-        ...(preferences.dashboard || {}),
-        layout: layout || 'grid',
-        widgets,
-        savedAt: new Date().toISOString()
-      }
-    };
-
-    await user.update({ preferences: JSON.stringify(updatedPreferences) });
-
-    res.json(getSuccessResponse(updatedPreferences, 'Dashboard layout saved successfully'));
+    res.json(getSuccessResponse({
+      message: 'Dashboard layout saved successfully',
+      data: dashLayout
+    }));
   } catch (error) {
     next(error);
   }
@@ -853,139 +845,12 @@ router.get('/kpi', cacheRoute(dashboardCacheTTL), requireAuth, async (req, res, 
     next(error);
   }
 });
-
-/**
- * Get role-specific dashboard configuration
- * @route GET /api/dashboard/role/:role
- * @returns {Object} Role-specific widget configuration
- */
-router.get('/role/:role', requireAuth, async (req, res, next) => {
-  try {
-    const { role } = req.params;
-
-    const defaultWidgets = {
-      admin: [
-        { id: 'kpi-stats', type: 'kpi', title: 'Key Metrics', widget: 'KPIStats', gridSize: { w: 12, h: 4 } },
-        { id: 'revenue-chart', type: 'chart', title: 'Revenue Trend', widget: 'RevenueChart', gridSize: { w: 6, h: 4 } },
-        { id: 'orders-chart', type: 'chart', title: 'Orders Overview', widget: 'OrdersChart', gridSize: { w: 6, h: 4 } },
-        { id: 'recent-orders', type: 'table', title: 'Recent Orders', widget: 'RecentOrdersTable', gridSize: { w: 12, h: 4 } }
-      ],
-      sales: [
-        { id: 'my-stats', type: 'kpi', title: 'My Performance', widget: 'SalesKPI', gridSize: { w: 12, h: 3 } },
-        { id: 'pending-followups', type: 'table', title: 'Pending Follow-ups', widget: 'PendingFollowupsTable', gridSize: { w: 6, h: 4 } },
-        { id: 'recent-inquiries', type: 'table', title: 'Recent Inquiries', widget: 'RecentInquiriesTable', gridSize: { w: 6, h: 4 } },
-        { id: 'commission-tracker', type: 'widget', title: 'My Commissions', widget: 'CommissionTracker', gridSize: { w: 12, h: 3 } }
-      ],
-      operations: [
-        { id: 'active-orders', type: 'kpi', title: 'Order Status', widget: 'OperationsKPI', gridSize: { w: 12, h: 3 } },
-        { id: 'low-stock', type: 'table', title: 'Low Stock Items', widget: 'LowStockTable', gridSize: { w: 6, h: 4 } },
-        { id: 'pending-inspections', type: 'table', title: 'Pending Inspections', widget: 'InspectionsTable', gridSize: { w: 6, h: 4 } },
-        { id: 'shipments', type: 'table', title: 'In-Transit Shipments', widget: 'ShipmentsTable', gridSize: { w: 12, h: 4 } }
-      ],
-      finance: [
-        { id: 'financial-stats', type: 'kpi', title: 'Financial Overview', widget: 'FinanceKPI', gridSize: { w: 12, h: 3 } },
-        { id: 'revenue-chart', type: 'chart', title: 'Monthly Revenue', widget: 'MonthlyRevenueChart', gridSize: { w: 6, h: 4 } },
-        { id: 'outstanding-invoices', type: 'table', title: 'Outstanding Invoices', widget: 'OutstandingInvoicesTable', gridSize: { w: 6, h: 4 } },
-        { id: 'payments-status', type: 'chart', title: 'Payment Status', widget: 'PaymentStatusChart', gridSize: { w: 12, h: 4 } }
-      ]
-    };
-
-    const roleWidgets = defaultWidgets[role] || defaultWidgets['admin'];
-
-    res.json(getSuccessResponse({ widgets: roleWidgets }));
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * Get user's dashboard layout
- * @route GET /api/dashboard/layout
- * @returns {Object} User's custom dashboard layout
- */
 router.get('/layout', requireAuth, async (req, res, next) => {
   try {
     let layout = await db.DashboardLayout.findOne({
       where: { userId: req.user.id }
     });
 
-    if (!layout) {
-      layout = await db.DashboardLayout.create({
-        userId: req.user.id,
-        role: req.user.role,
-        layout: [],
-        isDefault: false
-      });
-    }
-
-    res.json(getSuccessResponse(layout));
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * Save user's dashboard layout
- * @route POST /api/dashboard/layout
- * @body {Array} layout - Widget layout configuration
- */
-router.post('/layout', requireAuth, async (req, res, next) => {
-  try {
-    const { layout } = req.body;
-
-    let dashLayout = await db.DashboardLayout.findOne({
-      where: { userId: req.user.id }
-    });
-
-    if (dashLayout) {
-      dashLayout = await dashLayout.update({ layout });
-    } else {
-      dashLayout = await db.DashboardLayout.create({
-        userId: req.user.id,
-        role: req.user.role,
-        layout
-      });
-    }
-
-    // Invalidate cache for user's dashboard
-    await invalidateCache(`dashboard:user:${req.user.id}:*`);
-
-    res.json(getSuccessResponse({
-      message: 'Dashboard layout saved successfully',
-      data: dashLayout
-    }));
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * Get list of available widgets
- * @route GET /api/dashboard/widgets
- */
-router.get('/widgets', requireAuth, async (req, res, next) => {
-  try {
-    const widgets = [
-      { id: 'kpi-stats', name: 'Key Performance Indicators', category: 'metrics', defaultSize: { w: 12, h: 4 } },
-      { id: 'revenue-chart', name: 'Revenue Chart', category: 'charts', defaultSize: { w: 6, h: 4 } },
-      { id: 'orders-chart', name: 'Orders Chart', category: 'charts', defaultSize: { w: 6, h: 4 } },
-      { id: 'recent-orders', name: 'Recent Orders', category: 'tables', defaultSize: { w: 12, h: 4 } },
-      { id: 'pending-followups', name: 'Pending Follow-ups', category: 'tables', defaultSize: { w: 6, h: 4 } },
-      { id: 'low-stock', name: 'Low Stock Alerts', category: 'alerts', defaultSize: { w: 6, h: 4 } },
-      { id: 'commission-tracker', name: 'Commission Tracker', category: 'metrics', defaultSize: { w: 6, h: 3 } },
-      { id: 'shipment-status', name: 'Shipment Status', category: 'tables', defaultSize: { w: 12, h: 4 } }
-    ];
-
-    res.json(getSuccessResponse(widgets));
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * Revenue chart data
- * @route GET /api/dashboard/revenue
- */
 router.get('/revenue', cacheRoute(dashboardCacheTTL), requireAuth, async (req, res, next) => {
   try {
     const { period = '6months' } = req.query;
