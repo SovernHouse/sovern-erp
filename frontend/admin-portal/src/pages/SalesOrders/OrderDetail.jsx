@@ -8,8 +8,10 @@ import {
   ChevronDown,
   Loader,
   Package,
+  CalendarClock,
 } from 'lucide-react'
 import { ordersAPI } from '../../services/api'
+import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import Chatter from '../../components/Chatter'
 import WorkflowStatusBar, { SALES_ORDER_STAGES } from '../../components/WorkflowStatusBar'
 import StatusBadge from '../../components/StatusBadge'
@@ -28,6 +30,7 @@ export default function OrderDetail() {
   const [isLoading, setIsLoading] = useState(true)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showActivityModal, setShowActivityModal] = useState(false)
   const [showStatusDropdown, setShowStatusDropdown] = useState(false)
   const [isChangingStatus, setIsChangingStatus] = useState(false)
   const [isCreatingPackingList, setIsCreatingPackingList] = useState(false)
@@ -169,6 +172,13 @@ export default function OrderDetail() {
           </div>
         </div>
         <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setShowActivityModal(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            <CalendarClock className="w-4 h-4" />
+            <span>Schedule Activity</span>
+          </button>
           <DocumentGenerateButton
             documentType="sales_order"
             entityId={id}
@@ -451,6 +461,16 @@ export default function OrderDetail() {
         cancelText="Cancel"
         isLoading={isDeleting}
         isDangerous={true}
+      />
+
+      {/* Schedule Activity */}
+      <ScheduleActivityModal
+        open={showActivityModal}
+        onClose={() => setShowActivityModal(false)}
+        onCreated={() => setShowActivityModal(false)}
+        entityType="SalesOrder"
+        entityId={id}
+        entityLabel={`${order?.orderNumber || 'Order'}${order?.customer?.name ? ' — ' + order.customer.name : ''}`}
       />
     </div>
   )

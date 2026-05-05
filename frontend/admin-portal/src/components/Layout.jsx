@@ -32,6 +32,7 @@ import { getAllowedNavItems } from '../config/rbacConfig'
 import { LanguageSwitcher } from '@shared/components'
 import HelpPanel, { useHelpPanel } from './HelpPanel'
 import InstallPWA from './InstallPWA'
+import ActivityBanner from './ActivityBanner'
 
 // ── Brand tokens ─────────────────────────────────────────────────────────────
 const INK     = '#0E0D0C'
@@ -590,6 +591,9 @@ export default function Layout({ children }) {
             </div>
           </div>
         </header>
+
+        {/* Scheduled activity reminder banner — Odoo-style */}
+        <ActivityBanner />
 
         {/* Page content */}
         <main style={{ flex: 1, overflowY: 'auto' }}>

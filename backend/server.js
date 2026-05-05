@@ -220,6 +220,10 @@ app.use('/api/triage', triageRoutes);
 const chatterRoutes = require('./routes/chatterRoutes');
 app.use('/api/chatter', chatterRoutes);
 
+// Scheduled Activities (Odoo-style task assignment on any record)
+const scheduledActivityRoutes = require('./routes/scheduledActivityRoutes');
+app.use('/api/scheduled-activities', scheduledActivityRoutes);
+
 // Internal Approvals (manager sign-off)
 const internalApprovalRoutes = require('./routes/internalApprovalRoutes');
 app.use('/api/internal-approvals', internalApprovalRoutes);

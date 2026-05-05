@@ -8,8 +8,10 @@ import {
   CreditCard,
   Trash2,
   Loader,
+  CalendarClock,
 } from 'lucide-react'
 import { invoicesAPI } from '../../services/api'
+import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import StatusBadge from '../../components/StatusBadge'
 import DocumentGenerateButton from '../../components/DocumentGenerateButton'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -28,6 +30,7 @@ export default function InvoiceDetail() {
   const [isRecordingPayment, setIsRecordingPayment] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showActivityModal, setShowActivityModal] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showLargePaymentConfirm, setShowLargePaymentConfirm] = useState(false)
   const LARGE_PAYMENT_THRESHOLD = 10000
@@ -218,6 +221,13 @@ export default function InvoiceDetail() {
           </div>
         </div>
         <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setShowActivityModal(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            <CalendarClock className="w-4 h-4" />
+            <span>Schedule Activity</span>
+          </button>
           <button
             onClick={handleDownloadPDF}
             disabled={isDownloading}
@@ -572,6 +582,16 @@ export default function InvoiceDetail() {
         confirmText="Confirm Payment"
         cancelText="Go Back"
         isDangerous={false}
+      />
+
+      {/* Schedule Activity */}
+      <ScheduleActivityModal
+        open={showActivityModal}
+        onClose={() => setShowActivityModal(false)}
+        onCreated={() => setShowActivityModal(false)}
+        entityType="Invoice"
+        entityId={id}
+        entityLabel={`${invoice?.invoiceNumber || 'Invoice'}${invoice?.customer?.name ? ' — ' + invoice.customer.name : ''}`}
       />
     </div>
   )

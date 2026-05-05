@@ -530,6 +530,10 @@ db.User.hasMany(db.DocumentApproval, { as: 'documentApprovals', foreignKey: 'req
 db.ChatterMessage = require('./ChatterMessage')(sequelize);
 db.ChatterMessage.associate(db);
 
+// Scheduled Activities (Odoo-style mail.activity)
+db.ScheduledActivity = require('./ScheduledActivity')(sequelize);
+db.ScheduledActivity.associate(db);
+
 db.InternalApproval = require('./InternalApproval')(sequelize);
 db.InternalApproval.associate(db);
 

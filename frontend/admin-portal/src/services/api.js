@@ -467,4 +467,13 @@ export const internalApprovalAPI = {
   cancel: (id) => api.post(`/internal-approvals/${id}/cancel`),
 }
 
+export const activitiesAPI = {
+  getMy:           ()           => api.get('/scheduled-activities/my'),
+  getForEntity:    (type, id)   => api.get(`/scheduled-activities/entity/${type}/${id}`),
+  create:          (data)       => api.post('/scheduled-activities', data),
+  markDone:        (id, data)   => api.put(`/scheduled-activities/${id}/done`, data || {}),
+  reschedule:      (id, data)   => api.put(`/scheduled-activities/${id}/reschedule`, data),
+  cancel:          (id)         => api.delete(`/scheduled-activities/${id}`),
+}
+
 export default api
