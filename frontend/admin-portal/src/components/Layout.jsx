@@ -33,6 +33,7 @@ import { LanguageSwitcher } from '@shared/components'
 import HelpPanel, { useHelpPanel } from './HelpPanel'
 import InstallPWA from './InstallPWA'
 import ActivityBanner from './ActivityBanner'
+import ActivityIndicator from './ActivityIndicator'
 
 // ── Brand tokens ─────────────────────────────────────────────────────────────
 const INK     = '#0E0D0C'
@@ -454,6 +455,9 @@ export default function Layout({ children }) {
             >
               <HelpCircle size={18} />
             </button>
+
+            {/* Activity indicator — clock icon with colour-coded badge */}
+            <ActivityIndicator />
 
             {/* Notifications */}
             <div style={{ position: 'relative', marginLeft: 4 }}>
