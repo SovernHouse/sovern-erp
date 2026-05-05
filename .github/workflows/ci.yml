@@ -44,29 +44,9 @@ jobs:
           RATE_LIMIT_MAX_REQUESTS: '10000'
         run: cd backend && NODE_ENV=test JWT_SECRET=test-secret JWT_REFRESH_SECRET=test-refresh-secret RATE_LIMIT_MAX_REQUESTS=10000 npx jest --passWithNoTests --forceExit
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
-      - name: Run E2E tests with Playwright
-        env:
-          NODE_ENV: test
-          JWT_SECRET: test-secret
-          JWT_REFRESH_SECRET: test-refresh-secret
-          RATE_LIMIT_MAX_REQUESTS: '10000'
-        run: npx playwright test || echo "E2E tests failed - continuing with build"
-
-      - name: Build Docker image
-        run: docker build -t trading-erp:latest . || echo "Docker build validation completed"
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: |
-            backend/coverage/
-            playwright-report/
-          retention-days: 30
+      # Playwright E2E and Docker steps removed — no E2E tests written yet and
+      # the Docker build step consumed ~15 min of Actions minutes per push with
+      # no actionable output. Re-add when E2E tests exist.
 
   badge-comment:
     name: Add CI Badge Comment

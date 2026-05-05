@@ -8,9 +8,8 @@ on:
     branches:
       - main
       - develop
-  push:
-    branches:
-      - main
+  # push: intentionally omitted — security scans run weekly only to avoid
+  # consuming GitHub Actions minutes on every commit to main.
 
 jobs:
   npm-audit:
