@@ -10,16 +10,21 @@ module.exports = (sequelize) => {
     customerId: {
       type: DataTypes.UUID,
       allowNull: true,
+      // Note: freezeTableName: true is set globally, so the actual
+      // table is 'Customer' (singular). Old reference to 'Customers'
+      // caused FK CHECK to fail at insert-time. Verified empty
+      // pre-existing Contact table — safe to drop+resync.
       references: {
-        model: 'Customers',
+        model: 'Customer',
         key: 'id',
       },
     },
     factoryId: {
       type: DataTypes.UUID,
       allowNull: true,
+      // See customerId comment — same fix.
       references: {
-        model: 'Factories',
+        model: 'Factory',
         key: 'id',
       },
     },

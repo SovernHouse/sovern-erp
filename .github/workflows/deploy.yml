@@ -135,6 +135,30 @@ jobs:
               npm rebuild sqlite3 --build-from-source
             fi
 
+            # ── ONE-SHOT MIGRATION: fix Contact table FK references ──
+            # Contact.js had references to 'Customers' and 'Factories' but the
+            # actual tables are 'Customer' and 'Factory' (singular). FK CHECK
+            # at insert time failed with 'no such table'. Table is empty in
+            # prod (verified 2026-05-05). Drop it once; sync() recreates it
+            # with the corrected FK references on next backend boot.
+            # Sentinel keeps this idempotent across redeploys.
+            MIGRATION_SENTINEL=~/.sovern-erp-migrations/contact-fk-2026-05-05
+            mkdir -p ~/.sovern-erp-migrations
+            if [ ! -f "$MIGRATION_SENTINEL" ]; then
+              echo "Running one-shot Contact-FK migration..."
+              SQLITE_DB="$HOME/sovern-erp/backend/database.sqlite"
+              if [ -f "$SQLITE_DB" ]; then
+                sqlite3 "$SQLITE_DB" 'DROP TABLE IF EXISTS Contacts;' || true
+                echo "Dropped Contacts table."
+              else
+                echo "No sqlite DB at $SQLITE_DB — skipping (fresh install will sync correctly)."
+              fi
+              touch "$MIGRATION_SENTINEL"
+              echo "Marked migration done at $MIGRATION_SENTINEL"
+            else
+              echo "Contact-FK migration already applied; skipping."
+            fi
+
             # Atomic swap: replace the live dist with the freshly uploaded one
             DIST=~/sovern-erp/frontend/admin-portal/dist
             STAGED=~/sovern-erp-dist-incoming
