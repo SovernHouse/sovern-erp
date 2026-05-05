@@ -4,6 +4,7 @@
  */
 
 const apmService = require('../services/apmService');
+const logger = require('../utils/logger.js');
 
 /**
  * Extract route pattern from req.route.path
@@ -54,7 +55,7 @@ const apmMiddleware = (req, res, next) => {
 
     // Log slow requests to console
     if (responseTimeMs > 2000) {
-      console.warn(
+      logger.warn(
         `[SLOW REQUEST] ${req.method} ${routePath} - ${res.statusCode} ${responseTimeMs}ms`
       );
     }
@@ -84,16 +85,10 @@ const apmMiddleware = (req, res, next) => {
 
     // Log slow requests
     if (responseTimeMs > 2000) {
-      console.warn(
+      logger.warn(
         `[SLOW REQUEST] ${req.method} ${routePath} - ${res.statusCode} ${responseTimeMs}ms`
       );
     }
 
     // Call the original json
-    return originalJson.call(this, data);
-  };
-
-  next();
-};
-
-module.exports = apmMiddleware;
+  

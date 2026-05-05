@@ -1,6 +1,7 @@
 const { Sequelize } = require('sequelize');
 const path = require('path');
 const config = require('../config/database');
+const logger = require('../utils/logger.js');
 
 let sequelize;
 if (config.dialect === 'sqlite') {
@@ -120,11 +121,11 @@ for (const [name, modulePath] of Object.entries(_crmModels)) {
     db[name] = require(modulePath)(sequelize);
   } catch (e) {
     if (e.code === 'MODULE_NOT_FOUND' && e.message.includes(modulePath)) {
-      console.warn(`[models] CRM model ${name} (${modulePath}) not present — skipping.`);
+      logger.warn(`[models] CRM model ${name} (${modulePath}) not present — skipping.`);
       continue;
     }
-    console.error(`[models] Failed to load CRM model ${name} from ${modulePath}:`);
-    console.error(e);
+    logger.error(`[models] Failed to load CRM model ${name} from ${modulePath}:`);
+    logger.error(e);
     throw e;
   }
 }
@@ -520,16 +521,4 @@ if (db.Lead) {
 // OutreachEmail relationships
 db.Lead.hasMany(db.OutreachEmail, { foreignKey: 'leadId', as: 'outreachEmails' });
 
-// DocumentApproval relationships
-// NOTE: DocumentApproval.belongsTo(User, { as: 'requestedBy' }) is defined in
-// DocumentApproval.associate() and called above — do NOT redefine it here.
-db.User.hasMany(db.DocumentApproval, { as: 'documentApprovals', foreignKey: 'requestedByUserId' });
-
-// Chatter & Internal Approvals
-db.ChatterMessage = require('./ChatterMessage')(sequelize);
-db.ChatterMessage.associate(db);
-
-db.InternalApproval = require('./InternalApproval')(sequelize);
-db.InternalApproval.associate(db);
-
-module.exports = db; 
+// DocumentApprov

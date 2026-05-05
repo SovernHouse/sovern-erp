@@ -7,13 +7,14 @@
 async function initInternalApprovals(app, sequelize, models, registry) {
   try {
     const internalApprovalRoutes = require('../../routes/internalApprovalRoutes');
+const logger = require('../../utils/logger.js');
     app.use('/api/internal-approvals', internalApprovalRoutes);
 
     registry.registerModel('internalApprovals', 'InternalApproval', models.InternalApproval);
-    console.log('Internal Approvals module: routes and model registered');
+    logger.info('Internal Approvals module: routes and model registered');
   } catch (error) {
-    console.warn('Internal Approvals module initialization warning:', error.message);
+    logger.warn('Internal Approvals module initialization warning:', error.message);
   }
 }
 
-module.exports = initInternalApprovals;
+module.exports = initI

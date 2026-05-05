@@ -4,6 +4,7 @@
  */
 const { ChatterMessage, User } = require('../models');
 const { Op } = require('sequelize');
+const logger = require('../utils/logger.js');
 
 // ── Allowed entity types (whitelist prevents enumeration attacks) ───────────
 const ALLOWED_ENTITY_TYPES = new Set([
@@ -68,7 +69,7 @@ exports.getMessages = async (req, res) => {
 
     return res.json({ success: true, data: messages });
   } catch (err) {
-    console.error('[chatter.getMessages]', err);
+    logger.error('[chatter.getMessages]', err);
     return res.status(500).json({ success: false, message: 'Failed to load messages.' });
   }
 };
@@ -119,7 +120,7 @@ exports.postMessage = async (req, res) => {
 
     return res.status(201).json({ success: true, data: created });
   } catch (err) {
-    console.error('[chatter.postMessage]', err);
+    logger.error('[chatter.postMessage]', err);
     return res.status(500).json({ success: false, message: 'Failed to post message.' });
   }
 };
@@ -152,7 +153,7 @@ exports.deleteMessage = async (req, res) => {
     await message.destroy();
     return res.json({ success: true, message: 'Message deleted.' });
   } catch (err) {
-    console.error('[chatter.deleteMessage]', err);
+    logger.error('[chatter.deleteMessage]', err);
     return res.status(500).json({ success: false, message: 'Failed to delete message.' });
   }
 };
@@ -178,6 +179,6 @@ exports.postSystemEvent = async (entityType, entityId, messageType, body, metada
     });
   } catch (err) {
     // Never throw from system event logging — it must not break the parent action
-    console.error('[chatter.postSystemEvent]', err.message);
+    logger.error('[chatter.postSystemEvent]', err.message);
   }
 };

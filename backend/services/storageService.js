@@ -27,6 +27,7 @@ if (STORAGE_PROVIDER === 's3' || STORAGE_PROVIDER === 'minio') {
       DeleteObjectCommand: DeleteObjectCommandImport, ListObjectsV2Command: ListObjectsV2CommandImport }
       = require('@aws-sdk/client-s3');
     const { getSignedUrl: getSignedUrlImport } = require('@aws-sdk/s3-request-presigner');
+const logger = require('../utils/logger.js');
 
     S3Client = S3ClientImport;
     GetObjectCommand = GetObjectCommandImport;
@@ -35,8 +36,8 @@ if (STORAGE_PROVIDER === 's3' || STORAGE_PROVIDER === 'minio') {
     ListObjectsV2Command = ListObjectsV2CommandImport;
     getSignedUrl = getSignedUrlImport;
   } catch (err) {
-    console.warn('AWS SDK not installed. Install with: npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner');
-    console.warn('Falling back to local storage');
+    logger.warn('AWS SDK not installed. Install with: npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner');
+    logger.warn('Falling back to local storage');
   }
 }
 
@@ -445,31 +446,4 @@ const moveFileS3 = async (fromPath, toPath) => {
     Bucket: bucket,
     Key: toPath,
     Body: response.Body,
-    ContentType: response.ContentType
-  });
-  await s3Client.send(putCommand);
-
-  // Delete source
-  const delCommand = new DeleteObjectCommand({
-    Bucket: bucket,
-    Key: fromPath
-  });
-  await s3Client.send(delCommand);
-
-  return {
-    success: true,
-    from: fromPath,
-    to: toPath,
-    provider: STORAGE_PROVIDER
-  };
-};
-
-module.exports = {
-  uploadFile,
-  getFile,
-  deleteFile,
-  getSignedUrlPath,
-  listFiles,
-  moveFile,
-  STORAGE_PROVIDER
-};
+    Conten

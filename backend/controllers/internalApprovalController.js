@@ -5,6 +5,7 @@
 const { InternalApproval, User, Notification } = require('../models');
 const { Op } = require('sequelize');
 const { postSystemEvent } = require('./chatterController');
+const logger = require('../utils/logger.js');
 
 const INCLUDE_USERS = [
   { model: User, as: 'requester',   attributes: ['id','firstName','lastName','email','role'] },
@@ -46,7 +47,7 @@ exports.getAll = async (req, res) => {
       pagination: { total: count, page: parseInt(page), limit: parseInt(limit) },
     });
   } catch (err) {
-    console.error('[internalApproval.getAll]', err);
+    logger.error('[internalApproval.getAll]', err);
     return res.status(500).json({ success: false, message: 'Failed to load approvals.' });
   }
 };
@@ -121,7 +122,7 @@ exports.request = async (req, res) => {
     const created = await InternalApproval.findByPk(approval.id, { include: INCLUDE_USERS });
     return res.status(201).json({ success: true, data: created });
   } catch (err) {
-    console.error('[internalApproval.request]', err);
+    logger.error('[internalApproval.request]', err);
     return res.status(500).json({ success: false, message: 'Failed to create approval request.' });
   }
 };
@@ -160,7 +161,7 @@ exports.approve = async (req, res) => {
     const updated = await InternalApproval.findByPk(approval.id, { include: INCLUDE_USERS });
     return res.json({ success: true, data: updated });
   } catch (err) {
-    console.error('[internalApproval.approve]', err);
+    logger.error('[internalApproval.approve]', err);
     return res.status(500).json({ success: false, message: 'Failed to approve.' });
   }
 };
@@ -200,7 +201,7 @@ exports.reject = async (req, res) => {
     const updated = await InternalApproval.findByPk(approval.id, { include: INCLUDE_USERS });
     return res.json({ success: true, data: updated });
   } catch (err) {
-    console.error('[internalApproval.reject]', err);
+    logger.error('[internalApproval.reject]', err);
     return res.status(500).json({ success: false, message: 'Failed to reject.' });
   }
 };
@@ -234,12 +235,4 @@ exports.getPendingCount = async (req, res) => {
         status: 'pending',
         [Op.or]: [
           { assignedToUserId: req.user.id },
-          { assignedToUserId: null },
-        ],
-      },
-    });
-    return res.json({ success: true, data: { pendingCount: count } });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to count pending approvals.' });
-  }
-};
+          { assignedToUser

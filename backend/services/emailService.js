@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const dayjs = require('dayjs');
+const logger = require('../utils/logger.js');
 
 /**
  * Create and configure nodemailer transporter
@@ -106,7 +107,7 @@ const sendEmail = async (to, subject, htmlContent, options = {}) => {
   try {
     // Allow disabling via env var (default is OFF for dev)
     if (process.env.EMAIL_ENABLED !== 'true') {
-      console.log(`[EMAIL] (disabled) To: ${to}, Subject: ${subject}`);
+      logger.info(`[EMAIL] (disabled) To: ${to}, Subject: ${subject}`);
       return { success: true, disabled: true, message: 'Email delivery disabled' };
     }
 
@@ -121,16 +122,16 @@ const sendEmail = async (to, subject, htmlContent, options = {}) => {
     };
 
     const result = await transporterInstance.sendMail(mailOptions);
-    console.log(`[EMAIL] Sent to ${to}, Subject: ${subject}, MessageId: ${result.messageId}`);
+    logger.info(`[EMAIL] Sent to ${to}, Subject: ${subject}, MessageId: ${result.messageId}`);
 
     // Log Ethereal preview URL for dev mode
     if (process.env.NODE_ENV !== 'production' && result.response) {
-      console.log(`[EMAIL] Preview URL: ${nodemailer.getTestMessageUrl(result)}`);
+      logger.info(`[EMAIL] Preview URL: ${nodemailer.getTestMessageUrl(result)}`);
     }
 
     return { success: true, messageId: result.messageId };
   } catch (error) {
-    console.error(`[EMAIL] Error sending to ${to}:`, error.message);
+    logger.error(`[EMAIL] Error sending to ${to}:`, error.message);
     return { success: false, error: error.message };
   }
 };
@@ -640,33 +641,6 @@ const sendOutreachEmail = async ({ fromAddress, toAddress, toName, subject, body
 
     const result = await transporterInstance.sendMail(mailOptions);
 
-    console.log(`[OUTREACH] Sent to ${toAddress}, Subject: ${subject}, MessageId: ${result.messageId}`);
+    logger.info(`[OUTREACH] Sent to ${toAddress}, Subject: ${subject}, MessageId: ${result.messageId}`);
 
-    return {
-      messageId: result.messageId,
-      accepted: result.accepted,
-      rejected: result.rejected,
-    };
-  } catch (error) {
-    console.error(`[OUTREACH] Error sending to ${toAddress}:`, error.message);
-    throw error;
-  }
-};
-
-module.exports = {
-  sendEmail,
-  generateEmailTemplate,
-  sendQuotationEmail,
-  sendProformaInvoiceEmail,
-  sendOrderConfirmationEmail,
-  sendShipmentNotificationEmail,
-  sendInspectionReportEmail,
-  sendClaimEmail,
-  sendPaymentReminderEmail,
-  sendInvoiceEmail,
-  sendPaymentConfirmationEmail,
-  sendPurchaseOrderEmail,
-  sendShipmentUpdateEmail,
-  sendInspectionScheduledEmail,
-  sendOutreachEmail
-};
+    re

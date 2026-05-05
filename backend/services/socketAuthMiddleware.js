@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { jwt: jwtConfig } = require('../config/auth');
 const db = require('../models');
+const logger = require('../utils/logger.js');
 
 /**
  * Socket.IO authentication middleware
@@ -39,7 +40,7 @@ const socketAuthMiddleware = async (socket, next) => {
     // Join user to their role room for role-based broadcasts
     socket.join(`role-${user.role}`);
 
-    console.log(`Socket authenticated: ${socket.id} (User: ${user.id}, Role: ${user.role})`);
+    logger.info(`Socket authenticated: ${socket.id} (User: ${user.id}, Role: ${user.role})`);
 
     next();
   } catch (error) {
@@ -49,7 +50,7 @@ const socketAuthMiddleware = async (socket, next) => {
     if (error.name === 'JsonWebTokenError') {
       return next(new Error('Invalid token'));
     }
-    console.error('Socket auth error:', error);
+    logger.error('Socket auth error:', error);
     next(new Error('Authentication failed'));
   }
 };
@@ -58,7 +59,7 @@ const socketAuthMiddleware = async (socket, next) => {
  * Handle socket disconnection and cleanup
  */
 const handleSocketDisconnect = (socket) => {
-  console.log(`Socket disconnected: ${socket.id} (User: ${socket.userId})`);
+  logger.info(`Socket disconnected: ${socket.id} (User: ${socket.userId})`);
   // Socket.IO automatically removes socket from all rooms
 };
 
@@ -77,8 +78,4 @@ const getSocketUser = (socket) => {
   };
 };
 
-module.exports = {
-  socketAuthMiddleware,
-  handleSocketDisconnect,
-  getSocketUser
-};
+module.ex

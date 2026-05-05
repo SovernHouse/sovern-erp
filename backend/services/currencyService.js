@@ -7,6 +7,7 @@
 const https = require('https');
 const http = require('http');
 const { v4: uuidv4 } = require('uuid');
+const logger = require('../utils/logger.js');
 
 // Supported currencies
 const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'CNY', 'AED', 'INR', 'SAR'];
@@ -288,7 +289,7 @@ const getHistoricalRate = async (fromCurrency, toCurrency, date) => {
       source: 'historical'
     };
   } catch (error) {
-    console.error('Error fetching historical rate:', error);
+    logger.error('Error fetching historical rate:', error);
     // Gracefully fallback to current rate
     return {
       fromCurrency,
@@ -313,12 +314,12 @@ const startScheduledRateUpdate = () => {
   // Initial fetch on startup
   fetchLiveRates()
     .then(() => {
-      console.log('Initial exchange rates fetched successfully');
+      logger.info('Initial exchange rates fetched successfully');
       // Persist to database
-      persistRatesToDatabase().catch(err => console.error('Error persisting rates:', err));
+      persistRatesToDatabase().catch(err => logger.error('Error persisting rates:', err));
     })
     .catch(error => {
-      console.warn('Failed to fetch initial exchange rates, using defaults:', error.message);
+      logger.warn('Failed to fetch initial exchange rates, using defaults:', error.message);
       lastApiError = error.message;
     });
 
@@ -326,12 +327,12 @@ const startScheduledRateUpdate = () => {
   scheduledRateUpdateTimer = setInterval(() => {
     fetchLiveRates()
       .then(() => {
-        console.log('Exchange rates updated successfully');
+        logger.info('Exchange rates updated successfully');
         // Persist to database
-        persistRatesToDatabase().catch(err => console.error('Error persisting rates:', err));
+        persistRatesToDatabase().catch(err => logger.error('Error persisting rates:', err));
       })
       .catch(error => {
-        console.warn('Failed to update exchange rates:', error.message);
+        logger.warn('Failed to update exchange rates:', error.message);
         lastApiError = error.message;
       });
   }, EXCHANGE_RATE_UPDATE_INTERVAL_MS);
@@ -388,7 +389,7 @@ const persistRatesToDatabase = async () => {
       }
     }
   } catch (error) {
-    console.error('Failed to persist rates to database:', error);
+    logger.error('Failed to persist rates to database:', error);
     throw error;
   }
 };
@@ -402,25 +403,4 @@ const getApiStatus = () => {
     updateInterval: EXCHANGE_RATE_UPDATE_INTERVAL_MS,
     lastUpdated: lastUpdated,
     lastApiError: lastApiError,
-    isScheduled: !!scheduledRateUpdateTimer,
-    currentRates: exchangeRates
-  };
-};
-
-module.exports = {
-  getSupportedCurrencies,
-  getCurrencyName,
-  getCurrencySymbol,
-  getExchangeRates,
-  convertAmount,
-  getFormattedAmount,
-  updateExchangeRates,
-  getExchangeRate,
-  fetchLiveRates,
-  getHistoricalRate,
-  startScheduledRateUpdate,
-  stopScheduledRateUpdate,
-  getApiStatus,
-  SUPPORTED_CURRENCIES,
-  DEFAULT_RATES
-};
+    isScheduled: !!sc

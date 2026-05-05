@@ -1,3 +1,4 @@
+const logger = require('../utils/logger.js');
 /**
  * Application Performance Monitoring (APM) Service
  * Lightweight in-memory APM for tracking metrics, errors, and performance
@@ -75,7 +76,7 @@ class APMService {
 
       this.metrics.requestCount++;
     } catch (error) {
-      console.error('[APM] Error recording request:', error.message);
+      logger.error('[APM] Error recording request:', error.message);
     }
   }
 
@@ -105,7 +106,7 @@ class APMService {
         this.metrics.errors = this.metrics.errors.slice(-this.config.maxErrorsStored);
       }
     } catch (error) {
-      console.error('[APM] Error recording error:', error.message);
+      logger.error('[APM] Error recording error:', error.message);
     }
   }
 
@@ -200,7 +201,7 @@ class APMService {
         lastUpdated: new Date().toISOString()
       };
     } catch (error) {
-      console.error('[APM] Error getting metrics:', error.message);
+      logger.error('[APM] Error getting metrics:', error.message);
       return { error: 'Failed to get metrics' };
     }
   }
@@ -218,7 +219,7 @@ class APMService {
         .reverse()
         .slice(0, limit);
     } catch (error) {
-      console.error('[APM] Error getting errors:', error.message);
+      logger.error('[APM] Error getting errors:', error.message);
       return [];
     }
   }
@@ -235,7 +236,7 @@ class APMService {
         .sort((a, b) => b.responseTimeMs - a.responseTimeMs)
         .slice(0, limit);
     } catch (error) {
-      console.error('[APM] Error getting slow requests:', error.message);
+      logger.error('[APM] Error getting slow requests:', error.message);
       return [];
     }
   }
@@ -290,7 +291,7 @@ class APMService {
         }
       };
     } catch (error) {
-      console.error('[APM] Error getting health check:', error.message);
+      logger.error('[APM] Error getting health check:', error.message);
       return {
         status: 'error',
         error: 'Failed to get health check'
@@ -311,9 +312,9 @@ class APMService {
         requestCount: 0,
         errorCount: 0
       };
-      console.log('[APM] Metrics reset');
+      logger.info('[APM] Metrics reset');
     } catch (error) {
-      console.error('[APM] Error resetting metrics:', error.message);
+      logger.error('[APM] Error resetting metrics:', error.message);
     }
   }
 
@@ -347,15 +348,4 @@ class APMService {
 
         if (initialRequestCount > this.metrics.requests.length ||
             initialErrorCount > this.metrics.errors.length ||
-            initialSlowCount > this.metrics.slowRequests.length) {
-          console.log('[APM] Cleanup: Removed old metrics');
-        }
-      } catch (error) {
-        console.error('[APM] Error in cleanup task:', error.message);
-      }
-    }, 600000); // Run every 10 minutes
-  }
-}
-
-// Export singleton instance
-module.exports = new APMService();
+  

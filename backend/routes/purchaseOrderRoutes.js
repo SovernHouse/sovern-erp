@@ -24,6 +24,7 @@ const emailService = require('../services/emailService');
 const notificationService = require('../services/notificationService');
 const webhookService = require('../services/webhookService');
 const { validateTransition } = require('../utils/statusMachine');
+const logger = require('../utils/logger.js');
 
 /**
  * List all purchase orders with pagination and filtering
@@ -565,28 +566,10 @@ router.post('/:id/send', requireAuth, async (req, res, next) => {
     res.json(getSuccessResponse({ pdfFile }, 'PO sent successfully'));
 
     // Fire-and-forget email
-    emailService.sendPurchaseOrderEmail(po.factory, po).catch(err => console.error('[EMAIL] Error:', err.message));
+    emailService.sendPurchaseOrderEmail(po.factory, po).catch(err => logger.error('[EMAIL] Error:', err.message));
   } catch (error) {
     next(error);
   }
 });
 
-router.get('/:id/pdf', requireAuth, async (req, res, next) => {
-  try {
-    const po = await db.PurchaseOrder.findByPk(req.params.id, {
-      include: [
-        { association: 'items', include: [{ model: db.Product, as: 'product' }] },
-        { model: db.Factory, as: 'factory' }
-      ]
-    });
-
-    if (!po) throw new NotFoundError('Purchase Order not found');
-
-    const pdfFile = await documentGenerator.generatePurchaseOrderPDF(po, po.items, po.factory);
-    res.json(getSuccessResponse({ pdfFile }));
-  } catch (error) {
-    next(error);
-  }
-});
-
-module.exports = router;
+router

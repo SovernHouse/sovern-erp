@@ -3,6 +3,7 @@ const db = require('../models');
 const { sendOutreachEmail } = require('../services/emailService');
 const dayjs = require('dayjs');
 const tenant = require('../config/tenant');
+const logger = require('../utils/logger.js');
 
 /**
  * Default follow-up schedule by touch number (in days)
@@ -57,7 +58,7 @@ const getLeadOutreachEmails = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error fetching outreach emails:', error);
+    logger.error('Error fetching outreach emails:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -167,7 +168,7 @@ const sendOutreachEmailToLead = async (req, res) => {
       data: outreachEmail,
     });
   } catch (error) {
-    console.error('Error sending outreach email:', error);
+    logger.error('Error sending outreach email:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -204,7 +205,7 @@ const updateFollowup = async (req, res) => {
       data: outreachEmail,
     });
   } catch (error) {
-    console.error('Error updating follow-up:', error);
+    logger.error('Error updating follow-up:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -248,7 +249,7 @@ const getFollowups = async (req, res) => {
       count: followups.length,
     });
   } catch (error) {
-    console.error('Error fetching followups:', error);
+    logger.error('Error fetching followups:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -436,7 +437,7 @@ const sendCampaign = async (req, res) => {
         } catch (err) {
           errorMessage = err.message;
           failedCount++;
-          console.error(`[CAMPAIGN ${campaignId}] Failed → ${lead.email}:`, err.message);
+          logger.error(`[CAMPAIGN ${campaignId}] Failed → ${lead.email}:`, err.message);
         }
 
         // Record individual OutreachEmail (appears in each lead's email history)
@@ -469,14 +470,14 @@ const sendCampaign = async (req, res) => {
       // Mark campaign finished
       const finalStatus = failedCount === leads.length ? 'failed' : 'completed';
       await campaign.update({ sendStatus: finalStatus, status: 'completed' });
-      console.log(`[CAMPAIGN ${campaignId}] Complete — sent: ${sentCount}, failed: ${failedCount}`);
+      logger.info(`[CAMPAIGN ${campaignId}] Complete — sent: ${sentCount}, failed: ${failedCount}`);
     })().catch(err => {
-      console.error(`[CAMPAIGN ${campaignId}] Fatal background error:`, err.message);
+      logger.error(`[CAMPAIGN ${campaignId}] Fatal background error:`, err.message);
       campaign.update({ sendStatus: 'failed' }).catch(() => {});
     });
 
   } catch (error) {
-    console.error('Error starting campaign send:', error);
+    logger.error('Error starting campaign send:', error);
     // Response may already be sent if error occurred after res.status(202)
     if (!res.headersSent) {
       res.status(500).json({ success: false, message: error.message });
@@ -522,25 +523,4 @@ const getCampaignStatus = async (req, res) => {
         sendStatus: campaign.sendStatus,
         totalRecipients: campaign.totalRecipients,
         sentCount: campaign.sentCount,
-        failedCount: campaign.failedCount,
-        lastSentAt: campaign.lastSentAt,
-        fromAddress: campaign.fromAddress,
-        emails: campaign.outreachEmails || [],
-      },
-    });
-  } catch (error) {
-    console.error('Error fetching campaign status:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-module.exports = {
-  getLeadOutreachEmails,
-  sendOutreachEmailToLead,
-  updateFollowup,
-  getFollowups,
-  deleteOutreachEmail,
-  deleteAllOutreachEmails,
-  sendCampaign,
-  getCampaignStatus,
-};
+        failedCount: 

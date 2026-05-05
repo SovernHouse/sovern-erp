@@ -18,6 +18,7 @@ const { NotFoundError, ValidationError } = require('../middleware/errorHandler')
 const auditService = require('../services/auditService');
 const notificationService = require('../services/notificationService');
 const webhookService = require('../services/webhookService');
+const logger = require('../utils/logger.js');
 
 /**
  * GET /api/grns
@@ -185,7 +186,7 @@ router.post('/:id/accept', requireAuth, async (req, res, next) => {
             });
           }
         } catch (itemError) {
-          console.error(`Failed to update inventory for product ${item.productId}:`, itemError);
+          logger.error(`Failed to update inventory for product ${item.productId}:`, itemError);
         }
       }
     }
@@ -245,16 +246,4 @@ router.post('/:id/reject', requireAuth, async (req, res, next) => {
 
     // Fire-and-forget operations
     auditService.logAction(req.user.id, 'UPDATE', 'GoodsReceivedNote', grn.id, { before: beforeSnapshot, after: updatedGrn?.toJSON?.() || grn.toJSON(), action: 'rejected', reason }, req.ip).catch(() => {});
-    webhookService.triggerWebhook('grn.rejected', {
-      grnId: grn.id,
-      grnNumber: grn.grnNumber,
-      poId: grn.poId,
-      reason,
-      rejectedAt: new Date()
-    }).catch(() => {});
-  } catch (error) {
-    next(error);
-  }
-});
-
-module.exports = router;
+    webhookService

@@ -29,6 +29,7 @@ const currencyService = require('./services/currencyService');
 const ModuleLoader = require('./modules/moduleLoader');
 const ConfigManager = require('./modules/configManager');
 const createModuleRoutes = require('./modules/moduleRoutes');
+const logger = require('./utils/logger.js');
 
 const app = express();
 
@@ -340,20 +341,20 @@ app.use(errorHandler);
 io.use(socketAuthMiddleware);
 
 io.on('connection', (socket) => {
-  console.log(`Socket connected: ${socket.id} (User: ${socket.userId})`);
+  logger.info(`Socket connected: ${socket.id} (User: ${socket.userId})`);
 
   // Legacy support for manual join-user events (if needed)
   socket.on('join-user', (userId) => {
     if (socket.userId === userId) {
       socket.join(`user-${userId}`);
-      console.log(`User ${userId} manually joined socket`);
+      logger.info(`User ${userId} manually joined socket`);
     }
   });
 
   socket.on('leave-user', (userId) => {
     if (socket.userId === userId) {
       socket.leave(`user-${userId}`);
-      console.log(`User ${userId} manually left socket`);
+      logger.info(`User ${userId} manually left socket`);
     }
   });
 
@@ -405,7 +406,7 @@ async function autoMigrateSchema() {
         fixCount++;
       } catch(e) {
         if (e.message.indexOf('duplicate column') === -1) {
-          console.warn('  Column add warning:', tableName + '.' + colName, e.message.substring(0, 60));
+          logger.warn('  Column add warning:', tableName + '.' + colName, e.message.substring(0, 60));
         }
       }
     }
@@ -419,7 +420,7 @@ async function autoMigrateSchema() {
     }
   }
 
-  if (fixCount > 0) console.log('[Schema] Auto-migrated ' + fixCount + ' missing columns');
+  if (fixCount > 0) logger.info('[Schema] Auto-migrated ' + fixCount + ' missing columns');
 }
 
 // In test mode, skip the DB startup chain entirely.
@@ -431,7 +432,7 @@ async function autoMigrateSchema() {
 if (process.env.NODE_ENV !== 'test') {
 db.sequelize.authenticate()
   .then(() => {
-    console.log('Database connected successfully');
+    logger.info('Database connected successfully');
     return autoMigrateSchema();
   })
   .then(() => {
@@ -445,7 +446,7 @@ db.sequelize.authenticate()
       const msg = (err && err.message) || '';
       const inner = (err && err.parent && err.parent.message) || '';
       if (/already exists/i.test(msg) || /already exists/i.test(inner)) {
-        console.warn('sync(): ignoring benign "already exists" error:', inner || msg);
+        logger.warn('sync(): ignoring benign "already exists" error:', inner || msg);
         return;
       }
       throw err;
@@ -463,34 +464,34 @@ db.sequelize.authenticate()
       const moduleRoutes = createModuleRoutes(moduleRegistry, moduleFeatureFlags, configManager);
       app.use('/api/modules', moduleRoutes);
 
-      console.log('Module system initialized');
+      logger.info('Module system initialized');
     } catch (error) {
-      console.error('Failed to initialize module system:', error.message);
+      logger.error('Failed to initialize module system:', error.message);
     }
   })
   .then(async () => {
     // Check if database has users - if not, warn to run seed
     const userCount = await db.User.count();
     if (userCount === 0) {
-      console.log('');
-      console.log('========================================');
-      console.log('  WARNING: No users found in database!');
-      console.log('  Run: cd backend && node seeds/seed.js');
-      console.log('========================================');
-      console.log('');
+      logger.info('');
+      logger.info('========================================');
+      logger.info('  WARNING: No users found in database!');
+      logger.info('  Run: cd backend && node seeds/seed.js');
+      logger.info('========================================');
+      logger.info('');
     } else {
-      console.log(`Database ready: ${userCount} users found`);
+      logger.info(`Database ready: ${userCount} users found`);
     }
 
     // Auto-backup on startup if enabled
     if (process.env.ENABLE_AUTO_BACKUP === 'true') {
       try {
         const backupService = require('./services/backupService');
-        console.log('Creating startup backup...');
+        logger.info('Creating startup backup...');
         const backup = await backupService.createBackup();
-        console.log(`Backup created: ${backup.filename} (${backup.size} bytes)`);
+        logger.info(`Backup created: ${backup.filename} (${backup.size} bytes)`);
       } catch (error) {
-        console.error('Failed to create startup backup:', error.message);
+        logger.error('Failed to create startup backup:', error.message);
       }
     }
 
@@ -500,10 +501,10 @@ db.sequelize.authenticate()
         const backupService = require('./services/backupService');
         const schedulerStatus = backupService.startBackupScheduler();
         if (schedulerStatus.enabled) {
-          console.log('Backup scheduler initialized:', schedulerStatus);
+          logger.info('Backup scheduler initialized:', schedulerStatus);
         }
       } catch (error) {
-        console.error('Failed to initialize backup scheduler:', error.message);
+        logger.error('Failed to initialize backup scheduler:', error.message);
       }
     }
 
@@ -511,9 +512,9 @@ db.sequelize.authenticate()
     if (process.env.ENABLE_EXCHANGE_RATE_SCHEDULER !== 'false') {
       try {
         currencyService.startScheduledRateUpdate();
-        console.log('Exchange rate scheduler initialized');
+        logger.info('Exchange rate scheduler initialized');
       } catch (error) {
-        console.error('Failed to initialize exchange rate scheduler:', error.message);
+        logger.error('Failed to initialize exchange rate scheduler:', error.message);
       }
     }
 
@@ -526,26 +527,6 @@ db.sequelize.authenticate()
       } catch (error) {
         // Graceful degradation — the server still starts if node-cron isn't installed yet
         if (error.code === 'MODULE_NOT_FOUND' && error.message.includes('node-cron')) {
-          console.warn('[SCHEDULER] node-cron not installed. Run: npm install (in backend directory)');
+          logger.warn('[SCHEDULER] node-cron not installed. Run: npm install (in backend directory)');
         } else {
-          console.error('Failed to initialize scheduler:', error.message);
-        }
-      }
-    }
-
-    server.listen(PORT, () => {
-      console.log(`Trading ERP Server running on port ${PORT}`);
-      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    });
-  })
-  .catch(err => {
-    console.error('Database connection error:', err);
-    process.exit(1);
-  });
-} // end if (NODE_ENV !== 'test')
-
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Rejection:', err);
-});
-
-module.exports = { app, server, io };
+          logger.error

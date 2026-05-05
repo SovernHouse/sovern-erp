@@ -5,6 +5,7 @@ const zlib = require('zlib');
 const dayjs = require('dayjs');
 const db = require('../models');
 const backupConfig = require('../config/backupConfig');
+const logger = require('../utils/logger.js');
 
 const BACKUPS_DIR = backupConfig.backupsDir;
 
@@ -399,12 +400,12 @@ const formatBytes = (bytes) => {
  */
 const startBackupScheduler = () => {
   if (!backupConfig.schedule.enabled) {
-    console.log('[BACKUP] Scheduled backups disabled');
+    logger.info('[BACKUP] Scheduled backups disabled');
     return { enabled: false, message: 'Scheduled backups disabled in config' };
   }
 
   if (backupScheduler) {
-    console.log('[BACKUP] Scheduler already running');
+    logger.info('[BACKUP] Scheduler already running');
     return { enabled: true, message: 'Scheduler already running' };
   }
 
@@ -412,7 +413,7 @@ const startBackupScheduler = () => {
     // Calculate initial delay to preferred time (default: 2 AM)
     const initialDelay = backupConfig.schedule.getTimeOffset();
 
-    console.log(`[BACKUP] Starting scheduler (initial delay: ${Math.round(initialDelay / 1000 / 60)} minutes)`);
+    logger.info(`[BACKUP] Starting scheduler (initial delay: ${Math.round(initialDelay / 1000 / 60)} minutes)`);
 
     // First backup at preferred time
     backupScheduler = setTimeout(() => {
@@ -434,7 +435,7 @@ const startBackupScheduler = () => {
       }
     };
   } catch (error) {
-    console.error('[BACKUP] Scheduler startup error:', error.message);
+    logger.error('[BACKUP] Scheduler startup error:', error.message);
     return { enabled: false, error: error.message };
   }
 };
@@ -447,7 +448,7 @@ const stopBackupScheduler = () => {
     clearInterval(backupScheduler);
     clearTimeout(backupScheduler);
     backupScheduler = null;
-    console.log('[BACKUP] Scheduler stopped');
+    logger.info('[BACKUP] Scheduler stopped');
     return { success: true, message: 'Backup scheduler stopped' };
   }
   return { success: true, message: 'Scheduler was not running' };
@@ -460,7 +461,7 @@ const stopBackupScheduler = () => {
 const runScheduledBackup = async () => {
   try {
     const startTime = Date.now();
-    console.log(`[BACKUP] Scheduled backup started at ${new Date().toISOString()}`);
+    logger.info(`[BACKUP] Scheduled backup started at ${new Date().toISOString()}`);
 
     // Create backup
     const backup = await createBackup();
@@ -468,12 +469,12 @@ const runScheduledBackup = async () => {
     // Verify backup integrity
     const verification = await verifyBackup(backup.filename);
     if (!verification.valid) {
-      console.error(`[BACKUP] Verification failed for ${backup.filename}:`, verification.message);
+      logger.error(`[BACKUP] Verification failed for ${backup.filename}:`, verification.message);
     }
 
     // Check size alert threshold
     if (backup.size > backupConfig.alerts.maxSizeMB * 1024 * 1024) {
-      console.warn(
+      logger.warn(
         `[BACKUP] ALERT: Backup size (${formatBytes(backup.size)}) exceeds threshold ` +
         `(${backupConfig.alerts.maxSizeMB}MB)`
       );
@@ -483,17 +484,17 @@ const runScheduledBackup = async () => {
     if (backupConfig.cleanup.enabled) {
       const cleanup = await cleanupOldBackups();
       if (cleanup.deletedBackups && cleanup.deletedBackups.length > 0) {
-        console.log(`[BACKUP] Cleanup removed ${cleanup.deletedBackups.length} old backups`);
+        logger.info(`[BACKUP] Cleanup removed ${cleanup.deletedBackups.length} old backups`);
       }
     }
 
     const duration = Date.now() - startTime;
-    console.log(
+    logger.info(
       `[BACKUP] Scheduled backup completed in ${Math.round(duration / 1000)}s ` +
       `(${formatBytes(backup.size)}, valid: ${verification.valid})`
     );
   } catch (error) {
-    console.error('[BACKUP] Scheduled backup failed:', error.message);
+    logger.error('[BACKUP] Scheduled backup failed:', error.message);
 
     // Alert on failure if configured
     if (backupConfig.alerts.alertOnFailure) {
@@ -507,7 +508,7 @@ const runScheduledBackup = async () => {
           relatedEntity: 'backup'
         });
       } catch (alertError) {
-        console.error('[BACKUP] Failed to send alert:', alertError.message);
+        logger.error('[BACKUP] Failed to send alert:', alertError.message);
       }
     }
   }
@@ -521,29 +522,4 @@ const getSchedulerStatus = () => {
     running: !!backupScheduler,
     config: {
       enabled: backupConfig.schedule.enabled,
-      interval: backupConfig.schedule.intervalMs,
-      preferredTime: backupConfig.schedule.preferredTime,
-      retention: backupConfig.retentionDays + ' days'
-    },
-    environment: {
-      databaseType: backupConfig.databaseType,
-      backupsDir: BACKUPS_DIR
-    }
-  };
-};
-
-module.exports = {
-  createBackup,
-  listBackups,
-  restoreBackup,
-  deleteBackup,
-  verifyBackup,
-  getBackupSchedule,
-  setBackupSchedule,
-  cleanupOldBackups,
-  ensureBackupsDir,
-  startBackupScheduler,
-  stopBackupScheduler,
-  runScheduledBackup,
-  getSchedulerStatus
-};
+      interval: backupConfig.sch

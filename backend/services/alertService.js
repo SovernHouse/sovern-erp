@@ -4,6 +4,7 @@
  */
 
 const apmService = require('./apmService');
+const logger = require('../utils/logger.js');
 
 class AlertService {
   constructor() {
@@ -91,7 +92,7 @@ class AlertService {
       }
 
     } catch (error) {
-      console.error('[AlertService] Error checking alerts:', error.message);
+      logger.error('[AlertService] Error checking alerts:', error.message);
     }
   }
 
@@ -124,11 +125,11 @@ class AlertService {
         });
 
         // Log alert to console
-        const logLevel = severity === 'error' ? console.error : console.warn;
+        const logLevel = severity === 'error' ? logger.error : logger.warn;
         logLevel(`[ALERT] ${alertId}: ${message}`);
       }
     } catch (error) {
-      console.error('[AlertService] Error creating alert:', error.message);
+      logger.error('[AlertService] Error creating alert:', error.message);
     }
   }
 
@@ -143,7 +144,7 @@ class AlertService {
         this.alerts.splice(index, 1);
       }
     } catch (error) {
-      console.error('[AlertService] Error dismissing alert:', error.message);
+      logger.error('[AlertService] Error dismissing alert:', error.message);
     }
   }
 
@@ -158,7 +159,7 @@ class AlertService {
         isAcknowledged: alert.acknowledged
       }));
     } catch (error) {
-      console.error('[AlertService] Error getting alerts:', error.message);
+      logger.error('[AlertService] Error getting alerts:', error.message);
       return [];
     }
   }
@@ -173,10 +174,10 @@ class AlertService {
       if (alert) {
         alert.acknowledged = true;
         alert.acknowledgedAt = new Date().toISOString();
-        console.log(`[AlertService] Alert acknowledged: ${alertId}`);
+        logger.info(`[AlertService] Alert acknowledged: ${alertId}`);
       }
     } catch (error) {
-      console.error('[AlertService] Error acknowledging alert:', error.message);
+      logger.error('[AlertService] Error acknowledging alert:', error.message);
     }
   }
 
@@ -186,14 +187,4 @@ class AlertService {
    */
   startAlertCheckTask() {
     // Run immediately on startup
-    this.checkAlerts();
-
-    // Then run every 5 minutes
-    setInterval(() => {
-      this.checkAlerts();
-    }, 300000); // 5 minutes
-  }
-}
-
-// Export singleton instance
-module.exports = new AlertService();
+    this.checkAlerts(

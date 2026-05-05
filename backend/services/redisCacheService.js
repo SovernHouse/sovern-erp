@@ -12,6 +12,7 @@
 
 const Redis = require('ioredis');
 const CacheService = require('./cacheService');
+const logger = require('../utils/logger.js');
 
 class RedisCacheService {
   constructor(redisUrl = process.env.REDIS_URL) {
@@ -32,7 +33,7 @@ class RedisCacheService {
     if (redisUrl) {
       this._initializeRedis();
     } else {
-      console.log('[Cache] Redis URL not configured, using in-memory cache');
+      logger.info('[Cache] Redis URL not configured, using in-memory cache');
       this.isAvailable = false;
     }
   }
@@ -55,33 +56,33 @@ class RedisCacheService {
       });
 
       this.redis.on('connect', () => {
-        console.log('[Cache] Connected to Redis');
+        logger.info('[Cache] Connected to Redis');
         this.isAvailable = true;
       });
 
       this.redis.on('error', (err) => {
-        console.error('[Cache] Redis error:', err.message);
+        logger.error('[Cache] Redis error:', err.message);
         this.isAvailable = false;
       });
 
       this.redis.on('close', () => {
-        console.log('[Cache] Redis connection closed');
+        logger.info('[Cache] Redis connection closed');
         this.isAvailable = false;
       });
 
       // Test connection immediately
       this.redis.ping()
         .then(() => {
-          console.log('[Cache] Redis is ready');
+          logger.info('[Cache] Redis is ready');
           this.isAvailable = true;
         })
         .catch((err) => {
-          console.error('[Cache] Redis connection failed:', err.message);
+          logger.error('[Cache] Redis connection failed:', err.message);
           this.isAvailable = false;
         });
 
     } catch (err) {
-      console.error('[Cache] Failed to initialize Redis:', err.message);
+      logger.error('[Cache] Failed to initialize Redis:', err.message);
       this.isAvailable = false;
     }
   }
@@ -118,7 +119,7 @@ class RedisCacheService {
         return value;
       }
     } catch (err) {
-      console.error('[Cache] Redis get error:', err.message);
+      logger.error('[Cache] Redis get error:', err.message);
       // Fallback to in-memory
       const result = this.fallback.get(key);
       if (result !== undefined) {
@@ -155,7 +156,7 @@ class RedisCacheService {
 
       this.stats.sets++;
     } catch (err) {
-      console.error('[Cache] Redis set error:', err.message);
+      logger.error('[Cache] Redis set error:', err.message);
       // Fallback to in-memory
       this.fallback.set(key, value, ttlSeconds);
     }
@@ -182,7 +183,7 @@ class RedisCacheService {
       }
       return result > 0;
     } catch (err) {
-      console.error('[Cache] Redis del error:', err.message);
+      logger.error('[Cache] Redis del error:', err.message);
       // Fallback to in-memory
       const deleted = this.fallback.del(key);
       if (deleted) {
@@ -234,7 +235,7 @@ class RedisCacheService {
 
       return deletedCount;
     } catch (err) {
-      console.error('[Cache] Redis delPattern error:', err.message);
+      logger.error('[Cache] Redis delPattern error:', err.message);
       // Fallback to in-memory
       return this.fallback.delPattern(pattern);
     }
@@ -252,9 +253,9 @@ class RedisCacheService {
 
     try {
       await this.redis.flushdb();
-      console.log('[Cache] Cache flushed');
+      logger.info('[Cache] Cache flushed');
     } catch (err) {
-      console.error('[Cache] Redis flush error:', err.message);
+      logger.error('[Cache] Redis flush error:', err.message);
       // Fallback to in-memory
       this.fallback.flush();
     }
@@ -278,7 +279,7 @@ class RedisCacheService {
           }
         }
       } catch (err) {
-        console.error('[Cache] Failed to get Redis info:', err.message);
+        logger.error('[Cache] Failed to get Redis info:', err.message);
       }
     }
 
@@ -328,9 +329,9 @@ class RedisCacheService {
     if (this.redis && this.isAvailable) {
       try {
         await this.redis.quit();
-        console.log('[Cache] Redis connection closed gracefully');
+        logger.info('[Cache] Redis connection closed gracefully');
       } catch (err) {
-        console.error('[Cache] Error closing Redis:', err.message);
+        logger.error('[Cache] Error closing Redis:', err.message);
         await this.redis.disconnect();
       }
     }
@@ -343,22 +344,7 @@ function createCacheService() {
   const redisUrl = process.env.REDIS_URL;
 
   if (redisUrl) {
-    console.log('[Cache] Initializing Redis cache service');
+    logger.info('[Cache] Initializing Redis cache service');
     return new RedisCacheService(redisUrl);
   } else {
-    console.log('[Cache] Redis not configured, using in-memory cache');
-    return CacheService;
-  }
-}
-
-module.exports = {
-  RedisCacheService,
-  createCacheService,
-  getInstance: () => {
-    // Lazy initialization
-    if (!module.exports._instance) {
-      module.exports._instance = createCacheService();
-    }
-    return module.exports._instance;
-  }
-};
+    consol

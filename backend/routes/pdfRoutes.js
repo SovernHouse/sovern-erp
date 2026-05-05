@@ -4,6 +4,7 @@ const pdfGeneratorService = require('../services/pdfGeneratorService');
 const pdfTemplates = require('../services/pdfTemplates');
 const { requireAuth } = require('../middleware/auth');
 const { getErrorResponse } = require('../utils/helpers');
+const logger = require('../utils/logger.js');
 
 /**
  * PDF Generation Routes
@@ -23,7 +24,7 @@ router.get('/invoice/:id', requireAuth, async (req, res, next) => {
     res.setHeader('Content-Disposition', `attachment; filename="invoice-${id}.pdf"`);
     res.send(pdfBuffer);
   } catch (error) {
-    console.error('Error generating invoice PDF:', error);
+    logger.error('Error generating invoice PDF:', error);
     next(error);
   }
 });
@@ -41,7 +42,7 @@ router.get('/purchase-order/:id', requireAuth, async (req, res, next) => {
     res.setHeader('Content-Disposition', `attachment; filename="purchase-order-${id}.pdf"`);
     res.send(pdfBuffer);
   } catch (error) {
-    console.error('Error generating purchase order PDF:', error);
+    logger.error('Error generating purchase order PDF:', error);
     next(error);
   }
 });
@@ -59,7 +60,7 @@ router.get('/quotation/:id', requireAuth, async (req, res, next) => {
     res.setHeader('Content-Disposition', `attachment; filename="quotation-${id}.pdf"`);
     res.send(pdfBuffer);
   } catch (error) {
-    console.error('Error generating quotation PDF:', error);
+    logger.error('Error generating quotation PDF:', error);
     next(error);
   }
 });
@@ -77,7 +78,7 @@ router.get('/proforma-invoice/:id', requireAuth, async (req, res, next) => {
     res.setHeader('Content-Disposition', `attachment; filename="proforma-invoice-${id}.pdf"`);
     res.send(pdfBuffer);
   } catch (error) {
-    console.error('Error generating proforma invoice PDF:', error);
+    logger.error('Error generating proforma invoice PDF:', error);
     next(error);
   }
 });
@@ -95,7 +96,7 @@ router.get('/packing-list/:id', requireAuth, async (req, res, next) => {
     res.setHeader('Content-Disposition', `attachment; filename="packing-list-${id}.pdf"`);
     res.send(pdfBuffer);
   } catch (error) {
-    console.error('Error generating packing list PDF:', error);
+    logger.error('Error generating packing list PDF:', error);
     next(error);
   }
 });
@@ -113,7 +114,7 @@ router.get('/certificate-of-origin/:id', requireAuth, async (req, res, next) => 
     res.setHeader('Content-Disposition', `attachment; filename="certificate-of-origin-${id}.pdf"`);
     res.send(pdfBuffer);
   } catch (error) {
-    console.error('Error generating certificate of origin PDF:', error);
+    logger.error('Error generating certificate of origin PDF:', error);
     next(error);
   }
 });
@@ -131,7 +132,7 @@ router.get('/quotation-enhanced/:id', requireAuth, async (req, res, next) => {
     res.setHeader('Content-Disposition', `attachment; filename="quotation-${id}.pdf"`);
     res.send(pdfBuffer);
   } catch (error) {
-    console.error('Error generating quotation PDF:', error);
+    logger.error('Error generating quotation PDF:', error);
     next(error);
   }
 });
@@ -147,11 +148,4 @@ router.get('/packing-list-advanced/:id', requireAuth, async (req, res, next) => 
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="packing-list-${id}.pdf"`);
-    res.send(pdfBuffer);
-  } catch (error) {
-    console.error('Error generating packing list PDF:', error);
-    next(error);
-  }
-});
-
-module.exports = router;
+    res.sen

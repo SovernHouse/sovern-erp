@@ -1,4 +1,5 @@
 const db = require('../models');
+const logger = require('../utils/logger.js');
 
 /**
  * Middleware to enforce customer-level data isolation
@@ -77,7 +78,7 @@ const checkResourceOwnership = (model, ownerField, resourceIdParam = 'id') => {
       req.resource = resource;
       next();
     } catch (error) {
-      console.error('Resource ownership check error:', error);
+      logger.error('Resource ownership check error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   };
@@ -114,7 +115,7 @@ const applyScopeFilter = (scopeField) => {
 
       next();
     } catch (error) {
-      console.error('Scope filter error:', error);
+      logger.error('Scope filter error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   };
@@ -132,15 +133,9 @@ const excludeCustomerData = (req, res, next) => {
     }
     next();
   } catch (error) {
-    console.error('Exclude customer data error:', error);
+    logger.error('Exclude customer data error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
 
-module.exports = {
-  enforceCustomerAccess,
-  enforceFactoryAccess,
-  checkResourceOwnership,
-  applyScopeFilter,
-  excludeCustomerData,
-};
+m

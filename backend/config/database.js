@@ -1,4 +1,5 @@
 const path = require('path');
+const logger = require('../utils/logger.js');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 /**
@@ -34,7 +35,7 @@ function getConfig() {
       database: url.pathname.slice(1) || process.env.DB_NAME,
       host: url.hostname || process.env.DB_HOST,
       port: url.port || process.env.DB_PORT || 5432,
-      logging: process.env.LOG_LEVEL === 'debug' ? console.log : false,
+      logging: process.env.LOG_LEVEL === 'debug' ? logger.info : false,
       pool: {
         max: parseInt(process.env.DB_POOL_MAX || '10'),
         min: parseInt(process.env.DB_POOL_MIN || '2'),
@@ -61,7 +62,7 @@ function getConfig() {
       host: process.env.DB_HOST,
       port: process.env.DB_PORT || 5432,
       dialect: 'postgres',
-      logging: process.env.LOG_LEVEL === 'debug' ? console.log : false,
+      logging: process.env.LOG_LEVEL === 'debug' ? logger.info : false,
       pool: {
         max: parseInt(process.env.DB_POOL_MAX || '10'),
         min: parseInt(process.env.DB_POOL_MIN || '2'),
@@ -96,7 +97,7 @@ function getConfig() {
     ...baseConfig,
     dialect: 'sqlite',
     storage: vmLocalStorage,
-    logging: process.env.LOG_LEVEL === 'debug' ? console.log : false,
+    logging: process.env.LOG_LEVEL === 'debug' ? logger.info : false,
     pool: {
       max: 5,
       min: 0,
@@ -108,8 +109,4 @@ function getConfig() {
 
 const config = {
   development: getConfig(),
-  test: getConfig(),
-  production: getConfig()
-};
-
-module.exports = config[process.env.NODE_ENV || 'development'];
+  tes

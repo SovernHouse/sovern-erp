@@ -8,6 +8,7 @@ const https = require('https');
 const http = require('http');
 const db = require('../models');
 const { v4: uuidv4 } = require('uuid');
+const logger = require('../utils/logger.js');
 
 // Supported webhook events
 const SUPPORTED_EVENTS = [
@@ -70,7 +71,7 @@ const registerWebhook = async (url, events, secret, options = {}) => {
 
     return webhook;
   } catch (error) {
-    console.error('Error registering webhook:', error);
+    logger.error('Error registering webhook:', error);
     throw error;
   }
 };
@@ -253,12 +254,12 @@ const triggerWebhook = async (event, payload) => {
           // Schedule retry
           scheduleRetry(webhook, delivery, event);
         }
-      })().catch(err => console.error('Webhook delivery error:', err));
+      })().catch(err => logger.error('Webhook delivery error:', err));
     }
 
     return results;
   } catch (error) {
-    console.error('Error triggering webhooks:', error);
+    logger.error('Error triggering webhooks:', error);
     // Don't throw - webhook failures shouldn't break main operations
     return [];
   }
@@ -274,7 +275,7 @@ const scheduleRetry = (webhook, delivery, event) => {
   setTimeout(async () => {
     try {
       if (delivery.attemptNumber >= RETRY_CONFIG.maxAttempts) {
-        console.log(`Webhook ${webhook.id} exceeded max retries for event ${event}`);
+        logger.info(`Webhook ${webhook.id} exceeded max retries for event ${event}`);
         return;
       }
 
@@ -313,7 +314,7 @@ const scheduleRetry = (webhook, delivery, event) => {
         scheduleRetry(webhook, delivery, event);
       }
     } catch (error) {
-      console.error(`Webhook retry failed for ${webhook.id}:`, error);
+      logger.error(`Webhook retry failed for ${webhook.id}:`, error);
 
       const nextAttempt = delivery.attemptNumber + 1;
       const nextRetryAt = nextAttempt < RETRY_CONFIG.maxAttempts
@@ -382,7 +383,7 @@ const verifyWebhook = async (webhookId) => {
       deliveryId: delivery.id
     };
   } catch (error) {
-    console.error('Webhook verification failed:', error);
+    logger.error('Webhook verification failed:', error);
     throw error;
   }
 };
@@ -400,23 +401,4 @@ const getWebhookDeliveries = async (webhookId, options = {}) => {
   if (event) where.event = event;
   if (isSuccess !== null) where.isSuccess = isSuccess;
 
-  const { count, rows } = await db.WebhookDelivery.findAndCountAll({
-    where,
-    limit: parseInt(limit),
-    offset: parseInt(offset),
-    order: [['createdAt', 'DESC']]
-  });
-
-  return { deliveries: rows, total: count, limit, offset };
-};
-
-module.exports = {
-  registerWebhook,
-  triggerWebhook,
-  signPayload,
-  verifyWebhookSignature,
-  verifyWebhook,
-  getWebhookDeliveries,
-  SUPPORTED_EVENTS,
-  RETRY_CONFIG
-};
+  const { count, r

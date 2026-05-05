@@ -1,4 +1,5 @@
 const rateLimit = require('express-rate-limit');
+const logger = require('../utils/logger.js');
 
 const windowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || 900000);
 const maxRequests = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || 100);
@@ -153,7 +154,7 @@ class UserRateLimiter {
     keysToDelete.forEach(key => this.store.delete(key));
 
     if (keysToDelete.length > 0) {
-      console.log(`Rate limiter cleanup: removed ${keysToDelete.length} entries`);
+      logger.info(`Rate limiter cleanup: removed ${keysToDelete.length} entries`);
     }
   }
 
@@ -219,16 +220,4 @@ const userRateLimiter = new UserRateLimiter();
 
 /**
  * User-based rate limiting middleware
- * Can be applied to specific routes requiring stricter limits
- */
-const userRateLimitMiddleware = userRateLimiter.middleware();
-
-module.exports = {
-  generalLimiter,
-  authLimiter,
-  createLimiter,
-  fileLimiter,
-  userRateLimiter,
-  userRateLimitMiddleware,
-  UserRateLimiter
-};
+ * Can be applied to specific routes requiring stricter limi

@@ -1,3 +1,4 @@
+const logger = require('../utils/logger.js');
 /**
  * Feature Flags System
  * Manages module enable/disable states based on environment variables and database settings
@@ -63,7 +64,7 @@ class FeatureFlags {
    */
   setFlag(flag, value) {
     this.flags[flag] = value;
-    console.log(`Feature flag "${flag}" set to ${value}`);
+    logger.info(`Feature flag "${flag}" set to ${value}`);
   }
 
   /**
@@ -87,9 +88,9 @@ class FeatureFlags {
           this.flags[flagName] = setting.value === 'true' || setting.value === '1';
         }
       }
-      console.log('Feature flags loaded from database');
+      logger.info('Feature flags loaded from database');
     } catch (error) {
-      console.warn('Failed to load feature flags from database:', error.message);
+      logger.warn('Failed to load feature flags from database:', error.message);
     }
   }
 
@@ -107,9 +108,9 @@ class FeatureFlags {
           );
         }
       }
-      console.log('Feature flags saved to database');
+      logger.info('Feature flags saved to database');
     } catch (error) {
-      console.warn('Failed to save feature flags to database:', error.message);
+      logger.warn('Failed to save feature flags to database:', error.message);
     }
   }
 

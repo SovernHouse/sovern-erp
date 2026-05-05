@@ -1,3 +1,4 @@
+const logger = require('../utils/logger.js');
 /**
  * Module Registry - Central registry for all system modules
  * Each module self-registers its routes, models, and middleware
@@ -26,7 +27,7 @@ class ModuleRegistry {
     }
 
     if (this.modules.has(moduleManifest.name)) {
-      console.warn(`Module "${moduleManifest.name}" is already registered, skipping`);
+      logger.warn(`Module "${moduleManifest.name}" is already registered, skipping`);
       return;
     }
 
@@ -42,7 +43,7 @@ class ModuleRegistry {
       enabled: true
     });
 
-    console.log(`Module registered: ${moduleManifest.name} v${moduleManifest.version}`);
+    logger.info(`Module registered: ${moduleManifest.name} v${moduleManifest.version}`);
   }
 
   /**
@@ -73,7 +74,7 @@ class ModuleRegistry {
     const module = this.modules.get(name);
     if (module) {
       module.enabled = enabled;
-      console.log(`Module "${name}" ${enabled ? 'enabled' : 'disabled'}`);
+      logger.info(`Module "${name}" ${enabled ? 'enabled' : 'disabled'}`);
     }
   }
 
@@ -186,7 +187,7 @@ class ModuleRegistry {
       try {
         await hook.callback();
       } catch (error) {
-        console.error(`Error in ${hookType} hook for module "${hook.moduleName}":`, error);
+        logger.error(`Error in ${hookType} hook for module "${hook.moduleName}":`, error);
       }
     }
   }
@@ -202,7 +203,7 @@ class ModuleRegistry {
       for (const dep of module.dependencies) {
         const depModule = this.modules.get(dep);
         if (!depModule || !depModule.enabled) {
-          console.warn(
+          logger.warn(
             `Module "${name}" depends on "${dep}" which is not enabled or not found`
           );
           return false;
@@ -239,20 +240,4 @@ class ModuleRegistry {
         }
       }
 
-      visiting.delete(name);
-      visited.add(name);
-
-      if (module && module.enabled) {
-        sorted.push(name);
-      }
-    };
-
-    for (const [name] of this.modules) {
-      visit(name);
-    }
-
-    return sorted;
-  }
-}
-
-module.exports = ModuleRegistry;
+      visiting.delete

@@ -1,3 +1,4 @@
+const logger = require('../utils/logger.js');
 /**
  * In-memory cache service for Trading ERP
  * Can be swapped with Redis in production
@@ -169,7 +170,7 @@ class CacheService {
     }
 
     if (cleanedCount > 0) {
-      console.log(`[Cache] Cleaned up ${cleanedCount} expired entries`);
+      logger.info(`[Cache] Cleaned up ${cleanedCount} expired entries`);
     }
   }
 
@@ -187,15 +188,4 @@ class CacheService {
   }
 
   /**
-   * Shutdown and cleanup
-   */
-  shutdown() {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-    }
-    this.flush();
-  }
-}
-
-// Export as singleton
-module.exports = new CacheService();
+   * Shutdown and cleanu

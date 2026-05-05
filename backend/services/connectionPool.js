@@ -1,3 +1,4 @@
+const logger = require('../utils/logger.js');
 /**
  * SQLite connection pool optimization
  * Configures SQLite for better concurrent access and performance
@@ -16,56 +17,56 @@
  */
 async function optimizeDatabase(sequelize) {
   try {
-    console.log('[Database] Optimizing SQLite configuration...');
+    logger.info('[Database] Optimizing SQLite configuration...');
 
     // Enable WAL mode for better concurrent reads
     // This allows readers to not block writers and vice versa
     await sequelize.query('PRAGMA journal_mode = WAL');
-    console.log('[Database] WAL mode enabled');
+    logger.info('[Database] WAL mode enabled');
 
     // Set busy timeout (in milliseconds)
     // This allows concurrent access to wait a bit instead of failing immediately
     await sequelize.query('PRAGMA busy_timeout = 5000');
-    console.log('[Database] Busy timeout set to 5000ms');
+    logger.info('[Database] Busy timeout set to 5000ms');
 
     // Set cache size (in pages, negative value means MB)
     // -64000 = 64MB cache
     await sequelize.query('PRAGMA cache_size = -64000');
-    console.log('[Database] Cache size set to 64MB');
+    logger.info('[Database] Cache size set to 64MB');
 
     // Set synchronous mode (NORMAL is good for SQLite)
     // FULL = safest but slowest
     // NORMAL = good balance of safety and speed
     // OFF = fastest but risky
     await sequelize.query('PRAGMA synchronous = NORMAL');
-    console.log('[Database] Synchronous mode set to NORMAL');
+    logger.info('[Database] Synchronous mode set to NORMAL');
 
     // Set temp storage to memory
     await sequelize.query('PRAGMA temp_store = MEMORY');
-    console.log('[Database] Temp store set to MEMORY');
+    logger.info('[Database] Temp store set to MEMORY');
 
     // Enable query optimization
     await sequelize.query('PRAGMA query_only = OFF');
-    console.log('[Database] Query optimization enabled');
+    logger.info('[Database] Query optimization enabled');
 
     // Foreign key support (should be enabled)
     await sequelize.query('PRAGMA foreign_keys = ON');
-    console.log('[Database] Foreign keys enabled');
+    logger.info('[Database] Foreign keys enabled');
 
     // Checkpoint the WAL periodically (restart writes less often)
     await sequelize.query('PRAGMA wal_autocheckpoint = 1000');
-    console.log('[Database] WAL autocheckpoint set to 1000 pages');
+    logger.info('[Database] WAL autocheckpoint set to 1000 pages');
 
     // Get and log current settings
     const settings = await sequelize.query('PRAGMA journal_mode');
-    console.log('[Database] Current journal mode:', settings[0][0]);
+    logger.info('[Database] Current journal mode:', settings[0][0]);
 
     const cacheInfo = await sequelize.query('PRAGMA cache_size');
-    console.log('[Database] Cache size:', cacheInfo[0][0]);
+    logger.info('[Database] Cache size:', cacheInfo[0][0]);
 
-    console.log('[Database] SQLite optimization complete');
+    logger.info('[Database] SQLite optimization complete');
   } catch (error) {
-    console.error('[Database] Error optimizing SQLite:', error.message);
+    logger.error('[Database] Error optimizing SQLite:', error.message);
     throw error;
   }
 }
@@ -119,7 +120,7 @@ async function getDatabaseStats(sequelize) {
 
     return stats;
   } catch (error) {
-    console.error('[Database] Error getting stats:', error.message);
+    logger.error('[Database] Error getting stats:', error.message);
     return {};
   }
 }
@@ -131,21 +132,12 @@ async function getDatabaseStats(sequelize) {
  */
 async function resetDatabase(sequelize) {
   try {
-    console.log('[Database] Resetting to default settings...');
+    logger.info('[Database] Resetting to default settings...');
 
     await sequelize.query('PRAGMA journal_mode = DELETE');
     await sequelize.query('PRAGMA cache_size = -2000');
     await sequelize.query('PRAGMA synchronous = FULL');
 
-    console.log('[Database] Reset complete');
+    logger.info('[Database] Reset complete');
   } catch (error) {
-    console.error('[Database] Error resetting database:', error.message);
-    throw error;
-  }
-}
-
-module.exports = {
-  optimizeDatabase,
-  getDatabaseStats,
-  resetDatabase
-};
+    logger.error('[Database] Error

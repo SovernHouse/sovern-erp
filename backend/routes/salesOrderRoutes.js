@@ -14,6 +14,7 @@ const webhookService = require('../services/webhookService');
 const { validateTransition } = require('../utils/statusMachine');
 const { validateFinancials } = require('../utils/validateFinancials');
 const { validateTradeFields } = require('../utils/validateTradeFields');
+const logger = require('../utils/logger.js');
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
@@ -318,7 +319,7 @@ router.post('/', requireAuth, async (req, res, next) => {
     res.status(201).json(getSuccessResponse(completeSo, 'Sales Order created successfully'));
 
     // Fire-and-forget email, audit log, real-time notification, and webhooks
-    emailService.sendOrderConfirmationEmail(completeSo.customer, completeSo).catch(err => console.error('[EMAIL] Error:', err.message));
+    emailService.sendOrderConfirmationEmail(completeSo.customer, completeSo).catch(err => logger.error('[EMAIL] Error:', err.message));
     auditService.logAction(req.user.id, 'CREATE', 'SalesOrder', so.id, { data: completeSo?.toJSON?.() || so.toJSON() }, req.ip).catch(() => {});
     notificationService.emitOrderStatusChange(so.id, 'confirmed', so.customerId, so.salesPersonId).catch(() => {});
     webhookService.triggerWebhook('order.created', {
@@ -420,7 +421,7 @@ router.post('/create-from-quotation', requireAuth, async (req, res, next) => {
     res.status(201).json(getSuccessResponse(completeSo, 'Sales Order created from quotation successfully'));
 
     // Fire-and-forget email and audit log
-    emailService.sendOrderConfirmationEmail(completeSo.customer, completeSo).catch(err => console.error('[EMAIL] Error:', err.message));
+    emailService.sendOrderConfirmationEmail(completeSo.customer, completeSo).catch(err => logger.error('[EMAIL] Error:', err.message));
     auditService.logAction(req.user.id, 'CREATE', 'SalesOrder', so.id, { data: completeSo?.toJSON?.() || so.toJSON(), quotationId }, req.ip).catch(() => {});
   } catch (error) {
     await transaction.rollback();
@@ -597,26 +598,4 @@ router.post('/:id/create-packing-list', requireAuth, async (req, res, next) => {
         packageNumber: i + 1,
         grossWeight: 0,
         netWeight: 0,
-        dimensions: {},
-        marks: null,
-      }, { transaction: t });
-    }
-
-    await t.commit();
-
-    // Return the full packing list with items
-    const completePL = await db.PackingList.findByPk(pl.id, {
-      include: [
-        { association: 'items', include: [{ model: db.Product, as: 'product' }] },
-        { model: db.SalesOrder, as: 'salesOrder', attributes: ['orderNumber'] },
-      ],
-    });
-
-    res.status(201).json(getSuccessResponse(completePL, 'Packing List created from Sales Order'));
-  } catch (error) {
-    await t.rollback();
-    next(error);
-  }
-});
-
-module.exports = router;
+        

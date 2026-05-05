@@ -5,6 +5,7 @@
  */
 
 const { getInstance: getCacheService } = require('../services/redisCacheService');
+const logger = require('../utils/logger.js');
 
 /**
  * Generate cache key from request
@@ -48,7 +49,7 @@ function cacheRoute(ttlSeconds = 300) {
         return res.json(cachedData);
       }
     } catch (err) {
-      console.error('[Cache] Error retrieving from cache:', err.message);
+      logger.error('[Cache] Error retrieving from cache:', err.message);
       // Continue without cache on error
     }
 
@@ -61,7 +62,7 @@ function cacheRoute(ttlSeconds = 300) {
         try {
           await cacheService.set(cacheKey, data, ttlSeconds);
         } catch (err) {
-          console.error('[Cache] Error setting cache:', err.message);
+          logger.error('[Cache] Error setting cache:', err.message);
           // Continue even if cache fails
         }
       }
@@ -95,10 +96,10 @@ function invalidateCache(patterns) {
           try {
             const deleted = await cacheService.delPattern(pattern);
             if (deleted > 0) {
-              console.log(`[Cache] Invalidated ${deleted} entries matching pattern: ${pattern}`);
+              logger.info(`[Cache] Invalidated ${deleted} entries matching pattern: ${pattern}`);
             }
           } catch (err) {
-            console.error(`[Cache] Error invalidating pattern ${pattern}:`, err.message);
+            logger.error(`[Cache] Error invalidating pattern ${pattern}:`, err.message);
           }
         }
       }
@@ -119,16 +120,5 @@ function cacheStats() {
     try {
       res.locals.cacheStats = await cacheService.getStats();
     } catch (err) {
-      console.error('[Cache] Error getting cache stats:', err.message);
-      res.locals.cacheStats = {};
-    }
-    next();
-  };
-}
-
-module.exports = {
-  cacheRoute,
-  invalidateCache,
-  cacheStats,
-  generateCacheKey
-};
+      logger.error('[Cache] Error getting cache stats:', err.message);
+      res.locals.cacheStat

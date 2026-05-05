@@ -1,4 +1,5 @@
 const db = require('../models');
+const logger = require('../utils/logger.js');
 
 let io = null;
 
@@ -32,7 +33,7 @@ const createNotification = async (userId, type, title, message, data = {}, link 
 
     return notification;
   } catch (error) {
-    console.error('Error creating notification:', error);
+    logger.error('Error creating notification:', error);
     throw error;
   }
 };
@@ -188,7 +189,7 @@ const getNotifications = async (userId, limit = 20, offset = 0) => {
 
     return { count, notifications: rows };
   } catch (error) {
-    console.error('Error fetching notifications:', error);
+    logger.error('Error fetching notifications:', error);
     throw error;
   }
 };
@@ -202,7 +203,7 @@ const markNotificationAsRead = async (notificationId) => {
     }
     return null;
   } catch (error) {
-    console.error('Error marking notification as read:', error);
+    logger.error('Error marking notification as read:', error);
     throw error;
   }
 };
@@ -214,7 +215,7 @@ const markAllNotificationsAsRead = async (userId) => {
       { where: { userId, isRead: false } }
     );
   } catch (error) {
-    console.error('Error marking all notifications as read:', error);
+    logger.error('Error marking all notifications as read:', error);
     throw error;
   }
 };
@@ -225,7 +226,7 @@ const getUnreadCount = async (userId) => {
       where: { userId, isRead: false }
     });
   } catch (error) {
-    console.error('Error getting unread count:', error);
+    logger.error('Error getting unread count:', error);
     throw error;
   }
 };
@@ -249,7 +250,7 @@ const emitOrderStatusChange = async (orderId, newStatus, customerId, salesPerson
       io.to(`user-${salesPersonId}`).emit('order:statusChanged', eventPayload);
     }
   } catch (error) {
-    console.error('Error emitting order status change:', error);
+    logger.error('Error emitting order status change:', error);
   }
 };
 
@@ -266,7 +267,7 @@ const emitShipmentUpdate = async (shipmentId, status, trackingInfo, customerId) 
 
     io.to(`user-${customerId}`).emit('shipment:updated', eventPayload);
   } catch (error) {
-    console.error('Error emitting shipment update:', error);
+    logger.error('Error emitting shipment update:', error);
   }
 };
 
@@ -288,7 +289,7 @@ const emitPaymentReceived = async (invoiceId, amount, customerId, adminIds = [])
       io.to(`user-${adminId}`).emit('payment:received', eventPayload);
     }
   } catch (error) {
-    console.error('Error emitting payment received:', error);
+    logger.error('Error emitting payment received:', error);
   }
 };
 
@@ -304,7 +305,7 @@ const emitPurchaseOrderUpdate = async (poId, status, factoryUserId) => {
 
     io.to(`user-${factoryUserId}`).emit('purchaseOrder:updated', eventPayload);
   } catch (error) {
-    console.error('Error emitting purchase order update:', error);
+    logger.error('Error emitting purchase order update:', error);
   }
 };
 
@@ -320,7 +321,7 @@ const emitInspectionScheduled = async (inspectionId, factoryUserId, date) => {
 
     io.to(`user-${factoryUserId}`).emit('inspection:scheduled', eventPayload);
   } catch (error) {
-    console.error('Error emitting inspection scheduled:', error);
+    logger.error('Error emitting inspection scheduled:', error);
   }
 };
 
@@ -335,7 +336,7 @@ const emitNewInquiry = async (inquiryId, salesPersonId) => {
 
     io.to(`user-${salesPersonId}`).emit('inquiry:new', eventPayload);
   } catch (error) {
-    console.error('Error emitting new inquiry:', error);
+    logger.error('Error emitting new inquiry:', error);
   }
 };
 
@@ -352,7 +353,7 @@ const emitDocumentUploaded = async (documentId, relatedUsers = []) => {
       io.to(`user-${userId}`).emit('document:uploaded', eventPayload);
     }
   } catch (error) {
-    console.error('Error emitting document uploaded:', error);
+    logger.error('Error emitting document uploaded:', error);
   }
 };
 
@@ -367,7 +368,7 @@ const emitDashboardRefresh = async (role) => {
 
     io.to(`role-${role}`).emit('dashboard:refresh', eventPayload);
   } catch (error) {
-    console.error('Error emitting dashboard refresh:', error);
+    logger.error('Error emitting dashboard refresh:', error);
   }
 };
 
@@ -379,20 +380,4 @@ module.exports = {
   createProformaInvoiceNotification,
   createSalesOrderNotification,
   createShipmentNotification,
-  createInspectionNotification,
-  createClaimNotification,
-  createPaymentNotification,
-  getNotifications,
-  markNotificationAsRead,
-  markAllNotificationsAsRead,
-  getUnreadCount,
-  // Real-time event emitters
-  emitOrderStatusChange,
-  emitShipmentUpdate,
-  emitPaymentReceived,
-  emitPurchaseOrderUpdate,
-  emitInspectionScheduled,
-  emitNewInquiry,
-  emitDocumentUploaded,
-  emitDashboardRefresh
-};
+  createInspectionNotif

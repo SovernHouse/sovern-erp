@@ -1,3 +1,4 @@
+const logger = require('../utils/logger.js');
 /**
  * Query optimization middleware and utilities for Sequelize
  * Helps optimize database queries for performance
@@ -20,7 +21,7 @@ function optimizeQuery(model, options, attributesToSelect = null) {
 
   // Ensure limit is reasonable
   if (optimized.limit && optimized.limit > 1000) {
-    console.warn(`[Query Optimizer] Limit ${optimized.limit} exceeds recommended max (1000)`);
+    logger.warn(`[Query Optimizer] Limit ${optimized.limit} exceeds recommended max (1000)`);
     optimized.limit = 1000;
   }
 
@@ -79,13 +80,13 @@ function getSortOrder(req, allowedFields = [], defaultField = 'createdAt', defau
 
   // Validate field
   if (allowedFields.length > 0 && !allowedFields.includes(sortField)) {
-    console.warn(`[Query Optimizer] Invalid sort field: ${sortField}, using default: ${defaultField}`);
+    logger.warn(`[Query Optimizer] Invalid sort field: ${sortField}, using default: ${defaultField}`);
     return [[defaultField, sortDir]];
   }
 
   // Validate direction
   if (!['ASC', 'DESC'].includes(sortDir)) {
-    console.warn(`[Query Optimizer] Invalid sort direction: ${sortDir}, using default: ${defaultDirection}`);
+    logger.warn(`[Query Optimizer] Invalid sort direction: ${sortDir}, using default: ${defaultDirection}`);
     return [[sortField, defaultDirection]];
   }
 
@@ -137,18 +138,6 @@ function logSlowQueries(thresholdMs = 1000) {
     res.on('finish', () => {
       const duration = Date.now() - startTime;
       if (duration > thresholdMs) {
-        console.warn(`[Query Slow] ${req.method} ${req.originalUrl} took ${duration}ms`);
+        logger.warn(`[Query Slow] ${req.method} ${req.originalUrl} took ${duration}ms`);
       }
-    });
-
-    next();
-  };
-}
-
-module.exports = {
-  optimizeQuery,
-  addPaginationDefaults,
-  getSortOrder,
-  queryDefaults,
-  logSlowQueries
-};
+  

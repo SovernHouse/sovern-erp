@@ -4,6 +4,7 @@
  */
 
 const path = require('path');
+const logger = require('../utils/logger.js');
 
 const config = {
   // Backup directory path
@@ -41,7 +42,7 @@ const config = {
 
         return backupTime.getTime() - now.getTime();
       } catch (error) {
-        console.error('Invalid BACKUP_TIME format (use HH:MM):', error);
+        logger.error('Invalid BACKUP_TIME format (use HH:MM):', error);
         return 2 * 60 * 60 * 1000; // Default to 2 hours from now
       }
     }
@@ -78,7 +79,4 @@ const config = {
   databaseType: process.env.DATABASE_TYPE || 'sqlite',
 
   // Logging
-  logLevel: process.env.BACKUP_LOG_LEVEL || 'info' // 'debug', 'info', 'warn', 'error'
-};
-
-module.exports = config;
+  logLevel: process.env.BACKUP_LOG_L

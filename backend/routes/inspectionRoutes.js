@@ -22,6 +22,7 @@ const emailService = require('../services/emailService');
 const documentGenerator = require('../services/documentGenerator');
 const notificationService = require('../services/notificationService');
 const webhookService = require('../services/webhookService');
+const logger = require('../utils/logger.js');
 
 /**
  * List all inspections with pagination and filtering
@@ -111,7 +112,7 @@ router.post('/', requireAuth, requireRole('inspector', 'admin'), async (req, res
     res.status(201).json(getSuccessResponse(inspection, 'Inspection scheduled'));
 
     // Fire-and-forget email, audit log, real-time notification, and webhooks
-    emailService.sendInspectionScheduledEmail(factory, inspection).catch(err => console.error('[EMAIL] Error:', err.message));
+    emailService.sendInspectionScheduledEmail(factory, inspection).catch(err => logger.error('[EMAIL] Error:', err.message));
     auditService.logAction(req.user.id, 'CREATE', 'Inspection', inspection.id, { data: inspection.toJSON() }, req.ip).catch(() => {});
     const factoryUser = await db.User.findOne({ where: { factoryId: factoryId }, attributes: ['id'] }).catch(() => null);
     if (factoryUser) {
@@ -312,13 +313,4 @@ router.get('/:id/certificate', requireAuth, async (req, res, next) => {
       ]
     });
 
-    if (!inspection) throw new NotFoundError('Inspection not found');
-
-    const pdfFile = await documentGenerator.generateInspectionCertificatePDF(inspection, inspection.report, inspection.factory);
-    res.json(getSuccessResponse({ pdfFile }, 'Inspection certificate PDF generated'));
-  } catch (error) {
-    next(error);
-  }
-});
-
-module.exports = router;
+    if (!inspection) throw new NotFoundError

@@ -43,6 +43,7 @@
 const cron = require('node-cron');
 const dayjs = require('dayjs');
 const { Op } = require('sequelize');
+const logger = require('../utils/logger.js');
 
 let db;
 let notificationService;
@@ -86,15 +87,15 @@ async function checkOverdueActivities() {
         // Mark reminder sent so we don't spam daily
         await activity.update({ reminderSent: true });
       } catch (err) {
-        console.error(`[SCHEDULER] Failed to notify overdue activity ${activity.id}:`, err.message);
+        logger.error(`[SCHEDULER] Failed to notify overdue activity ${activity.id}:`, err.message);
       }
     }
 
     if (overdue.length > 0) {
-      console.log(`[SCHEDULER] Overdue activity reminders sent: ${overdue.length}`);
+      logger.info(`[SCHEDULER] Overdue activity reminders sent: ${overdue.length}`);
     }
   } catch (err) {
-    console.error('[SCHEDULER] checkOverdueActivities error:', err.message);
+    logger.error('[SCHEDULER] checkOverdueActivities error:', err.message);
   }
 }
 
@@ -128,15 +129,15 @@ async function checkFollowups() {
           entityId: email.id,
         });
       } catch (err) {
-        console.error(`[SCHEDULER] Failed to notify follow-up ${email.id}:`, err.message);
+        logger.error(`[SCHEDULER] Failed to notify follow-up ${email.id}:`, err.message);
       }
     }
 
     if (due.length > 0) {
-      console.log(`[SCHEDULER] Follow-up reminders sent: ${due.length}`);
+      logger.info(`[SCHEDULER] Follow-up reminders sent: ${due.length}`);
     }
   } catch (err) {
-    console.error('[SCHEDULER] checkFollowups error:', err.message);
+    logger.error('[SCHEDULER] checkFollowups error:', err.message);
   }
 }
 
@@ -156,12 +157,12 @@ async function transitionOverdueInvoices() {
     );
 
     if (updatedCount > 0) {
-      console.log(`[SCHEDULER] Invoices transitioned to overdue: ${updatedCount}`);
+      logger.info(`[SCHEDULER] Invoices transitioned to overdue: ${updatedCount}`);
     }
   } catch (err) {
     // If Invoice model doesn't exist, skip silently
     if (err.name !== 'SequelizeDatabaseError') {
-      console.error('[SCHEDULER] transitionOverdueInvoices error:', err.message);
+      logger.error('[SCHEDULER] transitionOverdueInvoices error:', err.message);
     }
   }
 }
@@ -192,15 +193,15 @@ async function checkProductionDelays() {
           entityId: so.id,
         });
       } catch (err) {
-        console.error(`[SCHEDULER] Failed to alert production delay ${so.id}:`, err.message);
+        logger.error(`[SCHEDULER] Failed to alert production delay ${so.id}:`, err.message);
       }
     }
 
     if (delayed.length > 0) {
-      console.log(`[SCHEDULER] Production delay alerts sent: ${delayed.length}`);
+      logger.info(`[SCHEDULER] Production delay alerts sent: ${delayed.length}`);
     }
   } catch (err) {
-    console.error('[SCHEDULER] checkProductionDelays error:', err.message);
+    logger.error('[SCHEDULER] checkProductionDelays error:', err.message);
   }
 }
 
@@ -240,7 +241,7 @@ async function purgeExpiredSoftDeletes() {
   for (const modelName of PARANOID_MODELS) {
     const model = db[modelName];
     if (!model) {
-      console.warn(`[SCHEDULER][RETENTION] Model "${modelName}" not found — skipping.`);
+      logger.warn(`[SCHEDULER][RETENTION] Model "${modelName}" not found — skipping.`);
       continue;
     }
 
@@ -265,14 +266,14 @@ async function purgeExpiredSoftDeletes() {
         summary.push(`${modelName}: ${count}`);
       }
     } catch (err) {
-      console.error(`[SCHEDULER][RETENTION] Failed to purge ${modelName}:`, err.message);
+      logger.error(`[SCHEDULER][RETENTION] Failed to purge ${modelName}:`, err.message);
     }
   }
 
   if (summary.length > 0) {
-    console.log(`[SCHEDULER][RETENTION] Hard-deleted expired records (>${retentionDays} days old): ${summary.join(', ')}`);
+    logger.info(`[SCHEDULER][RETENTION] Hard-deleted expired records (>${retentionDays} days old): ${summary.join(', ')}`);
   } else {
-    console.log(`[SCHEDULER][RETENTION] No expired soft-deleted records found (retention window: ${retentionDays} days).`);
+    logger.info(`[SCHEDULER][RETENTION] No expired soft-deleted records found (retention window: ${retentionDays} days).`);
   }
 }
 
@@ -283,7 +284,7 @@ async function autoArchiveTriageItems() {
     const triageController = require('../controllers/triageController');
     await triageController.runAutoArchive();
   } catch (err) {
-    console.error('[SCHEDULER][TRIAGE-ARCHIVE] Error:', err.message);
+    logger.error('[SCHEDULER][TRIAGE-ARCHIVE] Error:', err.message);
   }
 }
 
@@ -330,18 +331,4 @@ function startScheduler() {
     .filter(([, v]) => v)
     .map(([k]) => k);
 
-  console.log(`[SCHEDULER] Started. Active jobs: ${activeJobs.join(', ')}`);
-
-  return { enabled, activeJobs };
-}
-
-module.exports = {
-  startScheduler,
-  // Exported individually so unit tests can call them directly
-  checkOverdueActivities,
-  checkFollowups,
-  transitionOverdueInvoices,
-  checkProductionDelays,
-  purgeExpiredSoftDeletes,
-  autoArchiveTriageItems,
-};
+  logger.info(`[SCHEDULER] Started. Ac

@@ -7,6 +7,7 @@
  */
 
 const path = require('path');
+const logger = require('../utils/logger.js');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 /**
@@ -91,11 +92,11 @@ function validateRecommended() {
 
   // Log all warnings
   if (warnings.length > 0) {
-    console.warn('\n[ENVIRONMENT] Configuration Warnings:\n');
+    logger.warn('\n[ENVIRONMENT] Configuration Warnings:\n');
     warnings.forEach((msg, i) => {
-      console.warn(`  ${i + 1}. ${msg}`);
+      logger.warn(`  ${i + 1}. ${msg}`);
     });
-    console.warn('');
+    logger.warn('');
   }
 
   return warnings;
@@ -105,18 +106,18 @@ function validateRecommended() {
  * Log configured environment
  */
 function logEnvironmentSummary() {
-  console.log('\n[ENVIRONMENT] Configuration Summary:');
-  console.log(`  Node Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`  Server Port: ${process.env.PORT || 3001}`);
+  logger.info('\n[ENVIRONMENT] Configuration Summary:');
+  logger.info(`  Node Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`  Server Port: ${process.env.PORT || 3001}`);
 
   if (process.env.DB_TYPE === 'postgresql') {
-    console.log(`  Database: PostgreSQL (${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME})`);
+    logger.info(`  Database: PostgreSQL (${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME})`);
   } else {
-    console.log(`  Database: SQLite (${process.env.SQLITE_PATH || './database.sqlite'})`);
+    logger.info(`  Database: SQLite (${process.env.SQLITE_PATH || './database.sqlite'})`);
   }
 
-  console.log(`  JWT Expiry: ${process.env.JWT_EXPIRES_IN || '7d'}`);
-  console.log(`  Rate Limit: ${process.env.RATE_LIMIT_MAX_REQUESTS || 100} requests per ${(parseInt(process.env.RATE_LIMIT_WINDOW_MS || 900000) / 60000).toFixed(0)} minutes`);
+  logger.info(`  JWT Expiry: ${process.env.JWT_EXPIRES_IN || '7d'}`);
+  logger.info(`  Rate Limit: ${process.env.RATE_LIMIT_MAX_REQUESTS || 100} requests per ${(parseInt(process.env.RATE_LIMIT_WINDOW_MS || 900000) / 60000).toFixed(0)} minutes`);
 
   const features = [];
   if (process.env.ENABLE_EMAIL === 'true') features.push('Email');
@@ -125,10 +126,10 @@ function logEnvironmentSummary() {
   if (process.env.ENABLE_AUTO_BACKUP === 'true') features.push('Auto Backup');
 
   if (features.length > 0) {
-    console.log(`  Enabled Features: ${features.join(', ')}`);
+    logger.info(`  Enabled Features: ${features.join(', ')}`);
   }
 
-  console.log('');
+  logger.info('');
 }
 
 /**
@@ -137,11 +138,11 @@ function logEnvironmentSummary() {
  */
 function validateEnvironment() {
   try {
-    console.log('[ENVIRONMENT] Validating environment variables...');
+    logger.info('[ENVIRONMENT] Validating environment variables...');
 
     // Validate required variables (throws on error)
     validateRequired();
-    console.log('[ENVIRONMENT] ✓ All required variables present\n');
+    logger.info('[ENVIRONMENT] ✓ All required variables present\n');
 
     // Warn about recommended variables
     validateRecommended();
@@ -151,9 +152,9 @@ function validateEnvironment() {
 
     return true;
   } catch (error) {
-    console.error('[ENVIRONMENT] ✗ Configuration Error:');
-    console.error(error.message);
-    console.error('\nRef: .env.example for all available variables');
+    logger.error('[ENVIRONMENT] ✗ Configuration Error:');
+    logger.error(error.message);
+    logger.error('\nRef: .env.example for all available variables');
     process.exit(1);
   }
 }
@@ -188,14 +189,4 @@ function getConfigValue(varName, defaultValue = null) {
   return process.env[varName] !== undefined ? process.env[varName] : defaultValue;
 }
 
-module.exports = {
-  validateEnvironment,
-  validateRequired,
-  validateRecommended,
-  logEnvironmentSummary,
-  isModuleEnabled,
-  isFeatureEnabled,
-  getConfigValue,
-  REQUIRED_VARS,
-  RECOMMENDED_VARS
-};
+module.exports =

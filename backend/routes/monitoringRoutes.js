@@ -9,6 +9,7 @@ const apmService = require('../services/apmService');
 const alertService = require('../services/alertService');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { getSuccessResponse } = require('../utils/helpers');
+const logger = require('../utils/logger.js');
 
 /**
  * GET /api/monitoring/health
@@ -19,7 +20,7 @@ router.get('/health', (req, res) => {
     const health = apmService.getHealthCheck();
     res.json(health);
   } catch (error) {
-    console.error('[Monitoring] Error getting health:', error.message);
+    logger.error('[Monitoring] Error getting health:', error.message);
     res.status(500).json({
       status: 'error',
       message: 'Failed to get health status',
@@ -37,7 +38,7 @@ router.get('/metrics', requireAuth, requireRole('admin'), (req, res) => {
     const metrics = apmService.getMetrics();
     res.json(getSuccessResponse(metrics, 'Metrics retrieved successfully'));
   } catch (error) {
-    console.error('[Monitoring] Error getting metrics:', error.message);
+    logger.error('[Monitoring] Error getting metrics:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to get metrics',
@@ -64,7 +65,7 @@ router.get('/errors', requireAuth, requireRole('admin'), (req, res) => {
       'Errors retrieved successfully'
     ));
   } catch (error) {
-    console.error('[Monitoring] Error getting errors:', error.message);
+    logger.error('[Monitoring] Error getting errors:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to get errors',
@@ -91,7 +92,7 @@ router.get('/slow-requests', requireAuth, requireRole('admin'), (req, res) => {
       'Slow requests retrieved successfully'
     ));
   } catch (error) {
-    console.error('[Monitoring] Error getting slow requests:', error.message);
+    logger.error('[Monitoring] Error getting slow requests:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to get slow requests',
@@ -127,7 +128,7 @@ router.get('/system', requireAuth, requireRole('admin'), (req, res) => {
 
     res.json(getSuccessResponse(systemInfo, 'System info retrieved successfully'));
   } catch (error) {
-    console.error('[Monitoring] Error getting system info:', error.message);
+    logger.error('[Monitoring] Error getting system info:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to get system info',
@@ -152,7 +153,7 @@ router.get('/alerts', requireAuth, requireRole('admin'), (req, res) => {
       'Alerts retrieved successfully'
     ));
   } catch (error) {
-    console.error('[Monitoring] Error getting alerts:', error.message);
+    logger.error('[Monitoring] Error getting alerts:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to get alerts',
@@ -176,7 +177,7 @@ router.post('/alerts/:alertId/acknowledge', requireAuth, requireRole('admin'), (
       'Alert acknowledged successfully'
     ));
   } catch (error) {
-    console.error('[Monitoring] Error acknowledging alert:', error.message);
+    logger.error('[Monitoring] Error acknowledging alert:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to acknowledge alert',
@@ -199,13 +200,4 @@ router.post('/reset', requireAuth, requireRole('admin'), (req, res) => {
       'All metrics reset successfully'
     ));
   } catch (error) {
-    console.error('[Monitoring] Error resetting metrics:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to reset metrics',
-      error: error.message
-    });
-  }
-});
-
-module.exports = router;
+    logger.error('[Monitoring] Er

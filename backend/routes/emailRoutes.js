@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const emailService = require('../services/emailService');
 const { requireAuth: authenticate, requireRole } = require('../middleware/auth');
+const logger = require('../utils/logger.js');
 const authorize = (roles) => requireRole(...roles);
 
 /**
@@ -74,7 +75,7 @@ router.get('/templates', authenticate, (req, res) => {
       data: templates
     });
   } catch (error) {
-    console.error('Error retrieving templates:', error);
+    logger.error('Error retrieving templates:', error);
     return res.status(500).json({
       success: false,
       error: {
@@ -137,7 +138,7 @@ router.post('/test', authenticate, authorize(['admin']), async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Error sending test email:', error);
+    logger.error('Error sending test email:', error);
     return res.status(500).json({
       success: false,
       error: {
@@ -195,7 +196,7 @@ router.post('/send', authenticate, authorize(['admin']), async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Error sending custom email:', error);
+    logger.error('Error sending custom email:', error);
     return res.status(500).json({
       success: false,
       error: {
@@ -259,16 +260,4 @@ router.post('/send-bulk', authenticate, authorize(['admin']), async (req, res) =
         results
       }
     });
-  } catch (error) {
-    console.error('Error sending bulk emails:', error);
-    return res.status(500).json({
-      success: false,
-      error: {
-        message: 'Error sending bulk emails',
-        statusCode: 500
-      }
-    });
-  }
-});
-
-module.exports = router;
+  } ca

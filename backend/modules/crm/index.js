@@ -8,6 +8,7 @@ async function initCRM(app, sequelize, models, registry) {
     // Register CRM routes
     const customerRoutes = require('../../routes/customerRoutes');
     const crmRoutes = require('../../routes/crm');
+const logger = require('../../utils/logger.js');
 
     app.use('/api/customers', customerRoutes);
     app.use('/api/crm', crmRoutes);
@@ -20,9 +21,8 @@ async function initCRM(app, sequelize, models, registry) {
     registry.registerModel('crm', 'Campaign', models.Campaign);
     registry.registerModel('crm', 'Activity', models.Activity);
   } catch (error) {
-    console.warn('CRM module initialization warning:', error.message);
+    logger.warn('CRM module initialization warning:', error.message);
     // Continue initialization despite non-critical errors
   }
 }
 
-module.exports = initCRM;

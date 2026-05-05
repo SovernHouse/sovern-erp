@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const db = require('../models');
 const { Op } = require('sequelize');
+const logger = require('../utils/logger.js');
 
 /**
  * PDF Generation Service
@@ -211,7 +212,7 @@ async function generateInvoicePDF(invoiceId) {
       doc.on('error', reject);
     });
   } catch (error) {
-    console.error('Error generating invoice PDF:', error);
+    logger.error('Error generating invoice PDF:', error);
     throw error;
   }
 }
@@ -283,7 +284,7 @@ async function generatePurchaseOrderPDF(poId) {
       doc.on('error', reject);
     });
   } catch (error) {
-    console.error('Error generating purchase order PDF:', error);
+    logger.error('Error generating purchase order PDF:', error);
     throw error;
   }
 }
@@ -355,7 +356,7 @@ async function generateQuotationPDF(quotationId) {
       doc.on('error', reject);
     });
   } catch (error) {
-    console.error('Error generating quotation PDF:', error);
+    logger.error('Error generating quotation PDF:', error);
     throw error;
   }
 }
@@ -437,7 +438,7 @@ async function generateProformaInvoicePDF(proformaId) {
       doc.on('error', reject);
     });
   } catch (error) {
-    console.error('Error generating proforma invoice PDF:', error);
+    logger.error('Error generating proforma invoice PDF:', error);
     throw error;
   }
 }
@@ -491,26 +492,4 @@ async function generatePackingListPDF(shipmentId) {
     addLineItemsTable(doc, items, 270);
 
     // Footer
-    addFooter(doc, 'Please verify contents upon receipt and report any discrepancies immediately.');
-
-    doc.end();
-
-    return new Promise((resolve, reject) => {
-      doc.on('finish', () => {
-        resolve(Buffer.concat(buffers));
-      });
-      doc.on('error', reject);
-    });
-  } catch (error) {
-    console.error('Error generating packing list PDF:', error);
-    throw error;
-  }
-}
-
-module.exports = {
-  generateInvoicePDF,
-  generatePurchaseOrderPDF,
-  generateQuotationPDF,
-  generateProformaInvoicePDF,
-  generatePackingListPDF
-};
+    addFooter(doc, 'Please verify contents upon rec

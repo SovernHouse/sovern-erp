@@ -15,6 +15,7 @@ const { getPagination, getPaginatedResponse, getSuccessResponse } = require('../
 const { v4: uuidv4 } = require('uuid');
 const { NotFoundError } = require('../middleware/errorHandler');
 const emailService = require('../services/emailService');
+const logger = require('../utils/logger.js');
 
 /**
  * List all payments with pagination and filtering
@@ -108,11 +109,11 @@ router.patch('/:id/confirm', requireAuth, async (req, res, next) => {
       const customer = await db.Customer.findByPk(invoice.customerId);
       if (customer && customer.email) {
         emailService.sendPaymentConfirmationEmail(customer, invoice, payment).catch(err => {
-          console.error('Error sending payment confirmation email:', err.message);
+          logger.error('Error sending payment confirmation email:', err.message);
         });
       }
     } catch (emailError) {
-      console.error('Error in email notification:', emailError.message);
+      logger.error('Error in email notification:', emailError.message);
       // Don't fail the request if email fails
     }
 
@@ -171,12 +172,4 @@ router.delete('/:id', requireAuth, async (req, res, next) => {
     // Delete payment
     await payment.destroy({ transaction });
 
-    await transaction.commit();
-    res.json(getSuccessResponse(null, 'Payment deleted'));
-  } catch (error) {
-    await transaction.rollback();
-    next(error);
-  }
-});
-
-module.exports = router;
+    await transaction.c

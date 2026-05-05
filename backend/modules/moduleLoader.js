@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const ModuleRegistry = require('./moduleRegistry');
 const FeatureFlags = require('./featureFlags');
+const logger = require('../utils/logger.js');
 
 class ModuleLoader {
   constructor() {
@@ -24,19 +25,19 @@ class ModuleLoader {
    */
   async loadAll(app, sequelize, models) {
     try {
-      console.log('Starting module loading...');
+      logger.info('Starting module loading...');
 
       // Discover and load all modules
       this.discoverModules();
 
       // Validate dependencies
       if (!this.registry.validateDependencies()) {
-        console.warn('Some module dependencies are not satisfied');
+        logger.warn('Some module dependencies are not satisfied');
       }
 
       // Get topologically sorted modules
       const sortedModules = this.registry.topologicalSort();
-      console.log(`Modules loaded in order: ${sortedModules.join(', ')}`);
+      logger.info(`Modules loaded in order: ${sortedModules.join(', ')}`);
 
       // Load and initialize each module
       for (const moduleName of sortedModules) {
@@ -46,9 +47,9 @@ class ModuleLoader {
         }
       }
 
-      console.log('Module loading complete');
+      logger.info('Module loading complete');
     } catch (error) {
-      console.error('Error loading modules:', error);
+      logger.error('Error loading modules:', error);
       throw error;
     }
   }
@@ -71,7 +72,7 @@ class ModuleLoader {
             );
             this.registry.register(manifest);
           } catch (error) {
-            console.error(`Failed to load manifest for module "${entry.name}":`, error.message);
+            logger.error(`Failed to load manifest for module "${entry.name}":`, error.message);
           }
         }
       }
@@ -94,16 +95,16 @@ class ModuleLoader {
         const moduleInit = require(indexPath);
         if (typeof moduleInit === 'function') {
           await moduleInit(app, sequelize, models, this.registry);
-          console.log(`Module initialized: ${moduleName}`);
+          logger.info(`Module initialized: ${moduleName}`);
         } else if (typeof moduleInit.init === 'function') {
           await moduleInit.init(app, sequelize, models, this.registry);
-          console.log(`Module initialized: ${moduleName}`);
+          logger.info(`Module initialized: ${moduleName}`);
         }
       } catch (error) {
-        console.error(`Failed to initialize module "${moduleName}":`, error.message);
+        logger.error(`Failed to initialize module "${moduleName}":`, error.message);
       }
     } else {
-      console.warn(`Module index not found for: ${moduleName}`);
+      logger.warn(`Module index not found for: ${moduleName}`);
     }
   }
 
@@ -117,11 +118,4 @@ class ModuleLoader {
 
   /**
    * Get the feature flags instance
-   * @returns {FeatureFlags} Feature flags instance
-   */
-  getFeatureFlags() {
-    return this.featureFlags;
-  }
-}
-
-module.exports = ModuleLoader;
+   * @returns {FeatureFlags} 

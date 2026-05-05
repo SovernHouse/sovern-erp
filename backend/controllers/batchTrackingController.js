@@ -4,6 +4,7 @@ const db = require('../models');
 const { getPagination, getPaginatedResponse, getSuccessResponse } = require('../utils/helpers');
 const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
 const auditService = require('../services/auditService');
+const logger = require('../utils/logger.js');
 
 const createBatch = async (req, res, next) => {
   try {
@@ -349,7 +350,7 @@ const allocateBatch = async (req, res, next) => {
       const differentShades = existingAllocations.filter(a => a.batch.shadeCode !== batch.shadeCode);
       if (differentShades.length > 0) {
         // Log warning but allow (business decision)
-        console.warn(`SHADE_MISMATCH: Order has batches with shade codes: ${differentShades.map(a => a.batch.shadeCode).join(', ')}, but allocating batch with shade: ${batch.shadeCode}`);
+        logger.warn(`SHADE_MISMATCH: Order has batches with shade codes: ${differentShades.map(a => a.batch.shadeCode).join(', ')}, but allocating batch with shade: ${batch.shadeCode}`);
       }
     }
 
@@ -527,29 +528,4 @@ const getShadeAvailability = async (req, res, next) => {
         };
       }
 
-      shadeMap[batch.shadeCode].totalQuantity += batch.quantityAvailable;
-    }
-
-    const shades = Object.values(shadeMap).sort((a, b) => a.shadeCode.localeCompare(b.shadeCode));
-
-    res.json(getSuccessResponse(shades, 'Shade availability retrieved successfully'));
-  } catch (error) {
-    next(error);
-  }
-};
-
-module.exports = {
-  createBatch,
-  getBatches,
-  getBatchById,
-  updateBatch,
-  getBatchesByProduct,
-  getBatchesByShade,
-  updateStatus,
-  updateQualityStatus,
-  allocateBatch,
-  getBatchAllocations,
-  updateAllocationStatus,
-  getInventorySummary,
-  getShadeAvailability
-};
+      shadeMap[batch.shadeCode].totalQuantity += batch.quanti

@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../models');
 const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
+const logger = require('../utils/logger.js');
 
 const FANZEY_EMAIL = process.env.FANZEY_EMAIL || 'mohanadfanzey@gmail.com';
 const FANZEY_NAME = process.env.FANZEY_NAME || 'Mohannad Fanzey';
@@ -236,7 +237,7 @@ exports.forwardToFanzey = async (req, res) => {
     });
   } catch (emailErr) {
     // Log but do not fail the request — the status update is the important part
-    console.error('[triage] Failed to send Fanzey forward email:', emailErr.message);
+    logger.error('[triage] Failed to send Fanzey forward email:', emailErr.message);
   }
 
   const now = new Date();
@@ -359,7 +360,7 @@ exports.runAutoArchive = async () => {
   );
   const [count] = expired;
   if (count > 0) {
-    console.log(`[triage] Auto-archived ${count} expired triage item(s)`);
+    logger.info(`[triage] Auto-archived ${count} expired triage item(s)`);
   }
   return count;
 };
@@ -376,19 +377,4 @@ async function _notifyAdmins(title, message, triageItemId) {
     const notifications = admins.map((admin) => ({
       id: uuidv4(),
       userId: admin.id,
-      type: 'triage',
-      title,
-      message,
-      data: { triageItemId },
-      link: `/crm/inbox`,
-      isRead: false,
-    }));
-
-    if (notifications.length > 0) {
-      await db.Notification.bulkCreate(notifications);
-    }
-  } catch (err) {
-    // Never let notification failure break the main flow
-    console.error('[triage] Notification error:', err.message);
-  }
-}
+  

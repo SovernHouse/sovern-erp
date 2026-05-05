@@ -12,6 +12,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../models');
+const logger = require('../utils/logger.js');
 
 /**
  * Validate the shared API key from the x-api-key header.
@@ -81,7 +82,7 @@ router.post('/rfq', validateApiKey, async (req, res) => {
       tags: ['rfq', 'website-intake'],
     });
 
-    console.log(`[webhook/rfq] Lead created: ${lead.id} — ${company} <${email}>`);
+    logger.info(`[webhook/rfq] Lead created: ${lead.id} — ${company} <${email}>`);
 
     return res.status(201).json({
       success: true,
@@ -89,9 +90,5 @@ router.post('/rfq', validateApiKey, async (req, res) => {
       message: 'Lead created successfully.',
     });
   } catch (err) {
-    console.error('[webhook/rfq] Error creating lead:', err.message);
-    return res.status(500).json({ error: 'Internal server error.' });
-  }
-});
-
-module.exports = router;
+    logger.error('[webhook/rfq] Error creating lead:', err.message);
+    return r

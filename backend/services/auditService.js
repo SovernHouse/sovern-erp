@@ -1,5 +1,6 @@
 const db = require('../models');
 const { Op } = require('sequelize');
+const logger = require('../utils/logger.js');
 
 /**
  * Core audit logging service
@@ -31,7 +32,7 @@ async function logAction(userId, action, entity, entityId, changes, ipAddress) {
     });
   } catch (error) {
     // Log failures should not break the request - just log and continue
-    console.error(`[AuditLog Error] Failed to log ${action} for ${entity}:`, error.message);
+    logger.error(`[AuditLog Error] Failed to log ${action} for ${entity}:`, error.message);
   }
 }
 
@@ -73,7 +74,7 @@ async function getAuditTrail(entityType, entityId, options = {}) {
       entityId: entityId
     };
   } catch (error) {
-    console.error(`[AuditLog Error] Failed to retrieve audit trail for ${entityType}:${entityId}:`, error.message);
+    logger.error(`[AuditLog Error] Failed to retrieve audit trail for ${entityType}:${entityId}:`, error.message);
     throw error;
   }
 }
@@ -106,7 +107,7 @@ async function getUserActivity(userId, options = {}) {
       userId: userId
     };
   } catch (error) {
-    console.error(`[AuditLog Error] Failed to retrieve user activity for ${userId}:`, error.message);
+    logger.error(`[AuditLog Error] Failed to retrieve user activity for ${userId}:`, error.message);
     throw error;
   }
 }
@@ -161,7 +162,7 @@ async function getRecentActivity(options = {}) {
       activities: rows
     };
   } catch (error) {
-    console.error(`[AuditLog Error] Failed to retrieve recent activity:`, error.message);
+    logger.error(`[AuditLog Error] Failed to retrieve recent activity:`, error.message);
     throw error;
   }
 }
@@ -201,7 +202,7 @@ async function getAuditStats(options = {}) {
       groupedBy: groupBy
     };
   } catch (error) {
-    console.error(`[AuditLog Error] Failed to retrieve audit stats:`, error.message);
+    logger.error(`[AuditLog Error] Failed to retrieve audit stats:`, error.message);
     throw error;
   }
 }
@@ -223,10 +224,10 @@ async function deleteOldLogs(daysToKeep = 90) {
       }
     });
 
-    console.log(`[AuditLog] Deleted ${deletedCount} old audit logs older than ${daysToKeep} days`);
+    logger.info(`[AuditLog] Deleted ${deletedCount} old audit logs older than ${daysToKeep} days`);
     return deletedCount;
   } catch (error) {
-    console.error(`[AuditLog Error] Failed to delete old logs:`, error.message);
+    logger.error(`[AuditLog Error] Failed to delete old logs:`, error.message);
     throw error;
   }
 }
@@ -298,19 +299,3 @@ async function exportAuditLogsAsCSV(options = {}) {
       ...escapedRows
     ].join('\n');
 
-    return csv;
-  } catch (error) {
-    console.error(`[AuditLog Error] Failed to export audit logs as CSV:`, error.message);
-    throw error;
-  }
-}
-
-module.exports = {
-  logAction,
-  getAuditTrail,
-  getUserActivity,
-  getRecentActivity,
-  getAuditStats,
-  deleteOldLogs,
-  exportAuditLogsAsCSV
-};

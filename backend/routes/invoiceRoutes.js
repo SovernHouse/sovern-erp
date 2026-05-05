@@ -29,6 +29,7 @@ const documentGenerator = require('../services/documentGenerator');
 const notificationService = require('../services/notificationService');
 const webhookService = require('../services/webhookService');
 const { validateFinancials } = require('../utils/validateFinancials');
+const logger = require('../utils/logger.js');
 
 /**
  * List all invoices with pagination and filtering
@@ -348,7 +349,7 @@ router.patch('/:id/send', requireAuth, async (req, res, next) => {
     res.json(getSuccessResponse(updatedInvoice, 'Invoice marked as sent'));
 
     // Fire-and-forget email and audit log
-    emailService.sendInvoiceEmail(updatedInvoice.customer, updatedInvoice).catch(err => console.error('[EMAIL] Error:', err.message));
+    emailService.sendInvoiceEmail(updatedInvoice.customer, updatedInvoice).catch(err => logger.error('[EMAIL] Error:', err.message));
     auditService.logAction(req.user.id, 'UPDATE', 'Invoice', invoice.id, { statusChange: { before: beforeStatus, after: 'sent' } }, req.ip).catch(() => {});
   } catch (error) {
     next(error);
@@ -400,7 +401,7 @@ router.post('/:id/record-payment', requireAuth, async (req, res, next) => {
     res.status(201).json(getSuccessResponse(payment, 'Payment recorded'));
 
     // Fire-and-forget email, audit log, real-time notification, and webhooks
-    emailService.sendPaymentConfirmationEmail(updatedInvoice.customer || invoice.customer, updatedInvoice || invoice, payment).catch(err => console.error('[EMAIL] Error:', err.message));
+    emailService.sendPaymentConfirmationEmail(updatedInvoice.customer || invoice.customer, updatedInvoice || invoice, payment).catch(err => logger.error('[EMAIL] Error:', err.message));
     auditService.logAction(req.user.id, 'UPDATE', 'Invoice', invoice.id, { action: 'payment_recorded', amount, method, before: beforeSnapshot, after: updatedInvoice?.toJSON?.() }, req.ip).catch(() => {});
 
     // Get admin users for payment notification
@@ -523,7 +524,7 @@ router.post('/send-reminders', requireAuth, requireRole('admin', 'finance'), asy
           status: 'sent'
         });
       } catch (err) {
-        console.error(`Failed to send reminder for invoice ${invoice.invoiceNumber}:`, err);
+        logger.error(`Failed to send reminder for invoice ${invoice.invoiceNumber}:`, err);
         reminders.push({
           invoiceId: invoice.id,
           invoiceNumber: invoice.invoiceNumber,
@@ -828,28 +829,4 @@ router.post('/:id/credit-note', requireAuth, async (req, res, next) => {
           description: invoiceItem.description,
           quantity: item.quantity,
           unit: invoiceItem.unit,
-          unitPrice: invoiceItem.unitPrice,
-          total: itemTotal,
-          discount: (invoiceItem.discount * item.quantity) / invoiceItem.quantity,
-          tax: (invoiceItem.tax * item.quantity) / invoiceItem.quantity
-        });
-      }
-    }
-
-    const result = await db.Invoice.findByPk(creditNote.id, {
-      include: [
-        { model: db.Customer, as: 'customer' },
-        { association: 'items', include: [{ model: db.Product, as: 'product' }] }
-      ]
-    });
-
-    res.status(201).json(getSuccessResponse(result, 'Credit note created'));
-
-    // Fire-and-forget audit log
-    auditService.logAction(req.user.id, 'CREATE', 'Invoice', creditNote.id, { type: 'credit_note', sourceInvoiceId: invoice.id, data: result?.toJSON?.() || creditNote.toJSON() }, req.ip).catch(() => {});
-  } catch (error) {
-    next(error);
-  }
-});
-
-module.exports = router;
+          unitPrice: invoiceItem.uni

@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const zlib = require('zlib');
 const dayjs = require('dayjs');
 const backupService = require('./backupService');
+const logger = require('../utils/logger.js');
 
 // Backup directory configuration
 const BACKUPS_DIR = path.join(__dirname, '../backups');
@@ -112,7 +113,7 @@ function loadBackupManifest() {
       return JSON.parse(fs.readFileSync(BACKUP_METADATA_FILE, 'utf8'));
     }
   } catch (error) {
-    console.warn('[BACKUP] Failed to load manifest:', error.message);
+    logger.warn('[BACKUP] Failed to load manifest:', error.message);
   }
   return {};
 }
@@ -124,7 +125,7 @@ function saveBackupManifest(manifest) {
   try {
     fs.writeFileSync(BACKUP_METADATA_FILE, JSON.stringify(manifest, null, 2));
   } catch (error) {
-    console.error('[BACKUP] Failed to save manifest:', error.message);
+    logger.error('[BACKUP] Failed to save manifest:', error.message);
   }
 }
 
@@ -166,14 +167,14 @@ async function createBackupWithMetadata() {
     manifest[backup.filename] = backupMetadata;
     saveBackupManifest(manifest);
 
-    console.log('[BACKUP] ✓ Backup created with metadata:', backup.filename);
+    logger.info('[BACKUP] ✓ Backup created with metadata:', backup.filename);
 
     return {
       ...backup,
       ...backupMetadata
     };
   } catch (error) {
-    console.error('[BACKUP] ✗ Failed to create backup:', error.message);
+    logger.error('[BACKUP] ✗ Failed to create backup:', error.message);
     throw error;
   }
 }
@@ -239,7 +240,7 @@ async function rotateBackups() {
               reason: `Exceeded ${type} limit (${limit})`
             });
           } catch (error) {
-            console.error(`[BACKUP] Failed to delete ${backup.filename}:`, error.message);
+            logger.error(`[BACKUP] Failed to delete ${backup.filename}:`, error.message);
           }
         }
       }
@@ -257,7 +258,7 @@ async function rotateBackups() {
       timestamp: new Date().toISOString()
     };
   } catch (error) {
-    console.error('[BACKUP] Rotation failed:', error.message);
+    logger.error('[BACKUP] Rotation failed:', error.message);
     throw error;
   }
 }
@@ -282,12 +283,12 @@ async function restoreBackupWithRollback(backupId) {
       throw new Error(`Backup verification failed: ${verification.reason}`);
     }
 
-    console.log('[BACKUP] Creating safety backup before restore...');
+    logger.info('[BACKUP] Creating safety backup before restore...');
 
     // Create safety backup
     const safetyBackup = await createBackupWithMetadata();
 
-    console.log('[BACKUP] Restoring from backup...');
+    logger.info('[BACKUP] Restoring from backup...');
 
     // Perform restore
     const result = await backupService.restoreBackup(backupId);
@@ -305,7 +306,7 @@ async function restoreBackupWithRollback(backupId) {
       message: `Backup restored successfully. Safety backup created: ${safetyBackup.filename}`
     };
   } catch (error) {
-    console.error('[BACKUP] Restore failed:', error.message);
+    logger.error('[BACKUP] Restore failed:', error.message);
     throw error;
   }
 }
@@ -344,7 +345,7 @@ async function uploadBackupToS3(backupId) {
 
     const result = await s3.upload(params).promise();
 
-    console.log('[BACKUP] ✓ Uploaded to S3:', result.Location);
+    logger.info('[BACKUP] ✓ Uploaded to S3:', result.Location);
 
     return {
       success: true,
@@ -353,7 +354,7 @@ async function uploadBackupToS3(backupId) {
       key: params.Key
     };
   } catch (error) {
-    console.error('[BACKUP] S3 upload failed:', error.message);
+    logger.error('[BACKUP] S3 upload failed:', error.message);
     throw error;
   }
 }
@@ -395,7 +396,7 @@ function getBackupStatistics() {
       percentage: Math.round((verified / backups.length) * 100)
     };
   } catch (error) {
-    console.error('[BACKUP] Failed to get statistics:', error.message);
+    logger.error('[BACKUP] Failed to get statistics:', error.message);
     return null;
   }
 }
@@ -407,23 +408,4 @@ function formatBytes(bytes) {
   if (bytes === 0) return '0 Bytes';
   const k = 1024;
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-}
-
-module.exports = {
-  createBackupWithMetadata,
-  rotateBackups,
-  restoreBackupWithRollback,
-  uploadBackupToS3,
-  verifyBackupIntegrity,
-  getBackupStatistics,
-  loadBackupManifest,
-  saveBackupManifest,
-  calculateChecksum,
-  classifyBackupByAge,
-  ensureBackupDir,
-  formatBytes,
-  RETENTION_POLICY,
-  BACKUPS_DIR
-};
+  const i = Math.floor(Math.log(bytes) / Ma

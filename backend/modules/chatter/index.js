@@ -7,13 +7,14 @@
 async function initChatter(app, sequelize, models, registry) {
   try {
     const chatterRoutes = require('../../routes/chatterRoutes');
+const logger = require('../../utils/logger.js');
     app.use('/api/chatter', chatterRoutes);
 
     registry.registerModel('chatter', 'ChatterMessage', models.ChatterMessage);
-    console.log('Chatter module: routes and model registered');
+    logger.info('Chatter module: routes and model registered');
   } catch (error) {
-    console.warn('Chatter module initialization warning:', error.message);
+    logger.warn('Chatter module initialization warning:', error.message);
   }
 }
 
-module.exports = initChatter;
+module.expor

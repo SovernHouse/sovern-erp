@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const logger = require('../utils/logger.js');
 
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
@@ -90,10 +91,10 @@ function createHTTPSServer(app, options = {}) {
 
     const server = https.createServer(sslOptions, app);
 
-    console.log('[SSL] ✓ HTTPS server created with SSL/TLS enabled');
+    logger.info('[SSL] ✓ HTTPS server created with SSL/TLS enabled');
     return server;
   } catch (error) {
-    console.error('[SSL] ✗ Failed to create HTTPS server:', error.message);
+    logger.error('[SSL] ✗ Failed to create HTTPS server:', error.message);
     throw error;
   }
 }
@@ -143,24 +144,24 @@ function generateSelfSignedCert() {
 
     // Skip if already exists
     if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
-      console.log('[SSL] Self-signed certificate already exists at:', certPath);
+      logger.info('[SSL] Self-signed certificate already exists at:', certPath);
       return { certPath, keyPath };
     }
 
     // Generate self-signed certificate valid for 365 days
     const cmd = `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 365 -nodes -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"`;
 
-    console.log('[SSL] Generating self-signed certificate for development...');
+    logger.info('[SSL] Generating self-signed certificate for development...');
     execSync(cmd, { stdio: 'inherit' });
 
-    console.log('[SSL] ✓ Self-signed certificate generated successfully');
-    console.log(`[SSL] Certificate: ${certPath}`);
-    console.log(`[SSL] Private Key: ${keyPath}`);
+    logger.info('[SSL] ✓ Self-signed certificate generated successfully');
+    logger.info(`[SSL] Certificate: ${certPath}`);
+    logger.info(`[SSL] Private Key: ${keyPath}`);
 
     return { certPath, keyPath };
   } catch (error) {
-    console.error('[SSL] ✗ Failed to generate self-signed certificate:', error.message);
-    console.error('[SSL] Make sure OpenSSL is installed on your system');
+    logger.error('[SSL] ✗ Failed to generate self-signed certificate:', error.message);
+    logger.error('[SSL] Make sure OpenSSL is installed on your system');
     throw error;
   }
 }
@@ -197,17 +198,4 @@ function addSecurityHeaders(req, res, next) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  next();
-}
-
-module.exports = {
-  loadSSLCredentials,
-  createHTTPSServer,
-  isSSLEnabled,
-  getSSLStatus,
-  generateSelfSignedCert,
-  enforceHTTPS,
-  addHSTSHeader,
-  addSecurityHeaders
-};
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-o

@@ -22,6 +22,7 @@ const emailService = require('../services/emailService');
 const documentGenerator = require('../services/documentGenerator');
 const notificationService = require('../services/notificationService');
 const webhookService = require('../services/webhookService');
+const logger = require('../utils/logger.js');
 
 /**
  * List all shipments with pagination and filtering
@@ -103,7 +104,7 @@ router.post('/', requireAuth, async (req, res, next) => {
     res.status(201).json(getSuccessResponse(shipment, 'Shipment created'));
 
     // Fire-and-forget email, audit log, real-time notification, and webhooks
-    emailService.sendShipmentNotificationEmail(so.customer, shipment).catch(err => console.error('[EMAIL] Error:', err.message));
+    emailService.sendShipmentNotificationEmail(so.customer, shipment).catch(err => logger.error('[EMAIL] Error:', err.message));
     auditService.logAction(req.user.id, 'CREATE', 'Shipment', shipment.id, { data: shipment.toJSON() }, req.ip).catch(() => {});
     notificationService.emitShipmentUpdate(shipment.id, shipment.status, { carrier: shipment.carrier, containerNumber: shipment.containerNumber }, so.customerId).catch(() => {});
     webhookService.triggerWebhook('shipment.created', {
@@ -145,7 +146,7 @@ router.post('/:id/tracking', requireAuth, async (req, res, next) => {
       include: [{ model: db.SalesOrder, as: 'salesOrder', include: [{ model: db.Customer, as: 'customer' }] }]
     });
     if (fullShipment && fullShipment.salesOrder && fullShipment.salesOrder.customer) {
-      emailService.sendShipmentUpdateEmail(fullShipment.salesOrder.customer, fullShipment, tracking).catch(err => console.error('[EMAIL] Error:', err.message));
+      emailService.sendShipmentUpdateEmail(fullShipment.salesOrder.customer, fullShipment, tracking).catch(err => logger.error('[EMAIL] Error:', err.message));
       notificationService.emitShipmentUpdate(shipment.id, status, { location, description }, fullShipment.salesOrder.customerId).catch(() => {});
       webhookService.triggerWebhook('shipment.updated', {
         shipmentId: shipment.id,
@@ -308,7 +309,7 @@ router.patch('/:id/deliver', requireAuth, async (req, res, next) => {
       include: [{ model: db.SalesOrder, as: 'salesOrder', include: [{ model: db.Customer, as: 'customer' }] }]
     });
     if (fullShipment && fullShipment.salesOrder && fullShipment.salesOrder.customer) {
-      emailService.sendShipmentNotificationEmail(fullShipment.salesOrder.customer, fullShipment).catch(err => console.error('[EMAIL] Error:', err.message));
+      emailService.sendShipmentNotificationEmail(fullShipment.salesOrder.customer, fullShipment).catch(err => logger.error('[EMAIL] Error:', err.message));
       notificationService.emitShipmentUpdate(shipment.id, 'delivered', { deliveryDate: actualDeliveryDate }, fullShipment.salesOrder.customerId).catch(() => {});
       webhookService.triggerWebhook('shipment.delivered', {
         shipmentId: shipment.id,
@@ -383,14 +384,4 @@ router.get('/:id/pdf', requireAuth, async (req, res, next) => {
       ]
     });
 
-    if (!shipment) throw new NotFoundError('Shipment not found');
-    if (!shipment.salesOrder) throw new NotFoundError('Associated Sales Order not found');
-
-    const pdfFile = await documentGenerator.generateShipmentDocumentPDF(shipment, shipment.salesOrder, shipment.salesOrder.customer);
-    res.json(getSuccessResponse({ pdfFile }, 'Shipment document PDF generated'));
-  } catch (error) {
-    next(error);
-  }
-});
-
-module.exports = router;
+    if (!shipment) throw new NotFoundError('Shipment not fou

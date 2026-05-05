@@ -7,6 +7,7 @@
 const PDFDocument = require('pdfkit');
 const db = require('../models');
 const dayjs = require('dayjs');
+const logger = require('../utils/logger.js');
 
 /**
  * Helper: Create PDF document with consistent formatting
@@ -185,7 +186,7 @@ async function generatePackingListPDF(packingListId) {
       doc.on('error', reject);
     });
   } catch (error) {
-    console.error('Error generating packing list PDF:', error);
+    logger.error('Error generating packing list PDF:', error);
     throw error;
   }
 }
@@ -321,7 +322,7 @@ async function generateCertificateOfOriginPDF(certId) {
       doc.on('error', reject);
     });
   } catch (error) {
-    console.error('Error generating Certificate of Origin PDF:', error);
+    logger.error('Error generating Certificate of Origin PDF:', error);
     throw error;
   }
 }
@@ -434,25 +435,4 @@ async function generateQuotationPDFEnhanced(quotationId) {
       currentY += 40;
       doc.fontSize(10).font('Helvetica-Bold').text('Notes:', 50, currentY);
       currentY += 18;
-      doc.fontSize(9).font('Helvetica').text(quotation.notes, 50, currentY, { width: 450 });
-    }
-
-    // Footer
-    addFooterInfo(doc);
-    doc.end();
-
-    return new Promise((resolve, reject) => {
-      doc.on('finish', () => resolve(Buffer.concat(buffers)));
-      doc.on('error', reject);
-    });
-  } catch (error) {
-    console.error('Error generating quotation PDF:', error);
-    throw error;
-  }
-}
-
-module.exports = {
-  generatePackingListPDF,
-  generateCertificateOfOriginPDF,
-  generateQuotationPDFEnhanced
-};
+      doc.fontSize(9).font('Helvetica').text(quotation.notes, 50, currentY, { width:
