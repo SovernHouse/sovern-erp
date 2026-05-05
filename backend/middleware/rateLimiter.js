@@ -17,7 +17,11 @@ const generalLimiter = rateLimit({
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 100 : 5,
+  // Production cap was 5/15min which is too tight for legitimate
+  // dev + ops use (every Claude Desktop restart attempts an auth, and
+  // a deploy spins through 1-2 attempts on its own). Bumping to 20.
+  // Still well under brute-force territory for a single admin account.
+  max: isDev ? 100 : 20,
   message: 'Too many login attempts, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
