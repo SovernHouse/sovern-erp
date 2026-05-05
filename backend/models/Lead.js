@@ -110,7 +110,7 @@ module.exports = (sequelize) => {
       defaultValue: [],
     },
     leadType: {
-      type: DataTypes.ENUM('inbound', 'outbound_prospect'),
+      type: DataTypes.ENUM('inbound', 'outbound_prospect', 'supplier_contact'),
       defaultValue: 'inbound',
     },
     vertical: {

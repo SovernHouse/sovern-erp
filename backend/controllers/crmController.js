@@ -166,7 +166,15 @@ exports.getLeads = async (req, res) => {
     if (status) where.status = status;
     if (source) where.source = source;
     if (assignedToId) where.assignedToId = assignedToId;
-    if (leadType) where.leadType = leadType;
+    if (leadType) {
+      where.leadType = leadType;
+    } else {
+      // Default: exclude supplier_contact-flagged rows from generic
+      // /leads listings. The Leads page is for client prospects only;
+      // factory/supplier people belong on Supplier Contacts.
+      // Callers that explicitly want them must pass leadType='supplier_contact'.
+      where.leadType = { [Op.ne]: 'supplier_contact' };
+    }
 
     // PERF: split findAndCountAll into two parallel queries.
     // findAndCountAll with `include` makes Sequelize emit
