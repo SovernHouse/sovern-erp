@@ -136,20 +136,35 @@ jobs:
             fi
 
             # ── ONE-SHOT MIGRATION: fix Contact table FK references ──
-            # Contact.js had references to 'Customers' and 'Factories' but the
-            # actual tables are 'Customer' and 'Factory' (singular). FK CHECK
-            # at insert time failed with 'no such table'. Table is empty in
-            # prod (verified 2026-05-05). Drop it once; sync() recreates it
-            # with the corrected FK references on next backend boot.
-            # Sentinel keeps this idempotent across redeploys.
-            MIGRATION_SENTINEL=~/.sovern-erp-migrations/contact-fk-2026-05-05
+            # Contact.js used to reference 'Customers' / 'Factories' (plural)
+            # but the actual tables are 'Customer' / 'Factory' (singular).
+            # Every Contact INSERT failed with FK CHECK 'no such table'.
+            # Empty table — drop once; sync() recreates it on next backend
+            # boot with the fixed model. Sentinel keeps it idempotent.
+            #
+            # Earlier attempt used the `sqlite3` CLI which isn't installed
+            # on this VM, so the DROP silently failed. Use the npm sqlite3
+            # binding via a Node one-liner instead — that's already in
+            # node_modules from npm install above.
+            MIGRATION_SENTINEL=~/.sovern-erp-migrations/contact-fk-2026-05-05-v2
             mkdir -p ~/.sovern-erp-migrations
             if [ ! -f "$MIGRATION_SENTINEL" ]; then
-              echo "Running one-shot Contact-FK migration..."
+              echo "Running one-shot Contact-FK migration (node-based)..."
               SQLITE_DB="$HOME/sovern-erp/backend/database.sqlite"
               if [ -f "$SQLITE_DB" ]; then
-                sqlite3 "$SQLITE_DB" 'DROP TABLE IF EXISTS Contacts;' || true
-                echo "Dropped Contacts table."
+                cd ~/sovern-erp/backend
+                node -e "
+                  const sqlite3 = require('sqlite3');
+                  const db = new sqlite3.Database('$SQLITE_DB');
+                  db.serialize(() => {
+                    db.run('DROP TABLE IF EXISTS Contacts;', (err) => {
+                      if (err) { console.error('DROP failed:', err.message); process.exitCode = 1; }
+                      else { console.log('Dropped Contacts table.'); }
+                      db.close();
+                    });
+                  });
+                "
+                cd ~/sovern-erp
               else
                 echo "No sqlite DB at $SQLITE_DB — skipping (fresh install will sync correctly)."
               fi
