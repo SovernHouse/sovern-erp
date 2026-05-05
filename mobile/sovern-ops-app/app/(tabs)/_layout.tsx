@@ -44,3 +44,7 @@ export default function TabLayout() {
       {/* — Reference data — */}
       <Tabs.Screen name="products"  options={{ title: 'Products',  tabBarIcon: ({ focused }) => <TabIcon icon="📦" focused={focused} /> }} />
       <Tabs.Screen name="customers" options={{ title: 'Customers', tabBarIcon: ({ focused }) => <TabIcon icon="🏢" focused={focused} /> }} />
+      <Tabs.Screen name="settings"  options={{ title: 'Settings',  tabBarIcon: ({ focused }) => <TabIcon icon="⚙️" focused={focused} /> }} />
+    </Tabs>
+  )
+}

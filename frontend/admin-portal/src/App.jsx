@@ -113,6 +113,7 @@ const BulkImport       = React.lazy(() => import('./pages/Settings/BulkImport'))
 const ProductAttributes = React.lazy(() => import('./pages/Settings/ProductAttributes'))
 const PriceListManager  = React.lazy(() => import('./pages/Settings/PriceListManager'))
 const ModulesManager    = React.lazy(() => import('./pages/Settings/ModulesManager'))
+const MobileApp         = React.lazy(() => import('./pages/Settings/MobileApp'))
 
 // Analytics & BI
 const AnalyticsDashboard = React.lazy(() => import('./pages/Analytics/AnalyticsDashboard'))
@@ -335,6 +336,7 @@ function AppRoutes() {
       <Route path="/settings/product-attributes"    element={<P permission="settings"><ProductAttributes /></P>} />
       <Route path="/settings/price-lists"           element={<P permission="settings"><PriceListManager /></P>} />
       <Route path="/settings/modules"              element={<P roles={['admin']}><ModulesManager /></P>} />
+      <Route path="/settings/mobile-app"           element={<P permission="settings"><MobileApp /></P>} />
 
       {/* ── CRM / Pipeline ── */}
       <Route path="/crm"                       element={<P permission="outreach"><CRMDashboard /></P>} />

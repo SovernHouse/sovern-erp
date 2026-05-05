@@ -196,6 +196,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Role Permissions', path: '/settings/role-permissions', permission: 'settings' },
         { label: 'Product Taxonomy', path: '/settings/product-taxonomy', permission: 'settings' },
         { label: 'Bulk Import', path: '/settings/bulk-import', permission: 'settings' },
+        { label: 'Mobile App', path: '/settings/mobile-app', permission: 'settings' },
       ],
     },
   ],
@@ -749,6 +750,7 @@ const buildNavFromPermissions = (permissions) => {
     { label: 'Role Permissions', path: '/settings/role-permissions', permission: 'settings' },
     { label: 'Product Taxonomy', path: '/settings/product-taxonomy', permission: 'settings' },
     { label: 'Bulk Import', path: '/settings/bulk-import', permission: 'settings' },
+    { label: 'Mobile App', path: '/settings/mobile-app', permission: 'settings' },
   ]})
   return nav
 }
