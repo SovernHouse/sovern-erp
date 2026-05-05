@@ -10,23 +10,20 @@ module.exports = (sequelize) => {
     customerId: {
       type: DataTypes.UUID,
       allowNull: true,
-      // Note: freezeTableName: true is set globally, so the actual
-      // table is 'Customer' (singular). Old reference to 'Customers'
-      // caused FK CHECK to fail at insert-time. Verified empty
-      // pre-existing Contact table — safe to drop+resync.
-      references: {
-        model: 'Customer',
-        key: 'id',
-      },
+      // No DB-level FK constraint on purpose: Sequelize's
+      // references-by-model-name resolver pluralizes the table name
+      // (Customer -> Customers) even when freezeTableName: true is
+      // set, which produces a FK pointing at a table that doesn't
+      // exist on this DB. JS-level association lives in
+      // models/index.js (Contact.belongsTo(Customer)) and is what
+      // the controllers use, so dropping the DB FK is purely a
+      // safety-versus-broken-behaviour trade. Empty Contacts table
+      // verified pre-existing 2026-05-05.
     },
     factoryId: {
       type: DataTypes.UUID,
       allowNull: true,
-      // See customerId comment — same fix.
-      references: {
-        model: 'Factory',
-        key: 'id',
-      },
+      // See customerId comment — same trade.
     },
     firstName: {
       type: DataTypes.STRING,
