@@ -289,21 +289,3 @@ const getPerformance = async (req, res, next) => {
         inspections,
         passedInspections,
         inspectionPassRate: inspections ? ((passedInspections / inspections) * 100).toFixed(2) : 0,
-        onTimeDeliveries,
-        onTimeRate: completedPOs ? ((onTimeDeliveries / completedPOs) * 100).toFixed(2) : 0
-      }
-    }));
-  } catch (error) {
-    next(error);
-  }
-};
-
-module.exports = {
-  create,
-  getAll,
-  getById,
-  update,
-  getProducts,
-  updatePrices,
-  getPerformance
-};
