@@ -29,7 +29,7 @@ import {
 import { useAuth } from '../hooks/useAuth'
 import { useNotifications } from '../hooks/useNotifications'
 import { getAllowedNavItems } from '../config/rbacConfig'
-import { LanguageSwitcher } from '@shared/components'
+// LanguageSwitcher removed — react-i18next is not initialized in admin-portal
 import HelpPanel, { useHelpPanel } from './HelpPanel'
 import InstallPWA from './InstallPWA'
 import ActivityBanner from './ActivityBanner'
@@ -434,8 +434,6 @@ export default function Layout({ children }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <LanguageSwitcher className="hidden md:block" />
-
             {/* Install as desktop app (PWA) — only visible when browser supports it */}
             <InstallPWA />
 
