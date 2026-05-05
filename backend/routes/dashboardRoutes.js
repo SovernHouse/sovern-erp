@@ -851,6 +851,21 @@ router.get('/layout', requireAuth, async (req, res, next) => {
       where: { userId: req.user.id }
     });
 
+    if (!layout) {
+      layout = await db.DashboardLayout.create({
+        userId: req.user.id,
+        role: req.user.role,
+        layout: [],
+        isDefault: false
+      });
+    }
+
+    res.json(getSuccessResponse(layout));
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/revenue', cacheRoute(dashboardCacheTTL), requireAuth, async (req, res, next) => {
   try {
     const { period = '6months' } = req.query;
