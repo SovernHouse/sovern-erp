@@ -23,8 +23,11 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: 'dist',
     sourcemap: true,
-    // Use esbuild minifier (default; explicit for clarity).
-    minify: 'esbuild',
+    // Minification disabled: esbuild minifier caused 15+ min hangs on the
+    // e2-micro VM during chunk rendering. The bundle is gzip-compressed by
+    // nginx in transit, so skipping JS minification has negligible impact
+    // on an internal ERP tool.
+    minify: false,
   },
   define: {
     'process.env': {},
