@@ -24,6 +24,23 @@ module.exports = (sequelize) => {
       type: DataTypes.UUID,
       allowNull: true
     },
+    // Sourcing trail: which factory the quote was sourced from (the
+    // primary factory; per-line factories live on Product.factoryId).
+    // Carries forward into ProformaInvoice / SalesOrder / Invoice via
+    // the quotationId chain so internal users can trace 'where did
+    // this price come from' end-to-end.
+    factoryId: {
+      type: DataTypes.UUID,
+      allowNull: true
+    },
+    // The Lead this quote was raised against, for quotes that come
+    // out of an outbound prospect cycle before a Customer record
+    // exists. Null once the lead has been converted (Customer is the
+    // authoritative link from then on).
+    leadId: {
+      type: DataTypes.UUID,
+      allowNull: true
+    },
     status: {
       type: DataTypes.ENUM('draft', 'sent', 'revised', 'accepted', 'rejected', 'expired'),
       defaultValue: 'draft'
@@ -87,6 +104,8 @@ module.exports = (sequelize) => {
       { fields: ['status'] },
       { fields: ['customer_id'] },
       { fields: ['inquiry_id'] },
+      { fields: ['factory_id'] },
+      { fields: ['lead_id'] },
       { fields: ['deleted_at'] }
     ]
   });

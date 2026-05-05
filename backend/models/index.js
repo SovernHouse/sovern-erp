@@ -156,6 +156,15 @@ db.Quotation.belongsTo(db.Customer, { as: 'customer', foreignKey: 'customerId' }
 db.Inquiry.hasMany(db.Quotation, { as: 'quotations', foreignKey: 'inquiryId' });
 db.Quotation.belongsTo(db.Inquiry, { as: 'inquiry', foreignKey: 'inquiryId' });
 
+// Sourcing factory + originating lead links (added 2026-05-05).
+// Both nullable: a quote may have no factory link (price-from-stock),
+// and most quotes have customerId not leadId once the lead is converted.
+db.Factory.hasMany(db.Quotation, { as: 'quotations', foreignKey: 'factoryId' });
+db.Quotation.belongsTo(db.Factory, { as: 'factory', foreignKey: 'factoryId' });
+
+db.Lead.hasMany(db.Quotation, { as: 'quotations', foreignKey: 'leadId' });
+db.Quotation.belongsTo(db.Lead, { as: 'lead', foreignKey: 'leadId' });
+
 db.Quotation.hasMany(db.QuotationItem, { as: 'items', foreignKey: 'quotationId', onDelete: 'CASCADE' });
 db.QuotationItem.belongsTo(db.Quotation, { foreignKey: 'quotationId' });
 

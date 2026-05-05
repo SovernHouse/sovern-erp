@@ -13,7 +13,7 @@ const { validateFinancials } = require('../utils/validateFinancials');
 const create = async (req, res, next) => {
   try {
     validateFinancials(req.body);
-    const { customerId, inquiryId, salesPersonId, items, discount, discountType, taxRate, terms } = req.body;
+    const { customerId, inquiryId, salesPersonId, items, discount, discountType, taxRate, terms, factoryId, leadId } = req.body;
 
     const customer = await db.Customer.findByPk(customerId);
     if (!customer) {
@@ -61,6 +61,8 @@ const create = async (req, res, next) => {
       inquiryId: inquiryId || null,
       customerId,
       salesPersonId: salesPersonId || null,
+      factoryId: factoryId || null,
+      leadId: leadId || null,
       status: 'draft',
       subtotal,
       discount: discountAmount,
@@ -81,7 +83,9 @@ const create = async (req, res, next) => {
       include: [
         { association: 'items', include: [{ model: db.Product, as: 'product' }] },
         { model: db.Customer, as: 'customer' },
-        { model: db.User, as: 'salesPerson' }
+        { model: db.User, as: 'salesPerson' },
+        { model: db.Factory, as: 'factory', attributes: ['id', 'companyName', 'country'] },
+        { model: db.Lead, as: 'lead', attributes: ['id', 'companyName', 'contactName'] }
       ]
     });
 
@@ -102,6 +106,8 @@ const getAll = async (req, res, next) => {
     const where = { deletedAt: null };
     if (status) where.status = status;
     if (customerId) where.customerId = customerId;
+    if (req.query.factoryId) where.factoryId = req.query.factoryId;
+    if (req.query.leadId) where.leadId = req.query.leadId;
     if (search) where.quotationNumber = { [Op.like]: `%${search}%` };
 
     const [count, rows] = await Promise.all([
@@ -110,7 +116,9 @@ const getAll = async (req, res, next) => {
         where,
         include: [
           { model: db.Customer, as: 'customer', attributes: ['companyName'] },
-          { model: db.User, as: 'salesPerson', attributes: ['firstName', 'lastName'] }
+          { model: db.User, as: 'salesPerson', attributes: ['firstName', 'lastName'] },
+          { model: db.Factory, as: 'factory', attributes: ['id', 'companyName'] },
+          { model: db.Lead, as: 'lead', attributes: ['id', 'companyName', 'contactName'] }
         ],
         offset,
         limit: parseInt(limit),
@@ -132,7 +140,9 @@ const getById = async (req, res, next) => {
         { association: 'items', include: [{ model: db.Product, as: 'product' }] },
         { model: db.Customer, as: 'customer' },
         { model: db.User, as: 'salesPerson' },
-        { model: db.Inquiry, as: 'inquiry' }
+        { model: db.Inquiry, as: 'inquiry' },
+        { model: db.Factory, as: 'factory' },
+        { model: db.Lead, as: 'lead' }
       ]
     });
 
@@ -149,7 +159,7 @@ const getById = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { items, discount, taxRate, terms, validUntil } = req.body;
+    const { items, discount, taxRate, terms, validUntil, factoryId, leadId } = req.body;
 
     const quotation = await db.Quotation.findByPk(id);
     if (!quotation || quotation.deletedAt) {
@@ -190,14 +200,29 @@ const update = async (req, res, next) => {
         taxRate: taxRate || quotation.taxRate,
         total,
         terms,
-        validUntil
+        validUntil,
+        factoryId: factoryId !== undefined ? factoryId : quotation.factoryId,
+        leadId: leadId !== undefined ? leadId : quotation.leadId,
       });
+    }
+
+    // Allow editing factoryId/leadId/terms/validUntil even when items
+    // weren't sent — the items-only path skipped these otherwise.
+    if (!items && (factoryId !== undefined || leadId !== undefined || terms !== undefined || validUntil !== undefined)) {
+      const patch = {};
+      if (factoryId !== undefined) patch.factoryId = factoryId;
+      if (leadId !== undefined) patch.leadId = leadId;
+      if (terms !== undefined) patch.terms = terms;
+      if (validUntil !== undefined) patch.validUntil = validUntil;
+      await quotation.update(patch);
     }
 
     const result = await db.Quotation.findByPk(id, {
       include: [
         { association: 'items', include: [{ model: db.Product, as: 'product' }] },
-        { model: db.Customer, as: 'customer' }
+        { model: db.Customer, as: 'customer' },
+        { model: db.Factory, as: 'factory', attributes: ['id', 'companyName', 'country'] },
+        { model: db.Lead, as: 'lead', attributes: ['id', 'companyName', 'contactName'] }
       ]
     });
 
