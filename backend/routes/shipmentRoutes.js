@@ -384,4 +384,14 @@ router.get('/:id/pdf', requireAuth, async (req, res, next) => {
       ]
     });
 
-    if (!shipment) throw new NotFoundError('Shipment not fou
+    if (!shipment) throw new NotFoundError('Shipment not found');
+    if (!shipment.salesOrder) throw new NotFoundError('Associated Sales Order not found');
+
+    const pdfFile = await documentGenerator.generateShipmentDocumentPDF(shipment, shipment.salesOrder, shipment.salesOrder.customer);
+    res.json(getSuccessResponse({ pdfFile }, 'Shipment document PDF generated'));
+  } catch (error) {
+    next(error);
+  }
+});
+
+module.exports = router;

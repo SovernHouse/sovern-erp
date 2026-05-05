@@ -138,4 +138,10 @@ const excludeCustomerData = (req, res, next) => {
   }
 };
 
-m
+module.exports = {
+  enforceCustomerAccess,
+  enforceFactoryAccess,
+  checkResourceOwnership,
+  applyScopeFilter,
+  excludeCustomerData,
+};

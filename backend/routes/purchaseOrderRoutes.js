@@ -572,4 +572,22 @@ router.post('/:id/send', requireAuth, async (req, res, next) => {
   }
 });
 
-router
+router.get('/:id/pdf', requireAuth, async (req, res, next) => {
+  try {
+    const po = await db.PurchaseOrder.findByPk(req.params.id, {
+      include: [
+        { association: 'items', include: [{ model: db.Product, as: 'product' }] },
+        { model: db.Factory, as: 'factory' }
+      ]
+    });
+
+    if (!po) throw new NotFoundError('Purchase Order not found');
+
+    const pdfFile = await documentGenerator.generatePurchaseOrderPDF(po, po.items, po.factory);
+    res.json(getSuccessResponse({ pdfFile }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+module.exports = router;

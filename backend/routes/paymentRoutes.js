@@ -172,4 +172,12 @@ router.delete('/:id', requireAuth, async (req, res, next) => {
     // Delete payment
     await payment.destroy({ transaction });
 
-    await transaction.c
+    await transaction.commit();
+    res.json(getSuccessResponse(null, 'Payment deleted'));
+  } catch (error) {
+    await transaction.rollback();
+    next(error);
+  }
+});
+
+module.exports = router;

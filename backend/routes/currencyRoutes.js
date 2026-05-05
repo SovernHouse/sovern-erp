@@ -308,4 +308,17 @@ router.get('/:code/history', requireAuth, async (req, res, next) => {
 router.get('/:code', requireAuth, async (req, res, next) => {
   try {
     const code = req.params.code.toUpperCase();
-    const currencies = currencyService.getSupported
+    const currencies = currencyService.getSupportedCurrencies();
+    const currency = currencies.find(c => c.code === code);
+
+    if (!currency) {
+      throw new NotFoundError(`Currency ${code} not found`);
+    }
+
+    res.json(getSuccessResponse(currency, 'Currency details retrieved'));
+  } catch (error) {
+    next(error);
+  }
+});
+
+module.exports = router;

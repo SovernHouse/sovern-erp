@@ -7,8 +7,8 @@
  */
 
 const path = require('path');
-const logger = require('../utils/logger.js');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+const logger = require('../utils/logger.js');
 
 /**
  * Required environment variables
@@ -189,4 +189,14 @@ function getConfigValue(varName, defaultValue = null) {
   return process.env[varName] !== undefined ? process.env[varName] : defaultValue;
 }
 
-module.exports =
+module.exports = {
+  validateEnvironment,
+  validateRequired,
+  validateRecommended,
+  logEnvironmentSummary,
+  isModuleEnabled,
+  isFeatureEnabled,
+  getConfigValue,
+  REQUIRED_VARS,
+  RECOMMENDED_VARS
+};

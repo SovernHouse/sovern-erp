@@ -91,4 +91,10 @@ const apmMiddleware = (req, res, next) => {
     }
 
     // Call the original json
-  
+    return originalJson.call(this, data);
+  };
+
+  next();
+};
+
+module.exports = apmMiddleware;

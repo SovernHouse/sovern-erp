@@ -528,4 +528,29 @@ const getShadeAvailability = async (req, res, next) => {
         };
       }
 
-      shadeMap[batch.shadeCode].totalQuantity += batch.quanti
+      shadeMap[batch.shadeCode].totalQuantity += batch.quantityAvailable;
+    }
+
+    const shades = Object.values(shadeMap).sort((a, b) => a.shadeCode.localeCompare(b.shadeCode));
+
+    res.json(getSuccessResponse(shades, 'Shade availability retrieved successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {
+  createBatch,
+  getBatches,
+  getBatchById,
+  updateBatch,
+  getBatchesByProduct,
+  getBatchesByShade,
+  updateStatus,
+  updateQualityStatus,
+  allocateBatch,
+  getBatchAllocations,
+  updateAllocationStatus,
+  getInventorySummary,
+  getShadeAvailability
+};

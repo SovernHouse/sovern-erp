@@ -246,4 +246,16 @@ router.post('/:id/reject', requireAuth, async (req, res, next) => {
 
     // Fire-and-forget operations
     auditService.logAction(req.user.id, 'UPDATE', 'GoodsReceivedNote', grn.id, { before: beforeSnapshot, after: updatedGrn?.toJSON?.() || grn.toJSON(), action: 'rejected', reason }, req.ip).catch(() => {});
-    webhookService
+    webhookService.triggerWebhook('grn.rejected', {
+      grnId: grn.id,
+      grnNumber: grn.grnNumber,
+      poId: grn.poId,
+      reason,
+      rejectedAt: new Date()
+    }).catch(() => {});
+  } catch (error) {
+    next(error);
+  }
+});
+
+module.exports = router;

@@ -829,4 +829,28 @@ router.post('/:id/credit-note', requireAuth, async (req, res, next) => {
           description: invoiceItem.description,
           quantity: item.quantity,
           unit: invoiceItem.unit,
-          unitPrice: invoiceItem.uni
+          unitPrice: invoiceItem.unitPrice,
+          total: itemTotal,
+          discount: (invoiceItem.discount * item.quantity) / invoiceItem.quantity,
+          tax: (invoiceItem.tax * item.quantity) / invoiceItem.quantity
+        });
+      }
+    }
+
+    const result = await db.Invoice.findByPk(creditNote.id, {
+      include: [
+        { model: db.Customer, as: 'customer' },
+        { association: 'items', include: [{ model: db.Product, as: 'product' }] }
+      ]
+    });
+
+    res.status(201).json(getSuccessResponse(result, 'Credit note created'));
+
+    // Fire-and-forget audit log
+    auditService.logAction(req.user.id, 'CREATE', 'Invoice', creditNote.id, { type: 'credit_note', sourceInvoiceId: invoice.id, data: result?.toJSON?.() || creditNote.toJSON() }, req.ip).catch(() => {});
+  } catch (error) {
+    next(error);
+  }
+});
+
+module.exports = router;

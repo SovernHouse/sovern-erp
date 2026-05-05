@@ -598,4 +598,26 @@ router.post('/:id/create-packing-list', requireAuth, async (req, res, next) => {
         packageNumber: i + 1,
         grossWeight: 0,
         netWeight: 0,
-        
+        dimensions: {},
+        marks: null,
+      }, { transaction: t });
+    }
+
+    await t.commit();
+
+    // Return the full packing list with items
+    const completePL = await db.PackingList.findByPk(pl.id, {
+      include: [
+        { association: 'items', include: [{ model: db.Product, as: 'product' }] },
+        { model: db.SalesOrder, as: 'salesOrder', attributes: ['orderNumber'] },
+      ],
+    });
+
+    res.status(201).json(getSuccessResponse(completePL, 'Packing List created from Sales Order'));
+  } catch (error) {
+    await t.rollback();
+    next(error);
+  }
+});
+
+module.exports = router;

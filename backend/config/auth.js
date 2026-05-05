@@ -1,5 +1,5 @@
-const logger = require('../utils/logger.js');
 require('dotenv').config();
+const logger = require('../utils/logger.js');
 
 // Validate required secrets at startup
 if (!process.env.JWT_SECRET) {
@@ -39,4 +39,8 @@ module.exports = {
     inspector: ['inspections', 'sales_orders:view', 'purchase_orders:view', 'notifications'],
     customer: ['notifications', 'sales_orders:own', 'shipments:own', 'invoices:own'],
     factory: ['notifications', 'purchase_orders:own', 'products:own', 'inspections:own']
+  },
+  bcrypt: {
+    saltRounds: 10
   }
+};

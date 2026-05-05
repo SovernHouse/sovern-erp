@@ -347,4 +347,19 @@ function createCacheService() {
     logger.info('[Cache] Initializing Redis cache service');
     return new RedisCacheService(redisUrl);
   } else {
-    consol
+    logger.info('[Cache] Redis not configured, using in-memory cache');
+    return CacheService;
+  }
+}
+
+module.exports = {
+  RedisCacheService,
+  createCacheService,
+  getInstance: () => {
+    // Lazy initialization
+    if (!module.exports._instance) {
+      module.exports._instance = createCacheService();
+    }
+    return module.exports._instance;
+  }
+};

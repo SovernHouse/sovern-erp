@@ -188,4 +188,15 @@ class CacheService {
   }
 
   /**
-   * Shutdown and cleanu
+   * Shutdown and cleanup
+   */
+  shutdown() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+    this.flush();
+  }
+}
+
+// Export as singleton
+module.exports = new CacheService();

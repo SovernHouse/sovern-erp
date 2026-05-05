@@ -200,4 +200,13 @@ router.post('/reset', requireAuth, requireRole('admin'), (req, res) => {
       'All metrics reset successfully'
     ));
   } catch (error) {
-    logger.error('[Monitoring] Er
+    logger.error('[Monitoring] Error resetting metrics:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset metrics',
+      error: error.message
+    });
+  }
+});
+
+module.exports = router;

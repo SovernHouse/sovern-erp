@@ -348,4 +348,15 @@ class APMService {
 
         if (initialRequestCount > this.metrics.requests.length ||
             initialErrorCount > this.metrics.errors.length ||
-  
+            initialSlowCount > this.metrics.slowRequests.length) {
+          logger.info('[APM] Cleanup: Removed old metrics');
+        }
+      } catch (error) {
+        logger.error('[APM] Error in cleanup task:', error.message);
+      }
+    }, 600000); // Run every 10 minutes
+  }
+}
+
+// Export singleton instance
+module.exports = new APMService();

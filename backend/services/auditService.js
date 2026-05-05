@@ -299,3 +299,19 @@ async function exportAuditLogsAsCSV(options = {}) {
       ...escapedRows
     ].join('\n');
 
+    return csv;
+  } catch (error) {
+    logger.error(`[AuditLog Error] Failed to export audit logs as CSV:`, error.message);
+    throw error;
+  }
+}
+
+module.exports = {
+  logAction,
+  getAuditTrail,
+  getUserActivity,
+  getRecentActivity,
+  getAuditStats,
+  deleteOldLogs,
+  exportAuditLogsAsCSV
+};

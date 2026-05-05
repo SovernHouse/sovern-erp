@@ -140,4 +140,16 @@ function logSlowQueries(thresholdMs = 1000) {
       if (duration > thresholdMs) {
         logger.warn(`[Query Slow] ${req.method} ${req.originalUrl} took ${duration}ms`);
       }
-  
+    });
+
+    next();
+  };
+}
+
+module.exports = {
+  optimizeQuery,
+  addPaginationDefaults,
+  getSortOrder,
+  queryDefaults,
+  logSlowQueries
+};

@@ -240,4 +240,20 @@ class ModuleRegistry {
         }
       }
 
-      visiting.delete
+      visiting.delete(name);
+      visited.add(name);
+
+      if (module && module.enabled) {
+        sorted.push(name);
+      }
+    };
+
+    for (const [name] of this.modules) {
+      visit(name);
+    }
+
+    return sorted;
+  }
+}
+
+module.exports = ModuleRegistry;

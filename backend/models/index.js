@@ -1,7 +1,6 @@
 const { Sequelize } = require('sequelize');
 const path = require('path');
 const config = require('../config/database');
-const logger = require('../utils/logger.js');
 
 let sequelize;
 if (config.dialect === 'sqlite') {
@@ -77,6 +76,7 @@ db.LetterOfCreditDocument = require('./LetterOfCreditDocument')(sequelize);
 // Landed Cost models
 db.LandedCostTemplate = require('./LandedCostTemplate')(sequelize);
 db.LandedCostCalculation = require('./LandedCostCalculation')(sequelize);
+const logger = require('../utils/logger.js');
 
 // Sample Management models
 db.SampleRequest = require('./SampleRequest')(sequelize);
@@ -521,4 +521,16 @@ if (db.Lead) {
 // OutreachEmail relationships
 db.Lead.hasMany(db.OutreachEmail, { foreignKey: 'leadId', as: 'outreachEmails' });
 
-// DocumentApprov
+// DocumentApproval relationships
+// NOTE: DocumentApproval.belongsTo(User, { as: 'requestedBy' }) is defined in
+// DocumentApproval.associate() and called above — do NOT redefine it here.
+db.User.hasMany(db.DocumentApproval, { as: 'documentApprovals', foreignKey: 'requestedByUserId' });
+
+// Chatter & Internal Approvals
+db.ChatterMessage = require('./ChatterMessage')(sequelize);
+db.ChatterMessage.associate(db);
+
+db.InternalApproval = require('./InternalApproval')(sequelize);
+db.InternalApproval.associate(db);
+
+module.exports = db; 

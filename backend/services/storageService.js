@@ -446,4 +446,31 @@ const moveFileS3 = async (fromPath, toPath) => {
     Bucket: bucket,
     Key: toPath,
     Body: response.Body,
-    Conten
+    ContentType: response.ContentType
+  });
+  await s3Client.send(putCommand);
+
+  // Delete source
+  const delCommand = new DeleteObjectCommand({
+    Bucket: bucket,
+    Key: fromPath
+  });
+  await s3Client.send(delCommand);
+
+  return {
+    success: true,
+    from: fromPath,
+    to: toPath,
+    provider: STORAGE_PROVIDER
+  };
+};
+
+module.exports = {
+  uploadFile,
+  getFile,
+  deleteFile,
+  getSignedUrlPath,
+  listFiles,
+  moveFile,
+  STORAGE_PROVIDER
+};

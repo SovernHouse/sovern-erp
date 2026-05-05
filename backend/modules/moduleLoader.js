@@ -118,4 +118,11 @@ class ModuleLoader {
 
   /**
    * Get the feature flags instance
-   * @returns {FeatureFlags} 
+   * @returns {FeatureFlags} Feature flags instance
+   */
+  getFeatureFlags() {
+    return this.featureFlags;
+  }
+}
+
+module.exports = ModuleLoader;

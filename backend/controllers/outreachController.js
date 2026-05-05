@@ -523,4 +523,25 @@ const getCampaignStatus = async (req, res) => {
         sendStatus: campaign.sendStatus,
         totalRecipients: campaign.totalRecipients,
         sentCount: campaign.sentCount,
-        failedCount: 
+        failedCount: campaign.failedCount,
+        lastSentAt: campaign.lastSentAt,
+        fromAddress: campaign.fromAddress,
+        emails: campaign.outreachEmails || [],
+      },
+    });
+  } catch (error) {
+    logger.error('Error fetching campaign status:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+module.exports = {
+  getLeadOutreachEmails,
+  sendOutreachEmailToLead,
+  updateFollowup,
+  getFollowups,
+  deleteOutreachEmail,
+  deleteAllOutreachEmails,
+  sendCampaign,
+  getCampaignStatus,
+};

@@ -492,4 +492,26 @@ async function generatePackingListPDF(shipmentId) {
     addLineItemsTable(doc, items, 270);
 
     // Footer
-    addFooter(doc, 'Please verify contents upon rec
+    addFooter(doc, 'Please verify contents upon receipt and report any discrepancies immediately.');
+
+    doc.end();
+
+    return new Promise((resolve, reject) => {
+      doc.on('finish', () => {
+        resolve(Buffer.concat(buffers));
+      });
+      doc.on('error', reject);
+    });
+  } catch (error) {
+    logger.error('Error generating packing list PDF:', error);
+    throw error;
+  }
+}
+
+module.exports = {
+  generateInvoicePDF,
+  generatePurchaseOrderPDF,
+  generateQuotationPDF,
+  generateProformaInvoicePDF,
+  generatePackingListPDF
+};

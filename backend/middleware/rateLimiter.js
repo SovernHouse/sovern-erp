@@ -220,4 +220,16 @@ const userRateLimiter = new UserRateLimiter();
 
 /**
  * User-based rate limiting middleware
- * Can be applied to specific routes requiring stricter limi
+ * Can be applied to specific routes requiring stricter limits
+ */
+const userRateLimitMiddleware = userRateLimiter.middleware();
+
+module.exports = {
+  generalLimiter,
+  authLimiter,
+  createLimiter,
+  fileLimiter,
+  userRateLimiter,
+  userRateLimitMiddleware,
+  UserRateLimiter
+};

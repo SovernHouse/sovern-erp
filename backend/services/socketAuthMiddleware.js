@@ -78,4 +78,8 @@ const getSocketUser = (socket) => {
   };
 };
 
-module.ex
+module.exports = {
+  socketAuthMiddleware,
+  handleSocketDisconnect,
+  getSocketUser
+};

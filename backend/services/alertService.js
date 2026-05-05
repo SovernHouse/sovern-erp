@@ -125,7 +125,7 @@ class AlertService {
         });
 
         // Log alert to console
-        const logLevel = severity === 'error' ? logger.error : logger.warn;
+        const logLevel = severity === 'error' ? console.error : console.warn;
         logLevel(`[ALERT] ${alertId}: ${message}`);
       }
     } catch (error) {
@@ -187,4 +187,14 @@ class AlertService {
    */
   startAlertCheckTask() {
     // Run immediately on startup
-    this.checkAlerts(
+    this.checkAlerts();
+
+    // Then run every 5 minutes
+    setInterval(() => {
+      this.checkAlerts();
+    }, 300000); // 5 minutes
+  }
+}
+
+// Export singleton instance
+module.exports = new AlertService();

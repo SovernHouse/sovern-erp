@@ -408,4 +408,23 @@ function formatBytes(bytes) {
   if (bytes === 0) return '0 Bytes';
   const k = 1024;
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Ma
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+module.exports = {
+  createBackupWithMetadata,
+  rotateBackups,
+  restoreBackupWithRollback,
+  uploadBackupToS3,
+  verifyBackupIntegrity,
+  getBackupStatistics,
+  loadBackupManifest,
+  saveBackupManifest,
+  calculateChecksum,
+  classifyBackupByAge,
+  ensureBackupDir,
+  formatBytes,
+  RETENTION_POLICY,
+  BACKUPS_DIR
+};

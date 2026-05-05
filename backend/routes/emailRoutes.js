@@ -260,4 +260,16 @@ router.post('/send-bulk', authenticate, authorize(['admin']), async (req, res) =
         results
       }
     });
-  } ca
+  } catch (error) {
+    logger.error('Error sending bulk emails:', error);
+    return res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error sending bulk emails',
+        statusCode: 500
+      }
+    });
+  }
+});
+
+module.exports = router;

@@ -79,4 +79,7 @@ const config = {
   databaseType: process.env.DATABASE_TYPE || 'sqlite',
 
   // Logging
-  logLevel: process.env.BACKUP_LOG_L
+  logLevel: process.env.BACKUP_LOG_LEVEL || 'info' // 'debug', 'info', 'warn', 'error'
+};
+
+module.exports = config;

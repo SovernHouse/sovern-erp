@@ -377,4 +377,19 @@ async function _notifyAdmins(title, message, triageItemId) {
     const notifications = admins.map((admin) => ({
       id: uuidv4(),
       userId: admin.id,
-  
+      type: 'triage',
+      title,
+      message,
+      data: { triageItemId },
+      link: `/crm/inbox`,
+      isRead: false,
+    }));
+
+    if (notifications.length > 0) {
+      await db.Notification.bulkCreate(notifications);
+    }
+  } catch (err) {
+    // Never let notification failure break the main flow
+    logger.error('[triage] Notification error:', err.message);
+  }
+}

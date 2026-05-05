@@ -643,4 +643,31 @@ const sendOutreachEmail = async ({ fromAddress, toAddress, toName, subject, body
 
     logger.info(`[OUTREACH] Sent to ${toAddress}, Subject: ${subject}, MessageId: ${result.messageId}`);
 
-    re
+    return {
+      messageId: result.messageId,
+      accepted: result.accepted,
+      rejected: result.rejected,
+    };
+  } catch (error) {
+    logger.error(`[OUTREACH] Error sending to ${toAddress}:`, error.message);
+    throw error;
+  }
+};
+
+module.exports = {
+  sendEmail,
+  generateEmailTemplate,
+  sendQuotationEmail,
+  sendProformaInvoiceEmail,
+  sendOrderConfirmationEmail,
+  sendShipmentNotificationEmail,
+  sendInspectionReportEmail,
+  sendClaimEmail,
+  sendPaymentReminderEmail,
+  sendInvoiceEmail,
+  sendPaymentConfirmationEmail,
+  sendPurchaseOrderEmail,
+  sendShipmentUpdateEmail,
+  sendInspectionScheduledEmail,
+  sendOutreachEmail
+};

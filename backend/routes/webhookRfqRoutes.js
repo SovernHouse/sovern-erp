@@ -91,4 +91,8 @@ router.post('/rfq', validateApiKey, async (req, res) => {
     });
   } catch (err) {
     logger.error('[webhook/rfq] Error creating lead:', err.message);
-    return r
+    return res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+module.exports = router;

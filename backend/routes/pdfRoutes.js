@@ -148,4 +148,11 @@ router.get('/packing-list-advanced/:id', requireAuth, async (req, res, next) => 
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="packing-list-${id}.pdf"`);
-    res.sen
+    res.send(pdfBuffer);
+  } catch (error) {
+    logger.error('Error generating packing list PDF:', error);
+    next(error);
+  }
+});
+
+module.exports = router;

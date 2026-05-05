@@ -121,4 +121,15 @@ function cacheStats() {
       res.locals.cacheStats = await cacheService.getStats();
     } catch (err) {
       logger.error('[Cache] Error getting cache stats:', err.message);
-      res.locals.cacheStat
+      res.locals.cacheStats = {};
+    }
+    next();
+  };
+}
+
+module.exports = {
+  cacheRoute,
+  invalidateCache,
+  cacheStats,
+  generateCacheKey
+};

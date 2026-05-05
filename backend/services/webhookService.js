@@ -401,4 +401,23 @@ const getWebhookDeliveries = async (webhookId, options = {}) => {
   if (event) where.event = event;
   if (isSuccess !== null) where.isSuccess = isSuccess;
 
-  const { count, r
+  const { count, rows } = await db.WebhookDelivery.findAndCountAll({
+    where,
+    limit: parseInt(limit),
+    offset: parseInt(offset),
+    order: [['createdAt', 'DESC']]
+  });
+
+  return { deliveries: rows, total: count, limit, offset };
+};
+
+module.exports = {
+  registerWebhook,
+  triggerWebhook,
+  signPayload,
+  verifyWebhookSignature,
+  verifyWebhook,
+  getWebhookDeliveries,
+  SUPPORTED_EVENTS,
+  RETRY_CONFIG
+};

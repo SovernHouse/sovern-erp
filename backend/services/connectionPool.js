@@ -140,4 +140,13 @@ async function resetDatabase(sequelize) {
 
     logger.info('[Database] Reset complete');
   } catch (error) {
-    logger.error('[Database] Error
+    logger.error('[Database] Error resetting database:', error.message);
+    throw error;
+  }
+}
+
+module.exports = {
+  optimizeDatabase,
+  getDatabaseStats,
+  resetDatabase
+};

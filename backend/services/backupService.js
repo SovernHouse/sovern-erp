@@ -5,7 +5,6 @@ const zlib = require('zlib');
 const dayjs = require('dayjs');
 const db = require('../models');
 const backupConfig = require('../config/backupConfig');
-const logger = require('../utils/logger.js');
 
 const BACKUPS_DIR = backupConfig.backupsDir;
 
@@ -59,6 +58,7 @@ const createBackup = async () => {
 
       return new Promise((resolve, reject) => {
         const readable = require('stream').Readable.from([dbContent]);
+const logger = require('../utils/logger.js');
         readable
           .pipe(gzip)
           .pipe(writeStream)
@@ -522,4 +522,29 @@ const getSchedulerStatus = () => {
     running: !!backupScheduler,
     config: {
       enabled: backupConfig.schedule.enabled,
-      interval: backupConfig.sch
+      interval: backupConfig.schedule.intervalMs,
+      preferredTime: backupConfig.schedule.preferredTime,
+      retention: backupConfig.retentionDays + ' days'
+    },
+    environment: {
+      databaseType: backupConfig.databaseType,
+      backupsDir: BACKUPS_DIR
+    }
+  };
+};
+
+module.exports = {
+  createBackup,
+  listBackups,
+  restoreBackup,
+  deleteBackup,
+  verifyBackup,
+  getBackupSchedule,
+  setBackupSchedule,
+  cleanupOldBackups,
+  ensureBackupsDir,
+  startBackupScheduler,
+  stopBackupScheduler,
+  runScheduledBackup,
+  getSchedulerStatus
+};

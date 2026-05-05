@@ -43,7 +43,6 @@
 const cron = require('node-cron');
 const dayjs = require('dayjs');
 const { Op } = require('sequelize');
-const logger = require('../utils/logger.js');
 
 let db;
 let notificationService;
@@ -56,6 +55,7 @@ function getDB() {
 
 function getNotificationService() {
   if (!notificationService) notificationService = require('./notificationService');
+const logger = require('../utils/logger.js');
   return notificationService;
 }
 
@@ -331,4 +331,18 @@ function startScheduler() {
     .filter(([, v]) => v)
     .map(([k]) => k);
 
-  logger.info(`[SCHEDULER] Started. Ac
+  logger.info(`[SCHEDULER] Started. Active jobs: ${activeJobs.join(', ')}`);
+
+  return { enabled, activeJobs };
+}
+
+module.exports = {
+  startScheduler,
+  // Exported individually so unit tests can call them directly
+  checkOverdueActivities,
+  checkFollowups,
+  transitionOverdueInvoices,
+  checkProductionDelays,
+  purgeExpiredSoftDeletes,
+  autoArchiveTriageItems,
+};

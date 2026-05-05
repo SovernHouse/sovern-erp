@@ -403,4 +403,25 @@ const getApiStatus = () => {
     updateInterval: EXCHANGE_RATE_UPDATE_INTERVAL_MS,
     lastUpdated: lastUpdated,
     lastApiError: lastApiError,
-    isScheduled: !!sc
+    isScheduled: !!scheduledRateUpdateTimer,
+    currentRates: exchangeRates
+  };
+};
+
+module.exports = {
+  getSupportedCurrencies,
+  getCurrencyName,
+  getCurrencySymbol,
+  getExchangeRates,
+  convertAmount,
+  getFormattedAmount,
+  updateExchangeRates,
+  getExchangeRate,
+  fetchLiveRates,
+  getHistoricalRate,
+  startScheduledRateUpdate,
+  stopScheduledRateUpdate,
+  getApiStatus,
+  SUPPORTED_CURRENCIES,
+  DEFAULT_RATES
+};

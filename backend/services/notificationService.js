@@ -380,4 +380,20 @@ module.exports = {
   createProformaInvoiceNotification,
   createSalesOrderNotification,
   createShipmentNotification,
-  createInspectionNotif
+  createInspectionNotification,
+  createClaimNotification,
+  createPaymentNotification,
+  getNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  getUnreadCount,
+  // Real-time event emitters
+  emitOrderStatusChange,
+  emitShipmentUpdate,
+  emitPaymentReceived,
+  emitPurchaseOrderUpdate,
+  emitInspectionScheduled,
+  emitNewInquiry,
+  emitDocumentUploaded,
+  emitDashboardRefresh
+};

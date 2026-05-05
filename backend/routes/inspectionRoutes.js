@@ -313,4 +313,13 @@ router.get('/:id/certificate', requireAuth, async (req, res, next) => {
       ]
     });
 
-    if (!inspection) throw new NotFoundError
+    if (!inspection) throw new NotFoundError('Inspection not found');
+
+    const pdfFile = await documentGenerator.generateInspectionCertificatePDF(inspection, inspection.report, inspection.factory);
+    res.json(getSuccessResponse({ pdfFile }, 'Inspection certificate PDF generated'));
+  } catch (error) {
+    next(error);
+  }
+});
+
+module.exports = router;

@@ -6,9 +6,9 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const logger = require('../utils/logger.js');
 
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+const logger = require('../utils/logger.js');
 
 /**
  * Load SSL certificate and key
@@ -198,4 +198,17 @@ function addSecurityHeaders(req, res, next) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-o
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+}
+
+module.exports = {
+  loadSSLCredentials,
+  createHTTPSServer,
+  isSSLEnabled,
+  getSSLStatus,
+  generateSelfSignedCert,
+  enforceHTTPS,
+  addHSTSHeader,
+  addSecurityHeaders
+};
