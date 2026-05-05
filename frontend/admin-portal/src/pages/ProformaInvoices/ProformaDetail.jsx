@@ -14,8 +14,10 @@ import {
   Link2,
   Copy,
   CheckCircle2,
+  CalendarClock,
 } from 'lucide-react'
 import { proformaAPI, factoriesAPI, approvalAPI } from '../../services/api'
+import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import StatusBadge from '../../components/StatusBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -370,6 +372,7 @@ export default function ProformaDetail() {
   const [showConvertModal, setShowConvertModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showApprovalModal, setShowApprovalModal] = useState(false)
+  const [showActivityModal, setShowActivityModal] = useState(false)
   const [approvalLink, setApprovalLink] = useState(null)
 
   useEffect(() => {
@@ -556,6 +559,13 @@ export default function ProformaDetail() {
 
         {/* Action buttons */}
         <div className="flex items-center flex-wrap gap-2">
+          <button
+            onClick={() => setShowActivityModal(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
+          >
+            <CalendarClock className="w-4 h-4" />
+            <span>Schedule Activity</span>
+          </button>
           <button
             onClick={handleDownloadPDF}
             disabled={isDownloading}
@@ -871,6 +881,16 @@ export default function ProformaDetail() {
         isOpen={!!approvalLink}
         onClose={() => setApprovalLink(null)}
         approvalUrl={approvalLink || ''}
+      />
+
+      {/* Schedule Activity */}
+      <ScheduleActivityModal
+        open={showActivityModal}
+        onClose={() => setShowActivityModal(false)}
+        onCreated={() => setShowActivityModal(false)}
+        entityType="ProformaInvoice"
+        entityId={id}
+        entityLabel={`${pi?.piNumber || 'PI'}${pi?.customer?.name ? ' — ' + pi.customer.name : ''}`}
       />
     </div>
   )

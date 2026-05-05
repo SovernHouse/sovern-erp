@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ArrowLeft, Edit2, MessageSquare, Download } from 'lucide-react'
+import { ArrowLeft, Edit2, MessageSquare, Download, CalendarClock } from 'lucide-react'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import DataTable from '../../components/DataTable'
 import StatusBadge from '../../components/StatusBadge'
 import { customersAPI } from '../../services/api'
+import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 
 export default function CustomerDetail() {
@@ -14,6 +15,7 @@ export default function CustomerDetail() {
   const [customer, setCustomer] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  const [showActivityModal, setShowActivityModal] = useState(false)
   const [orders, setOrders] = useState([])
   const [quotations, setQuotations] = useState([])
   const [invoices, setInvoices] = useState([])
@@ -79,13 +81,22 @@ export default function CustomerDetail() {
             <p className="text-slate-600 text-sm mt-1">{customer.country}</p>
           </div>
         </div>
-        <button
-          onClick={() => navigate(`/customers/${id}/edit`)}
-          className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-        >
-          <Edit2 className="w-4 h-4" />
-          <span>Edit</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setShowActivityModal(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            <CalendarClock className="w-4 h-4" />
+            <span>Schedule Activity</span>
+          </button>
+          <button
+            onClick={() => navigate(`/customers/${id}/edit`)}
+            className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+          >
+            <Edit2 className="w-4 h-4" />
+            <span>Edit</span>
+          </button>
+        </div>
       </div>
 
       {/* Customer Info Cards */}
@@ -284,6 +295,16 @@ export default function CustomerDetail() {
           )}
         </div>
       </div>
+
+      {/* Schedule Activity */}
+      <ScheduleActivityModal
+        open={showActivityModal}
+        onClose={() => setShowActivityModal(false)}
+        onCreated={() => setShowActivityModal(false)}
+        entityType="Customer"
+        entityId={id}
+        entityLabel={customer?.name || 'Customer'}
+      />
     </div>
   )
 }
