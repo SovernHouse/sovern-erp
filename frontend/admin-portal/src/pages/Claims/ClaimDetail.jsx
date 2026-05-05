@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, CalendarClock } from 'lucide-react'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
+import ChatterPanel from '../../components/ChatterPanel'
 
 export default function ClaimDetail() {
   const { id } = useParams()
@@ -26,6 +27,8 @@ export default function ClaimDetail() {
       <div className="bg-white rounded-lg shadow p-6 text-center py-12">
         <p className="text-slate-600">Claim information and investigation notes</p>
       </div>
+
+      <ChatterPanel entityType="Claim" entityId={id} />
 
       <ScheduleActivityModal
         open={showActivityModal}

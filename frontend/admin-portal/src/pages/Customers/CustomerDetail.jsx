@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { ArrowLeft, Edit2, MessageSquare, Download, CalendarClock } from 'lucide-react'
+import ChatterPanel from '../../components/ChatterPanel'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import DataTable from '../../components/DataTable'
 import StatusBadge from '../../components/StatusBadge'
@@ -62,7 +63,7 @@ export default function CustomerDetail() {
     { id: 'invoices', label: 'Invoices' },
     { id: 'claims', label: 'Claims' },
     { id: 'documents', label: 'Documents' },
-    { id: 'activity', label: 'Activity' },
+    { id: 'chatter', label: 'Chatter' },
   ]
 
   return (
@@ -288,10 +289,8 @@ export default function CustomerDetail() {
             </div>
           )}
 
-          {activeTab === 'activity' && (
-            <div className="text-center py-12">
-              <p className="text-slate-600">Activity log will appear here</p>
-            </div>
+          {activeTab === 'chatter' && (
+            <ChatterPanel entityType="Customer" entityId={id} />
           )}
         </div>
       </div>

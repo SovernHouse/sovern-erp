@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { invoicesAPI } from '../../services/api'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
+import Chatter from '../../components/Chatter'
 import StatusBadge from '../../components/StatusBadge'
 import DocumentGenerateButton from '../../components/DocumentGenerateButton'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -583,6 +584,9 @@ export default function InvoiceDetail() {
         cancelText="Go Back"
         isDangerous={false}
       />
+
+      {/* Chatter */}
+      <Chatter entityType="Invoice" entityId={id} className="mt-6" />
 
       {/* Schedule Activity */}
       <ScheduleActivityModal

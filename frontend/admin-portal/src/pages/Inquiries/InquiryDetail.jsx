@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Edit2, CalendarClock } from 'lucide-react'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
+import ChatterPanel from '../../components/ChatterPanel'
 
 export default function InquiryDetail() {
   const { id } = useParams()
@@ -44,6 +45,8 @@ export default function InquiryDetail() {
           </div>
         </div>
       </div>
+
+      <ChatterPanel entityType="Inquiry" entityId={id} />
 
       <ScheduleActivityModal
         open={showActivityModal}

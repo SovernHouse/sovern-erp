@@ -8,6 +8,7 @@ import StatusBadge from '../../components/StatusBadge'
 import { factoriesAPI } from '../../services/api'
 import { formatDate } from '../../utils/formatters'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
+import ChatterPanel from '../../components/ChatterPanel'
 
 export default function FactoryDetail() {
   const { id } = useParams()
@@ -52,6 +53,7 @@ export default function FactoryDetail() {
     { id: 'products', label: 'Products' },
     { id: 'purchase-orders', label: 'Purchase Orders' },
     { id: 'performance', label: 'Performance' },
+    { id: 'chatter', label: 'Chatter' },
   ]
 
   return (
@@ -201,6 +203,10 @@ export default function FactoryDetail() {
             <div className="text-center py-12">
               <p className="text-slate-600">Performance metrics coming soon</p>
             </div>
+          )}
+
+          {activeTab === 'chatter' && (
+            <ChatterPanel entityType="Factory" entityId={id} />
           )}
         </div>
       </div>

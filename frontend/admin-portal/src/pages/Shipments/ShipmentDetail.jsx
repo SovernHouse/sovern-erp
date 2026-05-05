@@ -1,7 +1,9 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
+import Chatter from '../../components/Chatter'
 
 export default function ShipmentDetail() {
+  const { id } = useParams()
   const navigate = useNavigate()
   return (
     <div className="space-y-6">
@@ -12,6 +14,7 @@ export default function ShipmentDetail() {
       <div className="bg-white rounded-lg shadow p-6 text-center py-12">
         <p className="text-slate-600">Shipment details and tracking information</p>
       </div>
+      <Chatter entityType="Shipment" entityId={id} className="mt-6" />
     </div>
   )
 }
