@@ -56,3 +56,55 @@ npm install
 ```
 
 ### 2. Build
+
+```powershell
+npm run build
+```
+
+### 3. Create a .env file (never commit this)
+
+```
+ERP_PASSWORD=admin123
+```
+
+Or set the environment variable directly in your Claude Desktop config (see below).
+
+### 4. Add to Claude Desktop config
+
+Open `%APPDATA%\Claude\claude_desktop_config.json` and add:
+
+```json
+{
+  "mcpServers": {
+    "sovern-erp": {
+      "command": "node",
+      "args": ["C:\\Users\\Alex\\Desktop\\International Trade Company\\Trading ERP\\mcp-server\\dist\\index.js"],
+      "env": {
+        "ERP_URL": "http://localhost:5000",
+        "ERP_EMAIL": "admin@sovernhouse.co",
+        "ERP_PASSWORD": "admin123"
+      }
+    }
+  }
+}
+```
+
+### 5. Restart Claude Desktop
+
+The ERP tools will appear in Claude automatically.
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ERP_URL` | `http://localhost:5000` | ERP backend URL |
+| `ERP_EMAIL` | `admin@sovernhouse.co` | Admin email |
+| `ERP_PASSWORD` | *(required)* | Admin password |
+
+## Development
+
+Run in watch mode (auto-reloads on changes):
+
+```powershell
+npm run dev
+```

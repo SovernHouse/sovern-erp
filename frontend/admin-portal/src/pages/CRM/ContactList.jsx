@@ -17,17 +17,17 @@ const ContactList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  // Page is scoped to supplier-side contacts (factoryId IS NOT NULL).
+  // factoryId narrows further to a specific factory.
   const [filters, setFilters] = useState({
-    customerId: null,
     factoryId: null,
     isActive: true,
   });
-  const [customers, setCustomers] = useState([]);
   const [factories, setFactories] = useState([]);
 
   useEffect(() => {
     fetchContacts();
-    fetchCustomersAndFactories();
+    fetchFactories();
   }, [filters]);
 
   useEffect(() => {
@@ -38,7 +38,8 @@ const ContactList = () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      if (filters.customerId) params.append('customerId', filters.customerId);
+      // Always scope to supplier contacts on this page.
+      params.append('factoryIdNotNull', 'true');
       if (filters.factoryId) params.append('factoryId', filters.factoryId);
       params.append('isActive', filters.isActive);
       params.append('limit', 100);
@@ -54,16 +55,12 @@ const ContactList = () => {
     }
   };
 
-  const fetchCustomersAndFactories = async () => {
+  const fetchFactories = async () => {
     try {
-      const [customersRes, factoriesRes] = await Promise.all([
-        api.get('/customers?limit=100'),
-        api.get('/factories?limit=100'),
-      ]);
-      setCustomers(customersRes.data || []);
+      const factoriesRes = await api.get('/factories?limit=100');
       setFactories(factoriesRes.data || []);
     } catch (err) {
-      console.error('Failed to load customers/factories:', err);
+      console.error('Failed to load factories:', err);
     }
   };
 
@@ -101,7 +98,7 @@ const ContactList = () => {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-          <p className="mt-4 text-gray-600">Loading contacts...</p>
+          <p className="mt-4 text-gray-600">Loading supplier contacts...</p>
         </div>
       </div>
     );
@@ -113,8 +110,8 @@ const ContactList = () => {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Contacts</h1>
-            <p className="text-gray-600 mt-2">{filteredContacts.length} contacts</p>
+            <h1 className="text-3xl font-bold text-gray-900">Supplier Contacts</h1>
+            <p className="text-gray-600 mt-2">{filteredContacts.length} supplier contact{filteredContacts.length === 1 ? '' : 's'}</p>
           </div>
           <button className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 flex items-center">
             <Plus size={20} className="mr-2" />
@@ -131,7 +128,7 @@ const ContactList = () => {
 
         {/* Search and Filters */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-3 text-gray-400" size={20} />
               <input
@@ -142,17 +139,6 @@ const ContactList = () => {
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-
-            <select
-              value={filters.customerId || ''}
-              onChange={(e) => setFilters({ ...filters, customerId: e.target.value || null })}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Customers</option>
-              {customers.map(customer => (
-                <option key={customer.id} value={customer.id}>{customer.name}</option>
-              ))}
-            </select>
 
             <select
               value={filters.factoryId || ''}
@@ -251,7 +237,7 @@ const ContactList = () => {
         {filteredContacts.length === 0 && (
           <div className="bg-white rounded-lg shadow p-12 text-center">
             <User size={48} className="mx-auto text-gray-400 mb-4" />
-            <p className="text-gray-600">No contacts found. Try adjusting your filters.</p>
+            <p className="text-gray-600">No supplier contacts found. Try adjusting your filters.</p>
           </div>
         )}
       </div>

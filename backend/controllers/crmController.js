@@ -56,6 +56,11 @@ exports.getContacts = async (req, res) => {
     }
     if (customerId) where.customerId = customerId;
     if (factoryId) where.factoryId = factoryId;
+    // Allow filtering for "all supplier contacts" (factoryId IS NOT NULL) or
+    // "all customer contacts" (customerId IS NOT NULL) — used by the
+    // Supplier Contacts and Customer Contacts page variants.
+    if (req.query.factoryIdNotNull === 'true') where.factoryId = { [Op.ne]: null };
+    if (req.query.customerIdNotNull === 'true') where.customerId = { [Op.ne]: null };
     if (isActive !== undefined) where.isActive = isActive === 'true';
 
     // PERF: split count from data fetch — see getLeads for rationale.
