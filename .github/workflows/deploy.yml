@@ -227,10 +227,12 @@ jobs:
             # Wait long enough for the app to actually start listening.
             # 4s wasn't enough on the constrained VM.
 
-            # Sanity check — give the app 12s to bind to the port and
+            # Sanity check — give the app 25s to bind to the port and
             # respond, then probe health. If still 000, fail loudly so the
             # workflow shows red instead of silently shipping a dead VM.
-            sleep 12
+            # (Increased from 12s: logger migration added 55 requires which
+            # extends cold-start time on the e2-micro by ~10s.)
+            sleep 25
             HEALTH=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/api/health || echo "000")
             echo "health $HEALTH"
             if [ "$HEALTH" != "200" ]; then
