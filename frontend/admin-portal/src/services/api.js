@@ -90,6 +90,17 @@ export const factoriesAPI = {
   getPerformance: (id) => api.get(`/factories/${id}/performance`),
 }
 
+// CRM Leads endpoints (used by quote/invoice forms to link a quotation back
+// to its originating lead). The CRM module also has its own per-page api.get
+// calls — this is the canonical helper.
+export const leadsAPI = {
+  getAll: (params) => api.get('/crm/leads', { params }),
+  getById: (id) => api.get(`/crm/leads/${id}`),
+  create: (data) => api.post('/crm/leads', data),
+  update: (id, data) => api.put(`/crm/leads/${id}`, data),
+  delete: (id) => api.delete(`/crm/leads/${id}`),
+}
+
 // Products endpoints
 export const productsAPI = {
   getAll: (params) => api.get('/products', { params }),

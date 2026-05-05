@@ -9,7 +9,7 @@ import {
   DateInput,
   TextArea,
 } from '../../components/FormFields'
-import { quotationsAPI, customersAPI, productsAPI } from '../../services/api'
+import { quotationsAPI, customersAPI, productsAPI, factoriesAPI, leadsAPI } from '../../services/api'
 
 const UNITS = [
   { value: 'sqm', label: 'Square Meter (sqm)' },
@@ -37,10 +37,14 @@ export default function QuotationForm() {
   const [submitting, setSubmitting] = useState(false)
   const [customers, setCustomers] = useState([])
   const [products, setProducts] = useState([])
+  const [factories, setFactories] = useState([])
+  const [leads, setLeads] = useState([])
   const [errors, setErrors] = useState({})
 
   const [formData, setFormData] = useState({
     customerId: '',
+    factoryId: '',
+    leadId: '',
     items: [
       {
         id: Date.now(),
@@ -66,14 +70,18 @@ export default function QuotationForm() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [customersRes, productsRes] = await Promise.all([
+        const [customersRes, productsRes, factoriesRes, leadsRes] = await Promise.all([
           customersAPI.getAll(),
           productsAPI.getAll(),
+          factoriesAPI.getAll({ limit: 200 }),
+          leadsAPI.getAll({ limit: 200 }),
         ])
         setCustomers(customersRes.data || [])
         setProducts(productsRes.data || [])
+        setFactories(factoriesRes.data || [])
+        setLeads(leadsRes.data || [])
       } catch (error) {
-        toast.error('Failed to load customers or products')
+        toast.error('Failed to load form data (customers, products, factories, leads)')
         console.error(error)
       }
     }
@@ -89,6 +97,8 @@ export default function QuotationForm() {
           const quotation = response.data
           setFormData({
             customerId: quotation.customerId || '',
+            factoryId: quotation.factoryId || '',
+            leadId: quotation.leadId || '',
             items: (quotation.items || []).map((item) => ({
               id: item.id || Date.now(),
               productId: item.productId || '',
@@ -257,6 +267,8 @@ export default function QuotationForm() {
     try {
       const submitData = {
         customerId: formData.customerId,
+        ...(formData.factoryId && { factoryId: formData.factoryId }),
+        ...(formData.leadId && { leadId: formData.leadId }),
         items: formData.items.map((item) => ({
           productId: item.productId,
           description: item.description,
@@ -336,6 +348,39 @@ export default function QuotationForm() {
             error={errors.customerId}
             required
           />
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <SelectInput
+              label="Source factory (optional)"
+              name="factoryId"
+              value={formData.factoryId}
+              onChange={handleFormChange}
+              options={[
+                { value: '', label: '— None —' },
+                ...factories.map((f) => ({
+                  value: f.id,
+                  label: f.companyName,
+                })),
+              ]}
+              error={errors.factoryId}
+            />
+            <SelectInput
+              label="Originating lead (optional)"
+              name="leadId"
+              value={formData.leadId}
+              onChange={handleFormChange}
+              options={[
+                { value: '', label: '— None —' },
+                ...leads.map((l) => ({
+                  value: l.id,
+                  label: `${l.companyName}${l.contactName ? ' — ' + l.contactName : ''}`,
+                })),
+              ]}
+              error={errors.leadId}
+            />
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Source factory carries the price provenance through to PI / Sales Order / Invoice. Originating lead links the quote back to its outbound prospect (set when the lead becomes a customer).
+          </p>
         </div>
 
         {/* Line Items Section */}

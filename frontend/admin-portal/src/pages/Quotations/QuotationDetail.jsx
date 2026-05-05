@@ -307,6 +307,36 @@ export default function QuotationDetail() {
             )}
           </div>
 
+          {/* Sourcing Trail — factory and originating lead links */}
+          {(quotation.factory || quotation.lead) && (
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-lg font-semibold text-slate-900 mb-4">Sourcing Trail</h2>
+              <div className="grid grid-cols-2 gap-4">
+                {quotation.factory && (
+                  <div>
+                    <p className="text-sm text-slate-500 mb-1">Source factory</p>
+                    <p className="text-slate-900 font-medium">{quotation.factory.companyName}</p>
+                    {quotation.factory.country && (
+                      <p className="text-xs text-slate-500 mt-1">{quotation.factory.country}</p>
+                    )}
+                  </div>
+                )}
+                {quotation.lead && (
+                  <div>
+                    <p className="text-sm text-slate-500 mb-1">Originating lead</p>
+                    <p className="text-slate-900 font-medium">{quotation.lead.companyName}</p>
+                    {quotation.lead.contactName && (
+                      <p className="text-xs text-slate-500 mt-1">Contact: {quotation.lead.contactName}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+              <p className="mt-3 text-xs text-slate-500">
+                These links carry forward into the PI / Sales Order / Invoice generated from this quote.
+              </p>
+            </div>
+          )}
+
           {/* Line Items */}
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="p-6 border-b border-slate-200">
