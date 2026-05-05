@@ -15,6 +15,7 @@ import {
   type Lead, type Activity,
 } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
+import ChatterSection from '../../src/components/ChatterSection';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -305,6 +306,12 @@ export default function LeadDetailScreen() {
             ))
           )}
         </View>
+
+        {/* ── Chatter ─────────────────────────────────────────────────── */}
+        <View style={styles.activitiesHeader}>
+          <SectionHeader title="Notes & Chatter" />
+        </View>
+        <ChatterSection entityType="Lead" entityId={lead.id} />
 
         <View style={{ height: 80 }} />
       </ScrollView>

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { getQuotation, type Quotation, type QuotationItem } from '../../src/services/api';
+import ChatterSection from '../../src/components/ChatterSection';
 import { COLORS } from '../../src/constants/config';
 
 // ─── Constants ────────────────────────────────────────────────────────────
@@ -305,6 +306,10 @@ export default function QuotationDetailScreen() {
           </View>
         </>
       ) : null}
+
+      {/* ── Chatter ──────────────────────────────────────────────────── */}
+      <SectionHeader title="Notes & Activity" />
+      <ChatterSection entityType="Quotation" entityId={String(quotation.id)} />
 
       <View style={{ height: 40 }} />
     </ScrollView>

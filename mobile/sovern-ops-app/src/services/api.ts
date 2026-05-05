@@ -565,3 +565,44 @@ export interface Quotation {
   discount?: number
   discountType?: 'fixed' | 'percentage'
   tax?: number
+  taxRate?: number
+  total?: number
+  currency?: string
+  validUntil?: string
+  terms?: string
+  notes?: string
+  createdAt: string
+  updatedAt: string
+  items?: QuotationItem[]
+  customer?: { id: string; companyName: string; email?: string; country?: string }
+  factory?: { id: string; companyName: string; country?: string }
+  lead?: { id: string; companyName: string; contactName?: string }
+  inquiry?: { id: string; inquiryNumber: string }
+  salesPerson?: { id: string; firstName: string; lastName: string }
+}
+
+// ─── Chatter ──────────────────────────────────────────────────────────────
+
+export async function getChatterMessages(entityType: string, entityId: string) {
+  const res = await request<{ success: boolean; data: ChatterMessage[] }>(
+    `/api/chatter/${entityType}/${entityId}`
+  )
+  return (res as any).data ?? (res as any) ?? []
+}
+
+export async function postChatterMessage(entityType: string, entityId: string, body: string) {
+  const res = await request<{ success: boolean; data: ChatterMessage }>(
+    `/api/chatter/${entityType}/${entityId}`,
+    { method: 'POST', body: JSON.stringify({ body }) }
+  )
+  return (res as any).data ?? res
+}
+
+export interface ChatterMessage {
+  id: string
+  messageType: 'comment' | 'event' | 'status_change' | 'approval_request' | 'approval_decision' | 'activity' | 'email_sent' | 'file_attachment' | string
+  body: string
+  authorName?: string
+  userId?: string
+  createdAt: string
+}
