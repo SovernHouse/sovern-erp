@@ -87,7 +87,7 @@ const formatCurrency = (amount, currency = 'USD') => {
 };
 
 const calculateDaysFromNow = (date) => {
-  return dayjs(date).diff(dayjs(), 'day');
+  return dayjs(date).startOf('day').diff(dayjs().startOf('day'), 'day');
 };
 
 const isDateInPast = (date) => {
