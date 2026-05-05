@@ -32,8 +32,9 @@ export default function TabLayout() {
       <Tabs.Screen name="activities" options={{ title: 'Activities', tabBarIcon: ({ focused }) => <TabIcon icon="🗓️" focused={focused} /> }} />
 
       {/* — CRM — */}
-      <Tabs.Screen name="inquiries" options={{ title: 'Inquiries', tabBarIcon: ({ focused }) => <TabIcon icon="📨" focused={focused} /> }} />
-      <Tabs.Screen name="leads" options={{ title: 'Leads', tabBarIcon: ({ focused }) => <TabIcon icon="👥" focused={focused} /> }} />
+      <Tabs.Screen name="inquiries"   options={{ title: 'Inquiries',   tabBarIcon: ({ focused }) => <TabIcon icon="📨" focused={focused} /> }} />
+      <Tabs.Screen name="leads"       options={{ title: 'Leads',       tabBarIcon: ({ focused }) => <TabIcon icon="👥" focused={focused} /> }} />
+      <Tabs.Screen name="quotations"  options={{ title: 'Quotations',  tabBarIcon: ({ focused }) => <TabIcon icon="💬" focused={focused} /> }} />
 
       {/* — Operations (read-only on the road) — */}
       <Tabs.Screen name="shipments" options={{ title: 'Shipments', tabBarIcon: ({ focused }) => <TabIcon icon="🚢" focused={focused} /> }} />
@@ -43,9 +44,3 @@ export default function TabLayout() {
       {/* — Reference data — */}
       <Tabs.Screen name="products"  options={{ title: 'Products',  tabBarIcon: ({ focused }) => <TabIcon icon="📦" focused={focused} /> }} />
       <Tabs.Screen name="customers" options={{ title: 'Customers', tabBarIcon: ({ focused }) => <TabIcon icon="🏢" focused={focused} /> }} />
-
-      {/* — Settings always last — */}
-      <Tabs.Screen name="settings"  options={{ title: 'Settings',  tabBarIcon: ({ focused }) => <TabIcon icon="⚙️" focused={focused} /> }} />
-    </Tabs>
-  );
-}

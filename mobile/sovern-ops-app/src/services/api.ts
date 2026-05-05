@@ -522,3 +522,46 @@ export async function requestPasswordReset(email: string) {
     body: JSON.stringify({ email }),
   })
 }
+nyName: string }
+}
+
+// ─── Quotations ───────────────────────────────────────────────────────────
+
+export async function getQuotations(params?: { search?: string; status?: string; page?: number; limit?: number }) {
+  const qs = new URLSearchParams(
+    Object.entries(params ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+  ).toString()
+  return request<PaginatedResponse<Quotation>>(`/api/quotations${qs ? `?${qs}` : ''}`)
+}
+
+export async function getQuotation(id: string) {
+  const res = await request<{ success: boolean; data: Quotation }>(`/api/quotations/${id}`)
+  return res.data
+}
+
+export interface QuotationItem {
+  id: string
+  productId?: string
+  description?: string
+  quantity: number
+  unit?: string
+  unitPrice: number
+  discount?: number
+  total: number
+  notes?: string
+  product?: { id: string; name: string; sku?: string }
+}
+
+export interface Quotation {
+  id: string
+  quotationNumber: string
+  customerId?: string
+  inquiryId?: string
+  salesPersonId?: string
+  factoryId?: string
+  leadId?: string
+  status: 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired' | string
+  subtotal?: number
+  discount?: number
+  discountType?: 'fixed' | 'percentage'
+  tax?: number
