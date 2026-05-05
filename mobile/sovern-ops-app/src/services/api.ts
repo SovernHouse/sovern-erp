@@ -522,8 +522,6 @@ export async function requestPasswordReset(email: string) {
     body: JSON.stringify({ email }),
   })
 }
-nyName: string }
-}
 
 // ─── Quotations ───────────────────────────────────────────────────────────
 
