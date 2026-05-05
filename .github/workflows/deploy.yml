@@ -1,19 +1,13 @@
 name: Deploy to Sovern ERP
 
-# Two-stage deploy:
-#   1) build-frontend — runs on the GitHub Actions runner (free, 7GB RAM,
-#      no OOM). Produces frontend/admin-portal/dist/ and uploads it as a
-#      workflow artifact.
-#   2) deploy-to-vm — downloads the artifact, scp's it to the e2-micro VM,
-#      then SSH's in to git-pull the backend, npm install backend deps,
-#      and reload PM2. The VM never runs vite/rollup, so the 1GB RAM
-#      ceiling no longer matters.
+# Self-hosted runner deploy — runs entirely on the sovern-erp GCP VM.
+# No GitHub-hosted minutes consumed. The runner process on the VM
+# receives the job, pulls the latest code, builds the frontend locally
+# (2 GB swap file prevents OOM on the e2-micro), and reloads PM2.
 #
-# Why this matters: prior to this change, vite ran on the VM. Rollup
-# tree-shaking peaked >1GB → silent OOM. The script's && chain swallowed
-# the failure path so the workflow reported green while dist/ was never
-# updated. Symptoms: every "successful deploy" shipped nothing for hours.
-# See lessons.md L-005 / L-006 / L-007.
+# Previous two-stage approach (build on GitHub runner → SCP → SSH) was
+# retired when GitHub Actions billing hit the free-tier limit. The swap
+# file makes the local Vite build viable. See lessons.md.
 
 on:
   push:
@@ -22,223 +16,74 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-frontend:
-    name: Build frontend on Actions runner
-    runs-on: ubuntu-latest
+  deploy:
+    name: Deploy on VM
+    runs-on: self-hosted
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
+      - name: Pull latest code
+        run: |
+          cd ~/sovern-erp
+          git fetch origin
+          git reset --hard origin/main
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Build admin-portal frontend
-        # NODE_OPTIONS keeps parity with the VM build command for any future
-        # debugging; on the runner the heap budget is way more than enough.
-        env:
-          NODE_OPTIONS: '--max-old-space-size=1536'
-        run: npm run build --workspace=frontend/admin-portal
-
-      - name: Verify dist was produced
-        # If anything in the build chain silently fails, fail the workflow
-        # explicitly instead of letting deploy-to-vm push an empty artifact.
         run: |
-          test -f frontend/admin-portal/dist/index.html || (echo "ERROR: dist/index.html missing — build silently failed"; exit 1)
-          ls -la frontend/admin-portal/dist/
-          ls frontend/admin-portal/dist/assets/ | head -5
+          cd ~/sovern-erp
+          npm install --legacy-peer-deps
 
-      - name: Upload dist artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: admin-portal-dist
-          path: frontend/admin-portal/dist/
-          retention-days: 3
-          if-no-files-found: error
-
-  deploy-to-vm:
-    name: Ship dist to VM + reload backend
-    needs: build-frontend
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download dist artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: admin-portal-dist
-          path: dist/
-
-      - name: Sanity-check artifact before shipping
+      - name: Check sqlite3 native binding
         run: |
-          test -f dist/index.html || (echo "ERROR: artifact has no index.html"; exit 1)
-          echo "Artifact contents:"
-          ls -la dist/
-          # Confirm bundle has the expected URL shape (no /api/api/triage)
-          if grep -rq 'api/api/triage' dist/assets/ 2>/dev/null; then
-            echo "ERROR: dist still has /api/api/triage — bundle is stale or unfixed"
-            exit 1
+          cd ~/sovern-erp
+          if node -e "require('sqlite3'); process.exit(0)" 2>/dev/null; then
+            echo "sqlite3 binding OK — skipping rebuild"
+          else
+            echo "sqlite3 binding missing — rebuilding from source"
+            npm rebuild sqlite3 --build-from-source
           fi
 
-      - name: Copy dist to VM
-        # Using scp-action because it's the standard pair to ssh-action.
-        # Target: ~/sovern-erp/frontend/admin-portal/dist/ on the VM.
-        # Strategy: stage to a tmp dir first, then atomic-swap. Avoids
-        # nginx serving a half-uploaded asset mid-deploy.
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: alex
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          source: 'dist/*'
-          target: '/home/alex/sovern-erp-dist-incoming/'
-          strip_components: 1
+      - name: Build admin-portal frontend
+        env:
+          NODE_OPTIONS: '--max-old-space-size=1536'
+        run: |
+          cd ~/sovern-erp
+          npm run build --workspace=frontend/admin-portal
+          test -f frontend/admin-portal/dist/index.html || \
+            (echo "ERROR: dist/index.html missing — build silently failed"; exit 1)
+          echo "Frontend build OK ($(ls frontend/admin-portal/dist/assets/ | wc -l) assets)"
 
-      - name: SSH — atomic swap dist + reload backend
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: alex
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          # 45m: backend npm install + sqlite3-from-source on the e2-micro
-          # (1GB RAM, burstable CPU) regularly takes 25-30m. Last deploy of
-          # c0a9d67 hit the 30m wall mid-rebuild. Plus we skip the sqlite3
-          # rebuild whenever a working binary is already on disk.
-          command_timeout: 45m
-          script: |
-            set -e
-            cd ~/sovern-erp
+      - name: Restart backend
+        run: |
+          rm -f ~/.pm2/dump.pm2
+          pm2 delete all 2>/dev/null || true
 
-            # Backend code: hard-reset to origin/main (frontend src is also
-            # pulled, but we ignore it — dist comes from the runner)
-            git fetch origin
-            git reset --hard origin/main
-
-            # Backend deps. Use the workspace install from root — installs
-            # all workspaces but that's a small fixed cost; the sqlite3
-            # skip below is what saves the meaningful time.
-            npm install --legacy-peer-deps
-
-            # Skip sqlite3 source rebuild when a working binary is already
-            # on disk. The full rebuild is 8-12m on this VM and is only
-            # needed once per package.json change. We probe by requiring
-            # the module from node — if it loads, we trust it.
-            if node -e "require('sqlite3'); process.exit(0)" 2>/dev/null; then
-              echo "sqlite3 native binding present and loadable — skipping rebuild"
-            else
-              echo "sqlite3 binding missing or broken — rebuilding from source"
-              npm rebuild sqlite3 --build-from-source
+          # Kill any orphan processes still holding port 3001
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if ! ss -tlnH 2>/dev/null | grep -q ':3001 '; then
+              echo "Port 3001 is free."
+              break
             fi
+            echo "Attempt $i: port 3001 still bound — killing squatters..."
+            fuser -k 3001/tcp 2>/dev/null || true
+            pkill -9 -u "$(id -u)" -f 'sovern-erp/backend/server.js' 2>/dev/null || true
+            sleep 2
+          done
 
-            # ── ONE-SHOT MIGRATION: fix Contact table FK references ──
-            # Contact.js used to reference 'Customers' / 'Factories' (plural)
-            # but the actual tables are 'Customer' / 'Factory' (singular).
-            # Every Contact INSERT failed with FK CHECK 'no such table'.
-            # Empty table — drop once; sync() recreates it on next backend
-            # boot with the fixed model. Sentinel keeps it idempotent.
-            #
-            # Earlier attempt used the `sqlite3` CLI which isn't installed
-            # on this VM, so the DROP silently failed. Use the npm sqlite3
-            # binding via a Node one-liner instead — that's already in
-            # node_modules from npm install above.
-            MIGRATION_SENTINEL=~/.sovern-erp-migrations/contact-fk-2026-05-05-v4
-            mkdir -p ~/.sovern-erp-migrations
-            if [ ! -f "$MIGRATION_SENTINEL" ]; then
-              echo "Running one-shot Contact-FK migration (node-based)..."
-              SQLITE_DB="$HOME/sovern-erp/backend/database.sqlite"
-              if [ -f "$SQLITE_DB" ]; then
-                cd ~/sovern-erp/backend
-                node -e "
-                  const sqlite3 = require('sqlite3');
-                  const db = new sqlite3.Database('$SQLITE_DB');
-                  db.serialize(() => {
-                    db.run('DROP TABLE IF EXISTS Contacts;', (err) => {
-                      if (err) { console.error('DROP failed:', err.message); process.exitCode = 1; }
-                      else { console.log('Dropped Contacts table.'); }
-                      db.close();
-                    });
-                  });
-                "
-                cd ~/sovern-erp
-              else
-                echo "No sqlite DB at $SQLITE_DB — skipping (fresh install will sync correctly)."
-              fi
-              touch "$MIGRATION_SENTINEL"
-              echo "Marked migration done at $MIGRATION_SENTINEL"
-            else
-              echo "Contact-FK migration already applied; skipping."
-            fi
+          NODE_ENV=production pm2 start server.js \
+            --name sovern-erp \
+            --cwd ~/sovern-erp/backend
+          pm2 save 2>/dev/null || true
 
-            # Atomic swap: replace the live dist with the freshly uploaded one
-            DIST=~/sovern-erp/frontend/admin-portal/dist
-            STAGED=~/sovern-erp-dist-incoming
-            if [ -d "$STAGED" ] && [ -f "$STAGED/index.html" ]; then
-              # Backup current dist (one rotation only — disk is tight)
-              rm -rf "$DIST.prev" 2>/dev/null || true
-              [ -d "$DIST" ] && mv "$DIST" "$DIST.prev"
-              mv "$STAGED" "$DIST"
-              echo "Swapped fresh dist into place. Previous dist at $DIST.prev"
-              ls -la "$DIST/index.html"
-            else
-              echo "ERROR: staged dist at $STAGED is empty or missing index.html"
-              exit 1
-            fi
-
-            # Restart backend.
-            # Two reasons we don't 'pm2 kill' here:
-            #  - it tears down the systemd-managed daemon; the next start
-            #    spawns an unmanaged child of the SSH session which dies
-            #    when SSH closes, taking the app with it.
-            #  - 'pm2 save --force' on a fresh daemon has been observed to
-            #    hang the whole deploy script (deploy 25316008991).
-            # Instead: wipe the persisted dump.pm2 *first* so the daemon
-            # has nothing to resurrect, then delete in-memory state, then
-            # start one clean instance, then save the new state.
-            rm -f ~/.pm2/dump.pm2
-            pm2 delete all 2>/dev/null || true
-
-            # pm2 delete only stops what pm2 knows about. Earlier failed
-            # deploys left orphan node processes bound to :3001 that pm2
-            # forgot. Loop killing anything on the port until it's free.
-            # We try every available kill mechanism; whichever exists on
-            # the VM does the work.
-            for i in 1 2 3 4 5 6 7 8 9 10; do
-              # ss is built into iproute2 (always present)
-              if ! ss -tlnH 2>/dev/null | grep -q ':3001 '; then
-                echo "Port 3001 is free."
-                break
-              fi
-              echo "Attempt $i: port 3001 still bound, killing squatters..."
-              fuser -k 3001/tcp 2>/dev/null || true
-              # Fallback: kill anything that looks like our server process
-              pkill -9 -u "$(id -u)" -f 'sovern-erp/backend/server.js' 2>/dev/null || true
-              pkill -9 -u "$(id -u)" -f 'node.*server.js' 2>/dev/null || true
-              sleep 2
-            done
-
-            NODE_ENV=production pm2 start server.js --name sovern-erp --cwd ~/sovern-erp/backend
-            pm2 save 2>/dev/null || true
-
-            # Wait long enough for the app to actually start listening.
-            # 4s wasn't enough on the constrained VM.
-
-            # Sanity check — give the app 25s to bind to the port and
-            # respond, then probe health. If still 000, fail loudly so the
-            # workflow shows red instead of silently shipping a dead VM.
-            # (Increased from 12s: logger migration added 55 requires which
-            # extends cold-start time on the e2-micro by ~10s.)
-            sleep 25
-            HEALTH=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/api/health || echo "000")
-            echo "health $HEALTH"
-            if [ "$HEALTH" != "200" ]; then
-              echo "ERROR: backend health check failed (got $HEALTH). pm2 status:"
-              pm2 status
-              echo "Tailing pm2 logs:"
-              pm2 logs sovern-erp --lines 50 --nostream || true
-              exit 1
-            fi
+      - name: Health check
+        run: |
+          sleep 25
+          HEALTH=$(curl -s -o /dev/null -w '%{http_code}' \
+            http://localhost:3001/api/health || echo "000")
+          echo "Health: $HEALTH"
+          if [ "$HEALTH" != "200" ]; then
+            echo "ERROR: health check failed (got $HEALTH)"
+            pm2 status
+            pm2 logs sovern-erp --lines 50 --nostream || true
+            exit 1
+          fi
+          echo "Deploy successful."
