@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const { formatCurrency } = require('../../utils/helpers');
 
+const uploadDir = process.env.UPLOAD_DIR || './uploads';
+
 const createDir = (dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
