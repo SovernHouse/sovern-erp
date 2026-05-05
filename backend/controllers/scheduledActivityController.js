@@ -42,7 +42,7 @@ exports.getMyActivities = async (req, res, next) => {
       ],
       order: [['dueDate', 'ASC'], ['priority', 'DESC']],
     });
-    res.json(getSuccessResponse({ data: activities }));
+    res.json(getSuccessResponse(activities));
   } catch (err) {
     next(err);
   }
@@ -67,7 +67,7 @@ exports.getEntityActivities = async (req, res, next) => {
       ],
       order: [['dueDate', 'ASC'], ['createdAt', 'DESC']],
     });
-    res.json(getSuccessResponse({ data: activities }));
+    res.json(getSuccessResponse(activities));
   } catch (err) {
     next(err);
   }
@@ -124,7 +124,7 @@ exports.createActivity = async (req, res, next) => {
       ],
     });
 
-    res.status(201).json(getSuccessResponse({ data: created, message: 'Activity scheduled.' }));
+    res.status(201).json(getSuccessResponse(created, 'Activity scheduled.'));
   } catch (err) {
     next(err);
   }
@@ -158,7 +158,7 @@ exports.markDone = async (req, res, next) => {
     const body = `${doerName} marked ${typeLabel} as done.${req.body.completedNote ? `\n\n"${req.body.completedNote}"` : ''}`;
     await postSystemEvent(activity.entityType, activity.entityId, 'activity', body, { activityId: activity.id, action: 'done' }, req.user.id, doerName);
 
-    res.json(getSuccessResponse({ data: activity, message: 'Activity marked as done.' }));
+    res.json(getSuccessResponse(activity, 'Activity marked as done.'));
   } catch (err) {
     next(err);
   }
@@ -189,7 +189,7 @@ exports.reschedule = async (req, res, next) => {
     const newFmt = new Date(dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     await postSystemEvent(activity.entityType, activity.entityId, 'activity', `${userName} rescheduled ${TYPE_LABELS[activity.type] || 'task'} from ${oldFmt} to ${newFmt}.`, { activityId: activity.id, oldDate, newDate: dueDate }, req.user.id, userName);
 
-    res.json(getSuccessResponse({ data: activity, message: 'Activity rescheduled.' }));
+    res.json(getSuccessResponse(activity, 'Activity rescheduled.'));
   } catch (err) {
     next(err);
   }
