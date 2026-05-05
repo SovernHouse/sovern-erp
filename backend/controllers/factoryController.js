@@ -13,7 +13,7 @@ const canViewFactory = (user, factory) => {
 
 const create = async (req, res, next) => {
   try {
-    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations, isConfidential, allowedUserIds } = req.body;
+    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations, isConfidential, allowedUserIds, notes, logo, rating } = req.body;
 
     const factory = await db.Factory.create({
       id: uuidv4(),
@@ -29,10 +29,12 @@ const create = async (req, res, next) => {
       leadTimeDays: leadTimeDays || 30,
       certifications: certifications || [],
       specializations: specializations || [],
-      rating: 5,
+      rating: rating !== undefined ? rating : 5,
       isActive: true,
       isConfidential: isConfidential || false,
-      allowedUserIds: allowedUserIds || []
+      allowedUserIds: allowedUserIds || [],
+      notes: notes || null,
+      logo: logo || null
     });
 
     res.status(201).json(getSuccessResponse(factory, 'Factory created successfully'));
@@ -107,7 +109,7 @@ const getById = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations, rating, isActive, isConfidential, allowedUserIds } = req.body;
+    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations, rating, isActive, isConfidential, allowedUserIds, notes, logo } = req.body;
 
     const factory = await db.Factory.findByPk(id);
     if (!factory) {
@@ -136,7 +138,9 @@ const update = async (req, res, next) => {
       rating: rating !== undefined ? rating : factory.rating,
       isActive: isActive !== undefined ? isActive : factory.isActive,
       isConfidential: isConfidential !== undefined ? isConfidential : factory.isConfidential,
-      allowedUserIds: allowedUserIds !== undefined ? allowedUserIds : factory.allowedUserIds
+      allowedUserIds: allowedUserIds !== undefined ? allowedUserIds : factory.allowedUserIds,
+      notes: notes !== undefined ? notes : factory.notes,
+      logo: logo !== undefined ? logo : factory.logo
     });
 
     res.json(getSuccessResponse(factory, 'Factory updated successfully'));
@@ -289,3 +293,21 @@ const getPerformance = async (req, res, next) => {
         inspections,
         passedInspections,
         inspectionPassRate: inspections ? ((passedInspections / inspections) * 100).toFixed(2) : 0,
+        onTimeDeliveries,
+        onTimeRate: completedPOs ? ((onTimeDeliveries / completedPOs) * 100).toFixed(2) : 0
+      }
+    }));
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {
+  create,
+  getAll,
+  getById,
+  update,
+  getProducts,
+  updatePrices,
+  getPerformance
+};
