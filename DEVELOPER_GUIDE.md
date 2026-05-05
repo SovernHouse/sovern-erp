@@ -281,6 +281,26 @@ See Section 7 for the full transition map. Models with `beforeUpdate` hooks:
 - `Shipment`
 - `Invoice`
 
+### Recent schema additions (2026-05)
+
+**`Quotation` — sourcing trail fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `factoryId` | UUID FK → `Factory` | The supplier factory providing goods for this quotation. Optional. Included in `getAll` and `getById` responses as `factory: { id, companyName, country }`. |
+| `leadId` | UUID FK → `Lead` | The CRM lead this quotation was built for. Optional. Provides pipeline attribution. Included in responses as `lead: { id, companyName, contactName }`. |
+
+Both fields are accepted on `POST /api/quotations` (create) and `PUT /api/quotations/:id` (update). They are filterable via `?factoryId=` and `?leadId=` on `GET /api/quotations`. The QuotationForm admin UI includes factory and lead pickers; QuotationDetail surfaces the sourcing trail section. The Sovern Ops mobile app (`app/quotation/[id].tsx`) also displays the sourcing trail.
+
+**`Factory` — profile enrichment fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `notes` | TEXT | Internal notes about the factory — negotiation history, quality issues, key contacts. Not exposed to external parties. |
+| `logo` | VARCHAR(500) | URL to the factory or brand logo. Used on the factory profile card. |
+
+Both fields are accepted on `POST /api/factories` (create) and `PUT /api/factories/:id` (update).
+
 ---
 
 ## 7. State Machine Guards
@@ -873,20 +893,4 @@ A clean file ends with `...;\n` (0x0a). Any `00` bytes after that are NUL corrup
 | Sanctions screening | Partial | `Lead.sanctionsScreened` boolean field exists. Manual update flow only. Automated screening (OFAC SDN, EU consolidated, UN consolidated) is the next AI feature to build (Feature 2 of the AI roadmap). |
 | GDPR consent flag | Open | `Lead.gdprConsent`, `gdprConsentObtainedAt`, `gdprConsentChannel` fields not yet added. Required before EU/UK outbound at scale. |
 | Customer portal | In progress | Standalone customer portal exists at `frontend/customer-portal/` (separate from the `client-contacts` admin module). |
-| Factory portal | In progress | Standalone factory portal at `frontend/factory-portal/`. Includes warehouse scan-receive and scan-inventory features (Phase 8). |
-| Audit trail | Partial | `DocumentApproval` has IP/UA logging. `auditService.logAction()` exists for manual audit calls in controllers. Auto-hooks on financial models are not yet implemented; logging is opportunistic. |
-| i18n | Partial | Frontend has a `LanguageSwitcher` component. Translation strings not fully populated. |
-| Rate limiting | Done | Implemented across general API, auth (stricter in production), and public approval endpoints. |
-| Tests | Done (backend) | 219 backend tests passing as of Phase 6. Playwright E2E infrastructure in `backend/e2e/helpers/` (Phase 7). Coverage gaps remain on CRM, outreach, financial validation routes. |
-| CI/CD | Done | GitHub Actions: ci.yml, deploy.yml, security.yml. CodeQL plus Trivy plus TruffleHog scanning weekly and on PRs. |
-| API documentation | Done | Swagger UI at `/api-docs`. 95+ endpoints documented in OpenAPI 3.0 (Phase 6). |
-| Webhooks | Done | Phase 5: 7 supported events, HMAC signing, exponential retry, delivery audit. |
-| Exchange rates | Done | Phase 5: live API with 6-hour scheduler, fallback to hardcoded rates. |
-| Docker production stack | Done | Phase 5: multi-stage build, nginx reverse proxy, health checks, SSL/TLS. |
-| Bank integration (LC) | Simulated | Phase 8: 6 endpoints simulated against a real bank API. Real bank integration requires credentials and contracts. |
-| AI features | In planning | Phase 9 roadmap: inbound email triage, sanctions screening, supplier memory search, document parsing, reply categorization, smart alerts. Built on local LLM (Ollama) plus LiteLLM proxy plus LangFuse self-hosted plus Promptfoo to keep zero recurring cost. |
-
----
-
-*Last updated: 2026-05-01. Catch-up edit after the April 30 audit fixes shipped without the doc being updated. Drift items corrected: SQLite (was wrongly described as Postgres), MCP env vars (was wrongly listed as ERP_API_URL/ERP_JWT_TOKEN), rate limiting (was listed as missing), tests (was listed as missing), sanctions flag, validation, security notes, and the limitations table.*
-*Maintainer: Sovern House Engineering*
+| Factory portal 

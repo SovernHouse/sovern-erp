@@ -67,6 +67,8 @@ export const QUOTATION = {
   notes:         'Any special conditions, quality requirements, or additional agreements for this quotation.',
   lineItem_unitPrice: 'Price per unit in the quotation currency. This is your sell price — not the factory cost.',
   lineItem_unit:     'Unit of measure — pcs, sets, m², kg, cartons, etc.',
+  factoryId:     'The factory supplying the goods for this quotation. Links the buyer price to the source factory for full sourcing traceability.',
+  leadId:        'The CRM lead this quotation originated from. Preserved for pipeline attribution — tracks which prospect became a deal.',
 }
 
 export const PROFORMA_INVOICE = {
@@ -101,6 +103,8 @@ export const FACTORY = {
   leadTimeDays:    'Typical factory lead time in days from PO confirmation to ready-to-ship.',
   paymentTerms:    'Your agreed payment terms with this factory — e.g. 30% deposit, 70% on shipment.',
   rating:          'Internal supplier rating (0–5). Updated after each completed order.',
+  notes:           'Internal notes about this factory — negotiation history, quality issues, key contacts. Not visible to the factory.',
+  logo:            'Factory or brand logo URL. Used on factory profile and sourcing documents.',
 }
 
 export const PURCHASE_ORDER = {
@@ -217,14 +221,4 @@ export const ROLE_TIPS = {
   viewer:              'Read-only access to dashboard and reports.',
   ceo:                 'Full operational access without system administration.',
   coo:                 'Same as CEO with additional document template access.',
-  sales_rep:           'Sales pipeline and outreach. Factory costs, invoices, and payments are hidden.',
-  project_manager:     'Cross-functional: orders, procurement, logistics, and documents.',
-  accountant:          'Finance module, orders, reports, and analytics.',
-  cashier:             'Payments and invoices only.',
-  office_manager:      'Sales pipeline, products, and documents.',
-  procurement_officer: 'Factories, products, purchase orders, logistics.',
-  logistics_coordinator:'Shipments, packing lists, inspections, inventory.',
-  qc_inspector:        'Inspections, claims, factory and product data.',
-  customer_service:    'Customers, inquiries, orders, and claims.',
-  compliance_officer:  'Factory compliance, inspections, shipments, claims, documents.',
-}
+  sales_rep:           'Sal

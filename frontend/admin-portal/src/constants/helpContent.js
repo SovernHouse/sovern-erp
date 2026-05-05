@@ -130,7 +130,17 @@ export const HELP_CONTENT = {
           'Open an inquiry and click Create Quotation.',
           'Add line items — select product, quantity, and unit price.',
           'Set payment terms, validity date, and incoterm.',
+          'Optionally link a Factory (sourcing supplier) and the originating Lead for full traceability.',
           'Review totals, then Save and Send to the buyer.',
+        ],
+      },
+      {
+        heading: 'Sourcing trail',
+        items: [
+          'Factory field links the quotation to the supplier providing the goods.',
+          'Lead field records which CRM prospect this quote was built for — useful for pipeline attribution.',
+          'Both fields are optional but recommended when the factory and lead are known.',
+          'The sourcing trail is visible on the quotation detail and in the Sovern Ops mobile app.',
         ],
       },
       {
@@ -146,6 +156,7 @@ export const HELP_CONTENT = {
     tips: [
       'A quotation can be upgraded to a Proforma Invoice once the buyer agrees to terms.',
       'Valid Until date matters — expired quotations should not be converted without reconfirming prices.',
+      'Link the source factory before converting to a PI — the sourcing trail carries through to the sales order.',
     ],
   },
 
@@ -572,36 +583,4 @@ export const HELP_CONTENT = {
     summary: 'Standard reports across sales, procurement, finance, and logistics.',
     sections: [
       {
-        heading: 'Available reports',
-        items: [
-          'Sales Pipeline: lead stages, conversion rates, and forecast.',
-          'Order Status Summary: open orders by status and factory.',
-          'Invoice Aging: overdue invoices by age bucket.',
-          'Payment Summary: payments received vs. expected.',
-          'Shipment Status: active shipments and ETAs.',
-        ],
-      },
-    ],
-    tips: [
-      'Export any report to CSV using the Download button.',
-      'Use the Analytics page for deeper trend analysis and BI Dashboard for executive-level views.',
-    ],
-  },
-
-  // ── Default (unknown page) ────────────────────────────────────────────────
-  '__default__': {
-    title: 'Help',
-    summary: 'Welcome to Sovern ERP. Use the navigation on the left to access your modules.',
-    sections: [
-      {
-        heading: 'Getting started',
-        items: [
-          'Your role determines which modules you can see.',
-          'The sales cycle flows: Inquiry → Quotation → PI → Sales Order → Invoice.',
-          'All document approvals can be tracked under Document Approvals.',
-          'Questions? Contact your system administrator.',
-        ],
-      },
-    ],
-  },
-}
+        heading: 'Available 
