@@ -532,6 +532,440 @@ Returns: Array of customer objects with id, name, email, country, status`,
 );
 
 // ---------------------------------------------------------------------------
+// FACTORIES (Suppliers)
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  "erp_list_factories",
+  {
+    title: "List Factories (Suppliers)",
+    description: `List all factory/supplier companies in the ERP.
+
+Args:
+  - search (optional): Filter by company name or email substring
+  - country (optional): Filter by country
+  - isActive (optional): Filter by active status (true/false)
+  - limit (optional): Max results (default 50, max 200)
+  - offset (optional): Pagination offset
+
+Returns: Array of factories with id, companyName, contactPerson, email, phone, country, city, isActive, isConfidential`,
+    inputSchema: z.object({
+      search: z.string().optional().describe("Substring filter on company/email"),
+      country: z.string().optional().describe("Filter by country"),
+      isActive: z.boolean().optional().describe("Filter by active status"),
+      limit: z.number().int().min(1).max(200).default(50),
+      offset: z.number().int().min(0).default(0),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  async ({ search, country, isActive, limit, offset }) => {
+    try {
+      const params: Record<string, unknown> = { limit, offset };
+      if (search) params.search = search;
+      if (country) params.country = country;
+      if (isActive !== undefined) params.status = isActive ? "active" : "inactive";
+
+      const res = await apiRequest<{ success: boolean; data: unknown[] }>(
+        "GET", "/api/factories", undefined, params
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(res.data, null, 2) }],
+        structuredContent: { factories: res.data, count: (res.data ?? []).length, offset, limit },
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatError(err) }] };
+    }
+  }
+);
+
+server.registerTool(
+  "erp_get_factory",
+  {
+    title: "Get Factory",
+    description: `Get a single factory/supplier by ID, including its products and recent prices.
+
+Args:
+  - factoryId (string): The factory UUID
+
+Returns: Factory object with full details, products array, and productPrices array`,
+    inputSchema: z.object({
+      factoryId: z.string().uuid().describe("The factory UUID"),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  async ({ factoryId }) => {
+    try {
+      const res = await apiRequest<{ success: boolean; data: unknown }>(
+        "GET", `/api/factories/${factoryId}`
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(res.data, null, 2) }],
+        structuredContent: { factory: res.data },
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatError(err) }] };
+    }
+  }
+);
+
+server.registerTool(
+  "erp_create_factory",
+  {
+    title: "Create Factory (Supplier)",
+    description: `Create a new factory/supplier record in the ERP.
+
+Args:
+  - companyName (string): Company name (e.g. 'Frontech Auto Parts')
+  - email (optional): Primary contact email
+  - phone (optional): Primary phone
+  - country (optional): Country
+  - city (optional): City
+  - address (optional): Street address
+  - contactPerson (optional): Single primary contact name (use Contacts for multiple)
+  - notes (optional): Internal notes
+  - isConfidential (optional): Mark as confidential (default: false)
+
+Returns: Created factory object with id`,
+    inputSchema: z.object({
+      companyName: z.string().min(1).describe("Company name"),
+      email: z.string().email().optional(),
+      phone: z.string().optional(),
+      country: z.string().optional(),
+      city: z.string().optional(),
+      address: z.string().optional(),
+      contactPerson: z.string().optional(),
+      notes: z.string().optional(),
+      isConfidential: z.boolean().default(false),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  async (body) => {
+    try {
+      const res = await apiRequest<{ success: boolean; data: { id: string } }>(
+        "POST", "/api/factories", body
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(res.data, null, 2) }],
+        structuredContent: { factory: res.data },
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatError(err) }] };
+    }
+  }
+);
+
+server.registerTool(
+  "erp_update_factory",
+  {
+    title: "Update Factory",
+    description: `Update factory fields. Pass only the fields you want to change.
+
+Args:
+  - factoryId (string): The factory UUID
+  - companyName, email, phone, country, city, address, contactPerson, notes, isActive, isConfidential — all optional
+
+Returns: Updated factory object`,
+    inputSchema: z.object({
+      factoryId: z.string().uuid(),
+      companyName: z.string().min(1).optional(),
+      email: z.string().email().optional(),
+      phone: z.string().optional(),
+      country: z.string().optional(),
+      city: z.string().optional(),
+      address: z.string().optional(),
+      contactPerson: z.string().optional(),
+      notes: z.string().optional(),
+      isActive: z.boolean().optional(),
+      isConfidential: z.boolean().optional(),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  async ({ factoryId, ...body }) => {
+    try {
+      const res = await apiRequest<{ success: boolean; data: unknown }>(
+        "PUT", `/api/factories/${factoryId}`, body
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(res.data, null, 2) }],
+        structuredContent: { factory: res.data },
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatError(err) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// CONTACTS (people attached to a Customer or a Factory)
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  "erp_list_contacts",
+  {
+    title: "List Contacts",
+    description: `List Contact rows. Each contact attaches to a Customer (customerId) or a Factory (factoryId). To list "supplier contacts" pass factoryId or factoryIdNotNull=true.
+
+Args:
+  - customerId (optional): Filter to contacts at a specific customer
+  - factoryId (optional): Filter to contacts at a specific factory
+  - factoryIdNotNull (optional): If true, return ALL supplier-side contacts (any factory)
+  - search (optional): Substring filter on first/last name, email, phone
+  - isActive (optional): Filter by active status
+  - limit, offset
+
+Returns: Array of contacts with id, firstName, lastName, email, phone, jobTitle, customerId, factoryId`,
+    inputSchema: z.object({
+      customerId: z.string().uuid().optional(),
+      factoryId: z.string().uuid().optional(),
+      factoryIdNotNull: z.boolean().optional()
+        .describe("If true, return all contacts that have any factoryId set (supplier side)"),
+      search: z.string().optional(),
+      isActive: z.boolean().optional(),
+      limit: z.number().int().min(1).max(200).default(50),
+      offset: z.number().int().min(0).default(0),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  async ({ customerId, factoryId, factoryIdNotNull, search, isActive, limit, offset }) => {
+    try {
+      const params: Record<string, unknown> = { limit, offset };
+      if (customerId) params.customerId = customerId;
+      if (factoryId) params.factoryId = factoryId;
+      if (search) params.search = search;
+      if (isActive !== undefined) params.isActive = isActive;
+      // Note: factoryIdNotNull is an MCP-side helper; the REST endpoint may not support it.
+      // Caller should fall back to filtering on the result if backend ignores the param.
+      if (factoryIdNotNull) params.factoryIdNotNull = "true";
+
+      const res = await apiRequest<{ success: boolean; data: unknown[] }>(
+        "GET", "/api/crm/contacts", undefined, params
+      );
+      let data = res.data ?? [];
+      // Defensive client-side filter for factoryIdNotNull in case the backend doesn't support it
+      if (factoryIdNotNull) {
+        data = (data as Array<{ factoryId?: string | null }>).filter(c => !!c.factoryId);
+      }
+      return {
+        content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+        structuredContent: { contacts: data, count: data.length, offset, limit },
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatError(err) }] };
+    }
+  }
+);
+
+server.registerTool(
+  "erp_get_contact",
+  {
+    title: "Get Contact",
+    description: `Get a single Contact by ID, including the linked customer/factory and recent activities.`,
+    inputSchema: z.object({
+      contactId: z.string().uuid().describe("The contact UUID"),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  async ({ contactId }) => {
+    try {
+      const res = await apiRequest<{ success: boolean; data: unknown }>(
+        "GET", `/api/crm/contacts/${contactId}`
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(res.data, null, 2) }],
+        structuredContent: { contact: res.data },
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatError(err) }] };
+    }
+  }
+);
+
+server.registerTool(
+  "erp_create_contact",
+  {
+    title: "Create Contact",
+    description: `Create a Contact attached to a Customer OR a Factory. Exactly one of customerId or factoryId should be provided.
+
+Args:
+  - firstName, lastName (string)
+  - email (string)
+  - phone, mobile (optional)
+  - jobTitle, department (optional)
+  - customerId (optional UUID): attach to a customer
+  - factoryId (optional UUID): attach to a factory (use this for supplier contacts)
+  - isPrimary (optional): mark as primary contact (default: false)
+  - notes, linkedinUrl, website (optional)
+
+Returns: Created contact with id`,
+    inputSchema: z.object({
+      firstName: z.string().min(1),
+      lastName: z.string().min(1),
+      email: z.string().email(),
+      phone: z.string().optional(),
+      mobile: z.string().optional(),
+      jobTitle: z.string().optional(),
+      department: z.string().optional(),
+      customerId: z.string().uuid().optional(),
+      factoryId: z.string().uuid().optional(),
+      isPrimary: z.boolean().default(false),
+      notes: z.string().optional(),
+      linkedinUrl: z.string().url().optional(),
+      website: z.string().url().optional(),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  async (body) => {
+    try {
+      if (!body.customerId && !body.factoryId) {
+        return { content: [{ type: "text", text: "Error: provide either customerId or factoryId so the contact attaches to a parent entity." }] };
+      }
+      const res = await apiRequest<{ success: boolean; data: { id: string } }>(
+        "POST", "/api/crm/contacts", body
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(res.data, null, 2) }],
+        structuredContent: { contact: res.data },
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatError(err) }] };
+    }
+  }
+);
+
+server.registerTool(
+  "erp_update_contact",
+  {
+    title: "Update Contact",
+    description: `Update Contact fields. Pass only the fields you want to change.`,
+    inputSchema: z.object({
+      contactId: z.string().uuid(),
+      firstName: z.string().min(1).optional(),
+      lastName: z.string().min(1).optional(),
+      email: z.string().email().optional(),
+      phone: z.string().optional(),
+      mobile: z.string().optional(),
+      jobTitle: z.string().optional(),
+      department: z.string().optional(),
+      customerId: z.string().uuid().optional(),
+      factoryId: z.string().uuid().optional(),
+      isPrimary: z.boolean().optional(),
+      notes: z.string().optional(),
+      isActive: z.boolean().optional(),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  async ({ contactId, ...body }) => {
+    try {
+      const res = await apiRequest<{ success: boolean; data: unknown }>(
+        "PUT", `/api/crm/contacts/${contactId}`, body
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(res.data, null, 2) }],
+        structuredContent: { contact: res.data },
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatError(err) }] };
+    }
+  }
+);
+
+server.registerTool(
+  "erp_delete_contact",
+  {
+    title: "Delete Contact",
+    description: `Permanently delete a Contact row. Use for de-duplication or cleaning up wrong-table entries.`,
+    inputSchema: z.object({
+      contactId: z.string().uuid(),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  },
+  async ({ contactId }) => {
+    try {
+      const res = await apiRequest<{ success: boolean; message: string }>(
+        "DELETE", `/api/crm/contacts/${contactId}`
+      );
+      return {
+        content: [{ type: "text", text: res.message ?? "Contact deleted" }],
+        structuredContent: { success: res.success, contactId },
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatError(err) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// QUOTATIONS (read-only for now; create/update flows go through ERP UI)
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  "erp_list_quotations",
+  {
+    title: "List Quotations",
+    description: `List quotations.
+
+Args:
+  - status (optional): Filter by status (draft, sent, accepted, rejected, expired)
+  - customerId (optional): Filter by customer
+  - search (optional): Substring filter on quotation number
+  - limit, offset
+
+Returns: Array with id, quotationNumber, customerId, salesPersonId, status, totalAmount, createdAt`,
+    inputSchema: z.object({
+      status: z.string().optional(),
+      customerId: z.string().uuid().optional(),
+      search: z.string().optional(),
+      limit: z.number().int().min(1).max(200).default(50),
+      offset: z.number().int().min(0).default(0),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  async ({ status, customerId, search, limit, offset }) => {
+    try {
+      const params: Record<string, unknown> = { limit, offset };
+      if (status) params.status = status;
+      if (customerId) params.customerId = customerId;
+      if (search) params.search = search;
+
+      const res = await apiRequest<{ success: boolean; data: unknown[] }>(
+        "GET", "/api/quotations", undefined, params
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(res.data, null, 2) }],
+        structuredContent: { quotations: res.data, count: (res.data ?? []).length, offset, limit },
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatError(err) }] };
+    }
+  }
+);
+
+server.registerTool(
+  "erp_get_quotation",
+  {
+    title: "Get Quotation",
+    description: `Get a single quotation by ID, including line items, customer, and sales person.`,
+    inputSchema: z.object({
+      quotationId: z.string().uuid(),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  async ({ quotationId }) => {
+    try {
+      const res = await apiRequest<{ success: boolean; data: unknown }>(
+        "GET", `/api/quotations/${quotationId}`
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(res.data, null, 2) }],
+        structuredContent: { quotation: res.data },
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: formatError(err) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Start server
 // ---------------------------------------------------------------------------
 
