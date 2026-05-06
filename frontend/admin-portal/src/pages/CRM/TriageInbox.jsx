@@ -52,23 +52,38 @@ const TABS = [
 
 // ── Compose Modal ─────────────────────────────────────────────────────────────
 function ComposeModal({ initial, onClose, onSent }) {
-  const [to,      setTo]      = useState(initial.to      || '');
-  const [cc,      setCc]      = useState(initial.cc      || '');
-  const [subject, setSubject] = useState(initial.subject || '');
-  const [body,    setBody]    = useState(initial.body    || '');
-  const [showCc,  setShowCc]  = useState(!!initial.cc);
-  const [sending, setSending] = useState(false);
-  const [error,   setError]   = useState('');
+  const [to,          setTo]          = useState(initial.to      || '');
+  const [cc,          setCc]          = useState(initial.cc      || '');
+  const [bcc,         setBcc]         = useState('');
+  const [subject,     setSubject]     = useState(initial.subject || '');
+  const [body,        setBody]        = useState(initial.body    || '');
+  const [showCc,      setShowCc]      = useState(!!initial.cc);
+  const [showBcc,     setShowBcc]     = useState(false);
+  const [sending,     setSending]     = useState(false);
+  const [error,       setError]       = useState('');
+  const [signatures,  setSignatures]  = useState([]);
+  const [signatureId, setSignatureId] = useState(null);
   const bodyRef = useRef(null);
 
-  // Focus body on open, but only if To/Subject are already filled
+  // Fetch signatures on mount and auto-select default
+  useEffect(() => {
+    api.get('/crm/email-signatures').then(res => {
+      const sigs = Array.isArray(res.data) ? res.data : (res.data?.signatures || []);
+      setSignatures(sigs);
+      const def = sigs.find(s => s.isDefault) || sigs[0] || null;
+      if (def) setSignatureId(def.id);
+    }).catch(() => {});
+  }, []);
+
+  // Focus body on open when To/Subject already filled
   useEffect(() => {
     if (initial.to && initial.subject && bodyRef.current) {
       bodyRef.current.focus();
-      // Place cursor at the start so user types at top, not in the quoted block
       bodyRef.current.setSelectionRange(0, 0);
     }
   }, []);
+
+  const selectedSig = signatures.find(s => s.id === signatureId) || null;
 
   const handleSend = async () => {
     if (!to.trim())      { setError('To is required.');      return; }
@@ -79,10 +94,12 @@ function ComposeModal({ initial, onClose, onSent }) {
     setError('');
     try {
       await api.post('/triage/send-email', {
-        to: to.trim(),
-        subject: subject.trim(),
-        body: body.trim(),
-        cc: cc.trim() || undefined,
+        to:          to.trim(),
+        subject:     subject.trim(),
+        body:        body.trim(),
+        cc:          cc.trim()  || undefined,
+        bcc:         bcc.trim() || undefined,
+        signatureId: signatureId || undefined,
       });
       onSent && onSent();
       onClose();
@@ -124,14 +141,14 @@ function ComposeModal({ initial, onClose, onSent }) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div style={{
-        background: '#fff', borderRadius: 12, width: '100%', maxWidth: 620,
+        background: '#fff', borderRadius: 12, width: '100%', maxWidth: 640,
         boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
-        display: 'flex', flexDirection: 'column', maxHeight: '90vh',
+        display: 'flex', flexDirection: 'column', maxHeight: '92vh',
       }}>
         {/* Header */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 18px', borderBottom: '1px solid #E5E7EB',
+          padding: '14px 18px', borderBottom: '1px solid #E5E7EB', flexShrink: 0,
         }}>
           <span style={{ fontWeight: 700, fontSize: 15, color: INK }}>
             {initial.mode === 'reply'   ? 'Reply'   :
@@ -143,7 +160,7 @@ function ComposeModal({ initial, onClose, onSent }) {
         </div>
 
         {/* Fields */}
-        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
+        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', flex: 1 }}>
           {/* To */}
           <div>
             <label style={labelStyle}>To</label>
@@ -157,24 +174,37 @@ function ComposeModal({ initial, onClose, onSent }) {
             />
           </div>
 
-          {/* CC toggle */}
-          {!showCc ? (
-            <button
-              onClick={() => setShowCc(true)}
-              style={{ alignSelf: 'flex-start', fontSize: 12, color: '#6B7280', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-            >
-              + Add CC
-            </button>
-          ) : (
+          {/* CC / BCC toggles */}
+          {(!showCc || !showBcc) && (
+            <div style={{ display: 'flex', gap: 10 }}>
+              {!showCc && (
+                <button onClick={() => setShowCc(true)}
+                  style={{ fontSize: 12, color: '#6B7280', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  + CC
+                </button>
+              )}
+              {!showBcc && (
+                <button onClick={() => setShowBcc(true)}
+                  style={{ fontSize: 12, color: '#6B7280', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  + BCC
+                </button>
+              )}
+            </div>
+          )}
+
+          {showCc && (
             <div>
               <label style={labelStyle}>CC</label>
-              <input
-                type="text"
-                value={cc}
-                onChange={e => setCc(e.target.value)}
-                placeholder="cc@example.com"
-                style={fieldStyle}
-              />
+              <input type="text" value={cc} onChange={e => setCc(e.target.value)}
+                placeholder="cc@example.com" style={fieldStyle} />
+            </div>
+          )}
+
+          {showBcc && (
+            <div>
+              <label style={labelStyle}>BCC</label>
+              <input type="text" value={bcc} onChange={e => setBcc(e.target.value)}
+                placeholder="bcc@example.com" style={fieldStyle} />
             </div>
           )}
 
@@ -198,10 +228,62 @@ function ComposeModal({ initial, onClose, onSent }) {
               value={body}
               onChange={e => setBody(e.target.value)}
               placeholder="Write your message here..."
-              rows={10}
-              style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.6, minHeight: 180 }}
+              rows={9}
+              style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.6, minHeight: 160 }}
             />
           </div>
+
+          {/* Signature preview */}
+          {selectedSig && (
+            <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                marginBottom: 6,
+              }}>
+                <span style={{ fontSize: 11, color: '#9CA3AF' }}>Signature</span>
+                {signatures.length > 1 && (
+                  <select
+                    value={signatureId || ''}
+                    onChange={e => setSignatureId(e.target.value || null)}
+                    style={{
+                      fontSize: 11, color: '#6B7280', border: '1px solid #E5E7EB',
+                      borderRadius: 4, padding: '2px 6px', background: '#F9FAFB', cursor: 'pointer',
+                    }}
+                  >
+                    <option value="">No signature</option>
+                    {signatures.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div style={{
+                padding: '10px 12px', background: '#F9FAFB', borderRadius: 6,
+                fontSize: 12, color: '#374151', lineHeight: 1.6,
+                borderLeft: '3px solid #E5E7EB',
+              }}>
+                <div style={{ fontWeight: 600 }}>{selectedSig.displayName || selectedSig.name}</div>
+                {selectedSig.title    && <div style={{ color: '#6B7280' }}>{selectedSig.title}</div>}
+                {selectedSig.phone    && <div style={{ color: '#6B7280' }}>{selectedSig.phone}</div>}
+                {selectedSig.website  && <div style={{ color: '#2563EB', fontSize: 11 }}>{selectedSig.website}</div>}
+                {selectedSig.tagline  && <div style={{ color: '#9CA3AF', fontStyle: 'italic', fontSize: 11, marginTop: 2 }}>{selectedSig.tagline}</div>}
+              </div>
+            </div>
+          )}
+
+          {signatures.length > 0 && !selectedSig && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, color: '#9CA3AF' }}>No signature</span>
+              <select
+                value=""
+                onChange={e => setSignatureId(e.target.value || null)}
+                style={{ fontSize: 11, color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 4, padding: '2px 6px' }}
+              >
+                <option value="">Select signature...</option>
+                {signatures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          )}
 
           {error && (
             <div style={{
@@ -216,7 +298,7 @@ function ComposeModal({ initial, onClose, onSent }) {
 
         {/* Footer */}
         <div style={{
-          padding: '12px 18px', borderTop: '1px solid #E5E7EB',
+          padding: '12px 18px', borderTop: '1px solid #E5E7EB', flexShrink: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <span style={{ fontSize: 11, color: '#9CA3AF' }}>

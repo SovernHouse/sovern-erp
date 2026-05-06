@@ -339,13 +339,37 @@ exports.clearSyncRequest = async (req, res) => {
 // ─── SEND EMAIL (reply / forward / compose from inbox) ───────────────────────
 
 exports.sendEmail = async (req, res) => {
-  const { to, subject, body, cc } = req.body;
+  const { to, subject, body, cc, bcc, signatureId } = req.body;
 
   if (!to || !subject || !body) {
     throw new ValidationError('to, subject, and body are required');
   }
 
   const { sendOutreachEmail } = require('../services/emailService');
+  const { generateSignatureHtml, generateSignatureText } = require('./emailSignatureController');
+
+  // Resolve signature: use provided signatureId, or fall back to user's default
+  let signatureHtml = null;
+  let signatureText = null;
+  try {
+    let sig = null;
+    if (signatureId) {
+      sig = await db.EmailSignature.findByPk(signatureId);
+    } else if (req.user?.id) {
+      sig = await db.EmailSignature.findOne({
+        where: { isDefault: true, userId: req.user.id },
+      }) || await db.EmailSignature.findOne({
+        where: { isDefault: true },
+      });
+    }
+    if (sig) {
+      signatureHtml = generateSignatureHtml(sig);
+      signatureText = generateSignatureText(sig);
+    }
+  } catch (sigErr) {
+    // Signature is non-critical — log and continue without it
+    logger.warn('[triage] Could not resolve signature:', sigErr.message);
+  }
 
   try {
     await sendOutreachEmail({
@@ -354,6 +378,9 @@ exports.sendEmail = async (req, res) => {
       subject,
       bodyText: body,
       cc: cc || null,
+      bcc: bcc || null,
+      signatureHtml,
+      signatureText,
     });
   } catch (emailErr) {
     logger.error('[triage] sendEmail failed:', emailErr.message);
