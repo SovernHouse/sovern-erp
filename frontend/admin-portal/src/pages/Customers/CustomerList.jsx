@@ -47,12 +47,13 @@ export default function CustomerList() {
       setDeleteConfirm({ isOpen: false, customer: null })
     } catch (error) {
       console.error('Failed to delete customer:', error)
-      toast.error('Failed to delete customer')
+      const msg = error.response?.data?.error?.message || error.response?.data?.message || 'Failed to delete customer'
+      toast.error(msg)
     }
   }
 
   const columns = [
-    { key: 'name', label: 'Name' },
+    { key: 'companyName', label: 'Name' },
     { key: 'country', label: 'Country' },
     { key: 'email', label: 'Email' },
     { key: 'phone', label: 'Phone' },
@@ -118,7 +119,7 @@ export default function CustomerList() {
         onClose={() => setDeleteConfirm({ isOpen: false, customer: null })}
         onConfirm={handleDelete}
         title="Delete Customer"
-        message={`Are you sure you want to delete ${deleteConfirm.customer?.name}? This action cannot be undone.`}
+        message={`Are you sure you want to delete ${deleteConfirm.customer?.companyName || deleteConfirm.customer?.name || 'this customer'}? This action cannot be undone.`}
         confirmText="Delete"
         isDangerous
       />
