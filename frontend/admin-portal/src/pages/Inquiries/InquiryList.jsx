@@ -32,7 +32,7 @@ export default function InquiryList() {
 
   const columns = [
     { key: 'inquiryNumber', label: 'Inquiry #' },
-    { key: 'customer', label: 'Customer' },
+    { key: 'customer', label: 'Customer', render: (row) => row.customer?.companyName || '—' },
     { key: 'date', label: 'Date', render: (row) => formatDate(row.date) },
     {
       key: 'status',

@@ -47,7 +47,7 @@ export default function SalesReport() {
   const fetchCustomers = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/customers`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
       const json = await res.json()
       if (json.success && Array.isArray(json.data)) {
@@ -61,7 +61,7 @@ export default function SalesReport() {
   const fetchSalesPeople = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/users?role=sales`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
       const json = await res.json()
       if (json.success && Array.isArray(json.data)) {
@@ -84,7 +84,7 @@ export default function SalesReport() {
       if (status) params.append('status', status)
 
       const res = await fetch(`${API}/api/reports/sales?${params}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
 
       const json = await res.json()
@@ -142,7 +142,7 @@ export default function SalesReport() {
       if (status) params.append('status', status)
 
       const res = await fetch(`${API}/api/reports/export/sales?${params}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
 
       if (!res.ok) throw new Error('Export failed')

@@ -49,7 +49,7 @@ export default function FactoryReport() {
   const fetchFactories = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/factories`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
       const json = await res.json()
       if (json.success && Array.isArray(json.data)) {
@@ -68,7 +68,7 @@ export default function FactoryReport() {
         // Fetch individual factory report
         const params = new URLSearchParams({ period })
         const res = await fetch(`${API}/api/reports/factory/${factoryId}?${params}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
         })
         const json = await res.json()
         if (json.success) {
@@ -138,7 +138,7 @@ export default function FactoryReport() {
       if (factoryId) params.append('factoryId', factoryId)
 
       const res = await fetch(`${API}/api/reports/export/factory?${params}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
 
       if (!res.ok) throw new Error('Export failed')

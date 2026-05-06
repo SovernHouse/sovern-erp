@@ -55,7 +55,7 @@ export default function FinancialReport() {
       if (endDate) params.append('endDate', endDate)
 
       const res = await fetch(`${API}/api/reports/financial?${params}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
 
       const json = await res.json()
@@ -91,7 +91,7 @@ export default function FinancialReport() {
       if (endDate) params.append('endDate', endDate)
 
       const res = await fetch(`${API}/api/reports/export/financial?${params}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
 
       if (!res.ok) throw new Error('Export failed')

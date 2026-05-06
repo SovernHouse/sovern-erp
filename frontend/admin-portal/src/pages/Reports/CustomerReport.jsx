@@ -46,7 +46,7 @@ export default function CustomerReport() {
   const fetchCustomers = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/customers`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
       const json = await res.json()
       if (json.success && Array.isArray(json.data)) {
@@ -67,7 +67,7 @@ export default function CustomerReport() {
       if (customerId) {
         // Fetch individual customer report
         const res = await fetch(`${API}/api/reports/customer/${customerId}?${params}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
         })
         const json = await res.json()
         if (json.success) {
@@ -142,7 +142,7 @@ export default function CustomerReport() {
       if (customerId) params.append('customerId', customerId)
 
       const res = await fetch(`${API}/api/reports/export/customers?${params}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
 
       if (!res.ok) throw new Error('Export failed')

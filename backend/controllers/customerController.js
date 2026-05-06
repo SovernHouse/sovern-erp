@@ -167,6 +167,24 @@ const delete_ = async (req, res, next) => {
       );
     }
 
+    // Check for open inquiries
+    const openInquiries = await db.Inquiry.count({ where: { customerId: id } });
+    if (openInquiries > 0) {
+      throw new ValidationError(
+        `Cannot delete customer with ${openInquiries} linked inquiry(s). Archive them first.`
+      );
+    }
+
+    // Check for quotations
+    const openQuotations = await db.Quotation.count({
+      where: { customerId: id, status: { [require('sequelize').Op.notIn]: ['accepted', 'rejected'] } }
+    });
+    if (openQuotations > 0) {
+      throw new ValidationError(
+        `Cannot delete customer with ${openQuotations} open quotation(s). Close them first.`
+      );
+    }
+
     await customer.update({ isActive: false });
 
     res.json(getSuccessResponse(null, 'Customer deactivated successfully'));

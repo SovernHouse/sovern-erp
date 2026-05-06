@@ -47,7 +47,7 @@ export default function InventoryReport() {
   const fetchCategories = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/categories`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
       const json = await res.json()
       if (json.success && Array.isArray(json.data)) {
@@ -61,7 +61,7 @@ export default function InventoryReport() {
   const fetchWarehouses = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/warehouses`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
       const json = await res.json()
       if (json.success && Array.isArray(json.data)) {
@@ -82,7 +82,7 @@ export default function InventoryReport() {
       if (stockLevel !== 'all') params.append('stockLevel', stockLevel)
 
       const res = await fetch(`${API}/api/reports/inventory?${params}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
 
       const json = await res.json()
@@ -146,7 +146,7 @@ export default function InventoryReport() {
       if (stockLevel !== 'all') params.append('stockLevel', stockLevel)
 
       const res = await fetch(`${API}/api/reports/export/inventory?${params}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       })
 
       if (!res.ok) throw new Error('Export failed')
