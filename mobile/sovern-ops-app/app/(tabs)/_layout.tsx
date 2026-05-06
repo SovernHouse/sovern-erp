@@ -6,7 +6,7 @@
 // When the user is inside any secondary module (Leads, Quotations, etc.),
 // the Home tab stays active in the bar — same pattern as Odoo Mobile.
 
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs, router } from 'expo-router';
 import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../src/constants/config';
@@ -27,7 +27,6 @@ const NAV_ITEMS = [
 // renders a ‹ arrow in the header that returns the user to Home (dashboard).
 
 function BackToHome() {
-  const router = useRouter();
   return (
     <TouchableOpacity
       onPress={() => router.navigate('/(tabs)/dashboard')}
