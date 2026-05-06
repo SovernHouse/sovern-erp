@@ -1,13 +1,13 @@
 name: Deploy to Sovern ERP
 
 # GitHub-hosted runner SSHes into the GCP VM and runs the deploy there.
-# No self-hosted runner process needed on the VM -- zero disk overhead.
+# No self-hosted runner process needed on the VM — zero disk overhead.
 # Only fires when CI/CD Pipeline passes on main (or manually triggered).
 #
 # Required GitHub Secrets:
-#   VM_HOST     -- GCP VM external IP
-#   VM_USER     -- SSH username (e.g. alex)
-#   VM_SSH_KEY  -- SSH private key (matching public key in GCP VM metadata)
+#   VM_HOST     — GCP VM external IP
+#   VM_USER     — SSH username (e.g. alex)
+#   VM_SSH_KEY  — SSH private key (matching public key in GCP VM metadata)
 #
 # IMPORTANT: The public key MUST be set in GCP VM metadata (Compute Engine >
 # VM instances > Edit > SSH Keys), NOT just added to authorized_keys directly.
@@ -22,13 +22,14 @@ on:
 
 concurrency:
   group: deploy-production
-  cancel-in-progress: false
+  cancel-in-progress: false   # never cancel a running deploy mid-flight
 
 jobs:
   deploy:
     name: Deploy on VM
     runs-on: ubuntu-latest
 
+    # Only deploy if CI passed (workflow_dispatch always proceeds)
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
@@ -55,9 +56,9 @@ jobs:
 
             echo "=== Checking sqlite3 native binding ==="
             if node -e "require('sqlite3'); process.exit(0)" 2>/dev/null; then
-              echo "sqlite3 binding OK -- skipping rebuild"
+              echo "sqlite3 binding OK — skipping rebuild"
             else
-              echo "sqlite3 binding missing -- rebuilding from source"
+              echo "sqlite3 binding missing — rebuilding from source"
               npm rebuild sqlite3 --build-from-source
             fi
 
@@ -65,8 +66,8 @@ jobs:
             NODE_OPTIONS='--max-old-space-size=1536' \
               npm run build --workspace=frontend/admin-portal
             test -f frontend/admin-portal/dist/index.html || \
-              (echo "ERROR: dist/index.html missing -- build silently failed"; exit 1)
-            echo "Frontend build OK"
+              (echo "ERROR: dist/index.html missing — build silently failed"; exit 1)
+            echo "Frontend build OK ($(ls frontend/admin-portal/dist/assets/ | wc -l) assets)"
 
             echo "=== Restarting backend ==="
             rm -f ~/.pm2/dump.pm2
@@ -77,7 +78,7 @@ jobs:
                 echo "Port 3001 is free."
                 break
               fi
-              echo "Attempt $i: port 3001 still bound -- killing squatters..."
+              echo "Attempt $i: port 3001 still bound — killing squatters..."
               fuser -k 3001/tcp 2>/dev/null || true
               pkill -9 -u "$(id -u)" -f 'sovern-erp/backend/server.js' 2>/dev/null || true
               sleep 2

@@ -521,6 +521,51 @@ All endpoints are prefixed with `/api`. Auth required unless noted.
 | POST | `/api/outreach/send` | Send outreach email to a lead |
 | GET | `/api/outreach/emails` | List sent outreach emails |
 
+### Chat (Internal + Omnichannel)
+
+All endpoints are under `/api/chat`. Auth required on all.
+
+**Rooms**
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/chat/rooms` | List rooms the current user is a member of (with unread counts) |
+| POST | `/api/chat/rooms` | Create a named channel. Body: `{ name, description?, isPrivate? }` |
+| POST | `/api/chat/rooms/dm` | Get-or-create a DM room with another user. Body: `{ userId }` |
+| GET | `/api/chat/rooms/:id` | Room detail + member list |
+| PATCH | `/api/chat/rooms/:id` | Update name, description, isArchived, isPrivate |
+| DELETE | `/api/chat/rooms/:id` | Hard delete (admin only, empty rooms only) |
+
+**Members**
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/chat/rooms/:id/members` | List active members |
+| POST | `/api/chat/rooms/:id/members` | Add members. Body: `{ userIds: string[] }` |
+| DELETE | `/api/chat/rooms/:id/members/:uid` | Remove member (soft — sets leftAt) |
+
+**Messages**
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/chat/rooms/:id/messages` | Paginated history. Query: `?limit=50&before=<ISO>` |
+| POST | `/api/chat/rooms/:id/messages` | Send message. Body: `{ body, mentions?, entityRef?, attachments?, parentId? }` |
+| PATCH | `/api/chat/rooms/:id/messages/:mid` | Edit own message. Body: `{ body }` |
+| DELETE | `/api/chat/rooms/:id/messages/:mid` | Soft delete (sets body=null, deletedAt=now) |
+| POST | `/api/chat/rooms/:id/messages/:mid/react` | Toggle emoji reaction. Body: `{ emoji }` |
+
+**Read receipts**
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/chat/rooms/:id/read` | Mark all messages as read (sets `lastReadAt = now` on membership) |
+
+**Utility**
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/chat/users` | All active users for @mention autocomplete. Query: `?q=search` |
+
 ### Document Approvals
 
 | Method | Path | Auth | Description |
@@ -943,7 +988,133 @@ A clean file ends with `...;\n` (0x0a). Any `00` bytes after that are NUL corrup
 
 ---
 
-## 20. Known Limitations & Roadmap
+## 20. Chat System Architecture
+
+### Overview
+
+The chat system is an internal messaging + omnichannel inbox. It is designed channel-agnostic from day one so external platforms (WhatsApp, WeChat/WeCom, Telegram) can be wired in via webhooks without schema migrations.
+
+### Models
+
+| Model | Table | Purpose |
+|---|---|---|
+| `ChatRoom` | `ChatRooms` | A conversation container. Types: `dm`, `channel`, `external` |
+| `ChatMessage` | `ChatMessages` | A single message in a room. Soft-deleteable. |
+| `ChatRoomMember` | `ChatRoomMembers` | Join table: who is in which room. Holds `lastReadAt` for read receipts. |
+
+**ChatRoom key fields**
+- `type`: `dm | channel | external`
+- `channelSource`: `internal | whatsapp | telegram | wechat | email | sms` — origin platform
+- `externalRoomId`: platform-specific group/thread ID for dedup and reply routing
+- `dmUserA` / `dmUserB`: canonical DM lookup (sorted UUIDs, unique pair = 1 room)
+- `lastMessageAt` + `lastMessagePreview`: denormalised for sidebar sort without a subquery
+
+**ChatMessage key fields**
+- `senderId`: ERP User UUID — null for inbound external messages
+- `source`: same enum as `ChatRoom.channelSource`
+- `externalId`: platform message ID for webhook dedup (unique index on `source + externalId`)
+- `externalSenderId` / `externalSenderName`: for external contacts not in the ERP
+- `mentions`: JSON array of User UUIDs — used to trigger notifications
+- `entityRef`: JSON `{ type, id, label }` — links to an ERP record (e.g. Quotation QT-0042)
+- `deletedAt`: soft delete — body set to null, UI shows "Message deleted."
+
+**ChatRoomMember key fields**
+- `lastReadAt`: cursor-based read receipts — unread count = messages after this timestamp
+- `role`: `member | admin` — admins can rename/archive/add/remove
+- `leftAt`: soft membership — history preserved after leaving
+
+### chatService.js
+
+Mirrors the `notificationService` pattern. `server.js` calls `chatService.setIO(io)` after socket.io init. The controller calls emit helpers rather than touching `io` directly.
+
+Socket room naming: `chat-room-${chatRoomId}`. Users also stay in their `user-${userId}` room (from `socketAuthMiddleware`) so they receive `chat:added_to_room` events when someone adds them to a new conversation.
+
+**Client → server events** (emitted by the browser)
+
+| Event | Payload | Effect |
+|---|---|---|
+| `chat:join_room` | `chatRoomId` | `socket.join('chat-room-<id>')` |
+| `chat:leave_room` | `chatRoomId` | `socket.leave('chat-room-<id>')` |
+| `chat:typing` | `{ chatRoomId, isTyping }` | Relayed to all other room members |
+
+**Server → client events** (emitted by chatService)
+
+| Event | Payload | Trigger |
+|---|---|---|
+| `chat:new_message` | `{ roomId, message }` | Message sent via POST |
+| `chat:message_edited` | `{ roomId, message }` | Message edited via PATCH |
+| `chat:message_deleted` | `{ roomId, messageId }` | Message soft-deleted |
+| `chat:room_updated` | `{ roomId, room }` | Room renamed/archived |
+| `chat:member_added` | `{ roomId, member }` | Member added |
+| `chat:member_removed` | `{ roomId, userId }` | Member removed |
+| `chat:typing` | `{ roomId, userId, isTyping }` | Typing indicator relay |
+| `chat:read` | `{ roomId, userId, lastReadAt }` | Read receipt updated |
+| `chat:added_to_room` | `{ room }` | Sent to `user-<id>` room when added to a new room |
+
+### Frontend hooks
+
+**`useChat.js`** exports:
+- `useChatRooms()` — room list + unread counts, updates on socket events
+- `useChatRoom(roomId)` — messages + members + pagination for one room
+- `useChatSocket(roomId, callbacks)` — joins socket room, wires all events, cleans up on unmount
+- `useTypingIndicator(roomId, userId)` — throttled typing send + incoming typing state
+
+### Omnichannel integration path (WhatsApp / WeChat / Telegram)
+
+To add an external channel, you need three things:
+
+1. **Webhook endpoint** — `POST /api/chat/inbound/:channel` (not yet built — this is the next step). The handler:
+   - Verifies the platform's HMAC signature
+   - Finds or creates a `ChatRoom` with `type: 'external'`, `channelSource: 'whatsapp'` (or `wechat`/`telegram`), and `externalRoomId` = the group/thread ID from the platform
+   - Creates a `ChatMessage` with `source: 'whatsapp'`, `externalId`, `externalSenderId`, `externalSenderName`, and `body`
+   - Calls `chatService.emitNewMessage()` so connected agents see it in real time
+
+2. **Outbound routing** — when a team member replies in an external-source room, the sendMessage handler checks `room.channelSource` and calls the appropriate platform API to deliver the reply. This is a separate service (`services/whatsappService.js` etc.).
+
+3. **Platform credentials** — stored in `.env`: `WHATSAPP_TOKEN`, `WECHAT_CORP_ID`, `WECHAT_CORP_SECRET`, `TELEGRAM_BOT_TOKEN`.
+
+No schema migration needed — all fields (`source`, `externalId`, `channelSource`, `externalRoomId`) are already in the models.
+
+**Platform notes**:
+- **WhatsApp**: Meta Cloud API (`graph.facebook.com/v18.0`) — requires a Meta Business account and a verified phone number. Twilio Conversations is a managed alternative.
+- **WeChat Work / WeCom**: `qyapi.weixin.qq.com` — requires registering your company on WeCom. The webhook receives XML-encoded messages; responses must be encrypted with AES-256.
+- **Telegram**: `api.telegram.org` — simplest of the three. Register a bot via BotFather, set the webhook URL to your endpoint.
+
+### Files
+
+```
+backend/
+  models/
+    ChatRoom.js
+    ChatMessage.js
+    ChatRoomMember.js
+  controllers/
+    chatController.js
+  routes/
+    chatRoutes.js
+  services/
+    chatService.js
+
+frontend/admin-portal/src/
+  hooks/
+    useChat.js
+  components/chat/
+    ChatPanel.jsx        ← room list + message area + input
+    ChatBubble.jsx       ← floating bottom-right overlay
+  pages/
+    ChatPage.jsx         ← full /chat management page
+  services/
+    api.js               ← chatAPI export
+  constants/
+    tooltipContent.js    ← CHAT section
+    helpContent.js       ← /chat entry
+  config/
+    rbacConfig.js        ← Chat nav item added to all roles
+```
+
+---
+
+## 21. Known Limitations & Roadmap
 
 | Item | Status | Notes |
 |---|---|---|
@@ -953,7 +1124,8 @@ A clean file ends with `...;\n` (0x0a). Any `00` bytes after that are NUL corrup
 | Sanctions screening | Partial | `Lead.sanctionsScreened` boolean field exists. Manual update flow only. Automated screening (OFAC SDN, EU consolidated, UN consolidated) is the next AI feature to build (Feature 2 of the AI roadmap). |
 | GDPR consent flag | Open | `Lead.gdprConsent`, `gdprConsentObtainedAt`, `gdprConsentChannel` fields not yet added. Required before EU/UK outbound at scale. |
 | Dashboard customization frontend | Planned | Backend complete (POST/GET `/api/dashboard/layout` → `DashboardLayout` model). Frontend widget picker and drag-and-drop layout (react-grid-layout) not yet built. |
-| Dashboard action reminder banner | Planned | Odoo-style banner at top of dashboard showing items assigned to the user requiring action (approve / check). Green = on time, yellow = approaching due, red = overdue. |
-| Internal chat + tagging | Planned | Per-record threaded comments, @mention notifications, unread indicators. Needs real-time (WebSocket or polling). Scope before building. |
+| Dashboard action reminder banner | Done | Odoo-style banner live. Green = on time, amber = today, red = overdue. |
+| Internal chat + tagging | Done | ChatRoom/Message/Member models, chatController, chatRoutes, chatService, ChatPanel, ChatBubble, /chat page. Omnichannel fields ready for WhatsApp/WeChat/Telegram webhooks. |
+| Chat omnichannel webhooks | Planned | Inbound webhook handler + outbound routing per platform. See Section 20 for integration path. |
 | Customer portal | In progress | Standalone customer portal exists at `frontend/customer-portal/` (separate from the `client-contacts` admin module). |
 | Factory portal 

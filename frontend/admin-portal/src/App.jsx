@@ -138,6 +138,9 @@ const ContactForm    = React.lazy(() => import('./pages/CRM/ContactForm'))
 const ClientContacts = React.lazy(() => import('./pages/CRM/ClientContacts'))
 const TriageInbox    = React.lazy(() => import('./pages/CRM/TriageInbox'))
 
+// Chat
+const ChatPage = React.lazy(() => import('./pages/ChatPage'))
+
 // Public — no auth required
 const ApprovalPage = React.lazy(() => import('./pages/Approvals/ApprovalPage'))
 const InternalApprovalsList = React.lazy(() => import('./pages/InternalApprovals/InternalApprovalsList'))
@@ -314,6 +317,9 @@ function AppRoutes() {
       {/* ── Analytics / BI ── */}
       <Route path="/analytics"    element={<P permission="analytics"><AnalyticsDashboard /></P>} />
       <Route path="/bi-dashboard" element={<P permission="bi-dashboard"><BIDashboard /></P>} />
+
+      {/* ── Chat ── */}
+      <Route path="/chat" element={<P><ChatPage /></P>} />
 
       {/* ── Documents ── */}
       <Route path="/documents/templates" element={<P permission="documents"><TemplateManager /></P>} />

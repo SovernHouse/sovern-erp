@@ -537,4 +537,15 @@ db.ScheduledActivity.associate(db);
 db.InternalApproval = require('./InternalApproval')(sequelize);
 db.InternalApproval.associate(db);
 
+// Internal Chat (omnichannel inbox — WhatsApp/Telegram/internal)
+db.ChatRoom = require('./ChatRoom')(sequelize);
+db.ChatMessage = require('./ChatMessage')(sequelize);
+db.ChatRoomMember = require('./ChatRoomMember')(sequelize);
+db.ChatRoom.associate(db);
+db.ChatMessage.associate(db);
+db.ChatRoomMember.associate(db);
+// Additional User-side associations
+db.User.hasMany(db.ChatRoomMember, { foreignKey: 'userId', as: 'chatMemberships', onDelete: 'CASCADE' });
+db.User.hasMany(db.ChatMessage, { foreignKey: 'senderId', as: 'chatMessages' });
+
 module.exports = db; 

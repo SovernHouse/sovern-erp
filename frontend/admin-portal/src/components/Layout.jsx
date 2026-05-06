@@ -25,6 +25,7 @@ import {
   HelpCircle,
   ExternalLink,
   Layers,
+  MessageCircle,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useNotifications } from '../hooks/useNotifications'
@@ -34,6 +35,7 @@ import HelpPanel, { useHelpPanel } from './HelpPanel'
 import InstallPWA from './InstallPWA'
 import ActivityBanner from './ActivityBanner'
 import ActivityIndicator from './ActivityIndicator'
+import ChatBubble from './chat/ChatBubble'
 
 // ── Brand tokens ─────────────────────────────────────────────────────────────
 const INK     = '#0E0D0C'
@@ -90,7 +92,7 @@ function SovernWordmark() {
 
 const iconMap = {
   Home, ShoppingCart, Inbox, Truck, DollarSign, CheckCircle,
-  BarChart3, Cog, Users, Users2, Building2, Package, TrendingUp, FileText,
+  BarChart3, Cog, Users, Users2, Building2, Package, TrendingUp, FileText, MessageCircle,
 }
 
 export default function Layout({ children }) {
@@ -605,6 +607,9 @@ export default function Layout({ children }) {
 
       {/* Help panel — slides in from right, portal-level z-index */}
       <HelpPanel open={helpOpen} onClose={closeHelp} />
+
+      {/* Chat bubble — fixed bottom-right, always visible on all pages */}
+      <ChatBubble />
     </div>
   )
 }

@@ -210,6 +210,30 @@ export const BULK_IMPORT = {
 
 // ─── RBAC roles (for the Role Permissions page) ───────────────────────────────
 
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+export const CHAT = {
+  bubble:           'Open the team chat. The number shows unread messages across all your conversations.',
+  directMessage:    'Send a private message directly to another team member. Only the two of you can see it.',
+  channel:          'A named group conversation. Add the right people and keep project discussions in one place.',
+  privateChannel:   'Private channels are invite-only and hidden from the channel list. Use for sensitive topics.',
+  newConversation:  'Start a direct message or create a new group channel.',
+  addMembers:       'Add team members to this channel. They will see all previous messages once added.',
+  removeMember:     'Remove this person from the channel. Their previous messages remain visible.',
+  archiveChannel:   'Archive this channel. No new messages can be sent, but history is preserved.',
+  markRead:         'Mark all messages in this channel as read.',
+  erpLink:          'This message includes a link to an ERP record (e.g. a Quotation or Purchase Order). Click to open it.',
+  mentions:         'Type @ followed by a name to notify a specific team member. They will see a badge on their chat icon.',
+  externalChannel:  'This conversation is linked to an external messaging platform (WhatsApp, WeChat, Telegram). Messages sent here are routed back to that platform.',
+  whatsapp:         'WhatsApp Business channel — messages from your WhatsApp contacts appear here. Replies are sent back via WhatsApp.',
+  wechat:           'WeChat Work (WeCom) channel — messages from your WeChat contacts or groups appear here.',
+  telegram:         'Telegram bot channel — messages sent to your Telegram bot appear here.',
+  typingIndicator:  'Someone is currently typing a reply in this conversation.',
+  readReceipt:      'Shows when each team member last read the conversation.',
+  editMessage:      'Edit the content of a message you sent. Other members will see an "(edited)" label.',
+  deleteMessage:    'Remove this message. It will show as "Message deleted." in the thread — permanent.',
+  chatPage:         'The Chat page is the full management view. Create and configure group channels, manage members, and see all your conversations in one place.',
+}
+
 export const ROLE_TIPS = {
   admin:               'Full access to everything including user management, settings, and system configuration.',
   manager:             'Access to all operational modules. No settings or user management.',

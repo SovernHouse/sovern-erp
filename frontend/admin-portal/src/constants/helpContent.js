@@ -598,6 +598,74 @@ export const HELP_CONTENT = {
     ],
   },
 
+  '/chat': {
+    title: 'Team Chat',
+    summary: 'Internal messaging for your team. Direct messages, group channels, and an omnichannel inbox for WhatsApp, WeChat, and Telegram conversations — all in one place.',
+    sections: [
+      {
+        heading: 'Starting a conversation',
+        items: [
+          'Click the green chat bubble (bottom-right corner) to open the chat overlay from any ERP page.',
+          'Go to Chat in the sidebar for the full-screen management view.',
+          'Click the + icon in the sidebar to start a Direct Message or create a new channel.',
+          'For a Direct Message: search for a team member and click their name.',
+          'For a channel: give it a name, an optional description, and choose Private or Public.',
+        ],
+      },
+      {
+        heading: 'Sending messages',
+        items: [
+          'Type your message and press Enter to send. Shift+Enter adds a new line.',
+          'Use @name to mention a team member — they will receive a notification badge.',
+          'Messages can be edited (pencil icon on hover) or soft-deleted (trash icon).',
+          'Hover a message to add emoji reactions.',
+        ],
+      },
+      {
+        heading: 'Linking ERP records',
+        items: [
+          'Paste or type an ERP reference like QT-0042, SO-0012, or PO-0008 in a message.',
+          'The ERP reference will render as a clickable link that opens the record directly.',
+          'This keeps deal discussions connected to the actual documents without switching tabs.',
+        ],
+      },
+      {
+        heading: 'Managing group channels',
+        items: [
+          'From the /chat page, open the gear icon on any channel to access settings.',
+          'Add members by searching their name. Remove members with the X next to their name.',
+          'Rename or update the description in channel settings.',
+          'Archive a channel to freeze it — history is preserved but no new messages can be sent.',
+          'Channel admins can promote members or remove them.',
+        ],
+      },
+      {
+        heading: 'External channels (WhatsApp, WeChat, Telegram)',
+        items: [
+          'External messages from WhatsApp, WeChat Work (WeCom), and Telegram appear as separate channels marked with a colored badge.',
+          'You can reply to external contacts directly from the ERP — replies are routed back to the correct platform automatically.',
+          'This requires a one-time webhook setup per platform by your system administrator.',
+          'External sender names are shown even if the contact is not an ERP user.',
+        ],
+      },
+      {
+        heading: 'Read receipts and notifications',
+        items: [
+          'The unread count badge on the chat bubble updates in real time.',
+          'Opening a conversation marks all messages as read.',
+          'You can mute a channel to suppress notifications while still receiving messages.',
+          '@mentions always generate a notification regardless of mute settings.',
+        ],
+      },
+    ],
+    tips: [
+      'Use the floating chat bubble on any page so you never have to leave your current workflow.',
+      'Create a dedicated channel for each major deal, customer, or factory to keep context together.',
+      'Link ERP records in messages to keep conversations anchored to the actual documents.',
+      'External channels (WhatsApp, WeChat, Telegram) let your team handle supplier and buyer communication without leaving the ERP.',
+    ],
+  },
+
   // ── Default (unknown page) ────────────────────────────────────────────────
   '__default__': {
     title: 'Help',

@@ -172,6 +172,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Client Contacts', path: '/client-contacts',  permission: 'outreach' },
       ],
     },
+    { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
     { label: 'Approvals', icon: 'CheckCircle', path: '/internal-approvals' },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
     { label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' },
@@ -252,6 +253,7 @@ export const NAV_ITEMS_BY_ROLE = {
       icon: 'CheckCircle',
       submenu: [{ label: 'Inventory', path: '/inventory', permission: 'inventory' }],
     },
+    { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
     { label: 'Approvals', icon: 'CheckCircle', path: '/internal-approvals' },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
     { label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' },
@@ -335,6 +337,7 @@ export const NAV_ITEMS_BY_ROLE = {
       path: '/products',
       permission: 'products',
     },
+    { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
   ],
   finance: [
     { label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' },
@@ -355,6 +358,7 @@ export const NAV_ITEMS_BY_ROLE = {
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
     { label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' },
     { label: 'BI Dashboard', icon: 'BarChart3', path: '/bi-dashboard', permission: 'bi-dashboard' },
+    { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
   ],
   warehouse: [
     { label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' },
@@ -376,6 +380,7 @@ export const NAV_ITEMS_BY_ROLE = {
       path: '/products',
       permission: 'products',
     },
+    { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
   ],
   quality: [
     { label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' },
@@ -392,10 +397,12 @@ export const NAV_ITEMS_BY_ROLE = {
       icon: 'Inbox',
       submenu: [{ label: 'Factories', path: '/factories', permission: 'factories' }],
     },
+    { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
   ],
   viewer: [
     { label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
+    { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
   ],
 
   // ── Business-title nav configs ────────────────────────────────────────────
@@ -447,6 +454,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Client Contacts', path: '/client-contacts',  permission: 'outreach' },
       ],
     },
+    { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
     { label: 'Approvals', icon: 'CheckCircle', path: '/internal-approvals' },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
     { label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' },
@@ -501,6 +509,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Client Contacts', path: '/client-contacts',  permission: 'outreach' },
       ],
     },
+    { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
     { label: 'Approvals', icon: 'CheckCircle', path: '/internal-approvals' },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
     { label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' },

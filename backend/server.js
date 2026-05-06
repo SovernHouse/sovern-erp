@@ -22,6 +22,7 @@ const { authLimiter, generalLimiter } = require('./middleware/rateLimiter');
 const { requestId, sanitizeInput, securityHeaders } = require('./middleware/security');
 const { requestLogging } = require('./middleware/requestLogging');
 const notificationService = require('./services/notificationService');
+const chatService = require('./services/chatService');
 const apmMiddleware = require('./middleware/apmMiddleware');
 const alertService = require('./services/alertService');
 const { socketAuthMiddleware, handleSocketDisconnect } = require('./services/socketAuthMiddleware');
@@ -52,6 +53,7 @@ const io = socketIO(server, {
 });
 
 notificationService.setIO(io);
+chatService.setIO(io);
 
 app.use(helmet({
   crossOriginResourcePolicy: false,
@@ -220,6 +222,10 @@ app.use('/api/triage', triageRoutes);
 const chatterRoutes = require('./routes/chatterRoutes');
 app.use('/api/chatter', chatterRoutes);
 
+// Internal Chat (omnichannel inbox — WhatsApp/Telegram/internal)
+const chatRoutes = require('./routes/chatRoutes');
+app.use('/api/chat', chatRoutes);
+
 // Scheduled Activities (Odoo-style task assignment on any record)
 const scheduledActivityRoutes = require('./routes/scheduledActivityRoutes');
 app.use('/api/scheduled-activities', scheduledActivityRoutes);
@@ -361,6 +367,9 @@ io.on('connection', (socket) => {
       logger.info(`User ${userId} manually left socket`);
     }
   });
+
+  // Internal chat — join/leave rooms and typing indicators
+  chatService.handleChatSocket(socket);
 
   socket.on('disconnect', () => {
     handleSocketDisconnect(socket);
