@@ -64,8 +64,10 @@ function cacheRoute(ttlSeconds = 300) {
       res.set('X-Cache', 'MISS');
 
       // Fire-and-forget: cache only 200 responses; never delay the response.
+      // Promise.resolve() wraps both async (Redis) and sync (in-memory fallback)
+      // returns from cacheService.set() so .catch() is always safe to call.
       if (res.statusCode === 200) {
-        cacheService.set(cacheKey, data, ttlSeconds).catch((err) => {
+        Promise.resolve(cacheService.set(cacheKey, data, ttlSeconds)).catch((err) => {
           logger.error('[Cache] Error setting cache:', err.message);
         });
       }
