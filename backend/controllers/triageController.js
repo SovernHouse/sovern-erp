@@ -336,6 +336,33 @@ exports.clearSyncRequest = async (req, res) => {
   return res.json({ success: true });
 };
 
+// ─── SEND EMAIL (reply / forward / compose from inbox) ───────────────────────
+
+exports.sendEmail = async (req, res) => {
+  const { to, subject, body, cc } = req.body;
+
+  if (!to || !subject || !body) {
+    throw new ValidationError('to, subject, and body are required');
+  }
+
+  const { sendOutreachEmail } = require('../services/emailService');
+
+  try {
+    await sendOutreachEmail({
+      fromAddress: process.env.SMTP_FROM || process.env.SMTP_USER,
+      toAddress: to,
+      subject,
+      bodyText: body,
+      cc: cc || null,
+    });
+  } catch (emailErr) {
+    logger.error('[triage] sendEmail failed:', emailErr.message);
+    throw new ValidationError(`Failed to send email: ${emailErr.message}`);
+  }
+
+  return res.json({ success: true, message: `Email sent to ${to}` });
+};
+
 // ─── BADGE COUNT (for nav bell) ──────────────────────────────────────────────
 
 exports.getPendingCount = async (req, res) => {

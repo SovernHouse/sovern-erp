@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../../services/api';
 import {
   Inbox,
@@ -12,13 +12,14 @@ import {
   Mail,
   Globe,
   Package,
-  Calendar,
   Clock,
   AlertCircle,
   CheckCircle,
   ArrowUpRight,
   MailOpen,
-  Filter,
+  PenLine,
+  Send,
+  Reply,
 } from 'lucide-react';
 
 // ── Brand tokens ──────────────────────────────────────────────────────────────
@@ -49,6 +50,211 @@ const TABS = [
   { key: 'spam',     label: 'Spam' },
 ];
 
+// ── Compose Modal ─────────────────────────────────────────────────────────────
+function ComposeModal({ initial, onClose, onSent }) {
+  const [to,      setTo]      = useState(initial.to      || '');
+  const [cc,      setCc]      = useState(initial.cc      || '');
+  const [subject, setSubject] = useState(initial.subject || '');
+  const [body,    setBody]    = useState(initial.body    || '');
+  const [showCc,  setShowCc]  = useState(!!initial.cc);
+  const [sending, setSending] = useState(false);
+  const [error,   setError]   = useState('');
+  const bodyRef = useRef(null);
+
+  // Focus body on open, but only if To/Subject are already filled
+  useEffect(() => {
+    if (initial.to && initial.subject && bodyRef.current) {
+      bodyRef.current.focus();
+      // Place cursor at the start so user types at top, not in the quoted block
+      bodyRef.current.setSelectionRange(0, 0);
+    }
+  }, []);
+
+  const handleSend = async () => {
+    if (!to.trim())      { setError('To is required.');      return; }
+    if (!subject.trim()) { setError('Subject is required.'); return; }
+    if (!body.trim())    { setError('Body cannot be empty.'); return; }
+
+    setSending(true);
+    setError('');
+    try {
+      await api.post('/triage/send-email', {
+        to: to.trim(),
+        subject: subject.trim(),
+        body: body.trim(),
+        cc: cc.trim() || undefined,
+      });
+      onSent && onSent();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Failed to send email. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleSend();
+    if (e.key === 'Escape') onClose();
+  };
+
+  const fieldStyle = {
+    width: '100%', padding: '8px 10px',
+    border: '1px solid #D1D5DB', borderRadius: 6,
+    fontSize: 13, color: INK, background: '#fff',
+    outline: 'none', boxSizing: 'border-box',
+    fontFamily: 'inherit',
+  };
+
+  const labelStyle = {
+    fontSize: 11, fontWeight: 600, color: '#6B7280',
+    textTransform: 'uppercase', letterSpacing: '0.06em',
+    marginBottom: 4, display: 'block',
+  };
+
+  return (
+    <div
+      onKeyDown={handleKeyDown}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 20,
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{
+        background: '#fff', borderRadius: 12, width: '100%', maxWidth: 620,
+        boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+        display: 'flex', flexDirection: 'column', maxHeight: '90vh',
+      }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 18px', borderBottom: '1px solid #E5E7EB',
+        }}>
+          <span style={{ fontWeight: 700, fontSize: 15, color: INK }}>
+            {initial.mode === 'reply'   ? 'Reply'   :
+             initial.mode === 'forward' ? 'Forward' : 'New Message'}
+          </span>
+          <button onClick={onClose} style={{ color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Fields */}
+        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
+          {/* To */}
+          <div>
+            <label style={labelStyle}>To</label>
+            <input
+              type="email"
+              value={to}
+              onChange={e => setTo(e.target.value)}
+              placeholder="recipient@example.com"
+              style={fieldStyle}
+              autoFocus={!initial.to}
+            />
+          </div>
+
+          {/* CC toggle */}
+          {!showCc ? (
+            <button
+              onClick={() => setShowCc(true)}
+              style={{ alignSelf: 'flex-start', fontSize: 12, color: '#6B7280', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              + Add CC
+            </button>
+          ) : (
+            <div>
+              <label style={labelStyle}>CC</label>
+              <input
+                type="text"
+                value={cc}
+                onChange={e => setCc(e.target.value)}
+                placeholder="cc@example.com"
+                style={fieldStyle}
+              />
+            </div>
+          )}
+
+          {/* Subject */}
+          <div>
+            <label style={labelStyle}>Subject</label>
+            <input
+              type="text"
+              value={subject}
+              onChange={e => setSubject(e.target.value)}
+              placeholder="Subject"
+              style={fieldStyle}
+            />
+          </div>
+
+          {/* Body */}
+          <div>
+            <label style={labelStyle}>Message</label>
+            <textarea
+              ref={bodyRef}
+              value={body}
+              onChange={e => setBody(e.target.value)}
+              placeholder="Write your message here..."
+              rows={10}
+              style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.6, minHeight: 180 }}
+            />
+          </div>
+
+          {error && (
+            <div style={{
+              padding: '8px 12px', borderRadius: 6,
+              background: '#FEF2F2', color: '#DC2626', fontSize: 13,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <AlertCircle size={13} /> {error}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: '12px 18px', borderTop: '1px solid #E5E7EB',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <span style={{ fontSize: 11, color: '#9CA3AF' }}>
+            Cmd+Enter to send · Esc to cancel
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={onClose}
+              style={{
+                padding: '7px 14px', borderRadius: 6, fontSize: 13,
+                border: '1px solid #D1D5DB', background: '#F9FAFB',
+                color: '#374151', cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSend}
+              disabled={sending}
+              style={{
+                padding: '7px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                background: sending ? '#9CA3AF' : FOREST,
+                color: '#fff', border: 'none',
+                cursor: sending ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <Send size={13} />
+              {sending ? 'Sending...' : 'Send'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Intent badge ──────────────────────────────────────────────────────────────
 function IntentBadge({ score }) {
   if (!score) return null;
   const cfg = INTENT_CONFIG[score] || INTENT_CONFIG.low;
@@ -83,7 +289,8 @@ function SuggestedActionBadge({ action }) {
   );
 }
 
-function TriageCard({ item, onAction, loading }) {
+// ── Triage Card ───────────────────────────────────────────────────────────────
+function TriageCard({ item, onAction, onReply, onForward, loading }) {
   const [expanded, setExpanded] = useState(false);
   const isActioned = item.status !== 'pending';
 
@@ -230,29 +437,35 @@ function TriageCard({ item, onAction, loading }) {
         </div>
       )}
 
-      {/* Action buttons — only for pending items */}
-      {item.status === 'pending' && (
-        <div style={{
-          marginTop: 12, marginLeft: 46,
-          display: 'flex', gap: 6, flexWrap: 'wrap',
-        }}>
+      {/* Action buttons */}
+      <div style={{
+        marginTop: 12, marginLeft: 46,
+        display: 'flex', gap: 6, flexWrap: 'wrap',
+      }}>
+        {/* Reply + Forward always available */}
+        <ActionButton
+          icon={Reply} label="Reply" color="#2563EB"
+          onClick={() => onReply(item)}
+        />
+        <ActionButton
+          icon={Forward} label="Forward" color="#0891B2"
+          onClick={() => onForward(item)}
+        />
+
+        {/* Pending-only workflow actions */}
+        {item.status === 'pending' && (<>
           <ActionButton
             icon={UserPlus} label="Promote to Lead" color={FOREST}
             onClick={() => onAction(item.id, 'promote')}
             disabled={loading === item.id}
           />
           <ActionButton
-            icon={Forward} label="Forward to Fanzey" color="#7C3AED"
+            icon={MailOpen} label="Fwd to Fanzey" color="#7C3AED"
             onClick={() => onAction(item.id, 'forward-fanzey')}
             disabled={loading === item.id}
           />
           <ActionButton
-            icon={MailOpen} label="Reply" color="#2563EB"
-            onClick={() => window.open(`mailto:${item.senderEmail}?subject=Re: ${encodeURIComponent(item.subject || '')}`)}
-            disabled={false}
-          />
-          <ActionButton
-            icon={Archive} label="Archive" color="#6B7280"
+            icon={ArchiveIcon} label="Archive" color="#6B7280"
             onClick={() => onAction(item.id, 'archive')}
             disabled={loading === item.id}
           />
@@ -266,8 +479,8 @@ function TriageCard({ item, onAction, loading }) {
             onClick={() => onAction(item.id, 'dismiss')}
             disabled={loading === item.id}
           />
-        </div>
-      )}
+        </>)}
+      </div>
     </div>
   );
 }
@@ -296,8 +509,7 @@ function ActionButton({ icon: Icon, label, color, onClick, disabled }) {
   );
 }
 
-// Archive icon (not in the imported set above)
-function Archive({ size = 14, style }) {
+function ArchiveIcon({ size = 14, style }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
@@ -310,6 +522,52 @@ function Archive({ size = 14, style }) {
   );
 }
 
+// ── Build compose initial state ────────────────────────────────────────────────
+function buildReplyState(item) {
+  const quotedDate = new Date(item.createdAt).toLocaleString();
+  const quotedFrom = item.senderName
+    ? `${item.senderName} <${item.senderEmail}>`
+    : item.senderEmail;
+  const quoted = item.bodySnippet
+    ? `\n\n\n--- Original Message ---\nFrom: ${quotedFrom}\nDate: ${quotedDate}\nSubject: ${item.subject || '(no subject)'}\n\n${item.bodySnippet}`
+    : '';
+
+  return {
+    mode: 'reply',
+    to: item.senderEmail,
+    subject: `Re: ${item.subject || ''}`,
+    body: quoted,
+    cc: '',
+  };
+}
+
+function buildForwardState(item) {
+  const quotedDate = new Date(item.createdAt).toLocaleString();
+  const quotedFrom = item.senderName
+    ? `${item.senderName} <${item.senderEmail}>`
+    : item.senderEmail;
+  const details = [
+    `---------- Forwarded Message ----------`,
+    `From: ${quotedFrom}`,
+    `Date: ${quotedDate}`,
+    `Subject: ${item.subject || '(no subject)'}`,
+    item.senderCompany ? `Company: ${item.senderCompany}` : null,
+    item.country ? `Country: ${item.country}` : null,
+    item.productInterest ? `Product Interest: ${item.productInterest}` : null,
+    ``,
+    item.bodySnippet || '',
+  ].filter(l => l !== null).join('\n');
+
+  return {
+    mode: 'forward',
+    to: '',
+    subject: `Fwd: ${item.subject || ''}`,
+    body: `\n\n${details}`,
+    cc: '',
+  };
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export default function TriageInbox() {
   const [items, setItems]             = useState([]);
   const [loading, setLoading]         = useState(true);
@@ -320,13 +578,13 @@ export default function TriageInbox() {
   const [syncMessage, setSyncMessage] = useState('');
   const [error, setError]             = useState(null);
   const [pagination, setPagination]   = useState({});
+  const [compose, setCompose]         = useState(null); // null | initial state object
 
   const fetchItems = useCallback(async (tab = activeTab) => {
     setLoading(true);
     setError(null);
     try {
       const res = await api.get(`/triage?status=${tab}&limit=50`);
-      // api.js auto-unwraps {success,data} so res.data is the items array directly
       setItems(Array.isArray(res.data) ? res.data : []);
       setPagination(res.pagination || {});
       setPendingCount(res.pendingCount ?? 0);
@@ -339,7 +597,7 @@ export default function TriageInbox() {
 
   useEffect(() => { fetchItems(activeTab); }, [activeTab]);
 
-  // Poll pending count every 2 minutes for badge freshness
+  // Poll pending count every 2 minutes
   useEffect(() => {
     const timer = setInterval(async () => {
       try {
@@ -368,7 +626,6 @@ export default function TriageInbox() {
     try {
       const res = await api.post('/triage/sync-requested');
       setSyncMessage(res.data?.message || 'Sync requested. Check back shortly.');
-      // Refresh after 3s to catch any items the Cowork task may have already posted
       setTimeout(() => { fetchItems(activeTab); setSyncMessage(''); }, 3000);
     } catch (err) {
       setSyncMessage('Sync request failed. Please try again.');
@@ -410,20 +667,38 @@ export default function TriageInbox() {
           )}
         </div>
 
-        <button
-          onClick={handleSyncNow}
-          disabled={syncing}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '8px 14px', borderRadius: 7,
-            background: INK, color: CREAM,
-            border: 'none', cursor: syncing ? 'not-allowed' : 'pointer',
-            fontSize: 13, fontWeight: 500, opacity: syncing ? 0.7 : 1,
-          }}
-        >
-          <RefreshCw size={13} style={{ animation: syncing ? 'spin 1s linear infinite' : 'none' }} />
-          {syncing ? 'Requesting...' : 'Sync Now'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {/* Compose button */}
+          <button
+            onClick={() => setCompose({ mode: 'compose', to: '', subject: '', body: '', cc: '' })}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 7,
+              background: '#F9FAFB', color: INK,
+              border: '1px solid #D1D5DB', cursor: 'pointer',
+              fontSize: 13, fontWeight: 500,
+            }}
+          >
+            <PenLine size={13} />
+            Compose
+          </button>
+
+          {/* Sync button */}
+          <button
+            onClick={handleSyncNow}
+            disabled={syncing}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 7,
+              background: INK, color: CREAM,
+              border: 'none', cursor: syncing ? 'not-allowed' : 'pointer',
+              fontSize: 13, fontWeight: 500, opacity: syncing ? 0.7 : 1,
+            }}
+          >
+            <RefreshCw size={13} style={{ animation: syncing ? 'spin 1s linear infinite' : 'none' }} />
+            {syncing ? 'Requesting...' : 'Sync Now'}
+          </button>
+        </div>
       </div>
 
       {/* Sync message */}
@@ -482,10 +757,7 @@ export default function TriageInbox() {
           Loading...
         </div>
       ) : items.length === 0 ? (
-        <div style={{
-          textAlign: 'center', padding: '60px 0',
-          color: '#6B7280', fontSize: 14,
-        }}>
+        <div style={{ textAlign: 'center', padding: '60px 0', color: '#6B7280', fontSize: 14 }}>
           <Inbox size={32} style={{ color: '#D1D5DB', marginBottom: 10 }} />
           <div>{emptyMessages[activeTab] || 'Nothing here.'}</div>
           {activeTab === 'pending' && (
@@ -501,6 +773,8 @@ export default function TriageInbox() {
               key={item.id}
               item={item}
               onAction={handleAction}
+              onReply={(item) => setCompose(buildReplyState(item))}
+              onForward={(item) => setCompose(buildForwardState(item))}
               loading={actionLoading}
             />
           ))}
@@ -510,6 +784,15 @@ export default function TriageInbox() {
             </div>
           )}
         </div>
+      )}
+
+      {/* ── Compose Modal ── */}
+      {compose && (
+        <ComposeModal
+          initial={compose}
+          onClose={() => setCompose(null)}
+          onSent={() => fetchItems(activeTab)}
+        />
       )}
 
       <style>{`

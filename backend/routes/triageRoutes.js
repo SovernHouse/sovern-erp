@@ -23,6 +23,9 @@ router.patch('/:id/spam', asyncHandler(triageController.markSpam));
 router.patch('/:id/dismiss', asyncHandler(triageController.dismissItem));
 router.patch('/:id/archive', asyncHandler(triageController.archiveItem));
 
+// ─── Send email (reply / forward / compose) ───────────────────────────────────
+router.post('/send-email', asyncHandler(triageController.sendEmail));
+
 // ─── Sync-now mechanism ───────────────────────────────────────────────────────
 router.post('/sync-requested', asyncHandler(triageController.requestSync));
 router.delete('/sync-requested', asyncHandler(triageController.clearSyncRequest));
