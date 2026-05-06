@@ -38,8 +38,17 @@ module.exports = (sequelize) => {
       allowNull: true
     },
     role: {
-      type: DataTypes.ENUM('admin', 'sales', 'operations', 'finance', 'inspector', 'customer', 'factory'),
-      defaultValue: 'customer'
+      type: DataTypes.ENUM(
+        // Core operational roles
+        'admin', 'manager', 'sales', 'operations', 'finance', 'warehouse', 'quality', 'viewer',
+        // Business title roles
+        'ceo', 'coo', 'sales_rep', 'project_manager', 'accountant', 'cashier',
+        'office_manager', 'procurement_officer', 'logistics_coordinator',
+        'qc_inspector', 'customer_service', 'compliance_officer',
+        // Legacy roles (kept for backward compatibility)
+        'inspector', 'customer', 'factory'
+      ),
+      defaultValue: 'viewer'
     },
     isActive: {
       type: DataTypes.BOOLEAN,

@@ -17,6 +17,16 @@ const { getPagination, getPaginatedResponse, getSuccessResponse } = require('../
 const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
 const auditService = require('../services/auditService');
 
+// All roles supported by the RBAC system
+const VALID_ROLES = [
+  'admin', 'manager', 'sales', 'operations', 'finance', 'warehouse', 'quality', 'viewer',
+  'ceo', 'coo', 'sales_rep', 'project_manager', 'accountant', 'cashier',
+  'office_manager', 'procurement_officer', 'logistics_coordinator',
+  'qc_inspector', 'customer_service', 'compliance_officer',
+  // legacy
+  'inspector', 'customer', 'factory',
+];
+
 /**
  * List all users with pagination and filtering
  * @route GET /api/users
@@ -85,7 +95,13 @@ router.get('/:id', requireAuth, requireRole('admin'), async (req, res, next) => 
 // POST / - Create new user (admin only)
 router.post('/', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
-    const { email, password, firstName, lastName, phone, role } = req.body;
+    // Accept either firstName+lastName or a single name field (split on first space)
+    let { email, password, firstName, lastName, phone, role, name, isActive } = req.body;
+    if (!firstName && name) {
+      const parts = name.trim().split(/\s+/);
+      firstName = parts[0];
+      lastName = parts.slice(1).join(' ') || '-';
+    }
 
     if (!email || !password || !firstName || !lastName) {
       throw new ValidationError('Email, password, first name, and last name are required');
@@ -96,8 +112,7 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res, next) => {
       throw new ValidationError('User with this email already exists');
     }
 
-    const validRoles = ['admin', 'sales', 'operations', 'finance', 'inspector', 'customer', 'factory'];
-    if (role && !validRoles.includes(role)) {
+    if (role && !VALID_ROLES.includes(role)) {
       throw new ValidationError('Invalid role provided');
     }
 
@@ -107,8 +122,8 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res, next) => {
       firstName,
       lastName,
       phone: phone || null,
-      role: role || 'customer',
-      isActive: true
+      role: role || 'viewer',
+      isActive: isActive !== undefined ? Boolean(isActive) : true
     });
 
     const result = await db.User.findByPk(user.id, {
@@ -134,15 +149,19 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res, next) => {
 // PUT /:id - Update user (admin only)
 router.put('/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
-    const { firstName, lastName, phone, role } = req.body;
+    let { firstName, lastName, phone, role, isActive, name } = req.body;
+    if (!firstName && name) {
+      const parts = name.trim().split(/\s+/);
+      firstName = parts[0];
+      lastName = parts.slice(1).join(' ') || '-';
+    }
 
     const user = await db.User.findByPk(req.params.id);
     if (!user) {
       throw new NotFoundError('User not found');
     }
 
-    const validRoles = ['admin', 'sales', 'operations', 'finance', 'inspector', 'customer', 'factory'];
-    if (role && !validRoles.includes(role)) {
+    if (role && !VALID_ROLES.includes(role)) {
       throw new ValidationError('Invalid role provided');
     }
 
@@ -150,14 +169,21 @@ router.put('/:id', requireAuth, requireRole('admin'), async (req, res, next) => 
       firstName: user.firstName,
       lastName: user.lastName,
       phone: user.phone,
-      role: user.role
+      role: user.role,
+      isActive: user.isActive,
     };
+
+    // Prevent admin from deactivating themselves
+    if (isActive === false && user.id === req.user.id) {
+      throw new ValidationError('Cannot deactivate your own account');
+    }
 
     await user.update({
       firstName: firstName || user.firstName,
       lastName: lastName || user.lastName,
       phone: phone !== undefined ? phone : user.phone,
-      role: role || user.role
+      role: role || user.role,
+      ...(isActive !== undefined && { isActive: Boolean(isActive) }),
     });
 
     const result = await db.User.findByPk(user.id, {
@@ -224,8 +250,7 @@ router.patch('/:id/role', requireAuth, requireRole('admin'), async (req, res, ne
       throw new ValidationError('Role is required');
     }
 
-    const validRoles = ['admin', 'sales', 'operations', 'finance', 'inspector', 'customer', 'factory'];
-    if (!validRoles.includes(role)) {
+    if (!VALID_ROLES.includes(role)) {
       throw new ValidationError('Invalid role provided');
     }
 
@@ -251,6 +276,54 @@ router.patch('/:id/role', requireAuth, requireRole('admin'), async (req, res, ne
       user.id,
       { previousRole, newRole: role },
       req.ip
+    ).catch(() => {});
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PATCH /:id/activate - Toggle user active status (admin only)
+router.patch('/:id/activate', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const user = await db.User.findByPk(req.params.id);
+    if (!user) throw new NotFoundError('User not found');
+    if (user.id === req.user.id) throw new ValidationError('Cannot deactivate your own account');
+
+    const newActive = !user.isActive;
+    await user.update({ isActive: newActive });
+
+    const result = await db.User.findByPk(user.id, {
+      attributes: { exclude: ['password', 'resetToken', 'resetExpiry'] }
+    });
+
+    res.json(getSuccessResponse(result, `User ${newActive ? 'activated' : 'deactivated'} successfully`));
+
+    auditService.logAction(
+      req.user.id, newActive ? 'ACTIVATE' : 'DEACTIVATE', 'User', user.id,
+      { isActive: newActive }, req.ip
+    ).catch(() => {});
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PATCH /:id/reset-password - Reset another user's password (admin only)
+router.patch('/:id/reset-password', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { password } = req.body;
+    if (!password || password.length < 6) {
+      throw new ValidationError('Password must be at least 6 characters');
+    }
+
+    const user = await db.User.findByPk(req.params.id);
+    if (!user) throw new NotFoundError('User not found');
+
+    await user.update({ password });
+
+    res.json(getSuccessResponse(null, 'Password reset successfully'));
+
+    auditService.logAction(
+      req.user.id, 'RESET_PASSWORD', 'User', user.id, {}, req.ip
     ).catch(() => {});
   } catch (error) {
     next(error);

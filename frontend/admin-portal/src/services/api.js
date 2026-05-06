@@ -304,6 +304,8 @@ export const usersAPI = {
   update: (id, data) => api.put(`/users/${id}`, data),
   delete: (id) => api.delete(`/users/${id}`),
   assignRole: (id, role) => api.patch(`/users/${id}/role`, { role }),
+  toggleActive: (id) => api.patch(`/users/${id}/activate`),
+  resetPassword: (id, password) => api.patch(`/users/${id}/reset-password`, { password }),
 }
 
 // Settings endpoints
@@ -474,6 +476,35 @@ export const activitiesAPI = {
   markDone:        (id, data)   => api.put(`/scheduled-activities/${id}/done`, data || {}),
   reschedule:      (id, data)   => api.put(`/scheduled-activities/${id}/reschedule`, data),
   cancel:          (id)         => api.delete(`/scheduled-activities/${id}`),
+}
+
+// Internal Chat (omnichannel inbox)
+export const chatAPI = {
+  // Utility
+  listUsers:          (params)        => api.get('/chat/users', { params }),
+
+  // Rooms
+  listRooms:          ()              => api.get('/chat/rooms'),
+  createRoom:         (data)          => api.post('/chat/rooms', data),
+  getOrCreateDM:      (userId)        => api.post('/chat/rooms/dm', { userId }),
+  getRoom:            (id)            => api.get(`/chat/rooms/${id}`),
+  updateRoom:         (id, data)      => api.patch(`/chat/rooms/${id}`, data),
+  deleteRoom:         (id)            => api.delete(`/chat/rooms/${id}`),
+
+  // Members
+  listMembers:        (id)            => api.get(`/chat/rooms/${id}/members`),
+  addMembers:         (id, userIds)   => api.post(`/chat/rooms/${id}/members`, { userIds }),
+  removeMember:       (id, uid)       => api.delete(`/chat/rooms/${id}/members/${uid}`),
+
+  // Messages
+  listMessages:       (id, params)    => api.get(`/chat/rooms/${id}/messages`, { params }),
+  sendMessage:        (id, data)      => api.post(`/chat/rooms/${id}/messages`, data),
+  editMessage:        (id, mid, data) => api.patch(`/chat/rooms/${id}/messages/${mid}`, data),
+  deleteMessage:      (id, mid)       => api.delete(`/chat/rooms/${id}/messages/${mid}`),
+  toggleReaction:     (id, mid, emoji)=> api.post(`/chat/rooms/${id}/messages/${mid}/react`, { emoji }),
+
+  // Read receipts
+  markRead:           (id)            => api.post(`/chat/rooms/${id}/read`),
 }
 
 export default api
