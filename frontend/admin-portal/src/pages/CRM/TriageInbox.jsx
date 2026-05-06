@@ -228,8 +228,8 @@ function ComposeModal({ initial, onClose, onSent }) {
               value={body}
               onChange={e => setBody(e.target.value)}
               placeholder="Write your message here..."
-              rows={9}
-              style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.6, minHeight: 160 }}
+              rows={6}
+              style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.6, minHeight: 120 }}
             />
           </div>
 
