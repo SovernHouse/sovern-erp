@@ -3,6 +3,7 @@
 // Auth guard: if no valid token in SecureStore, redirect to /login.
 
 import { useEffect, useState } from 'react';
+import { View, Text } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
@@ -10,6 +11,31 @@ import { useRouter, useSegments } from 'expo-router';
 import { useAuthStore } from '../src/store/authStore';
 import { CONFIG, COLORS } from '../src/constants/config';
 import type { User } from '../src/services/api';
+
+// ─── Error Boundary ───────────────────────────────────────────────────────────
+// Catches render errors in any screen and shows a readable message instead of
+// a blank white screen.
+export function ErrorBoundary({ error }: { error: Error }) {
+  return (
+    <View style={{
+      flex: 1, justifyContent: 'center', alignItems: 'center',
+      padding: 28, backgroundColor: COLORS.cream,
+    }}>
+      <Text style={{ fontSize: 36, marginBottom: 16 }}>⚠️</Text>
+      <Text style={{
+        fontSize: 17, fontWeight: '700', color: COLORS.ink,
+        marginBottom: 8, textAlign: 'center',
+      }}>
+        Something went wrong
+      </Text>
+      <Text style={{
+        fontSize: 13, color: COLORS.muted, textAlign: 'center', lineHeight: 20,
+      }}>
+        {error.message}
+      </Text>
+    </View>
+  );
+}
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);

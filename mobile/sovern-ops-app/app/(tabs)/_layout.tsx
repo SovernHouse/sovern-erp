@@ -1,51 +1,117 @@
-// ─── Tab Navigator ────────────────────────────────────────────────────────
+// ─── Tab Navigator — Odoo-style Home Grid ─────────────────────────────────────
+// 4 visible tabs: Home, Inbox, Chat, Settings.
+// All other screens are accessible via the Home grid (dashboard.tsx) and are
+// registered as tabs here so Expo Router can route to them, but they are not
+// shown in the custom tab bar.
+// When the user is inside any secondary module (Leads, Quotations, etc.),
+// the Home tab stays active in the bar — same pattern as Odoo Mobile.
+
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../src/constants/config';
 
-function TabIcon({ icon, focused }: { icon: string; focused: boolean }) {
+// Tabs that have their own bottom-nav slot
+const PRIMARY_TABS = new Set(['triage', 'chat', 'settings']);
+
+const NAV_ITEMS = [
+  { name: 'dashboard', icon: '🏠', label: 'Home' },
+  { name: 'triage',   icon: '📥', label: 'Inbox' },
+  { name: 'chat',     icon: '🗨️', label: 'Chat' },
+  { name: 'settings', icon: '⚙️', label: 'Settings' },
+] as const;
+
+// ─── Custom Tab Bar ───────────────────────────────────────────────────────────
+
+function CustomTabBar({ state, navigation }: any) {
+  const insets = useSafeAreaInsets();
+  const currentRoute: string = state.routes[state.index]?.name ?? 'dashboard';
+
+  // If the current route is a secondary module (Leads, Quotations, etc.),
+  // highlight Home as the active tab.
+  const activeTab = PRIMARY_TABS.has(currentRoute) ? currentRoute : 'dashboard';
+
   return (
-    <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>{icon}</Text>
+    <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+      {NAV_ITEMS.map(tab => {
+        const isActive = activeTab === tab.name;
+        return (
+          <TouchableOpacity
+            key={tab.name}
+            style={styles.tabItem}
+            onPress={() => navigation.navigate(tab.name)}
+            activeOpacity={0.7}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: isActive }}
+            accessibilityLabel={tab.label}
+          >
+            <Text style={[styles.tabIcon, { opacity: isActive ? 1 : 0.4 }]}>
+              {tab.icon}
+            </Text>
+            <Text style={[
+              styles.tabLabel,
+              {
+                color: isActive ? COLORS.forest : COLORS.muted,
+                fontWeight: isActive ? '700' : '400',
+              },
+            ]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  bar: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.white,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 8,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingVertical: 4,
+  },
+  tabIcon:  { fontSize: 22 },
+  tabLabel: { fontSize: 11 },
+});
+
+// ─── Layout ───────────────────────────────────────────────────────────────────
 
 export default function TabLayout() {
   return (
     <Tabs
+      tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{
-        tabBarActiveTintColor: COLORS.forest,
-        tabBarInactiveTintColor: COLORS.muted,
-        tabBarStyle: {
-          backgroundColor: COLORS.white,
-          borderTopColor: COLORS.border,
-        },
-        tabBarScrollEnabled: true,
         headerStyle: { backgroundColor: COLORS.forest },
         headerTintColor: COLORS.white,
         headerTitleStyle: { fontWeight: '700' },
       }}
     >
-      {/* — Decision surfaces (top of nav, things that need your attention) — */}
-      <Tabs.Screen name="dashboard" options={{ title: 'Dashboard', tabBarIcon: ({ focused }) => <TabIcon icon="📊" focused={focused} /> }} />
-      <Tabs.Screen name="triage"    options={{ title: 'Inbox',    tabBarIcon: ({ focused }) => <TabIcon icon="📥" focused={focused} /> }} />
-      <Tabs.Screen name="approvals" options={{ title: 'Approvals', tabBarIcon: ({ focused }) => <TabIcon icon="✅" focused={focused} /> }} />
-      <Tabs.Screen name="activities" options={{ title: 'Activities', tabBarIcon: ({ focused }) => <TabIcon icon="🗓️" focused={focused} /> }} />
-      <Tabs.Screen name="chat"       options={{ title: 'Chat',       tabBarIcon: ({ focused }) => <TabIcon icon="🗨️" focused={focused} /> }} />
+      {/* -- Visible in bottom nav ------------------------------------------ */}
+      <Tabs.Screen name="dashboard" options={{ title: 'Home' }} />
+      <Tabs.Screen name="triage"    options={{ title: 'Inbox' }} />
+      <Tabs.Screen name="chat"      options={{ title: 'Chat' }} />
+      <Tabs.Screen name="settings"  options={{ title: 'Settings' }} />
 
-      {/* — CRM — */}
-      <Tabs.Screen name="inquiries"   options={{ title: 'Inquiries',   tabBarIcon: ({ focused }) => <TabIcon icon="📨" focused={focused} /> }} />
-      <Tabs.Screen name="leads"       options={{ title: 'Leads',       tabBarIcon: ({ focused }) => <TabIcon icon="👥" focused={focused} /> }} />
-      <Tabs.Screen name="quotations"  options={{ title: 'Quotations',  tabBarIcon: ({ focused }) => <TabIcon icon="💬" focused={focused} /> }} />
-
-      {/* — Operations (read-only on the road) — */}
-      <Tabs.Screen name="shipments" options={{ title: 'Shipments', tabBarIcon: ({ focused }) => <TabIcon icon="🚢" focused={focused} /> }} />
-      <Tabs.Screen name="invoices"  options={{ title: 'Invoices',  tabBarIcon: ({ focused }) => <TabIcon icon="🧾" focused={focused} /> }} />
-      <Tabs.Screen name="purchase-orders" options={{ title: 'POs', tabBarIcon: ({ focused }) => <TabIcon icon="📋" focused={focused} /> }} />
-
-      {/* — Reference data — */}
-      <Tabs.Screen name="products"  options={{ title: 'Products',  tabBarIcon: ({ focused }) => <TabIcon icon="📦" focused={focused} /> }} />
-      <Tabs.Screen name="customers" options={{ title: 'Customers', tabBarIcon: ({ focused }) => <TabIcon icon="🏢" focused={focused} /> }} />
-      <Tabs.Screen name="settings"  options={{ title: 'Settings',  tabBarIcon: ({ focused }) => <TabIcon icon="⚙️" focused={focused} /> }} />
+      {/* -- Accessible via Home grid, not in tab bar ----------------------- */}
+      <Tabs.Screen name="leads"           options={{ title: 'Leads' }} />
+      <Tabs.Screen name="quotations"      options={{ title: 'Quotations' }} />
+      <Tabs.Screen name="inquiries"       options={{ title: 'Inquiries' }} />
+      <Tabs.Screen name="approvals"       options={{ title: 'Approvals' }} />
+      <Tabs.Screen name="activities"      options={{ title: 'Activities' }} />
+      <Tabs.Screen name="shipments"       options={{ title: 'Shipments' }} />
+      <Tabs.Screen name="invoices"        options={{ title: 'Invoices' }} />
+      <Tabs.Screen name="purchase-orders" options={{ title: 'Purchase Orders' }} />
+      <Tabs.Screen name="products"        options={{ title: 'Products' }} />
+      <Tabs.Screen name="customers"       options={{ title: 'Customers' }} />
     </Tabs>
-  )
+  );
 }
