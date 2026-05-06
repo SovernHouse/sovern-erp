@@ -284,29 +284,31 @@ exports.archiveItem = async (req, res) => {
 // Sets a flag the Cowork task checks; does not trigger inline processing.
 
 exports.requestSync = async (req, res) => {
-  // Store sync request as a singleton record in TriageItem with a special sentinel
-  // gmailMessageId so we can find it by convention.
+  // Singleton sentinel row — identified by gmailMessageId, not id.
+  // findOrCreate avoids the SequelizeUniqueConstraintError that upsert(id: newUUID)
+  // causes: Sequelize/SQLite sees it as a fresh INSERT and the unique constraint on
+  // gmailMessageId fires because the sentinel already exists.
   const SYNC_SENTINEL = '__sync_requested__';
+  const now = new Date();
 
-  await db.TriageItem.upsert({
-    id: uuidv4(),
-    gmailMessageId: SYNC_SENTINEL,
-    senderEmail: 'system@internal',
-    status: 'dismissed', // never shows in UI
-    syncRequestedAt: new Date(),
-    autoArchiveAt: new Date(Date.now() + 86400000),
+  const [sentinel, created] = await db.TriageItem.findOrCreate({
+    where: { gmailMessageId: SYNC_SENTINEL },
+    defaults: {
+      senderEmail: 'system@internal',
+      status: 'dismissed', // never shows in UI
+      syncRequestedAt: now,
+      autoArchiveAt: new Date(now.getTime() + 86400000),
+    },
   });
 
-  // Also update any existing sentinel row
-  await db.TriageItem.update(
-    { syncRequestedAt: new Date() },
-    { where: { gmailMessageId: SYNC_SENTINEL } }
-  );
+  if (!created) {
+    await sentinel.update({ syncRequestedAt: now });
+  }
 
   return res.json({
     success: true,
     message: 'Sync requested. The Cowork task will pick this up on its next run (within ~1 min if recent activity, or next scheduled interval).',
-    requestedAt: new Date().toISOString(),
+    requestedAt: now.toISOString(),
   });
 };
 
