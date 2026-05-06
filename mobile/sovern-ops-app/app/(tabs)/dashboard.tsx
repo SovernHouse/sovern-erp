@@ -27,6 +27,7 @@ const MODULES = [
   { icon: '📋', label: 'Purchase Orders', route: '/(tabs)/purchase-orders' },
   { icon: '📦', label: 'Products',        route: '/(tabs)/products' },
   { icon: '🏢', label: 'Customers',       route: '/(tabs)/customers' },
+  { icon: '✦',  label: 'AI Assistant',   route: '/(tabs)/assistant' },
 ] as const;
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
