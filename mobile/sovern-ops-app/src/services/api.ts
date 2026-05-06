@@ -295,7 +295,9 @@ export interface Product {
 
 export interface Customer {
   id: string;
-  name: string;
+  // Backend returns companyName; name is kept for compat with any legacy callers
+  companyName?: string;
+  name?: string;
   email?: string;
   phone?: string;
   country?: string;

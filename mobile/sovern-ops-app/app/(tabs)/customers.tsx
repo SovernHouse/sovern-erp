@@ -11,7 +11,8 @@ import { COLORS } from '../../src/constants/config';
 // ─── Customer Row ─────────────────────────────────────────────────────────
 
 function CustomerRow({ customer, onPress }: { customer: Customer; onPress: () => void }) {
-  const initials = customer.name
+  const displayName = customer.companyName ?? customer.name ?? '';
+  const initials = displayName
     .split(' ')
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase() ?? '')
@@ -23,7 +24,7 @@ function CustomerRow({ customer, onPress }: { customer: Customer; onPress: () =>
         <Text style={styles.avatarText}>{initials}</Text>
       </View>
       <View style={styles.rowBody}>
-        <Text style={styles.name}>{customer.name}</Text>
+        <Text style={styles.name}>{displayName}</Text>
         {customer.contactPerson ? (
           <Text style={styles.sub}>{customer.contactPerson}</Text>
         ) : null}
@@ -81,18 +82,19 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
     );
   }
 
-  const initials = customer?.name
+  const detailName = customer?.companyName ?? customer?.name ?? '';
+  const initials = detailName
     .split(' ')
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('') ?? '?';
+    .join('') || '?';
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalContainer}>
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle} numberOfLines={1}>
-            {loading ? 'Loading…' : (customer?.name ?? 'Customer')}
+            {loading ? 'Loading…' : (customer?.companyName ?? customer?.name ?? 'Customer')}
           </Text>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Text style={styles.closeBtnText}>✕</Text>
@@ -166,7 +168,7 @@ export default function CustomersScreen() {
       q
         ? customers.filter(
             (c) =>
-              c.name.toLowerCase().includes(q) ||
+              (c.companyName ?? c.name ?? '').toLowerCase().includes(q) ||
               (c.contactPerson ?? '').toLowerCase().includes(q) ||
               (c.country ?? '').toLowerCase().includes(q) ||
               (c.email ?? '').toLowerCase().includes(q)
