@@ -25,7 +25,18 @@ module.exports = (sequelize) => {
     },
     costPrice: {
       type: DataTypes.DECIMAL(12, 2),
-      allowNull: false
+      allowNull: false,
+      comment: 'FOB price — cost at origin port'
+    },
+    exwPrice: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true,
+      comment: 'EXW price — ex-works, at factory gate (before freight to port)'
+    },
+    priceType: {
+      type: DataTypes.ENUM('FOB', 'CIF', 'EXW', 'CFR', 'DDP'),
+      defaultValue: 'FOB',
+      comment: 'Primary Incoterm for costPrice'
     },
     markup: {
       type: DataTypes.DECIMAL(5, 2),

@@ -193,6 +193,17 @@ module.exports = (sequelize) => {
       comment: 'Plank, Herringbone, Chevron, Wide Plank, Long Plank, Parquet'
     },
 
+    // ── Visibility ──
+    clientVisibleFields: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: ['flooringType', 'length', 'width', 'thickness', 'wearLayerThickness', 'acRating',
+        'waterproof', 'surfaceFinish', 'surfaceTexture', 'colorPattern', 'edgeType', 'format',
+        'installationMethod', 'sqmPerBox', 'sqftPerBox', 'planksPerBox',
+        'warrantyResidential', 'warrantyCommercial', 'certifications', 'origin'],
+      comment: 'Array of field names shown to clients on quotations. All fields shown on supplier POs.'
+    },
+
     // ── General ──
     notes: {
       type: DataTypes.TEXT,

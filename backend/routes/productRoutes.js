@@ -65,6 +65,9 @@ router.put('/:id', requireAuth, requireAny('products'),
 );
 
 router.get('/:id/price-history', requireAuth, productController.getPriceHistory);
+router.post('/:id/prices', requireAuth, requireAny('products'), productController.createPrice);
+router.put('/:id/prices/:priceId', requireAuth, requireAny('products'), productController.updatePrice);
+router.delete('/:id/prices/:priceId', requireAuth, requireAny('products'), productController.deletePrice);
 
 router.get('/category/:categoryId', requireAuth, productController.getByCategory);
 

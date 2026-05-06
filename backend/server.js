@@ -470,6 +470,14 @@ db.sequelize.authenticate()
     // Required because sequelize.sync() only creates missing tables, never adds missing columns.
     const additiveMigrations = [
       'ALTER TABLE TriageItems ADD COLUMN sync_requested_at DATETIME',
+      // Product dual-description fields (client-facing vs supplier-facing)
+      'ALTER TABLE Products ADD COLUMN sales_description TEXT',
+      'ALTER TABLE Products ADD COLUMN purchase_description TEXT',
+      // ProductPrice Incoterm fields
+      'ALTER TABLE ProductPrices ADD COLUMN exw_price DECIMAL(12,2)',
+      "ALTER TABLE ProductPrices ADD COLUMN price_type VARCHAR(10) DEFAULT 'FOB'",
+      // ProductSpecification client-visible fields selector
+      'ALTER TABLE ProductSpecifications ADD COLUMN client_visible_fields TEXT',
     ];
     for (const sql of additiveMigrations) {
       try {

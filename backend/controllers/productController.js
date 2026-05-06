@@ -119,7 +119,7 @@ const getById = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, description, unit, specifications, images, minOrderQty, weight, hsCode, isActive } = req.body;
+    const { name, description, salesDescription, purchaseDescription, unit, specifications, images, minOrderQty, weight, hsCode, isActive } = req.body;
 
     const product = await db.Product.findByPk(id);
     if (!product || product.deletedAt) {
@@ -131,6 +131,8 @@ const update = async (req, res, next) => {
     await product.update({
       name: name || product.name,
       description: description !== undefined ? description : product.description,
+      salesDescription: salesDescription !== undefined ? salesDescription : product.salesDescription,
+      purchaseDescription: purchaseDescription !== undefined ? purchaseDescription : product.purchaseDescription,
       unit: unit || product.unit,
       specifications: specifications || product.specifications,
       images: images || product.images,
@@ -183,6 +185,106 @@ const getByCategory = async (req, res, next) => {
     ]);
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
+  } catch (error) {
+    next(error);
+  }
+};
+
+const createPrice = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { factoryId, costPrice, exwPrice, priceType, markup, sellingPrice, currency, validFrom, validTo } = req.body;
+
+    const product = await db.Product.findByPk(id);
+    if (!product || product.deletedAt) throw new NotFoundError('Product not found');
+
+    const factory = await db.Factory.findByPk(factoryId);
+    if (!factory) throw new NotFoundError('Factory not found');
+
+    if (!costPrice || isNaN(parseFloat(costPrice))) throw new ValidationError('costPrice is required');
+
+    const markupPct = parseFloat(markup) || 20;
+    // Sovern margin formula: sell = cost / (1 - margin%)
+    const computedSell = sellingPrice || parseFloat(costPrice) / (1 - markupPct / 100);
+
+    // Deactivate any existing active price for this factory on this product
+    await db.ProductPrice.update(
+      { isActive: false },
+      { where: { productId: id, factoryId, isActive: true } }
+    );
+
+    const price = await db.ProductPrice.create({
+      id: uuidv4(),
+      productId: id,
+      factoryId,
+      costPrice: parseFloat(costPrice),
+      exwPrice: exwPrice ? parseFloat(exwPrice) : null,
+      priceType: priceType || 'FOB',
+      markup: markupPct,
+      sellingPrice: parseFloat(computedSell.toFixed(2)),
+      currency: currency || 'USD',
+      validFrom: validFrom || new Date(),
+      validTo: validTo || null,
+      isActive: true
+    });
+
+    const result = await db.ProductPrice.findByPk(price.id, {
+      include: [{ model: db.Factory, as: 'factory', attributes: ['id', 'companyName'] }]
+    });
+
+    res.status(201).json(getSuccessResponse(result, 'Price added successfully'));
+    auditService.logAction(req.user.id, 'CREATE', 'ProductPrice', price.id, { productId: id }, req.ip).catch(() => {});
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updatePrice = async (req, res, next) => {
+  try {
+    const { id, priceId } = req.params;
+    const { costPrice, exwPrice, priceType, markup, sellingPrice, currency, validTo, isActive } = req.body;
+
+    const price = await db.ProductPrice.findOne({ where: { id: priceId, productId: id } });
+    if (!price) throw new NotFoundError('Price record not found');
+
+    const newCost = costPrice !== undefined ? parseFloat(costPrice) : price.costPrice;
+    const newMarkup = markup !== undefined ? parseFloat(markup) : price.markup;
+    // Recalculate sell price if cost or markup changed and sellingPrice not explicitly provided
+    const newSell = sellingPrice !== undefined
+      ? parseFloat(sellingPrice)
+      : parseFloat(newCost) / (1 - newMarkup / 100);
+
+    await price.update({
+      costPrice: newCost,
+      exwPrice: exwPrice !== undefined ? (exwPrice ? parseFloat(exwPrice) : null) : price.exwPrice,
+      priceType: priceType || price.priceType,
+      markup: newMarkup,
+      sellingPrice: parseFloat(newSell.toFixed(2)),
+      currency: currency || price.currency,
+      validTo: validTo !== undefined ? validTo : price.validTo,
+      isActive: isActive !== undefined ? isActive : price.isActive
+    });
+
+    const result = await db.ProductPrice.findByPk(priceId, {
+      include: [{ model: db.Factory, as: 'factory', attributes: ['id', 'companyName'] }]
+    });
+
+    res.json(getSuccessResponse(result, 'Price updated successfully'));
+    auditService.logAction(req.user.id, 'UPDATE', 'ProductPrice', priceId, { productId: id }, req.ip).catch(() => {});
+  } catch (error) {
+    next(error);
+  }
+};
+
+const deletePrice = async (req, res, next) => {
+  try {
+    const { id, priceId } = req.params;
+    const price = await db.ProductPrice.findOne({ where: { id: priceId, productId: id } });
+    if (!price) throw new NotFoundError('Price record not found');
+
+    await price.destroy();
+    res.json(getSuccessResponse({ id: priceId }, 'Price deleted successfully'));
+    auditService.logAction(req.user.id, 'DELETE', 'ProductPrice', priceId, { productId: id }, req.ip).catch(() => {});
   } catch (error) {
     next(error);
   }
@@ -302,6 +404,9 @@ module.exports = {
   getById,
   update,
   getByCategory,
+  createPrice,
+  updatePrice,
+  deletePrice,
   getPriceHistory,
   search,
   bulkUpdate,

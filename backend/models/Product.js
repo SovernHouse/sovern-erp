@@ -20,6 +20,16 @@ module.exports = (sequelize) => {
       type: DataTypes.TEXT,
       allowNull: true
     },
+    salesDescription: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: 'Client-facing description shown on quotations and sales orders'
+    },
+    purchaseDescription: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: 'Supplier-facing description shown on purchase orders — may include QC requirements, tolerances, certifications'
+    },
     categoryId: {
       type: DataTypes.UUID,
       allowNull: false
