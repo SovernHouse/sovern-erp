@@ -23,14 +23,11 @@ const requestLogging = (req, res, next) => {
     userId: req.user?.id || 'anonymous'
   });
 
-  // Capture original res.json and res.end
-  const originalJson = res.json.bind(res);
+  // Only intercept res.end to log the response.
+  // Do NOT override res.json — it calls res.send internally, which calls res.end,
+  // so the end handler below already captures every JSON response. Overriding
+  // res.json here too creates a double-chain when combined with apmMiddleware.
   const originalEnd = res.end.bind(res);
-
-  res.json = function(data) {
-    res.locals.jsonData = data;
-    return originalJson(data);
-  };
 
   res.end = function(chunk, encoding) {
     const duration = Date.now() - start;
