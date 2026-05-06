@@ -296,7 +296,16 @@ export const dashboardAPI = {
   getRoleConfig: (role) => api.get(`/dashboard/role/${role}`),
   getAvailableWidgets: () => api.get('/dashboard/widgets'),
   saveLayout: (data) => api.post('/dashboard/layout', data),
+  getLayout: () => api.get('/dashboard/layout'),
   getKPIs: () => api.get('/dashboard/kpi'),
+}
+
+// Calendar endpoints
+export const calendarAPI = {
+  getEvents: (params) => api.get('/calendar/events', { params }),
+  getEvent: (id) => api.get(`/calendar/events/${id}`),
+  getToday: () => api.get('/calendar/today'),
+  linkLead: (id, leadId) => api.patch(`/calendar/events/${id}/link-lead`, { leadId }),
 }
 
 // Users endpoints

@@ -11,7 +11,7 @@ import LoadingFallback from './components/LoadingFallback'
 
 const Login          = React.lazy(() => import('./pages/Auth/Login'))
 const ForgotPassword = React.lazy(() => import('./pages/Auth/ForgotPassword'))
-const Dashboard      = React.lazy(() => import('./pages/Dashboard'))
+const Dashboard      = React.lazy(() => import('./pages/Dashboard/ConfigurableDashboard'))
 
 // Customers
 const CustomerList   = React.lazy(() => import('./pages/Customers/CustomerList'))

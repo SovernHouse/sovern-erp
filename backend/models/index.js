@@ -103,6 +103,7 @@ db.RolePermission = require('./RolePermission')(sequelize);
 
 // Google Workspace integration
 db.ConnectedGoogleAccount = require('./ConnectedGoogleAccount')(sequelize);
+db.CalendarEvent = require('./CalendarEvent')(sequelize);
 
 // AI Assistant conversations
 db.AIConversation = require('./AIConversation')(sequelize);
@@ -553,5 +554,20 @@ db.ChatRoomMember.associate(db);
 // Additional User-side associations
 db.User.hasMany(db.ChatRoomMember, { foreignKey: 'userId', as: 'chatMemberships', onDelete: 'CASCADE' });
 db.User.hasMany(db.ChatMessage, { foreignKey: 'senderId', as: 'chatMessages' });
+
+// CalendarEvent associations (CalendarEvent.associate already ran above; add reverse side here)
+if (db.ConnectedGoogleAccount && db.CalendarEvent) {
+  db.ConnectedGoogleAccount.hasMany(db.CalendarEvent, {
+    foreignKey: 'connectedAccountId',
+    as: 'calendarEvents',
+    onDelete: 'CASCADE',
+  });
+}
+if (db.Lead && db.CalendarEvent) {
+  db.Lead.hasMany(db.CalendarEvent, {
+    foreignKey: 'linkedLeadId',
+    as: 'calendarEvents',
+  });
+}
 
 module.exports = db; 

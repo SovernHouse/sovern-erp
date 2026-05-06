@@ -167,6 +167,7 @@ const crmRoutes = require('./routes/crm');
 const approvalRoutes = require('./routes/approvalRoutes');
 const triageRoutes = require('./routes/triageRoutes');
 const googleRoutes = require('./routes/googleRoutes');
+const calendarRoutes = require('./routes/calendarRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 
 app.use('/api/auth', authRoutes);
@@ -220,6 +221,7 @@ app.use('/api/crm', crmRoutes);
 app.use('/api/approvals', approvalRoutes);
 app.use('/api/triage', triageRoutes);
 app.use('/api/google', googleRoutes);
+app.use('/api/calendar', calendarRoutes);
 app.use('/api/ai', aiRoutes);
 
 // Chatter (polymorphic message thread)
@@ -589,6 +591,24 @@ db.sequelize.authenticate()
           logger.warn('[gmail-sync] googleapis not installed. Run: npm install (in backend directory)');
         } else {
           logger.error('[gmail-sync] Failed to initialize Gmail sync:', error.message);
+        }
+      }
+    }
+
+    // Initialize Google Calendar sync scheduler (every 15 minutes)
+    if (process.env.DISABLE_CALENDAR_SYNC !== 'true') {
+      try {
+        const cron = require('node-cron');
+        const { runCalendarSync } = require('./services/calendarSyncService');
+        cron.schedule('*/15 * * * *', () => {
+          runCalendarSync().catch(err => logger.error('[calendar-sync] Cron error:', err.message));
+        });
+        logger.info('[calendar-sync] Calendar sync scheduler initialized (every 15 min)');
+      } catch (error) {
+        if (error.code === 'MODULE_NOT_FOUND' && error.message.includes('googleapis')) {
+          logger.warn('[calendar-sync] googleapis not installed — skipping Calendar sync');
+        } else {
+          logger.error('[calendar-sync] Failed to initialize Calendar sync:', error.message);
         }
       }
     }
