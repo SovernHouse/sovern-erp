@@ -81,7 +81,7 @@ describe('Model Validations', () => {
       }
     });
 
-    it('should have default role as customer', async () => {
+    it('should have default role as viewer', async () => {
       const user = await db.User.create({
         id: uuidv4(),
         email: `default-${uuidv4()}@example.com`,
@@ -90,7 +90,7 @@ describe('Model Validations', () => {
         lastName: 'Doe'
       });
 
-      expect(user.role).toBe('customer');
+      expect(user.role).toBe('viewer');
     });
   });
 
