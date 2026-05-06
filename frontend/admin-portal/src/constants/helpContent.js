@@ -648,6 +648,66 @@ export const HELP_CONTENT = {
     ],
   },
 
+  // ── AI Assistant ──────────────────────────────────────────────────────────
+  '/ai/assistant': {
+    title: 'AI Assistant',
+    summary: 'Sovern AI is a context-aware trade assistant powered by Claude. It reads a live snapshot of your ERP — pipeline counts, triage items, recent quotations — before every reply, so you can ask operational questions in plain English.',
+    sections: [
+      {
+        heading: 'What the AI knows',
+        items: [
+          'Lead pipeline: counts by stage and the top 5 pending triage items.',
+          'Recent quotations: status, customer, and value of the last 5 quotations.',
+          'Upcoming activities: scheduled follow-ups and meetings due within 7 days.',
+          'Connected Google accounts: which mailboxes are synced.',
+          'Company context: Sovern House business model, Incoterms rules, margin formula, key contacts.',
+          'The AI does NOT have access to individual emails, documents, or financial records.',
+        ],
+      },
+      {
+        heading: 'Starting a conversation',
+        steps: [
+          'Click "New conversation" or tap a suggested prompt on the welcome screen.',
+          'Type your question and press Enter (Shift+Enter for a new line).',
+          'The AI responds with context drawn from your live ERP data.',
+          'Continue the thread — the AI remembers earlier messages in the conversation.',
+          'Start a new conversation to reset context.',
+        ],
+      },
+      {
+        heading: 'What you can ask',
+        items: [
+          'Pipeline summaries: "What are my open leads and their stages?"',
+          'Draft emails: "Draft a follow-up for the Egypt pipeline lead."',
+          'Trade knowledge: "What Incoterm should I use for a sea shipment to Rotterdam?"',
+          'Calculations: "What is the landed cost if FOB is $4.20 and freight is $0.60 per sqm?"',
+          'Triage decisions: "What emails are waiting in triage right now?"',
+          'Compliance: "Do I need a certificate of origin for Malaysia-origin goods going to the US?"',
+        ],
+      },
+      {
+        heading: 'Managing conversations',
+        items: [
+          'Your past conversations are listed in the left sidebar (desktop) or conversation list (mobile).',
+          'Click any conversation to resume it — history is preserved.',
+          'Delete a conversation permanently with the trash icon (sidebar) or long-press (mobile).',
+          'Clear a conversation to wipe messages but keep the thread.',
+        ],
+      },
+    ],
+    tips: [
+      'The AI reads a fresh ERP snapshot at the start of each message — pipeline data is always current.',
+      'Be specific: "Draft an email for lead ID LID-042" is more effective than "write an email."',
+      'The AI follows Sovern House rules: gross margin by division, FOB pricing, no em dashes in copy.',
+      'Use it to sense-check Incoterm choices, payment term risks, or landed cost estimates before a deal.',
+    ],
+    warnings: [
+      'The AI cannot make changes to the ERP — it is read-only. All edits must be done in the relevant module.',
+      'Always verify AI-generated pricing and compliance advice against current rates and regulations before using it in a live deal.',
+      'Conversation history is stored in the ERP database. Do not paste sensitive credentials or personal data into the chat.',
+    ],
+  },
+
   '/chat': {
     title: 'Team Chat',
     summary: 'Internal messaging for your team. Direct messages, group channels, and an omnichannel inbox for WhatsApp, WeChat, and Telegram conversations — all in one place.',

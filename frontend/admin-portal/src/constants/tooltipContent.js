@@ -237,6 +237,20 @@ export const BULK_IMPORT = {
 
 // ─── RBAC roles (for the Role Permissions page) ───────────────────────────────
 
+// ─── AI Assistant ─────────────────────────────────────────────────────────────
+
+export const AI = {
+  chat:             'Type a message and press Enter (or tap ↑) to send. Shift+Enter adds a new line.',
+  newConversation:  'Start a fresh conversation. Each conversation has its own context and message history.',
+  conversationList: 'Your past conversations with the AI. Click any to resume. Long-press on mobile to delete.',
+  deleteConversation: 'Delete this conversation and all its messages permanently. Cannot be undone.',
+  clearConversation:  'Remove all messages in this conversation while keeping the conversation thread.',
+  suggestions:      'Tap a suggested prompt to start. These are tuned to common Sovern House workflows.',
+  thinking:         'The AI is reading the current ERP snapshot and composing a response — usually under 10 seconds.',
+  context:          'The AI has read-only access to your live ERP data: lead pipeline, triage inbox, recent quotations, and connected accounts. It cannot make changes.',
+  roleScope:        'Admins get the full ERP snapshot. Other roles receive a prompt scoped to their access level.',
+}
+
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 export const CHAT = {
   bubble:           'Open the team chat. The number shows unread messages across all your conversations.',

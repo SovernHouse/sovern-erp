@@ -677,3 +677,63 @@ export interface ChatMessage {
   editedAt?: string | null
   deletedAt?: string | null
 }
+
+// ─── AI Assistant ─────────────────────────────────────────────────────────────
+
+export interface AIConversation {
+  id: string
+  title: string
+  messageCount: number
+  lastMessageAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AIMessage {
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+}
+
+export interface AIChatResponse {
+  conversationId: string
+  title: string
+  reply: string
+  isNew: boolean
+}
+
+export async function aiChat(
+  message: string,
+  conversationId?: string
+): Promise<AIChatResponse> {
+  const res = await request<{ success: boolean; data: AIChatResponse }>(
+    '/api/ai/chat',
+    { method: 'POST', body: JSON.stringify({ message, conversationId }) }
+  )
+  return res.data
+}
+
+export async function aiListConversations(): Promise<AIConversation[]> {
+  const res = await request<{ success: boolean; data: AIConversation[] }>(
+    '/api/ai/conversations'
+  )
+  return res.data ?? []
+}
+
+export async function aiGetConversation(
+  id: string
+): Promise<{ conversation: AIConversation; messages: AIMessage[] }> {
+  const res = await request<{
+    success: boolean
+    data: { conversation: AIConversation; messages: AIMessage[] }
+  }>(`/api/ai/conversations/${id}`)
+  return res.data
+}
+
+export async function aiDeleteConversation(id: string): Promise<void> {
+  await request(`/api/ai/conversations/${id}`, { method: 'DELETE' })
+}
+
+export async function aiClearConversation(id: string): Promise<void> {
+  await request(`/api/ai/conversations/${id}/clear`, { method: 'POST' })
+}

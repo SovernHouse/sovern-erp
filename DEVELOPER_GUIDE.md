@@ -1171,3 +1171,173 @@ frontend/admin-portal/src/
 | Chat omnichannel webhooks | Planned | Inbound webhook handler + outbound routing per platform. See Section 20 for integration path. |
 | Customer portal | In progress | Standalone customer portal exists at `frontend/customer-portal/` (separate from the `client-contacts` admin module). |
 | Factory portal 
+---
+
+## 22. AI Assistant Architecture
+
+### Overview
+
+The AI Assistant is a context-aware trade chatbot powered by Claude. It reads a live ERP snapshot at query time and responds using the `claude -p` subprocess pattern — the same approach used by `gmailSyncService.js`. All conversation history is stored in SQLite. The feature ships on three surfaces: admin portal (`AssistantPage.jsx`), mobile (`assistant.tsx`), and the shared REST backend (`/api/ai/*`).
+
+---
+
+### Model: `AIConversation`
+
+File: `backend/models/AIConversation.js`
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | UUID PK | |
+| `userId` | UUID FK → Users | Scoped per user — no cross-user access |
+| `title` | STRING | Auto-generated from first message (5-word Claude summary) |
+| `messages` | TEXT (JSON) | Serialised array of `{ role, content, timestamp }`. Getter/setter handle JSON parse/stringify. Same pattern as `ConnectedGoogleAccount.scopes`. |
+| `lastMessageAt` | DATE | Updated on each `chat` call for sidebar sort |
+
+Registered in `backend/models/index.js` after `ConnectedGoogleAccount`.
+
+---
+
+### Service: `aiContextService.js`
+
+File: `backend/services/aiContextService.js`
+
+Builds the system prompt injected into every AI request. Key exports:
+
+- **`buildSystemPrompt(user)`** — Returns the full system prompt string. `super_admin` and `admin` roles get the full Sovern House context + live ERP snapshot. All other roles get a scoped prompt with their role description.
+- **`getLiveERPSnapshot(userRole)`** — Fires parallel DB queries at call time (not cached). Returns a formatted string with: lead pipeline counts by stage, top 5 pending triage items (subject, sender, intent score), last 5 quotations (number, customer, total, status), upcoming activities (due ≤7 days), connected Google accounts. Each query is individually try-caught so partial failures do not break the prompt.
+- **Inline constants** — `SOVERN_HOUSE_CONTEXT` (company identity, business model, trading rules), `TEAM_FRAMEWORK` (all advisory lenses: CEO/CFO/CMO/Attorney/Compliance etc.), `WRITING_RULES` (no em dashes, positive framing, no self-introductions, etc.).
+
+---
+
+### Controller: `aiController.js`
+
+File: `backend/controllers/aiController.js`
+
+**`chat` (POST /api/ai/chat)**
+1. Load or create `AIConversation` for `(userId, conversationId)`.
+2. Call `buildSystemPrompt(user)` to get the system prompt with live ERP snapshot.
+3. Assemble full prompt: `[system prompt]\n\n[last 20 messages as Human/Assistant transcript]\n\nHuman: [new message]\n\nAssistant:`.
+4. Spawn `claude -p fullPrompt` subprocess (120s timeout). Collect stdout as reply.
+5. Append user and assistant messages to `conversation.messages`, save.
+6. If new conversation: fire a second `claude -p` call to auto-generate a 5-word title.
+7. Return `{ success, data: { conversationId, title, reply, isNew } }`.
+
+**Other endpoints**
+- `listConversations` — GET, returns all conversations for the requesting user, sorted by `lastMessageAt DESC`.
+- `getConversation` — GET `:id`, returns `{ conversation, messages }`.
+- `deleteConversation` — DELETE `:id`.
+- `clearConversation` — POST `:id/clear`, wipes `messages` array, resets `lastMessageAt`.
+
+**`claude -p` subprocess pattern**
+```js
+const { execFile } = require('child_process');
+// Spawns: claude -p "<fullPrompt>"
+// stdout → reply text; stderr logged but not fatal; 120s timeout.
+// Same pattern as gmailSyncService.js AI classification calls.
+```
+
+> **Important:** The prompt string is assembled inline with template literals. When writing to files via the Write tool, use a bash heredoc (`cat > file << 'ENDOFFILE'`) because the Write tool truncates content containing backtick template literals.
+
+---
+
+### Routes: `aiRoutes.js`
+
+File: `backend/routes/aiRoutes.js`
+
+```
+POST   /api/ai/chat                    → ai.chat
+GET    /api/ai/conversations           → ai.listConversations
+GET    /api/ai/conversations/:id       → ai.getConversation
+DELETE /api/ai/conversations/:id       → ai.deleteConversation
+POST   /api/ai/conversations/:id/clear → ai.clearConversation
+```
+
+All routes require `requireAuth` (from `middleware/auth.js`). Mounted in `server.js` as `app.use('/api/ai', aiRoutes)`.
+
+> **Auth import:** `const { requireAuth } = require('../middleware/auth')`. The `auth.js` module exports `requireAuth`, `requireRole`, and `requireAny` — there is no `authenticate` export. Using the wrong name silently registers `router.use(undefined)` and throws at runtime.
+
+---
+
+### Frontend: `AssistantPage.jsx`
+
+File: `frontend/admin-portal/src/pages/AI/AssistantPage.jsx`
+
+Key structure:
+- **Left sidebar (260px):** conversation list + "New conversation" button. Hover-reveal delete button per item.
+- **Main area:** header, scrollable message list, compose bar (auto-resize textarea, Enter to send, Shift+Enter for newline).
+- **WelcomeScreen:** shown when no messages exist. Six suggestion prompts pre-wired to common Sovern House workflows.
+- **`renderMarkdown(text)`:** custom renderer for code blocks, headings, horizontal rules, bullet lists, numbered lists, bold, inline code. No external dependency.
+- **`MessageBubble`:** user messages right-aligned blue; assistant messages left-aligned white with border. Timestamps shown.
+- **`TypingIndicator`:** three bouncing dots (CSS keyframe).
+
+RBAC: accessible to all roles (`super_admin`, `admin`, `coo`, `sales_rep`, `finance`, `operations`, `viewer`). Nav item uses `Sparkles` icon from lucide-react — must be in both the import list and `iconMap` in `Layout.jsx`.
+
+`api.js` export:
+```js
+export const aiAPI = {
+  chat:               (data) => api.post('/ai/chat', data),
+  listConversations:  ()     => api.get('/ai/conversations'),
+  getConversation:    (id)   => api.get(`/ai/conversations/${id}`),
+  deleteConversation: (id)   => api.delete(`/ai/conversations/${id}`),
+  clearConversation:  (id)   => api.post(`/ai/conversations/${id}/clear`),
+}
+```
+
+---
+
+### Mobile: `assistant.tsx`
+
+File: `mobile/sovern-ops-app/app/(tabs)/assistant.tsx`
+
+Two-view pattern (same as `chat.tsx`):
+- **View 1 — conversation list:** pull-to-refresh, tap to open, long-press to confirm-delete.
+- **View 2 — thread view:** forest-coloured header with ← Back, scrollable `FlatList` of `MsgBubble` components, `WelcomeScreen` as list header when empty, `TypingIndicator` as list footer while awaiting reply, compose bar with multiline `TextInput`.
+
+`stripMarkdown(text)` helper removes `**bold**`, `# headers`, `---` rules, bullet markers, and backtick code so AI responses read cleanly as plain text on mobile.
+
+API functions added to `mobile/sovern-ops-app/src/services/api.ts`:
+- `aiChat(message, conversationId?)` — POST `/api/ai/chat`
+- `aiListConversations()` — GET `/api/ai/conversations`
+- `aiGetConversation(id)` — GET `/api/ai/conversations/:id`
+- `aiDeleteConversation(id)` — DELETE `/api/ai/conversations/:id`
+- `aiClearConversation(id)` — POST `/api/ai/conversations/:id/clear`
+
+Tab registered in `_layout.tsx` as a secondary module (accessible from Home grid, not in bottom tab bar). Added to `MODULES` in `dashboard.tsx` as `{ icon: '✦', label: 'AI Assistant', route: '/(tabs)/assistant' }`.
+
+---
+
+### File map
+
+```
+backend/
+  models/
+    AIConversation.js          ← SQLite model, JSON messages getter/setter
+  services/
+    aiContextService.js        ← system prompt builder + live ERP snapshot
+  controllers/
+    aiController.js            ← chat, listConversations, getConversation, deleteConversation, clearConversation
+  routes/
+    aiRoutes.js                ← REST routes, requireAuth middleware
+
+frontend/admin-portal/src/
+  pages/
+    AI/
+      AssistantPage.jsx        ← full chat UI, markdown renderer, sidebar, welcome screen
+  services/
+    api.js                     ← aiAPI export
+  constants/
+    tooltipContent.js          ← AI section
+    helpContent.js             ← /ai/assistant entry
+  config/
+    rbacConfig.js              ← AI Assistant nav item, all roles
+  components/
+    Layout.jsx                 ← Sparkles icon added to import + iconMap
+
+mobile/sovern-ops-app/
+  app/(tabs)/
+    assistant.tsx              ← conversation list + thread view
+    _layout.tsx                ← assistant registered as secondary module
+    dashboard.tsx              ← AI Assistant tile in MODULES grid
+  src/services/
+    api.ts                     ← ai* function exports + AIConversation/AIMessage types
+```
