@@ -166,6 +166,8 @@ const bankIntegrationRoutes = require('./routes/bankIntegrationRoutes');
 const crmRoutes = require('./routes/crm');
 const approvalRoutes = require('./routes/approvalRoutes');
 const triageRoutes = require('./routes/triageRoutes');
+const googleRoutes = require('./routes/googleRoutes');
+const aiRoutes = require('./routes/aiRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/sso', ssoRoutes);
@@ -217,6 +219,8 @@ app.use('/api/bank', bankIntegrationRoutes);
 app.use('/api/crm', crmRoutes);
 app.use('/api/approvals', approvalRoutes);
 app.use('/api/triage', triageRoutes);
+app.use('/api/google', googleRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Chatter (polymorphic message thread)
 const chatterRoutes = require('./routes/chatterRoutes');
@@ -566,6 +570,25 @@ db.sequelize.authenticate()
           logger.warn('[SCHEDULER] node-cron not installed. Run: npm install (in backend directory)');
         } else {
           logger.error('Failed to initialize scheduler:', error.message);
+        }
+      }
+    }
+
+    // Initialize Gmail sync scheduler (every 5 minutes)
+    // Only runs when at least one Google account is connected.
+    if (process.env.DISABLE_GMAIL_SYNC !== 'true') {
+      try {
+        const cron = require('node-cron');
+        const { runGmailSync } = require('./services/gmailSyncService');
+        cron.schedule('*/5 * * * *', () => {
+          runGmailSync().catch(err => logger.error('[gmail-sync] Cron error:', err.message));
+        });
+        logger.info('[gmail-sync] Gmail sync scheduler initialized (every 5 min)');
+      } catch (error) {
+        if (error.code === 'MODULE_NOT_FOUND' && error.message.includes('googleapis')) {
+          logger.warn('[gmail-sync] googleapis not installed. Run: npm install (in backend directory)');
+        } else {
+          logger.error('[gmail-sync] Failed to initialize Gmail sync:', error.message);
         }
       }
     }

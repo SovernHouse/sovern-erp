@@ -510,4 +510,23 @@ export const chatAPI = {
   markRead:           (id)            => api.post(`/chat/rooms/${id}/read`),
 }
 
+export const googleAPI = {
+  // OAuth — initiates consent flow, returns { authUrl }
+  initOAuth:        ()   => api.get('/google/oauth/init'),
+
+  // Connected account management (admin only)
+  listAccounts:     ()   => api.get('/google/accounts'),
+  disconnectAccount:(id) => api.delete(`/google/accounts/${id}`),
+  toggleAccount:    (id) => api.patch(`/google/accounts/${id}/toggle`),
+}
+
+// AI Assistant
+export const aiAPI = {
+  chat:                 (data)  => api.post('/ai/chat', data),
+  listConversations:    ()      => api.get('/ai/conversations'),
+  getConversation:      (id)    => api.get(`/ai/conversations/${id}`),
+  deleteConversation:   (id)    => api.delete(`/ai/conversations/${id}`),
+  clearConversation:    (id)    => api.post(`/ai/conversations/${id}/clear`),
+}
+
 export default api

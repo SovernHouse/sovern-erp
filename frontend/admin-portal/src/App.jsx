@@ -114,6 +114,10 @@ const ProductAttributes = React.lazy(() => import('./pages/Settings/ProductAttri
 const PriceListManager  = React.lazy(() => import('./pages/Settings/PriceListManager'))
 const ModulesManager    = React.lazy(() => import('./pages/Settings/ModulesManager'))
 const MobileApp         = React.lazy(() => import('./pages/Settings/MobileApp'))
+const ConnectedAccounts = React.lazy(() => import('./pages/Settings/ConnectedAccounts'))
+
+// AI Assistant
+const AssistantPage = React.lazy(() => import('./pages/AI/AssistantPage'))
 
 // Analytics & BI
 const AnalyticsDashboard = React.lazy(() => import('./pages/Analytics/AnalyticsDashboard'))
@@ -343,6 +347,10 @@ function AppRoutes() {
       <Route path="/settings/price-lists"           element={<P permission="settings"><PriceListManager /></P>} />
       <Route path="/settings/modules"              element={<P roles={['admin']}><ModulesManager /></P>} />
       <Route path="/settings/mobile-app"           element={<P permission="settings"><MobileApp /></P>} />
+      <Route path="/settings/connected-accounts"  element={<P roles={['admin']}><ConnectedAccounts /></P>} />
+
+      {/* ── AI Assistant ── */}
+      <Route path="/ai/assistant"  element={<P roles={['super_admin','admin','coo','sales_rep','finance','operations','viewer']}><AssistantPage /></P>} />
 
       {/* ── CRM / Pipeline ── */}
       <Route path="/crm"                       element={<P permission="outreach"><CRMDashboard /></P>} />

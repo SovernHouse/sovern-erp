@@ -101,6 +101,12 @@ db.EmailSignature = require('./EmailSignature')(sequelize);
 db.EmailTemplate = require('./EmailTemplate')(sequelize);
 db.RolePermission = require('./RolePermission')(sequelize);
 
+// Google Workspace integration
+db.ConnectedGoogleAccount = require('./ConnectedGoogleAccount')(sequelize);
+
+// AI Assistant conversations
+db.AIConversation = require('./AIConversation')(sequelize);
+
 // Load CRM models if they exist.
 // Tolerate missing files (MODULE_NOT_FOUND, e.g. CRM module disabled),
 // but surface any other error (syntax error, runtime throw inside the

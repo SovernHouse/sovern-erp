@@ -198,8 +198,10 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Product Taxonomy', path: '/settings/product-taxonomy', permission: 'settings' },
         { label: 'Bulk Import', path: '/settings/bulk-import', permission: 'settings' },
         { label: 'Mobile App', path: '/settings/mobile-app', permission: 'settings' },
+        { label: 'Connected Accounts', path: '/settings/connected-accounts', roles: ['admin', 'super_admin'] },
       ],
     },
+    { label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' },
   ],
   manager: [
     { label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' },
@@ -338,6 +340,7 @@ export const NAV_ITEMS_BY_ROLE = {
       permission: 'products',
     },
     { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
+    { label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' },
   ],
   finance: [
     { label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' },
@@ -359,6 +362,7 @@ export const NAV_ITEMS_BY_ROLE = {
     { label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' },
     { label: 'BI Dashboard', icon: 'BarChart3', path: '/bi-dashboard', permission: 'bi-dashboard' },
     { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
+    { label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' },
   ],
   warehouse: [
     { label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' },
@@ -398,11 +402,13 @@ export const NAV_ITEMS_BY_ROLE = {
       submenu: [{ label: 'Factories', path: '/factories', permission: 'factories' }],
     },
     { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
+    { label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' },
   ],
   viewer: [
     { label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
     { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
+    { label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' },
   ],
 
   // ── Business-title nav configs ────────────────────────────────────────────
@@ -459,6 +465,7 @@ export const NAV_ITEMS_BY_ROLE = {
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
     { label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' },
     { label: 'BI Dashboard', icon: 'BarChart3', path: '/bi-dashboard', permission: 'bi-dashboard' },
+    { label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' },
   ],
 
   coo: [
@@ -515,6 +522,7 @@ export const NAV_ITEMS_BY_ROLE = {
     { label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' },
     { label: 'BI Dashboard', icon: 'BarChart3', path: '/bi-dashboard', permission: 'bi-dashboard' },
     { label: 'Documents', icon: 'FileText', submenu: [{ label: 'Document Templates', path: '/documents/templates', permission: 'documents' }] },
+    { label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' },
   ],
 
   sales_rep: [
@@ -543,6 +551,7 @@ export const NAV_ITEMS_BY_ROLE = {
       ],
     },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
+    { label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' },
   ],
 
   project_manager: [
@@ -760,7 +769,9 @@ const buildNavFromPermissions = (permissions) => {
     { label: 'Product Taxonomy', path: '/settings/product-taxonomy', permission: 'settings' },
     { label: 'Bulk Import', path: '/settings/bulk-import', permission: 'settings' },
     { label: 'Mobile App', path: '/settings/mobile-app', permission: 'settings' },
+    { label: 'Connected Accounts', path: '/settings/connected-accounts', roles: ['admin', 'super_admin'] },
   ]})
+  nav.push({ label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' })
   return nav
 }
 
