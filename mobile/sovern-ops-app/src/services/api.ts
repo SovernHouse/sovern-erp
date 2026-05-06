@@ -71,16 +71,16 @@ export function getLeads(params?: { status?: string; page?: number }) {
   const qs = new URLSearchParams(
     Object.entries(params ?? {}).filter(([, v]) => v !== undefined) as [string, string][]
   ).toString();
-  return request<PaginatedResponse<Lead>>(`/api/leads${qs ? `?${qs}` : ''}`);
+  return request<PaginatedResponse<Lead>>(`/api/crm/leads${qs ? `?${qs}` : ''}`);
 }
 
 export async function getLead(id: string) {
-  const res = await request<{ success: boolean; data: Lead }>(`/api/leads/${id}`);
+  const res = await request<{ success: boolean; data: Lead }>(`/api/crm/leads/${id}`);
   return res.data;
 }
 
 export function addActivity(leadId: string, note: string, type = 'note') {
-  return request(`/api/leads/${leadId}/activities`, {
+  return request(`/api/crm/leads/${leadId}/activities`, {
     method: 'POST',
     body: JSON.stringify({ type, note }),
   });
@@ -138,7 +138,7 @@ export function completeActivity(id: string, outcome?: string) {
 }
 
 export async function updateLeadStatus(id: string, status: string) {
-  const res = await request<{ success: boolean; data: Lead }>(`/api/leads/${id}/status`, {
+  const res = await request<{ success: boolean; data: Lead }>(`/api/crm/leads/${id}/status`, {
     method: 'PUT',
     body: JSON.stringify({ status }),
   });
