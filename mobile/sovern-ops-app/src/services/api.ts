@@ -604,3 +604,52 @@ export interface ChatterMessage {
   userId?: string
   createdAt: string
 }
+
+// ─── Internal Chat ────────────────────────────────────────────────────────────
+
+export async function getChatRooms() {
+  const res = await request<{ success: boolean; data: ChatRoom[] }>('/api/chat/rooms')
+  return res.data ?? []
+}
+
+export async function getChatRoomMessages(roomId: string, limit = 50) {
+  const res = await request<{ success: boolean; data: ChatMessage[] }>(
+    `/api/chat/rooms/${roomId}/messages?limit=${limit}`
+  )
+  return res.data ?? []
+}
+
+export async function sendChatMessage(roomId: string, body: string) {
+  const res = await request<{ success: boolean; data: ChatMessage }>(
+    `/api/chat/rooms/${roomId}/messages`,
+    { method: 'POST', body: JSON.stringify({ body }) }
+  )
+  return res.data
+}
+
+export async function markChatRoomRead(roomId: string) {
+  return request(`/api/chat/rooms/${roomId}/read`, { method: 'POST' })
+}
+
+export interface ChatRoom {
+  id: string
+  name?: string
+  type: 'dm' | 'channel' | 'external'
+  lastMessageBody?: string
+  lastMessageAt?: string
+  unreadCount: number
+  isArchived?: boolean
+  dmUserId?: number
+  dmUser?: { id: number; name: string }
+}
+
+export interface ChatMessage {
+  id: string
+  body: string | null
+  senderId: string
+  isMe?: boolean
+  sender?: { firstName?: string; lastName?: string; name?: string }
+  createdAt: string
+  editedAt?: string | null
+  deletedAt?: string | null
+}

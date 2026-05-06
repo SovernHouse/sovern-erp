@@ -30,6 +30,7 @@ export default function TabLayout() {
       <Tabs.Screen name="triage"    options={{ title: 'Inbox',    tabBarIcon: ({ focused }) => <TabIcon icon="📥" focused={focused} /> }} />
       <Tabs.Screen name="approvals" options={{ title: 'Approvals', tabBarIcon: ({ focused }) => <TabIcon icon="✅" focused={focused} /> }} />
       <Tabs.Screen name="activities" options={{ title: 'Activities', tabBarIcon: ({ focused }) => <TabIcon icon="🗓️" focused={focused} /> }} />
+      <Tabs.Screen name="chat"       options={{ title: 'Chat',       tabBarIcon: ({ focused }) => <TabIcon icon="🗨️" focused={focused} /> }} />
 
       {/* — CRM — */}
       <Tabs.Screen name="inquiries"   options={{ title: 'Inquiries',   tabBarIcon: ({ focused }) => <TabIcon icon="📨" focused={focused} /> }} />
