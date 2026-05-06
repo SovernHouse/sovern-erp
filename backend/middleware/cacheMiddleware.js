@@ -8,14 +8,15 @@ const { getInstance: getCacheService } = require('../services/redisCacheService'
 const logger = require('../utils/logger.js');
 
 /**
- * Generate cache key from request
+ * Generate cache key from request.
+ * Includes the authenticated user's ID so different users never share cached
+ * responses — prevents both data-leakage and authentication-bypass on cache HITs.
  * @param {object} req - Express request
  * @returns {string} Cache key
  */
 function generateCacheKey(req) {
-  const params = new URLSearchParams(req.query);
-  const queryString = params.toString();
-  return `route:${req.originalUrl}`;
+  const userId = req.user?.id || 'anon';
+  return `route:${userId}:${req.originalUrl}`;
 }
 
 /**
@@ -53,21 +54,22 @@ function cacheRoute(ttlSeconds = 300) {
       // Continue without cache on error
     }
 
-    // Intercept res.json to cache the response
+    // Intercept res.json to cache the response.
+    // IMPORTANT: this wrapper must remain synchronous — res.json is part of
+    // Express's synchronous send chain. The cache write is fire-and-forget so
+    // the response is never held up waiting for the cache layer.
     const originalJson = res.json.bind(res);
 
-    res.json = async function (data) {
-      // Only cache successful responses
+    res.json = function (data) {
+      res.set('X-Cache', 'MISS');
+
+      // Fire-and-forget: cache only 200 responses; never delay the response.
       if (res.statusCode === 200) {
-        try {
-          await cacheService.set(cacheKey, data, ttlSeconds);
-        } catch (err) {
+        cacheService.set(cacheKey, data, ttlSeconds).catch((err) => {
           logger.error('[Cache] Error setting cache:', err.message);
-          // Continue even if cache fails
-        }
+        });
       }
 
-      res.set('X-Cache', 'MISS');
       return originalJson(data);
     };
 

@@ -18,6 +18,12 @@ const { Op } = require('sequelize');
 const dayjs = require('dayjs');
 const { cacheRoute, invalidateCache } = require('../middleware/cacheMiddleware');
 
+// Auth guard for the entire dashboard router — must run before cacheRoute on
+// every route, so it's registered here rather than per-route. Individual
+// requireAuth/requireRole calls on routes below are kept as documentation but
+// are now redundant for auth (role checks are still enforced per-route).
+router.use(requireAuth);
+
 // Apply caching to dashboard GET endpoints (60 second TTL)
 const dashboardCacheTTL = 60;
 

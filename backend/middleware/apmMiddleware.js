@@ -64,35 +64,10 @@ const apmMiddleware = (req, res, next) => {
     return originalSend.call(this, data);
   };
 
-  // Override json function as well (Express uses both send and json)
-  const originalJson = res.json;
-
-  res.json = function (data) {
-    // Calculate response time
-    const [seconds, nanoseconds] = process.hrtime(startTime);
-    const responseTimeMs = Math.round(seconds * 1000 + nanoseconds / 1000000);
-
-    // Get the route path pattern
-    const routePath = getRoutePath(req);
-
-    // Record the metric
-    apmService.recordRequest(
-      req.method,
-      routePath,
-      res.statusCode,
-      responseTimeMs
-    );
-
-    // Log slow requests
-    if (responseTimeMs > 2000) {
-      logger.warn(
-        `[SLOW REQUEST] ${req.method} ${routePath} - ${res.statusCode} ${responseTimeMs}ms`
-      );
-    }
-
-    // Call the original json
-    return originalJson.call(this, data);
-  };
+  // NOTE: res.json is intentionally NOT overridden here.
+  // Express's res.json() calls res.send() internally, so the res.send override
+  // above already captures every JSON response. Overriding both would record
+  // metrics twice per request.
 
   next();
 };
