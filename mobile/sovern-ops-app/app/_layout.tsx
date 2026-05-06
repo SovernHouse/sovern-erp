@@ -3,7 +3,7 @@
 // Auth guard: if no valid token in SecureStore, redirect to /login.
 
 import { useEffect, useState } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
@@ -43,15 +43,21 @@ export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
 
-  // On mount: check for existing JWT and validate it
+  // On mount: check for existing JWT and validate it.
+  // AbortController enforces an 8-second timeout so a slow or unreachable
+  // server never leaves the app stuck on a black screen indefinitely.
   useEffect(() => {
     (async () => {
       const token = await SecureStore.getItemAsync(CONFIG.TOKEN_KEY);
       if (token) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
         try {
           const res = await fetch(`${CONFIG.SERVER_URL}/api/auth/me`, {
             headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
           });
+          clearTimeout(timer);
           if (res.ok) {
             // Backend wraps: { success, data: <user object>, message }
             const body = await res.json();
@@ -62,6 +68,7 @@ export default function RootLayout() {
             clearUser();
           }
         } catch {
+          clearTimeout(timer);
           clearUser();
         }
       }
@@ -80,7 +87,11 @@ export default function RootLayout() {
     }
   }, [ready, isAuthenticated, segments]);
 
-  if (!ready) return null;
+  if (!ready) return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.cream }}>
+      <ActivityIndicator size="large" color={COLORS.forest} />
+    </View>
+  );
 
   return (
     <>
