@@ -9,10 +9,10 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
 const ai = require('../controllers/aiController');
 
-router.use(authenticate);
+router.use(requireAuth);
 
 router.post('/chat',                        ai.chat);
 router.get('/conversations',                ai.listConversations);
