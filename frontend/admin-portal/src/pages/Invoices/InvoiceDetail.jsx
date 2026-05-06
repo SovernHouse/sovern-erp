@@ -11,6 +11,7 @@ import {
   CalendarClock,
 } from 'lucide-react'
 import { invoicesAPI } from '../../services/api'
+import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import Chatter from '../../components/Chatter'
 import StatusBadge from '../../components/StatusBadge'
@@ -26,6 +27,7 @@ export default function InvoiceDetail() {
   const navigate = useNavigate()
 
   const [invoice, setInvoice] = useState(null)
+  useBreadcrumbs(invoice?.invoiceNumber)
   const [isLoading, setIsLoading] = useState(true)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isRecordingPayment, setIsRecordingPayment] = useState(false)

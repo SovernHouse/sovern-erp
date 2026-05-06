@@ -17,6 +17,7 @@ import {
   CalendarClock,
 } from 'lucide-react'
 import { proformaAPI, factoriesAPI, approvalAPI } from '../../services/api'
+import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import StatusBadge from '../../components/StatusBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -358,6 +359,7 @@ export default function ProformaDetail() {
   const navigate = useNavigate()
 
   const [pi, setPi] = useState(null)
+  useBreadcrumbs(pi?.piNumber || pi?.invoiceNumber || pi?.proformaNumber)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
 

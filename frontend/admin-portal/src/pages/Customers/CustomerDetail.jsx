@@ -7,6 +7,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import DataTable from '../../components/DataTable'
 import StatusBadge from '../../components/StatusBadge'
 import { customersAPI } from '../../services/api'
+import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 
@@ -14,6 +15,7 @@ export default function CustomerDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [customer, setCustomer] = useState(null)
+  useBreadcrumbs(customer?.name)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
   const [showActivityModal, setShowActivityModal] = useState(false)

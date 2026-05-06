@@ -6,6 +6,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import DataTable from '../../components/DataTable'
 import StatusBadge from '../../components/StatusBadge'
 import { factoriesAPI } from '../../services/api'
+import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import { formatDate } from '../../utils/formatters'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import ChatterPanel from '../../components/ChatterPanel'
@@ -14,6 +15,7 @@ export default function FactoryDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [factory, setFactory] = useState(null)
+  useBreadcrumbs(factory?.name)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
   const [products, setProducts] = useState([])

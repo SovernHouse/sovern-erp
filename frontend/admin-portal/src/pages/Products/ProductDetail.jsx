@@ -5,12 +5,14 @@ import { ArrowLeft, Edit2 } from 'lucide-react'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import ProductSpecEditor from '../../components/ProductSpecEditor'
 import { productsAPI } from '../../services/api'
+import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 
 export default function ProductDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [product, setProduct] = useState(null)
+  useBreadcrumbs(product?.name)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {

@@ -36,6 +36,8 @@ import InstallPWA from './InstallPWA'
 import ActivityBanner from './ActivityBanner'
 import ActivityIndicator from './ActivityIndicator'
 import ChatBubble from './chat/ChatBubble'
+import Breadcrumb from './Breadcrumb'
+import { BreadcrumbProvider } from '../contexts/BreadcrumbContext'
 
 // ── Brand tokens ─────────────────────────────────────────────────────────────
 const INK     = '#0E0D0C'
@@ -601,7 +603,12 @@ export default function Layout({ children }) {
 
         {/* Page content */}
         <main style={{ flex: 1, overflowY: 'auto' }}>
-          <div style={{ padding: '24px 28px 48px' }}>{children}</div>
+          <div style={{ padding: '24px 28px 48px' }}>
+            <BreadcrumbProvider>
+              <Breadcrumb />
+              {children}
+            </BreadcrumbProvider>
+          </div>
         </main>
       </div>
 

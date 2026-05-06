@@ -3,10 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, CalendarClock } from 'lucide-react'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import ChatterPanel from '../../components/ChatterPanel'
+import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 
 export default function InspectionDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  useBreadcrumbs('Inspection Report')
   const [showActivityModal, setShowActivityModal] = useState(false)
 
   return (

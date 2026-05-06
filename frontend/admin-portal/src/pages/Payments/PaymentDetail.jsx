@@ -6,12 +6,14 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import StatusBadge from '../../components/StatusBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { paymentsAPI, invoicesAPI } from '../../services/api'
+import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 
 export default function PaymentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [payment, setPayment] = useState(null)
+  useBreadcrumbs(payment?.paymentNumber)
   const [invoice, setInvoice] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [deleteConfirm, setDeleteConfirm] = useState(false)

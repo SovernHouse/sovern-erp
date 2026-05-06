@@ -13,6 +13,7 @@ import {
   CalendarClock,
 } from 'lucide-react'
 import { quotationsAPI } from '../../services/api'
+import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import Chatter from '../../components/Chatter'
 import WorkflowStatusBar, { QUOTATION_STAGES } from '../../components/WorkflowStatusBar'
@@ -29,6 +30,7 @@ export default function QuotationDetail() {
   const navigate = useNavigate()
 
   const [quotation, setQuotation] = useState(null)
+  useBreadcrumbs(quotation?.quotationNumber)
   const [isLoading, setIsLoading] = useState(true)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isSending, setIsSending] = useState(false)

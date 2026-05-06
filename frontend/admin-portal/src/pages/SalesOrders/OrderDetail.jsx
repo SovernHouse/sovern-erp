@@ -11,6 +11,7 @@ import {
   CalendarClock,
 } from 'lucide-react'
 import { ordersAPI } from '../../services/api'
+import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import Chatter from '../../components/Chatter'
 import WorkflowStatusBar, { SALES_ORDER_STAGES } from '../../components/WorkflowStatusBar'
@@ -27,6 +28,7 @@ export default function OrderDetail() {
   const navigate = useNavigate()
 
   const [order, setOrder] = useState(null)
+  useBreadcrumbs(order?.orderNumber)
   const [isLoading, setIsLoading] = useState(true)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)

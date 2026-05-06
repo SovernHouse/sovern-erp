@@ -6,12 +6,14 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import StatusBadge from '../../components/StatusBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { packingListsAPI } from '../../services/api'
+import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import { formatDate, formatWeight, formatVolume, formatNumber } from '../../utils/formatters'
 
 export default function PackingListDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [packingList, setPackingList] = useState(null)
+  useBreadcrumbs(packingList?.packingListNumber)
   const [isLoading, setIsLoading] = useState(true)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
 

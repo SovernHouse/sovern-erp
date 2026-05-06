@@ -1,10 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import Chatter from '../../components/Chatter'
+import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 
 export default function PurchaseOrderDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  useBreadcrumbs('Purchase Order')
   return (
     <div className="space-y-6">
       <button onClick={() => navigate('/purchase-orders')} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
