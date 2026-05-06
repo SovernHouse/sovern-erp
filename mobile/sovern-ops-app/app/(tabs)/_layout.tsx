@@ -6,7 +6,7 @@
 // When the user is inside any secondary module (Leads, Quotations, etc.),
 // the Home tab stays active in the bar — same pattern as Odoo Mobile.
 
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../src/constants/config';
@@ -20,6 +20,25 @@ const NAV_ITEMS = [
   { name: 'chat',     icon: '🗨️', label: 'Chat' },
   { name: 'settings', icon: '⚙️', label: 'Settings' },
 ] as const;
+
+// ─── Back Button for secondary modules ───────────────────────────────────────
+// Secondary modules (Leads, Quotations, etc.) are tabs, not stack screens, so
+// Expo Router gives them no back gesture or header back button. This component
+// renders a ‹ arrow in the header that returns the user to Home (dashboard).
+
+function BackToHome() {
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      onPress={() => router.navigate('/(tabs)/dashboard')}
+      style={{ paddingHorizontal: 14, paddingVertical: 4 }}
+      accessibilityLabel="Back to Home"
+      accessibilityRole="button"
+    >
+      <Text style={{ color: COLORS.white, fontSize: 22, lineHeight: 26 }}>‹</Text>
+    </TouchableOpacity>
+  );
+}
 
 // ─── Custom Tab Bar ───────────────────────────────────────────────────────────
 
@@ -102,16 +121,18 @@ export default function TabLayout() {
       <Tabs.Screen name="settings"  options={{ title: 'Settings' }} />
 
       {/* -- Accessible via Home grid, not in tab bar ----------------------- */}
-      <Tabs.Screen name="leads"           options={{ title: 'Leads' }} />
-      <Tabs.Screen name="quotations"      options={{ title: 'Quotations' }} />
-      <Tabs.Screen name="inquiries"       options={{ title: 'Inquiries' }} />
-      <Tabs.Screen name="approvals"       options={{ title: 'Approvals' }} />
-      <Tabs.Screen name="activities"      options={{ title: 'Activities' }} />
-      <Tabs.Screen name="shipments"       options={{ title: 'Shipments' }} />
-      <Tabs.Screen name="invoices"        options={{ title: 'Invoices' }} />
-      <Tabs.Screen name="purchase-orders" options={{ title: 'Purchase Orders' }} />
-      <Tabs.Screen name="products"        options={{ title: 'Products' }} />
-      <Tabs.Screen name="customers"       options={{ title: 'Customers' }} />
+      {/* All secondary modules get a ‹ back button in the header so users  */}
+      {/* can return to Home — Tabs have no native back gesture.            */}
+      <Tabs.Screen name="leads"           options={{ title: 'Leads',          headerLeft: () => <BackToHome /> }} />
+      <Tabs.Screen name="quotations"      options={{ title: 'Quotations',     headerLeft: () => <BackToHome /> }} />
+      <Tabs.Screen name="inquiries"       options={{ title: 'Inquiries',      headerLeft: () => <BackToHome /> }} />
+      <Tabs.Screen name="approvals"       options={{ title: 'Approvals',      headerLeft: () => <BackToHome /> }} />
+      <Tabs.Screen name="activities"      options={{ title: 'Activities',     headerLeft: () => <BackToHome /> }} />
+      <Tabs.Screen name="shipments"       options={{ title: 'Shipments',      headerLeft: () => <BackToHome /> }} />
+      <Tabs.Screen name="invoices"        options={{ title: 'Invoices',       headerLeft: () => <BackToHome /> }} />
+      <Tabs.Screen name="purchase-orders" options={{ title: 'Purchase Orders',headerLeft: () => <BackToHome /> }} />
+      <Tabs.Screen name="products"        options={{ title: 'Products',       headerLeft: () => <BackToHome /> }} />
+      <Tabs.Screen name="customers"       options={{ title: 'Customers',      headerLeft: () => <BackToHome /> }} />
     </Tabs>
   );
 }
