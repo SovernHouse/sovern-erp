@@ -507,6 +507,56 @@ export const HELP_CONTENT = {
     ],
   },
 
+  // ── Products ──────────────────────────────────────────────────────────────
+  '/products': {
+    title: 'Product Catalog',
+    summary: 'Your sourcing and pricing database. Each product holds buy prices from one or more factories, sell prices with margin, and dual specifications — a full technical spec for suppliers and a commercial spec for buyers.',
+    sections: [
+      {
+        heading: 'Product structure',
+        items: [
+          'Basic Info: name, SKU, category, primary factory, unit, HS code, min order qty.',
+          'Pricing: one or more supplier price cards — FOB buy, EXW, margin, sell price, and currency.',
+          'Technical Specs: full specification used on supplier purchase orders.',
+          'Commercial Specs: subset of specs shown to buyers on quotations and sales orders.',
+        ],
+      },
+      {
+        heading: 'Adding supplier prices',
+        steps: [
+          'Open the product and go to the Pricing tab.',
+          'Click Add Supplier Price.',
+          'Select the supplier factory and enter the Incoterm, buy price, and margin %.',
+          'The sell price is calculated automatically: Sell = Buy ÷ (1 − Margin%).',
+          'Mark the price as Active to use it on new quotations.',
+          'Only one price per factory can be active at a time — activating a new price archives the old one.',
+        ],
+      },
+      {
+        heading: 'Dual specifications (Technical vs. Commercial)',
+        body: 'Use the Technical Specs tab to enter the full product specification — all details go on factory purchase orders. Use the Commercial Specs tab to choose which fields buyers see on quotations and sales orders. This keeps sensitive production details (tolerances, tooling specs) off client documents while still including the commercial highlights.',
+      },
+      {
+        heading: 'Descriptions',
+        items: [
+          'Sales Description: client-facing — shown on quotations, PIs, and sales orders. Write for the buyer.',
+          'Purchase Description: supplier-facing — shown on purchase orders. Include QC requirements and packaging specs.',
+          'Internal Description: private notes — never leaves the ERP.',
+        ],
+      },
+    ],
+    tips: [
+      'Sell price = Factory FOB ÷ (1 − Margin%). Never multiply up — division gives gross margin, multiplication gives markup.',
+      'Always set an HS Code — it is required on commercial invoices and certificates of origin.',
+      'The primary factory field sets the default supplier on new purchase orders for this product.',
+      'Commercial Specs are what buyers see on quotations. Keep them clean and client-friendly.',
+    ],
+    warnings: [
+      'Changing an active sell price does not retroactively update existing quotations — those are locked at the price they were created at.',
+      'SKU cannot be changed after the product is created. Choose carefully.',
+    ],
+  },
+
   // ── Inventory ─────────────────────────────────────────────────────────────
   '/inventory': {
     title: 'Inventory',

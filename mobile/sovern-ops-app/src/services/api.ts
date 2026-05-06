@@ -253,20 +253,42 @@ export interface PaginatedResponse<T> {
   pageSize: number;
 }
 
+export interface ProductPrice {
+  id: string;
+  factoryId: string;
+  factory?: { id: string; companyName: string };
+  costPrice: number;       // FOB price (buy)
+  exwPrice?: number;       // EXW price (optional)
+  priceType: string;       // FOB | EXW | CIF | CFR | DDP
+  markup: number;          // margin %
+  sellingPrice: number;    // sell = FOB / (1 - margin%)
+  currency: string;
+  isActive: boolean;
+}
+
 export interface Product {
   id: string;
   name: string;
   sku?: string;
   description?: string;
-  category?: string;
+  salesDescription?: string;
+  purchaseDescription?: string;
+  category?: { id: string; name: string } | string;
+  factory?: { id: string; companyName: string };
+  factoryId?: string;
+  unit?: string;
+  hsCode?: string;
+  minOrderQty?: number;
+  isActive?: boolean;
+  prices?: ProductPrice[];
+  specifications?: Record<string, unknown>;
+  // legacy compat
   unitPrice?: number;
   currency?: string;
-  unit?: string;
-  moq?: number;           // minimum order quantity
+  moq?: number;
   leadTime?: string;
   status?: string;
   imageUrl?: string;
-  specifications?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 }

@@ -361,6 +361,30 @@ Both fields are accepted on `POST /api/quotations` (create) and `PUT /api/quotat
 
 Both fields are accepted on `POST /api/factories` (create) and `PUT /api/factories/:id` (update).
 
+**`Product` — dual-description fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `salesDescription` | TEXT | Client-facing description. Shown on quotations, sales orders, and the customer portal. |
+| `purchaseDescription` | TEXT | Supplier-facing description. Shown on factory purchase orders — may include tolerances, QC requirements, certifications. |
+
+**`ProductPrice` — extended pricing fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `exwPrice` | DECIMAL(12,2) | EX-Works price at factory gate. Optional supplement to the primary `costPrice` (FOB). |
+| `priceType` | ENUM('FOB','CIF','EXW','CFR','DDP') | Incoterm that governs the `costPrice`. Defaults to `'FOB'`. |
+
+**Margin formula** (enforced in `productController.js`): `sellingPrice = costPrice / (1 − markup / 100)`. Never multiply — division gives gross margin. When a new active price is created for a factory, all existing active prices for that factory are automatically set to `isActive: false`.
+
+**`ProductSpecification` — commercial visibility**
+
+| Field | Type | Description |
+|---|---|---|
+| `clientVisibleFields` | JSON (string[]) | Array of spec field keys shown to buyers on quotations and sales orders. All fields always appear on supplier POs. Defaults to the most commercially relevant flooring fields. |
+
+The dual-spec architecture is a single `ProductSpecification` record per product. The admin portal `ProductDetail` renders two panels: "Technical Specs" (all fields, amber label — for POs) and "Commercial Specs" (`clientVisibleFields` only, primary label — for quotations). The `ProductForm` Commercial tab provides a checkbox grid to toggle each field's visibility.
+
 ---
 
 ## 7. State Machine Guards
@@ -596,6 +620,24 @@ All endpoints are under `/api/chat`. Auth required on all.
 | GET | `/api/sales-orders/:id` | Get order detail |
 | PUT | `/api/sales-orders/:id` | Update order |
 | POST | `/api/sales-orders/:id/create-packing-list` | Auto-generate packing list |
+
+### Products
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/products` | List products (paginated). Query: `?page=&limit=&search=&categoryId=&factoryId=` |
+| POST | `/api/products` | Create product |
+| GET | `/api/products/:id` | Get product detail (includes `prices`, `factory`, `category`) |
+| PUT | `/api/products/:id` | Update product (includes `salesDescription`, `purchaseDescription`) |
+| DELETE | `/api/products/:id` | Soft delete product |
+| GET | `/api/products/categories/flat` | Flat list of all categories for dropdowns |
+| GET | `/api/products/:id/price-history` | Full price history for a product |
+| POST | `/api/products/:id/prices` | Add a supplier price. Computes `sellingPrice` server-side. Auto-deactivates prior active price for the same factory. |
+| PUT | `/api/products/:id/prices/:priceId` | Update a price record. Re-computes `sellingPrice` if `costPrice` or `markup` changes. |
+| DELETE | `/api/products/:id/prices/:priceId` | Delete a price record |
+| GET | `/api/products/:id/specs` | Get product specification (returns `null` if not yet created) |
+| POST | `/api/products/:id/specs` | Create specification record |
+| PUT | `/api/products/:id/specs` | Update specification. `clientVisibleFields` is a JSON array of field key strings. |
 
 ### Standard response shape
 

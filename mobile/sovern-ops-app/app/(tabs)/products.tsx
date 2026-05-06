@@ -1,38 +1,66 @@
 // ─── Products Screen ──────────────────────────────────────────────────────
-// Read-only catalog: search, browse SKUs, view specs on tap.
+// Catalog with pricing breakdown, commercial specs, and supplier/client split.
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView,
 } from 'react-native';
-import { getProducts, getProduct, type Product } from '../../src/services/api';
+import { getProducts, getProduct, type Product, type ProductPrice } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────
+
+function getActivePrice(prices?: ProductPrice[]): ProductPrice | null {
+  if (!prices || prices.length === 0) return null;
+  return prices.find(p => p.isActive) ?? prices[0];
+}
+
+function categoryName(cat: Product['category']): string {
+  if (!cat) return '';
+  if (typeof cat === 'string') return cat;
+  return cat.name;
+}
 
 // ─── Product Row ──────────────────────────────────────────────────────────
 
 function ProductRow({ product, onPress }: { product: Product; onPress: () => void }) {
+  const activePrice = getActivePrice(product.prices);
+  const factory = product.factory?.companyName;
+
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.rowBody}>
         <Text style={styles.name}>{product.name}</Text>
-        {product.sku ? (
-          <Text style={styles.sku}>SKU: {product.sku}</Text>
-        ) : null}
-        {product.category ? (
-          <Text style={styles.category}>{product.category}</Text>
-        ) : null}
+        {product.sku ? <Text style={styles.meta}>SKU: {product.sku}</Text> : null}
+        {factory ? <Text style={styles.factory}>{factory}</Text> : null}
+        {categoryName(product.category) ? <Text style={styles.category}>{categoryName(product.category)}</Text> : null}
       </View>
-      {product.unitPrice != null ? (
+      {activePrice ? (
         <View style={styles.priceBox}>
-          <Text style={styles.price}>
-            {product.currency ?? 'USD'} {Number(product.unitPrice).toFixed(2)}
+          <Text style={styles.priceLabel}>{activePrice.priceType} buy</Text>
+          <Text style={styles.fobPrice}>
+            {activePrice.currency} {Number(activePrice.costPrice).toFixed(2)}
           </Text>
-          {product.unit ? (
-            <Text style={styles.unit}>/{product.unit}</Text>
-          ) : null}
+          <Text style={styles.sellPrice}>
+            Sell: {Number(activePrice.sellingPrice).toFixed(2)}
+          </Text>
+          {product.unit ? <Text style={styles.unitText}>/{product.unit}</Text> : null}
         </View>
       ) : null}
     </TouchableOpacity>
+  );
+}
+
+// ─── Detail Row ───────────────────────────────────────────────────────────
+
+function DetailRow({ label, value }: { label: string; value?: string | number | null | boolean }) {
+  if (value == null || value === '') return null;
+  const display = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue}>{display}</Text>
+    </View>
   );
 }
 
@@ -49,15 +77,8 @@ function ProductDetailModal({ productId, onClose }: { productId: string; onClose
       .finally(() => setLoading(false));
   }, [productId]);
 
-  function row(label: string, value?: string | number | null) {
-    if (value == null || value === '') return null;
-    return (
-      <View style={styles.detailRow} key={label}>
-        <Text style={styles.detailLabel}>{label}</Text>
-        <Text style={styles.detailValue}>{String(value)}</Text>
-      </View>
-    );
-  }
+  const prices = product?.prices ?? [];
+  const activePrices = prices.filter(p => p.isActive);
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
@@ -75,27 +96,78 @@ function ProductDetailModal({ productId, onClose }: { productId: string; onClose
           <ActivityIndicator style={{ marginTop: 40 }} color={COLORS.forest} />
         ) : product ? (
           <ScrollView contentContainerStyle={styles.detailScroll}>
-            {row('SKU', product.sku)}
-            {row('Category', product.category)}
-            {row('Unit Price', product.unitPrice != null
-              ? `${product.currency ?? 'USD'} ${Number(product.unitPrice).toFixed(2)}${product.unit ? ' / ' + product.unit : ''}`
-              : null
+
+            {/* Basic Info */}
+            <Text style={styles.sectionTitle}>Product Info</Text>
+            <DetailRow label="SKU" value={product.sku} />
+            <DetailRow label="Category" value={categoryName(product.category)} />
+            <DetailRow label="Primary Supplier" value={product.factory?.companyName} />
+            <DetailRow label="Unit" value={product.unit} />
+            <DetailRow label="HS Code" value={product.hsCode} />
+            <DetailRow label="Min Order Qty" value={product.minOrderQty != null ? `${product.minOrderQty} ${product.unit ?? ''}`.trim() : null} />
+
+            {/* Pricing */}
+            {prices.length > 0 && (
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Pricing</Text>
+                {prices.map(p => (
+                  <View key={p.id} style={[styles.priceCard, !p.isActive && styles.priceCardInactive]}>
+                    <View style={styles.priceCardHeader}>
+                      <Text style={styles.priceCardSupplier}>
+                        {p.factory?.companyName ?? 'Supplier'}
+                      </Text>
+                      <View style={[styles.badge, p.isActive ? styles.badgeActive : styles.badgeInactive]}>
+                        <Text style={[styles.badgeText, p.isActive ? styles.badgeTextActive : styles.badgeTextInactive]}>
+                          {p.isActive ? 'Active' : 'Inactive'}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.priceCardRows}>
+                      <View style={styles.priceCardCell}>
+                        <Text style={styles.priceCardLabel}>{p.priceType} (Buy)</Text>
+                        <Text style={styles.priceCardFob}>{p.currency} {Number(p.costPrice).toFixed(2)}</Text>
+                      </View>
+                      {p.exwPrice ? (
+                        <View style={styles.priceCardCell}>
+                          <Text style={styles.priceCardLabel}>EXW</Text>
+                          <Text style={styles.priceCardVal}>{p.currency} {Number(p.exwPrice).toFixed(2)}</Text>
+                        </View>
+                      ) : null}
+                      <View style={styles.priceCardCell}>
+                        <Text style={styles.priceCardLabel}>Margin</Text>
+                        <Text style={styles.priceCardVal}>{p.markup}%</Text>
+                      </View>
+                      <View style={styles.priceCardCell}>
+                        <Text style={styles.priceCardLabel}>Sell Price</Text>
+                        <Text style={styles.priceCardSell}>{p.currency} {Number(p.sellingPrice).toFixed(2)}</Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </>
             )}
-            {row('MOQ', product.moq != null ? `${product.moq} ${product.unit ?? 'units'}` : null)}
-            {row('Lead Time', product.leadTime)}
-            {row('Status', product.status)}
+
+            {/* Sales Description (client-facing) */}
+            {product.salesDescription ? (
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Sales Description</Text>
+                <View style={styles.descBox}>
+                  <Text style={styles.descBadge}>Client-facing · shown on quotations</Text>
+                  <Text style={styles.descText}>{product.salesDescription}</Text>
+                </View>
+              </>
+            ) : null}
+
+            {/* Internal description */}
             {product.description ? (
-              <View style={styles.descBox}>
-                <Text style={styles.detailLabel}>Description</Text>
-                <Text style={styles.descText}>{product.description}</Text>
-              </View>
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Internal Notes</Text>
+                <View style={styles.descBox}>
+                  <Text style={styles.descText}>{product.description}</Text>
+                </View>
+              </>
             ) : null}
-            {product.specifications && Object.keys(product.specifications).length > 0 ? (
-              <View style={styles.specsSection}>
-                <Text style={styles.specsSectionTitle}>Specifications</Text>
-                {Object.entries(product.specifications).map(([k, v]) => row(k, v))}
-              </View>
-            ) : null}
+
           </ScrollView>
         ) : (
           <Text style={styles.emptyText}>Product not found.</Text>
@@ -135,11 +207,11 @@ export default function ProductsScreen() {
     const q = search.toLowerCase();
     setFiltered(
       q
-        ? products.filter(
-            (p) =>
-              p.name.toLowerCase().includes(q) ||
-              (p.sku ?? '').toLowerCase().includes(q) ||
-              (p.category ?? '').toLowerCase().includes(q)
+        ? products.filter(p =>
+            p.name.toLowerCase().includes(q) ||
+            (p.sku ?? '').toLowerCase().includes(q) ||
+            categoryName(p.category).toLowerCase().includes(q) ||
+            (p.factory?.companyName ?? '').toLowerCase().includes(q)
           )
         : products
     );
@@ -155,11 +227,10 @@ export default function ProductsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Search */}
       <View style={styles.searchBar}>
         <TextInput
           style={styles.searchInput}
-          placeholder="Search by name, SKU, or category…"
+          placeholder="Search by name, SKU, supplier, category…"
           placeholderTextColor={COLORS.muted}
           value={search}
           onChangeText={setSearch}
@@ -167,12 +238,10 @@ export default function ProductsScreen() {
         />
       </View>
 
-      {/* Count */}
       <Text style={styles.count}>
         {filtered.length} product{filtered.length !== 1 ? 's' : ''}
       </Text>
 
-      {/* List */}
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
@@ -180,11 +249,7 @@ export default function ProductsScreen() {
           <ProductRow product={item} onPress={() => setSelectedId(item.id)} />
         )}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => load(true)}
-            tintColor={COLORS.forest}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={COLORS.forest} />
         }
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
@@ -195,7 +260,6 @@ export default function ProductsScreen() {
         contentContainerStyle={filtered.length === 0 ? styles.emptyFlex : undefined}
       />
 
-      {/* Detail Modal */}
       {selectedId ? (
         <ProductDetailModal productId={selectedId} onClose={() => setSelectedId(null)} />
       ) : null}
@@ -211,20 +275,20 @@ const styles = StyleSheet.create({
   searchBar:   { margin: 12, backgroundColor: COLORS.white, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 12 },
   searchInput: { height: 40, color: COLORS.ink, fontSize: 14 },
   count:       { paddingHorizontal: 16, paddingBottom: 4, fontSize: 12, color: COLORS.muted },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
+
+  row:      { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: COLORS.white, paddingHorizontal: 16, paddingVertical: 12 },
   rowBody:  { flex: 1 },
   name:     { fontSize: 15, fontWeight: '600', color: COLORS.ink },
-  sku:      { fontSize: 12, color: COLORS.muted, marginTop: 2 },
+  meta:     { fontSize: 12, color: COLORS.muted, marginTop: 2 },
+  factory:  { fontSize: 12, color: COLORS.ink, marginTop: 2, fontWeight: '500' },
   category: { fontSize: 12, color: COLORS.forest, marginTop: 2 },
-  priceBox: { alignItems: 'flex-end', marginLeft: 8 },
-  price:    { fontSize: 14, fontWeight: '700', color: COLORS.forest },
-  unit:     { fontSize: 11, color: COLORS.muted },
+
+  priceBox:      { alignItems: 'flex-end', marginLeft: 12, minWidth: 90 },
+  priceLabel:    { fontSize: 10, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  fobPrice:      { fontSize: 13, fontWeight: '700', color: COLORS.ink, marginTop: 2 },
+  sellPrice:     { fontSize: 12, color: COLORS.forest, fontWeight: '600', marginTop: 1 },
+  unitText:      { fontSize: 11, color: COLORS.muted },
+
   separator: { height: 1, backgroundColor: COLORS.border },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 },
   emptyFlex: { flex: 1 },
@@ -233,28 +297,47 @@ const styles = StyleSheet.create({
   // Modal
   modalContainer: { flex: 1, backgroundColor: COLORS.cream },
   modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: COLORS.forest,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    paddingTop: 48,
+    paddingHorizontal: 16, paddingVertical: 14, paddingTop: 52,
   },
   modalTitle:   { flex: 1, color: COLORS.white, fontSize: 17, fontWeight: '700' },
   closeBtn:     { marginLeft: 12, padding: 4 },
   closeBtnText: { color: COLORS.white, fontSize: 20 },
-  detailScroll: { padding: 16 },
+  detailScroll: { padding: 16, paddingBottom: 40 },
+
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: COLORS.ink, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+
   detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    flexDirection: 'row', justifyContent: 'space-between',
+    paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   detailLabel: { fontSize: 13, color: COLORS.muted, flex: 1 },
   detailValue: { fontSize: 13, color: COLORS.ink, fontWeight: '500', flex: 2, textAlign: 'right' },
-  descBox:   { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  descText:  { fontSize: 13, color: COLORS.ink, marginTop: 4, lineHeight: 20 },
-  specsSection:      { marginTop: 16 },
-  specsSectionTitle: { fontSize: 13, fontWeight: '700', color: COLORS.ink, marginBottom: 4 },
+
+  // Price cards
+  priceCard: {
+    backgroundColor: COLORS.white, borderRadius: 10, padding: 12,
+    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
+  },
+  priceCardInactive: { opacity: 0.55 },
+  priceCardHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  priceCardSupplier: { fontSize: 14, fontWeight: '600', color: COLORS.ink },
+  priceCardRows:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  priceCardCell:     { minWidth: '45%', flex: 1 },
+  priceCardLabel:    { fontSize: 11, color: COLORS.muted, marginBottom: 2 },
+  priceCardFob:      { fontSize: 15, fontWeight: '700', color: COLORS.ink },
+  priceCardSell:     { fontSize: 15, fontWeight: '700', color: COLORS.forest },
+  priceCardVal:      { fontSize: 14, fontWeight: '500', color: COLORS.ink },
+
+  badge:            { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99 },
+  badgeActive:      { backgroundColor: '#dcfce7' },
+  badgeInactive:    { backgroundColor: '#f1f5f9' },
+  badgeText:        { fontSize: 11, fontWeight: '600' },
+  badgeTextActive:  { color: '#16a34a' },
+  badgeTextInactive:{ color: '#64748b' },
+
+  descBox:   { backgroundColor: COLORS.white, borderRadius: 8, padding: 12, marginBottom: 4, borderWidth: 1, borderColor: COLORS.border },
+  descBadge: { fontSize: 11, color: COLORS.forest, marginBottom: 6, fontWeight: '500' },
+  descText:  { fontSize: 13, color: COLORS.ink, lineHeight: 20 },
 });

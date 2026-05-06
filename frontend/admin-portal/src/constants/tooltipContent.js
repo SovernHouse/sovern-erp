@@ -177,6 +177,33 @@ export const PAYMENT = {
   status_rejected:'Payment failed or bounced. Follow up with the payer.',
 }
 
+// ─── Products ────────────────────────────────────────────────────────────────
+
+export const PRODUCT = {
+  name:                'Full product name as shown on quotations and purchase orders.',
+  sku:                 'Stock-Keeping Unit — your unique internal product code. Set once and never changed. Matched during bulk import.',
+  category:            'Product category for filtering and reporting. Managed in Settings > Product Taxonomy.',
+  factory:             'Primary supplier for this product. Used as the default factory on purchase orders.',
+  unit:                'Unit of measure — pcs, m², kg, cartons, sets, etc. Appears on all trade documents.',
+  hsCode:              'Harmonised System tariff code (6–10 digits). Required for customs declarations and certificate of origin.',
+  minOrderQty:         'Minimum quantity per order. Buyers ordering below this quantity should be flagged.',
+  description:         'Internal product notes — not visible to buyers or factories. Record sourcing history, quality notes, or alternative suppliers.',
+  salesDescription:    'Client-facing description shown on quotations, sales orders, and the customer portal. Write for the buyer — highlight benefits, specs, and certifications.',
+  purchaseDescription: 'Supplier-facing description shown on purchase orders. Include tolerances, QC requirements, packaging specs, and certifications the factory must meet.',
+
+  // Pricing tab
+  priceType:           'The Incoterm that applies to the buy price — FOB (factory loads, you arrange freight), EXW (ex-works, at factory gate), CIF, CFR, or DDP.',
+  costPrice:           'Your buy price from the factory, in the selected Incoterm. This is your landed cost basis before margin.',
+  exwPrice:            'Ex-Works price — at the factory gate before any loading or freight. Record when the factory provides both EXW and FOB quotes.',
+  markup:              'Gross margin percentage. Sovern formula: Sell = Buy / (1 − margin%). A 30% margin on a $10 FOB gives a $14.29 sell price.',
+  sellingPrice:        'Your sell price to the buyer. Auto-calculated from the buy price and margin. This is the price that appears on quotations.',
+  priceIsActive:       'Only one price per factory can be active at a time. The active price is used on new quotations. Inactive prices are archived for reference.',
+
+  // Specs tabs
+  clientVisibleFields: 'Check which specification fields appear on client-facing documents (quotations, sales orders, customer portal). All fields always appear on supplier purchase orders.',
+  specs_notes:         'Internal notes for the factory — QC tolerances, packaging requirements, or production constraints. Not shown to buyers.',
+}
+
 // ─── Settings / Admin ─────────────────────────────────────────────────────────
 
 export const SETTINGS = {
