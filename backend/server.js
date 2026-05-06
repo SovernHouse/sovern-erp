@@ -465,6 +465,21 @@ db.sequelize.authenticate()
       throw err;
     });
   })
+  .then(async () => {
+    // Additive SQLite column migrations -- safe to run every boot, no-op if column exists.
+    // Required because sequelize.sync() only creates missing tables, never adds missing columns.
+    const additiveMigrations = [
+      'ALTER TABLE TriageItems ADD COLUMN sync_requested_at DATETIME',
+    ];
+    for (const sql of additiveMigrations) {
+      try {
+        await db.sequelize.query(sql);
+        logger.info(`Migration applied: ${sql}`);
+      } catch (_) {
+        // "duplicate column name" -- column already exists, skip silently
+      }
+    }
+  })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {
     // Load modules after database is ready
