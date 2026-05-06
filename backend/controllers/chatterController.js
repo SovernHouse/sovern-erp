@@ -4,7 +4,7 @@
  */
 const { ChatterMessage, User } = require('../models');
 const { Op } = require('sequelize');
-const logger = require('../utils/logger.js');
+const logger = require('../utils/logger.js'); // still used by postSystemEvent
 
 // ── Allowed entity types (whitelist prevents enumeration attacks) ───────────
 const ALLOWED_ENTITY_TYPES = new Set([
@@ -29,7 +29,7 @@ const ALLOWED_ENTITY_TYPES = new Set([
  * GET /api/chatter/:entityType/:entityId
  * Returns all messages for a record, oldest first.
  */
-exports.getMessages = async (req, res) => {
+exports.getMessages = async (req, res, next) => {
   try {
     const { entityType, entityId } = req.params;
 
@@ -69,8 +69,7 @@ exports.getMessages = async (req, res) => {
 
     return res.json({ success: true, data: messages });
   } catch (err) {
-    logger.error('[chatter.getMessages]', err);
-    return res.status(500).json({ success: false, message: 'Failed to load messages.' });
+    next(err);
   }
 };
 
@@ -79,7 +78,7 @@ exports.getMessages = async (req, res) => {
  * Post a new comment on a record.
  * Authenticated users only; system events are created by other controllers.
  */
-exports.postMessage = async (req, res) => {
+exports.postMessage = async (req, res, next) => {
   try {
     const { entityType, entityId } = req.params;
     const { body, attachments, parentId } = req.body;
@@ -120,8 +119,7 @@ exports.postMessage = async (req, res) => {
 
     return res.status(201).json({ success: true, data: created });
   } catch (err) {
-    logger.error('[chatter.postMessage]', err);
-    return res.status(500).json({ success: false, message: 'Failed to post message.' });
+    next(err);
   }
 };
 
@@ -130,7 +128,7 @@ exports.postMessage = async (req, res) => {
  * Users can delete their own comments; admins/managers can delete any comment.
  * System events (non-comment types) cannot be deleted.
  */
-exports.deleteMessage = async (req, res) => {
+exports.deleteMessage = async (req, res, next) => {
   try {
     const { messageId } = req.params;
 
@@ -153,8 +151,7 @@ exports.deleteMessage = async (req, res) => {
     await message.destroy();
     return res.json({ success: true, message: 'Message deleted.' });
   } catch (err) {
-    logger.error('[chatter.deleteMessage]', err);
-    return res.status(500).json({ success: false, message: 'Failed to delete message.' });
+    next(err);
   }
 };
 
