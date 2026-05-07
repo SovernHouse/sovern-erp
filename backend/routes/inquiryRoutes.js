@@ -56,4 +56,6 @@ router.post('/:id/convert-to-quotation', requireAuth, requireAny('inquiries'),
 
 router.get('/:id/timeline', requireAuth, inquiryController.getTimeline);
 
+router.delete('/:id', requireAuth, requireAny('inquiries'), inquiryController.delete);
+
 module.exports = router;

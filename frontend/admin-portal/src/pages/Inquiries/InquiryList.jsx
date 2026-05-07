@@ -30,6 +30,18 @@ export default function InquiryList() {
     }
   }
 
+  const handleDelete = async (inquiry) => {
+    if (!window.confirm(`Delete inquiry ${inquiry.inquiryNumber}? This cannot be undone.`)) return
+    try {
+      await inquiriesAPI.delete(inquiry.id)
+      toast.success('Inquiry deleted')
+      setInquiries((prev) => prev.filter((i) => i.id !== inquiry.id))
+    } catch (error) {
+      const msg = error.response?.data?.error?.message || error.response?.data?.error || 'Failed to delete inquiry'
+      toast.error(typeof msg === 'string' ? msg : 'Failed to delete inquiry')
+    }
+  }
+
   const columns = [
     { key: 'inquiryNumber', label: 'Inquiry #' },
     { key: 'customer', label: 'Customer', render: (row) => row.customer?.companyName || '—' },
@@ -64,6 +76,7 @@ export default function InquiryList() {
           data={inquiries}
           isLoading={isLoading}
           onEdit={(inquiry) => navigate(`/inquiries/${inquiry.id}`)}
+          onDelete={handleDelete}
         />
       </div>
     </div>

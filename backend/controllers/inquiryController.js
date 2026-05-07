@@ -288,6 +288,25 @@ const getTimeline = async (req, res, next) => {
   }
 };
 
+const delete_ = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const inquiry = await db.Inquiry.findByPk(id);
+    if (!inquiry) throw new NotFoundError('Inquiry not found');
+
+    if (inquiry.convertedToQuotationId) {
+      throw new ValidationError(
+        'Cannot delete an inquiry that was converted to a quotation. Delete the quotation first or keep this for the audit trail.'
+      );
+    }
+
+    await inquiry.destroy();
+    res.json(getSuccessResponse({ id }, 'Inquiry deleted successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   getAll,
@@ -295,5 +314,6 @@ module.exports = {
   updateStatus,
   followUp,
   convertToQuotation,
-  getTimeline
+  getTimeline,
+  delete: delete_,
 };
