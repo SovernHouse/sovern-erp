@@ -426,6 +426,135 @@ async function callTool(name, args) {
       }
     }
 
+    // ── Products ────────────────────────────────────────────────────────────
+
+    case 'list_product_categories': {
+      const cats = await db.ProductCategory.findAll({
+        where: { isActive: true },
+        order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+        attributes: ['id', 'name', 'slug', 'description', 'parentId'],
+      });
+      return cats.length ? cats.map(c => c.toJSON()) : 'No product categories found.';
+    }
+
+    case 'list_products': {
+      const { Op } = require('sequelize');
+      const where = { deletedAt: null };
+      if (args.search) {
+        where[Op.or] = [
+          { name:  { [Op.like]: `%${args.search}%` } },
+          { sku:   { [Op.like]: `%${args.search}%` } },
+        ];
+      }
+      if (args.category_id) where.categoryId = args.category_id;
+      if (args.factory_id)  where.factoryId  = args.factory_id;
+
+      const products = await db.Product.findAll({
+        where,
+        limit: Math.min(args.limit || 20, 50),
+        order: [['createdAt', 'DESC']],
+        attributes: ['id', 'name', 'sku', 'description', 'unit', 'specifications',
+          'minOrderQty', 'hsCode', 'isActive', 'categoryId', 'factoryId'],
+        include: [
+          { model: db.ProductCategory, as: 'category', attributes: ['id', 'name'] },
+          { model: db.Factory, as: 'factory', attributes: ['id', 'name', 'country'] },
+        ],
+      });
+      return products.length ? products.map(p => p.toJSON()) : 'No products found.';
+    }
+
+    case 'get_product': {
+      const product = await db.Product.findOne({
+        where: { id: args.id, deletedAt: null },
+        include: [
+          { model: db.ProductCategory, as: 'category', attributes: ['id', 'name'] },
+          { model: db.Factory, as: 'factory', attributes: ['id', 'name', 'country', 'city'] },
+        ],
+      });
+      if (!product) return `Product ${args.id} not found.`;
+      return product.toJSON();
+    }
+
+    case 'create_product': {
+      const { Op } = require('sequelize');
+
+      // Resolve factory: prefer factory_id, fall back to name search
+      let factoryId = args.factory_id;
+      if (!factoryId && args.factory_name) {
+        const factory = await db.Factory.findOne({
+          where: { name: { [Op.like]: `%${args.factory_name}%` } },
+          attributes: ['id', 'name'],
+        });
+        if (!factory) return `Factory not found: "${args.factory_name}". Use list_factories to find the correct record.`;
+        factoryId = factory.id;
+      }
+      if (!factoryId) return 'factory_id or factory_name is required.';
+
+      // Resolve category: prefer category_id, fall back to name search
+      let categoryId = args.category_id;
+      if (!categoryId && args.category_name) {
+        const cat = await db.ProductCategory.findOne({
+          where: { name: { [Op.like]: `%${args.category_name}%` }, isActive: true },
+          attributes: ['id', 'name'],
+        });
+        if (!cat) {
+          // Create category on the fly if it doesn't exist
+          const newCat = await db.ProductCategory.create({ name: args.category_name });
+          categoryId = newCat.id;
+        } else {
+          categoryId = cat.id;
+        }
+      }
+      if (!categoryId) return 'category_id or category_name is required.';
+
+      // Auto-generate SKU if not provided
+      let sku = args.sku;
+      if (!sku) {
+        const prefix = args.name
+          .toUpperCase()
+          .replace(/[^A-Z0-9 ]/g, '')
+          .split(' ')
+          .filter(Boolean)
+          .slice(0, 3)
+          .map(w => w.slice(0, 3))
+          .join('-');
+        const suffix = Date.now().toString().slice(-4);
+        sku = `${prefix}-${suffix}`;
+      }
+
+      // Build specifications object — only include keys with values
+      const specs = {};
+      const specKeys = ['thickness', 'width', 'length', 'material', 'finish', 'color',
+        'wearLayer', 'acRating', 'species', 'grade', 'construction', 'clickSystem'];
+      for (const k of specKeys) {
+        if (args.specifications?.[k] != null) specs[k] = args.specifications[k];
+      }
+
+      const product = await db.Product.create({
+        name:               args.name,
+        sku,
+        description:        args.description        || null,
+        salesDescription:   args.sales_description  || null,
+        purchaseDescription:args.purchase_description || null,
+        categoryId,
+        factoryId,
+        unit:               args.unit               || 'sqm',
+        specifications:     specs,
+        minOrderQty:        args.min_order_qty       || 1,
+        weight:             args.weight              || null,
+        hsCode:             args.hs_code             || null,
+        isActive:           true,
+      });
+
+      return {
+        success: true,
+        productId: product.id,
+        name: product.name,
+        sku: product.sku,
+        message: `Product created: ${product.name} (SKU: ${product.sku})`,
+      };
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}. Available tools: ${TOOL_DEFS.map(t => t.name).join(', ')}`);
   }
@@ -598,6 +727,76 @@ const TOOL_DEFS = [
       properties: {
         status: { type: 'string', description: 'Filter by status (draft, sent, accepted, rejected)' },
         limit:  { type: 'number', description: 'Max results (default: 20)' },
+      },
+    },
+  },
+  {
+    name: 'list_product_categories',
+    description: 'List all product categories in the ERP. Use this to find the right category ID or name before creating a product.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'list_products',
+    description: 'List products in the ERP product catalog. Search by name or SKU.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        search:      { type: 'string', description: 'Search by name or SKU' },
+        category_id: { type: 'string', description: 'Filter by category ID' },
+        factory_id:  { type: 'string', description: 'Filter by factory ID' },
+        limit:       { type: 'number', description: 'Max results (default: 20)' },
+      },
+    },
+  },
+  {
+    name: 'get_product',
+    description: 'Get full details of a product including category and factory.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Product ID' },
+      },
+    },
+  },
+  {
+    name: 'create_product',
+    description: 'Create a new product in the ERP catalog from quotation or supplier data. Resolves factory and category by name. Auto-generates SKU if not provided. Use this when Alex shares a supplier quotation and asks to add the product to the system.',
+    inputSchema: {
+      type: 'object',
+      required: ['name'],
+      properties: {
+        name:                 { type: 'string',  description: 'Product name (e.g. "SPC Flooring 4mm Grey Oak")' },
+        sku:                  { type: 'string',  description: 'SKU — auto-generated if omitted' },
+        factory_id:           { type: 'string',  description: 'Factory UUID (use if known)' },
+        factory_name:         { type: 'string',  description: 'Factory name to search (used if factory_id not known)' },
+        category_id:          { type: 'string',  description: 'Category UUID (use if known)' },
+        category_name:        { type: 'string',  description: 'Category name (e.g. "SPC Flooring", "LVT", "Auto Parts") — created if not found' },
+        description:          { type: 'string',  description: 'Internal product description' },
+        sales_description:    { type: 'string',  description: 'Client-facing description for quotations and sales orders' },
+        purchase_description: { type: 'string',  description: 'Supplier-facing description for purchase orders' },
+        unit:                 { type: 'string',  description: 'Unit: sqm, sqft, box, pallet, roll, piece (default: sqm)' },
+        min_order_qty:        { type: 'number',  description: 'Minimum order quantity' },
+        weight:               { type: 'number',  description: 'Weight per unit (kg)' },
+        hs_code:              { type: 'string',  description: 'HS / HTS code for customs' },
+        specifications: {
+          type: 'object',
+          description: 'Product specs extracted from the quotation',
+          properties: {
+            thickness:    { type: 'string', description: 'e.g. "4mm", "8mm"' },
+            width:        { type: 'string', description: 'e.g. "182mm"' },
+            length:       { type: 'string', description: 'e.g. "1220mm"' },
+            material:     { type: 'string', description: 'e.g. "SPC", "LVT", "HDF"' },
+            finish:       { type: 'string', description: 'e.g. "Embossed", "Registered Emboss"' },
+            color:        { type: 'string', description: 'e.g. "Grey Oak", "Natural Walnut"' },
+            wearLayer:    { type: 'string', description: 'e.g. "0.3mm", "0.5mm"' },
+            acRating:     { type: 'string', description: 'e.g. "AC3", "AC4"' },
+            clickSystem:  { type: 'string', description: 'e.g. "Unilin", "5G"' },
+            construction: { type: 'string', description: 'e.g. "4-layer", "IXPE underlay included"' },
+            grade:        { type: 'string', description: 'Product grade if specified' },
+            species:      { type: 'string', description: 'Wood species (for engineered/solid wood)' },
+          },
+        },
       },
     },
   },
