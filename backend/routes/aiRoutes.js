@@ -9,10 +9,11 @@
 
 const express = require('express');
 const router = express.Router();
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const ai = require('../controllers/aiController');
 
 router.use(requireAuth);
+router.use(requireRole('super_admin'));
 
 router.post('/chat',                        ai.chat);
 router.get('/conversations',                ai.listConversations);

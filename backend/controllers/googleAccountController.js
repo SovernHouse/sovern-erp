@@ -24,7 +24,7 @@ const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/gmail.modify',       // read + send + label emails
-  'https://www.googleapis.com/auth/calendar.readonly',  // read calendar events
+  'https://www.googleapis.com/auth/calendar.events',    // read + create/edit calendar events
   'https://www.googleapis.com/auth/drive.readonly',     // browse Drive files
 ];
 

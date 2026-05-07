@@ -1,0 +1,629 @@
+#!/usr/bin/env node
+'use strict';
+/**
+ * Sovern ERP MCP Tool Server
+ *
+ * Exposes ERP data and Google Workspace actions to claude -p via the MCP
+ * stdio transport (JSON-RPC 2.0, newline-delimited).
+ *
+ * Started by claude -p as a subprocess via --mcp-config.
+ * Reads ERP_USER_ID from the environment to scope all Google API calls and
+ * DB lookups to the correct user.
+ *
+ * stdout  → MCP JSON-RPC messages only
+ * stderr  → diagnostic output (never read by claude)
+ */
+
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+
+const { google }             = require('googleapis');
+const db                     = require('../models');
+const { getAuthClientForAccount } = require('../controllers/googleAccountController');
+
+const USER_ID = process.env.ERP_USER_ID;
+
+// ── MCP stdio transport ───────────────────────────────────────────────────────
+
+let _buf = '';
+
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk => {
+  _buf += chunk;
+  let idx;
+  while ((idx = _buf.indexOf('\n')) !== -1) {
+    const line = _buf.slice(0, idx).trim();
+    _buf = _buf.slice(idx + 1);
+    if (line) handleLine(line);
+  }
+});
+process.stdin.on('end', () => process.exit(0));
+
+function mcpSend(obj) {
+  process.stdout.write(JSON.stringify(obj) + '\n');
+}
+
+async function handleLine(line) {
+  let msg;
+  try { msg = JSON.parse(line); } catch { return; }
+  const { id, method, params } = msg;
+  try {
+    if (method === 'initialize') {
+      mcpSend({ jsonrpc: '2.0', id, result: {
+        protocolVersion: '2024-11-05',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'sovern-erp', version: '1.0.0' },
+      }});
+    } else if (method === 'notifications/initialized') {
+      // Notification — no response required
+    } else if (method === 'ping') {
+      mcpSend({ jsonrpc: '2.0', id, result: {} });
+    } else if (method === 'tools/list') {
+      mcpSend({ jsonrpc: '2.0', id, result: { tools: TOOL_DEFS } });
+    } else if (method === 'tools/call') {
+      const result = await callTool(params.name, params.arguments || {});
+      const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+      mcpSend({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }] } });
+    } else if (id !== undefined) {
+      mcpSend({ jsonrpc: '2.0', id, error: { code: -32601, message: `Unknown method: ${method}` } });
+    }
+  } catch (err) {
+    process.stderr.write(`[erp-mcp] Error handling ${method}: ${err.message}\n`);
+    if (id !== undefined) {
+      mcpSend({ jsonrpc: '2.0', id, error: { code: -32603, message: err.message } });
+    }
+  }
+}
+
+// ── Google auth helper ────────────────────────────────────────────────────────
+
+async function getGoogleAuth() {
+  if (!USER_ID) throw new Error('ERP_USER_ID not set — cannot access Google services');
+  const account = await db.ConnectedGoogleAccount.findOne({
+    where: { connectedByUserId: USER_ID, isActive: true },
+  });
+  if (!account) {
+    throw new Error('No active Google account connected. Go to Settings > Integrations to connect your Google account.');
+  }
+  const auth = await getAuthClientForAccount(account);
+  return { auth, account };
+}
+
+// ── Tool implementations ──────────────────────────────────────────────────────
+
+async function callTool(name, args) {
+  switch (name) {
+
+    // ── Google Calendar ─────────────────────────────────────────────────────
+
+    case 'list_calendar_events': {
+      const { auth } = await getGoogleAuth();
+      const cal = google.calendar({ version: 'v3', auth });
+      const timeMin = args.days_ago
+        ? new Date(Date.now() - args.days_ago * 86400000).toISOString()
+        : new Date().toISOString();
+      const timeMax = new Date(Date.now() + (args.days_ahead || 14) * 86400000).toISOString();
+
+      const resp = await cal.events.list({
+        calendarId: 'primary',
+        timeMin,
+        timeMax,
+        maxResults: Math.min(args.limit || 20, 50),
+        singleEvents: true,
+        orderBy: 'startTime',
+        q: args.query || undefined,
+      });
+
+      const events = (resp.data.items || []).map(e => ({
+        id: e.id,
+        title: e.summary,
+        start: e.start?.dateTime || e.start?.date,
+        end: e.end?.dateTime || e.end?.date,
+        location: e.location || null,
+        description: e.description ? e.description.slice(0, 300) : null,
+        attendees: (e.attendees || []).map(a => a.email),
+        meetLink: e.hangoutLink || null,
+        status: e.status,
+      }));
+
+      return events.length ? events : 'No events found in the requested time range.';
+    }
+
+    case 'create_calendar_event': {
+      const { auth } = await getGoogleAuth();
+      const cal = google.calendar({ version: 'v3', auth });
+
+      const resource = {
+        summary: args.title,
+        description: args.description || '',
+        location: args.location || '',
+        start: args.all_day
+          ? { date: args.start_date }
+          : { dateTime: args.start_time, timeZone: args.timezone || 'Asia/Taipei' },
+        end: args.all_day
+          ? { date: args.end_date || args.start_date }
+          : { dateTime: args.end_time, timeZone: args.timezone || 'Asia/Taipei' },
+        attendees: (args.attendees || []).map(email => ({ email })),
+      };
+      if (args.add_meet_link) {
+        resource.conferenceData = { createRequest: { requestId: `erp-${Date.now()}` } };
+      }
+
+      const resp = await cal.events.insert({
+        calendarId: 'primary',
+        resource,
+        conferenceDataVersion: args.add_meet_link ? 1 : 0,
+      });
+
+      return {
+        success: true,
+        eventId: resp.data.id,
+        title: resp.data.summary,
+        start: resp.data.start?.dateTime || resp.data.start?.date,
+        htmlLink: resp.data.htmlLink,
+        meetLink: resp.data.hangoutLink || null,
+      };
+    }
+
+    // ── Gmail ───────────────────────────────────────────────────────────────
+
+    case 'list_emails': {
+      const { auth } = await getGoogleAuth();
+      const gmail = google.gmail({ version: 'v1', auth });
+
+      const resp = await gmail.users.messages.list({
+        userId: 'me',
+        maxResults: Math.min(args.limit || 10, 25),
+        q: args.query || 'is:inbox',
+      });
+
+      if (!resp.data.messages?.length) return 'No emails found matching the query.';
+
+      const emails = await Promise.all(
+        resp.data.messages.map(async m => {
+          const msg = await gmail.users.messages.get({
+            userId: 'me',
+            id: m.id,
+            format: 'metadata',
+            metadataHeaders: ['From', 'To', 'Subject', 'Date'],
+          });
+          const headers = Object.fromEntries(
+            (msg.data.payload?.headers || []).map(h => [h.name, h.value])
+          );
+          return {
+            id: m.id,
+            threadId: m.threadId,
+            from: headers.From,
+            to: headers.To,
+            subject: headers.Subject,
+            date: headers.Date,
+            snippet: msg.data.snippet,
+          };
+        })
+      );
+      return emails;
+    }
+
+    case 'read_email_thread': {
+      const { auth } = await getGoogleAuth();
+      const gmail = google.gmail({ version: 'v1', auth });
+
+      const thread = await gmail.users.threads.get({
+        userId: 'me',
+        id: args.thread_id,
+        format: 'full',
+      });
+
+      const messages = (thread.data.messages || []).map(msg => {
+        const headers = Object.fromEntries(
+          (msg.payload?.headers || []).map(h => [h.name, h.value])
+        );
+        let body = '';
+        const extractBody = part => {
+          if (part.mimeType === 'text/plain' && part.body?.data) {
+            body += Buffer.from(part.body.data, 'base64').toString('utf8');
+          }
+          (part.parts || []).forEach(extractBody);
+        };
+        extractBody(msg.payload || {});
+
+        return {
+          id: msg.id,
+          from: headers.From,
+          to: headers.To,
+          subject: headers.Subject,
+          date: headers.Date,
+          body: body.slice(0, 3000),
+        };
+      });
+
+      return messages.length ? messages : 'Thread not found or empty.';
+    }
+
+    case 'send_email': {
+      const { auth, account } = await getGoogleAuth();
+      const gmail = google.gmail({ version: 'v1', auth });
+
+      const to = Array.isArray(args.to) ? args.to.join(', ') : args.to;
+      const headers = [
+        `From: ${account.displayName} <${account.email}>`,
+        `To: ${to}`,
+        `Subject: ${args.subject}`,
+        'Content-Type: text/plain; charset=utf-8',
+      ].join('\r\n');
+
+      const raw = Buffer.from(`${headers}\r\n\r\n${args.body}`).toString('base64url');
+
+      const resp = await gmail.users.messages.send({
+        userId: 'me',
+        resource: {
+          raw,
+          threadId: args.reply_to_thread_id || undefined,
+        },
+      });
+
+      return {
+        success: true,
+        messageId: resp.data.id,
+        threadId: resp.data.threadId,
+        from: account.email,
+        to,
+        subject: args.subject,
+      };
+    }
+
+    // ── Leads ───────────────────────────────────────────────────────────────
+
+    case 'list_leads': {
+      const { Op } = require('sequelize');
+      const where = {};
+      if (args.status) where.status = args.status;
+      if (args.search) {
+        where[Op.or] = [
+          { companyName: { [Op.like]: `%${args.search}%` } },
+          { contactName: { [Op.like]: `%${args.search}%` } },
+          { email:       { [Op.like]: `%${args.search}%` } },
+        ];
+      }
+      const leads = await db.Lead.findAll({
+        where,
+        limit: Math.min(args.limit || 20, 50),
+        order: [['createdAt', 'DESC']],
+        attributes: ['id', 'companyName', 'contactName', 'email', 'phone',
+          'status', 'stage', 'source', 'country', 'productInterest',
+          'estimatedValue', 'priority', 'createdAt'],
+      });
+      return leads.length ? leads.map(l => l.toJSON()) : 'No leads found.';
+    }
+
+    case 'get_lead': {
+      const lead = await db.Lead.findByPk(args.id);
+      if (!lead) return `Lead ${args.id} not found.`;
+      let activities = [];
+      try {
+        activities = await db.Activity.findAll({
+          where: { leadId: args.id },
+          limit: 10,
+          order: [['createdAt', 'DESC']],
+        });
+      } catch (_) { /* Activity association may not exist */ }
+      return { ...lead.toJSON(), recentActivities: activities.map(a => a.toJSON()) };
+    }
+
+    case 'update_lead': {
+      const lead = await db.Lead.findByPk(args.id);
+      if (!lead) return `Lead ${args.id} not found.`;
+      const allowed = ['status', 'stage', 'notes', 'productInterest',
+        'estimatedValue', 'priority', 'nextFollowUp'];
+      const updates = Object.fromEntries(
+        Object.entries(args).filter(([k]) => allowed.includes(k))
+      );
+      await lead.update(updates);
+      return { success: true, updated: Object.keys(updates), lead: lead.toJSON() };
+    }
+
+    // ── Contacts ────────────────────────────────────────────────────────────
+
+    case 'list_contacts': {
+      const { Op } = require('sequelize');
+      const where = {};
+      if (args.search) {
+        where[Op.or] = [
+          { name:    { [Op.like]: `%${args.search}%` } },
+          { email:   { [Op.like]: `%${args.search}%` } },
+          { company: { [Op.like]: `%${args.search}%` } },
+        ];
+      }
+      const contacts = await db.Contact.findAll({
+        where,
+        limit: Math.min(args.limit || 20, 50),
+        order: [['name', 'ASC']],
+        attributes: ['id', 'name', 'email', 'phone', 'company', 'role',
+          'country', 'wechat', 'whatsapp', 'notes'],
+      });
+      return contacts.length ? contacts.map(c => c.toJSON()) : 'No contacts found.';
+    }
+
+    case 'get_contact': {
+      const contact = await db.Contact.findByPk(args.id);
+      if (!contact) return `Contact ${args.id} not found.`;
+      return contact.toJSON();
+    }
+
+    // ── Factories ───────────────────────────────────────────────────────────
+
+    case 'list_factories': {
+      const { Op } = require('sequelize');
+      const where = {};
+      if (args.search) {
+        where[Op.or] = [
+          { name:    { [Op.like]: `%${args.search}%` } },
+          { country: { [Op.like]: `%${args.search}%` } },
+          { city:    { [Op.like]: `%${args.search}%` } },
+        ];
+      }
+      if (args.category) where.primaryCategory = args.category;
+
+      const factories = await db.Factory.findAll({
+        where,
+        limit: Math.min(args.limit || 20, 50),
+        order: [['name', 'ASC']],
+        attributes: ['id', 'name', 'country', 'city', 'primaryCategory',
+          'contactPerson', 'email', 'phone', 'rating', 'notes'],
+      });
+      return factories.length ? factories.map(f => f.toJSON()) : 'No factories found.';
+    }
+
+    case 'get_factory': {
+      const factory = await db.Factory.findByPk(args.id);
+      if (!factory) return `Factory ${args.id} not found.`;
+      return factory.toJSON();
+    }
+
+    // ── Quotations ──────────────────────────────────────────────────────────
+
+    case 'list_quotations': {
+      const { Op } = require('sequelize');
+      const where = {};
+      if (args.status) where.status = args.status;
+
+      const quotations = await db.Quotation.findAll({
+        where,
+        limit: Math.min(args.limit || 20, 50),
+        order: [['createdAt', 'DESC']],
+        attributes: ['id', 'quotationNumber', 'status', 'totalAmount',
+          'currency', 'validUntil', 'createdAt'],
+        include: [{ model: db.Customer, as: 'customer', attributes: ['id', 'name'] }],
+      });
+      return quotations.length ? quotations.map(q => q.toJSON()) : 'No quotations found.';
+    }
+
+    // ── Activities / notes ──────────────────────────────────────────────────
+
+    case 'log_activity': {
+      const data = {
+        type:      args.type || 'note',
+        subject:   args.subject,
+        notes:     args.notes || null,
+        dueDate:   args.due_date || null,
+      };
+      if (args.lead_id)    data.leadId    = args.lead_id;
+      if (args.contact_id) data.contactId = args.contact_id;
+      if (USER_ID)         data.userId    = USER_ID;
+
+      try {
+        const activity = await db.Activity.create(data);
+        return { success: true, activityId: activity.id };
+      } catch (err) {
+        // Fall back to ScheduledActivity if Activity model differs
+        const activity = await db.ScheduledActivity.create({
+          type:    data.type,
+          summary: data.subject,
+          notes:   data.notes,
+          dueDate: data.dueDate,
+          status:  'pending',
+        });
+        return { success: true, activityId: activity.id, model: 'ScheduledActivity' };
+      }
+    }
+
+    default:
+      throw new Error(`Unknown tool: ${name}. Available tools: ${TOOL_DEFS.map(t => t.name).join(', ')}`);
+  }
+}
+
+// ── Tool definitions ──────────────────────────────────────────────────────────
+
+const TOOL_DEFS = [
+  {
+    name: 'list_calendar_events',
+    description: 'List Google Calendar events. Use to check schedule, availability, or find upcoming meetings.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        days_ago:   { type: 'number', description: 'Days back to search from today (default: 0)' },
+        days_ahead: { type: 'number', description: 'Days forward to search (default: 14)' },
+        limit:      { type: 'number', description: 'Max events (default: 20)' },
+        query:      { type: 'string', description: 'Free-text search (company name, person, keyword)' },
+      },
+    },
+  },
+  {
+    name: 'create_calendar_event',
+    description: 'Create a new Google Calendar event or meeting. Confirm details with the user before calling.',
+    inputSchema: {
+      type: 'object',
+      required: ['title', 'start_time', 'end_time'],
+      properties: {
+        title:              { type: 'string',  description: 'Event title' },
+        start_time:         { type: 'string',  description: 'ISO 8601 datetime e.g. 2026-05-10T14:00:00' },
+        end_time:           { type: 'string',  description: 'ISO 8601 datetime e.g. 2026-05-10T15:00:00' },
+        description:        { type: 'string',  description: 'Agenda or notes' },
+        location:           { type: 'string',  description: 'Physical address or call link' },
+        attendees:          { type: 'array',   items: { type: 'string' }, description: 'Attendee email addresses' },
+        timezone:           { type: 'string',  description: 'Timezone (default: Asia/Taipei)' },
+        add_meet_link:      { type: 'boolean', description: 'Generate a Google Meet link' },
+        all_day:            { type: 'boolean', description: 'All-day event' },
+        start_date:         { type: 'string',  description: 'YYYY-MM-DD for all-day events' },
+        end_date:           { type: 'string',  description: 'YYYY-MM-DD for all-day events' },
+      },
+    },
+  },
+  {
+    name: 'list_emails',
+    description: 'List emails from Gmail. Supports Gmail search syntax (from:, subject:, is:unread, etc.).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Gmail search query (default: is:inbox)' },
+        limit: { type: 'number', description: 'Max emails (default: 10)' },
+      },
+    },
+  },
+  {
+    name: 'read_email_thread',
+    description: 'Read the full content of an email thread (all messages).',
+    inputSchema: {
+      type: 'object',
+      required: ['thread_id'],
+      properties: {
+        thread_id: { type: 'string', description: 'Gmail thread ID from list_emails' },
+      },
+    },
+  },
+  {
+    name: 'send_email',
+    description: 'Send an email via Gmail. IMPORTANT: Always show the complete draft (To / Subject / Body) to the user and get explicit confirmation before calling this tool. Never send autonomously.',
+    inputSchema: {
+      type: 'object',
+      required: ['to', 'subject', 'body'],
+      properties: {
+        to:                  { type: 'string', description: 'Recipient email (or comma-separated list)' },
+        subject:             { type: 'string', description: 'Email subject' },
+        body:                { type: 'string', description: 'Plain-text email body' },
+        reply_to_thread_id:  { type: 'string', description: 'Thread ID to reply within (keeps conversation threaded)' },
+      },
+    },
+  },
+  {
+    name: 'list_leads',
+    description: 'List CRM leads. Use to check pipeline, find contacts, or get a status overview.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', description: 'Filter by status (new, contacted, qualified, converted, lost)' },
+        search: { type: 'string', description: 'Search by company name, contact name, or email' },
+        limit:  { type: 'number', description: 'Max results (default: 20)' },
+      },
+    },
+  },
+  {
+    name: 'get_lead',
+    description: 'Get full details of a lead including recent activities.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Lead ID' },
+      },
+    },
+  },
+  {
+    name: 'update_lead',
+    description: 'Update a lead\'s status, stage, notes, or follow-up date.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:              { type: 'string', description: 'Lead ID' },
+        status:          { type: 'string', description: 'New status' },
+        stage:           { type: 'string', description: 'Pipeline stage' },
+        notes:           { type: 'string', description: 'Notes to save' },
+        productInterest: { type: 'string', description: 'Products of interest' },
+        estimatedValue:  { type: 'number', description: 'Estimated deal value USD' },
+        priority:        { type: 'string', description: 'Priority: low, medium, high' },
+        nextFollowUp:    { type: 'string', description: 'Next follow-up date ISO format' },
+      },
+    },
+  },
+  {
+    name: 'list_contacts',
+    description: 'List CRM contacts. Search by name, email, or company.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        search: { type: 'string', description: 'Search term' },
+        limit:  { type: 'number', description: 'Max results (default: 20)' },
+      },
+    },
+  },
+  {
+    name: 'get_contact',
+    description: 'Get full details of a contact.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Contact ID' },
+      },
+    },
+  },
+  {
+    name: 'list_factories',
+    description: 'List factory/supplier records.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        search:   { type: 'string', description: 'Search by name, country, or city' },
+        category: { type: 'string', description: 'Filter by product category (Flooring, Auto Parts, Garments, etc.)' },
+        limit:    { type: 'number', description: 'Max results (default: 20)' },
+      },
+    },
+  },
+  {
+    name: 'get_factory',
+    description: 'Get full details of a factory/supplier.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Factory ID' },
+      },
+    },
+  },
+  {
+    name: 'list_quotations',
+    description: 'List quotations from the ERP.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', description: 'Filter by status (draft, sent, accepted, rejected)' },
+        limit:  { type: 'number', description: 'Max results (default: 20)' },
+      },
+    },
+  },
+  {
+    name: 'log_activity',
+    description: 'Log a call, meeting note, email, or task against a lead or contact.',
+    inputSchema: {
+      type: 'object',
+      required: ['subject'],
+      properties: {
+        subject:    { type: 'string', description: 'Activity title' },
+        notes:      { type: 'string', description: 'Detailed notes' },
+        type:       { type: 'string', description: 'Type: note, call, meeting, email, task (default: note)' },
+        lead_id:    { type: 'string', description: 'Lead ID to attach to' },
+        contact_id: { type: 'string', description: 'Contact ID to attach to' },
+        due_date:   { type: 'string', description: 'Due date for tasks (ISO format)' },
+      },
+    },
+  },
+];
+
+// ── Startup ───────────────────────────────────────────────────────────────────
+
+db.sequelize.authenticate()
+  .then(() => process.stderr.write('[erp-mcp] DB ready, server listening on stdin\n'))
+  .catch(err => {
+    process.stderr.write(`[erp-mcp] DB connect failed: ${err.message}\n`);
+    process.exit(1);
+  });

@@ -18,6 +18,7 @@ import {
   aiChat, aiListConversations, aiGetConversation, aiDeleteConversation,
   type AIConversation, type AIMessage,
 } from '../../src/services/api';
+import { useAuthStore } from '../../src/store/authStore';
 import { COLORS } from '../../src/constants/config';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -178,6 +179,25 @@ function WelcomeScreen({ onSuggestion }: { onSuggestion: (text: string) => void 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function AssistantScreen() {
+  const { user } = useAuthStore();
+
+  // Role gate — AI assistant is super_admin only
+  if (user?.role !== 'super_admin') {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center',
+        padding: 32, backgroundColor: COLORS.cream }}>
+        <Text style={{ fontSize: 32, marginBottom: 16 }}>🔒</Text>
+        <Text style={{ fontSize: 17, fontWeight: '700', color: COLORS.ink,
+          textAlign: 'center', marginBottom: 8 }}>
+          Access restricted
+        </Text>
+        <Text style={{ fontSize: 14, color: COLORS.muted, textAlign: 'center', lineHeight: 20 }}>
+          The AI assistant is available to administrators only.
+        </Text>
+      </View>
+    );
+  }
+
   // ── Conversation list state ────────────────────────────────────────────────
   const [conversations, setConversations] = useState<AIConversation[]>([]);
   const [loadingList, setLoadingList]     = useState(true);

@@ -1,13 +1,38 @@
 /**
  * AI Controller
  * Handles the in-ERP Claude assistant: chat, conversation management.
- * Uses `claude -p` subprocess (Max subscription) -- same pattern as gmailSyncService.js.
+ * Uses `claude -p` subprocess (Max subscription) with the ERP MCP tool server
+ * for Google Calendar, Gmail, leads, contacts, factories, and quotations.
  */
 
-const { spawn } = require('child_process');
-const db = require('../models');
-const logger = require('../utils/logger');
+const { spawn }  = require('child_process');
+const fs         = require('fs');
+const os         = require('os');
+const path       = require('path');
+const db         = require('../models');
+const logger     = require('../utils/logger');
 const { buildSystemPrompt } = require('../services/aiContextService');
+
+// ── MCP config — written once at module load, reused for all requests ─────────
+// Points claude -p to the ERP MCP tool server. Path is resolved at runtime so
+// it works in any environment without hardcoding the VM path.
+
+const MCP_SERVER_PATH = path.join(__dirname, '..', 'mcp', 'erpToolServer.js');
+const MCP_CONFIG_PATH = path.join(os.tmpdir(), 'sovern-erp-mcp-config.json');
+
+try {
+  fs.writeFileSync(MCP_CONFIG_PATH, JSON.stringify({
+    mcpServers: {
+      'sovern-erp': {
+        command: 'node',
+        args: [MCP_SERVER_PATH],
+      },
+    },
+  }));
+  logger.info('[ai] MCP config written to', MCP_CONFIG_PATH);
+} catch (err) {
+  logger.error('[ai] Failed to write MCP config:', err.message);
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -18,32 +43,36 @@ function formatConversationForPrompt(messages) {
     .join('\n\n');
 }
 
-async function runClaudeSubprocess(fullPrompt) {
+async function runClaudeSubprocess(fullPrompt, userId) {
   return new Promise((resolve) => {
     let output = '';
     let errOutput = '';
     let settled = false;
 
-    // Pass prompt via stdin — --tools is variadic (<tools...>) so positional
-    // args after it get consumed as tool names, leaving no prompt argument.
+    // --tools ''      disables built-in Bash/file/web tools (security)
+    // --mcp-config    enables our ERP tool server (calendar, gmail, leads, etc.)
+    // Prompt via stdin — --tools is variadic so a positional arg would be
+    // consumed as a tool name, not a prompt.
     const child = spawn('claude', [
       '-p',
-      '--tools', '',   // text-only: disable Bash/file/MCP tools
+      '--tools', '',
+      '--mcp-config', MCP_CONFIG_PATH,
     ], {
-      env: { ...process.env },
+      env: { ...process.env, ERP_USER_ID: String(userId || '') },
     });
     child.stdin.write(fullPrompt);
     child.stdin.end();
 
-    // Hard-kill after 90s — shorter than nginx's proxy_read_timeout (150s)
-    // so the backend can return a clean 504 before nginx cuts the connection.
+    // Hard-kill after 120s — shorter than nginx's proxy_read_timeout (150s)
+    // so the backend can return a clean error before nginx cuts the connection.
+    // Increased from 90s to allow for multi-step tool call chains.
     const killTimer = setTimeout(() => {
       if (!settled) {
         logger.warn('[ai] Claude subprocess timeout — killing');
         child.kill('SIGTERM');
         setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 3000);
       }
-    }, 90000);
+    }, 120000);
 
     child.stdout.on('data', (d) => { output += d.toString(); });
     child.stderr.on('data', (d) => { errOutput += d.toString(); });
@@ -68,12 +97,12 @@ async function runClaudeSubprocess(fullPrompt) {
   });
 }
 
-// Generate a short title for a new conversation from the first user message
+// Generate a short title — no MCP tools needed, pass null for userId
 async function generateTitle(firstMessage) {
   const prompt = 'Generate a short (5 words max) title for a conversation that starts with:\n"' +
     firstMessage.slice(0, 200) + '"\n\nReturn ONLY the title, no quotes, no explanation.';
 
-  const result = await runClaudeSubprocess(prompt);
+  const result = await runClaudeSubprocess(prompt, null);
   if (result.ok && result.text) {
     return result.text.slice(0, 100).replace(/^["']|["']$/g, '').trim();
   }
@@ -125,8 +154,8 @@ exports.chat = async (req, res) => {
     }
     fullPrompt += 'Human: ' + message.trim() + '\n\nAssistant:';
 
-    // Run claude -p
-    const result = await runClaudeSubprocess(fullPrompt);
+    // Run claude -p with ERP MCP tools
+    const result = await runClaudeSubprocess(fullPrompt, user.id);
 
     if (!result.ok) {
       return res.status(502).json({
