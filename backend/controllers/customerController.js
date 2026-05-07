@@ -177,12 +177,17 @@ const delete_ = async (req, res, next) => {
       );
     }
 
-    await customer.update({ isActive: false });
+    // Customer model is paranoid — destroy() sets deletedAt, and the
+    // default findAll filters out deletedAt records. The previous
+    // update({isActive:false}) left the row visible in lists because
+    // getAll does not filter on isActive.
+    const beforeSnapshot = customer.toJSON();
+    await customer.destroy();
 
-    res.json(getSuccessResponse(null, 'Customer deactivated successfully'));
+    res.json(getSuccessResponse(null, 'Customer deleted successfully'));
 
     // Fire-and-forget audit log
-    auditService.logAction(req.user.id, 'DELETE', 'Customer', id, { action: 'deactivated' }, req.ip).catch(() => {});
+    auditService.logAction(req.user.id, 'DELETE', 'Customer', id, { before: beforeSnapshot }, req.ip).catch(() => {});
   } catch (error) {
     next(error);
   }

@@ -42,6 +42,8 @@ router.put('/:id', requireAuth, requireAny('factories'),
   factoryController.update
 );
 
+router.delete('/:id', requireAuth, requireAny('factories'), factoryController.delete);
+
 router.get('/:id/products', requireAuth, factoryController.getProducts);
 
 router.post('/:id/update-prices', requireAuth, requireAny('factories'),

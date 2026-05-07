@@ -302,11 +302,48 @@ const getPerformance = async (req, res, next) => {
   }
 };
 
+const delete_ = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const factory = await db.Factory.findByPk(id);
+
+    if (!factory) {
+      throw new NotFoundError('Factory not found');
+    }
+
+    const { ValidationError } = require('../middleware/errorHandler');
+
+    // Block delete if there are open purchase orders. Closed/cancelled is fine.
+    const openPOs = await db.PurchaseOrder.count({
+      where: {
+        factoryId: id,
+        status: { [require('sequelize').Op.notIn]: ['completed', 'cancelled'] },
+      },
+    });
+    if (openPOs > 0) {
+      throw new ValidationError(
+        `Cannot delete factory with ${openPOs} open purchase order(s). Close them first.`
+      );
+    }
+
+    // Factory model is paranoid — destroy() sets deletedAt and lists hide it
+    const beforeSnapshot = factory.toJSON();
+    await factory.destroy();
+
+    res.json(getSuccessResponse(null, 'Factory deleted successfully'));
+
+    auditService.logAction(req.user.id, 'DELETE', 'Factory', id, { before: beforeSnapshot }, req.ip).catch(() => {});
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   getAll,
   getById,
   update,
+  delete: delete_,
   getProducts,
   updatePrices,
   getPerformance
