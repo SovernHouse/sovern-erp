@@ -27,11 +27,16 @@ const RoleGuard = ({ permission, allowedRoles, fallback, children }) => {
 
   let hasAccess = true
 
-  if (permission) {
+  // super_admin is founder/CEO level — always grants access regardless of
+  // permission or role whitelist. Strict superset of admin by definition.
+  if (user.role === 'super_admin') {
+    hasAccess = true
+  } else if (permission) {
     // Primary check: permission key against ROLE_PERMISSIONS map
     hasAccess = canAccessRoute(user.role, permission, user.permissions || null)
   } else if (allowedRoles && !allowedRoles.includes('*')) {
-    // Legacy check: explicit role whitelist
+    // Legacy check: explicit role whitelist. Treat 'admin' in the list as
+    // implicitly including super_admin (handled above as a blanket allow).
     hasAccess = allowedRoles.includes(user.role)
   }
 
