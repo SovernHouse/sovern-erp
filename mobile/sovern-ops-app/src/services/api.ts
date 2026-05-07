@@ -14,9 +14,45 @@ async function getToken(): Promise<string | null> {
   return SecureStore.getItemAsync(CONFIG.TOKEN_KEY);
 }
 
+// Serializes concurrent 401 retries so we only hit /api/auth/refresh once.
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const refreshToken = await SecureStore.getItemAsync(CONFIG.REFRESH_TOKEN_KEY);
+      if (!refreshToken) return false;
+      const res = await fetch(`${CONFIG.SERVER_URL}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) {
+        await Promise.all([
+          SecureStore.deleteItemAsync(CONFIG.TOKEN_KEY),
+          SecureStore.deleteItemAsync(CONFIG.REFRESH_TOKEN_KEY),
+        ]);
+        return false;
+      }
+      const body = await res.json();
+      const newAccess: string | undefined = body.data?.tokens?.accessToken;
+      const newRefresh: string | undefined = body.data?.tokens?.refreshToken;
+      if (!newAccess) return false;
+      await SecureStore.setItemAsync(CONFIG.TOKEN_KEY, newAccess);
+      if (newRefresh) await SecureStore.setItemAsync(CONFIG.REFRESH_TOKEN_KEY, newRefresh);
+      return true;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
 async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  _retry = true,
 ): Promise<T> {
   const token = await getToken();
 
@@ -28,6 +64,11 @@ async function request<T>(
       ...(options.headers ?? {}),
     },
   });
+
+  if (res.status === 401 && _retry) {
+    const refreshed = await tryRefresh();
+    if (refreshed) return request(path, options, false);
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -50,13 +91,31 @@ export async function login(email: string, password: string) {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
-  const token = res.data.tokens.accessToken;
-  await SecureStore.setItemAsync(CONFIG.TOKEN_KEY, token);
+  const { accessToken, refreshToken } = res.data.tokens;
+  await SecureStore.setItemAsync(CONFIG.TOKEN_KEY, accessToken);
+  await SecureStore.setItemAsync(CONFIG.REFRESH_TOKEN_KEY, refreshToken);
   return { user: res.data.user };
 }
 
 export async function logout() {
-  await SecureStore.deleteItemAsync(CONFIG.TOKEN_KEY);
+  await Promise.all([
+    SecureStore.deleteItemAsync(CONFIG.TOKEN_KEY),
+    SecureStore.deleteItemAsync(CONFIG.REFRESH_TOKEN_KEY),
+  ]);
+}
+
+export async function getCurrentUser(): Promise<User> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await request<{ success: boolean; data: User }>(
+      '/api/auth/me',
+      { signal: controller.signal },
+    );
+    return res.data;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────

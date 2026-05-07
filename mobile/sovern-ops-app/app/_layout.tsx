@@ -10,6 +10,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useRouter, useSegments } from 'expo-router';
 import { useAuthStore } from '../src/store/authStore';
 import { CONFIG, COLORS } from '../src/constants/config';
+import { getCurrentUser } from '../src/services/api';
 import type { User } from '../src/services/api';
 
 // ─── Error Boundary ───────────────────────────────────────────────────────────
@@ -43,32 +44,19 @@ export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
 
-  // On mount: check for existing JWT and validate it.
-  // AbortController enforces an 8-second timeout so a slow or unreachable
-  // server never leaves the app stuck on a black screen indefinitely.
+  // On mount: check for an existing access token and validate it.
+  // getCurrentUser() handles token refresh transparently — if the access
+  // token is expired but a valid refresh token exists, it silently obtains
+  // a new access token and retries. An 8-second timeout is enforced inside
+  // getCurrentUser() so a slow server never blocks the splash screen.
   useEffect(() => {
     (async () => {
       const token = await SecureStore.getItemAsync(CONFIG.TOKEN_KEY);
       if (token) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 8000);
         try {
-          const res = await fetch(`${CONFIG.SERVER_URL}/api/auth/me`, {
-            headers: { Authorization: `Bearer ${token}` },
-            signal: controller.signal,
-          });
-          clearTimeout(timer);
-          if (res.ok) {
-            // Backend wraps: { success, data: <user object>, message }
-            const body = await res.json();
-            const user: User = body.data;
-            setUser(user);
-          } else {
-            await SecureStore.deleteItemAsync(CONFIG.TOKEN_KEY);
-            clearUser();
-          }
+          const user: User = await getCurrentUser();
+          setUser(user);
         } catch {
-          clearTimeout(timer);
           clearUser();
         }
       }

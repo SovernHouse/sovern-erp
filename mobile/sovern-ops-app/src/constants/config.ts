@@ -8,7 +8,8 @@ export const CONFIG = {
   APP_NAME: 'Sovern Ops',
   BRAND_NAME: 'Sovern House',
   TAGLINE: 'Your buying office in Asia.',
-  TOKEN_KEY: 'sovern_ops_token',   // SecureStore key
+  TOKEN_KEY: 'sovern_ops_token',           // SecureStore key for access token
+  REFRESH_TOKEN_KEY: 'sovern_ops_refresh', // SecureStore key for refresh token
 };
 
 // ─── Design Tokens (matches ERP/website: ink, cream, forest) ──────────────
