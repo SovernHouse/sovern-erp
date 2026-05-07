@@ -84,6 +84,18 @@ module.exports = (sequelize) => {
     notes: {
       type: DataTypes.TEXT,
       allowNull: true
+    },
+    // Client e-signature audit trail. Populated when the customer
+    // approves the SO via /api/approvals/public/:token/approve.
+    // signedByClient stores the name typed at sign time. The IP and
+    // user-agent are kept on the DocumentApproval row.
+    signedAt: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    signedByClient: {
+      type: DataTypes.STRING,
+      allowNull: true
     }
   }, {
     paranoid: true, // soft deletes — sets deletedAt instead of hard-deleting

@@ -97,6 +97,18 @@ module.exports = (sequelize) => {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: null
+    },
+    // Client e-signature audit trail. Populated when the customer
+    // accepts the quotation via /api/approvals/public/:token/approve
+    // (which also flips status -> 'accepted'). IP/UA are stored on the
+    // DocumentApproval row.
+    signedAt: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    signedByClient: {
+      type: DataTypes.STRING,
+      allowNull: true
     }
   }, {
     indexes: [

@@ -421,15 +421,54 @@ router.post('/public/:token/approve', publicApprovalLimiter, async (req, res, ne
     }
 
     const { clientName, clientEmail } = req.body;
+    const signedAt = new Date();
 
     await approval.update({
       status: 'approved',
       clientName: clientName || null,
       clientEmail: clientEmail || null,
-      respondedAt: new Date(),
+      respondedAt: signedAt,
       clientIp: req.ip || req.connection?.remoteAddress || null,
       clientUserAgent: req.headers['user-agent'] || null,
     });
+
+    // Update the source document so the approval has a downstream effect:
+    //  - Quotation: flip status -> 'accepted' (drives the conversion rate
+    //    on the dashboard) AND stamp signedAt/signedByClient.
+    //  - SalesOrder: stamp signedAt/signedByClient so the SO carries its
+    //    own e-sign audit field (the SO enum has no 'signed' state, but
+    //    the existence of signedAt is the signal).
+    //  - ProformaInvoice: no status change yet — extend later if needed.
+    try {
+      if (approval.entityType === 'Quotation' && db.Quotation) {
+        const q = await db.Quotation.findByPk(approval.entityId);
+        if (q) {
+          const updates = {
+            signedAt,
+            signedByClient: clientName || null,
+          };
+          // Only flip if not already accepted/rejected/expired so we
+          // don't overwrite a manual decision.
+          if (['draft', 'sent', 'revised'].includes(q.status)) {
+            updates.status = 'accepted';
+          }
+          await q.update(updates);
+        }
+      } else if (approval.entityType === 'SalesOrder' && db.SalesOrder) {
+        const so = await db.SalesOrder.findByPk(approval.entityId);
+        if (so) {
+          await so.update({
+            signedAt,
+            signedByClient: clientName || null,
+          });
+        }
+      }
+    } catch (err) {
+      // Don't fail the approval just because the source-doc stamp fails.
+      // The DocumentApproval record is the source of truth either way.
+      const logger = require('../utils/logger');
+      logger.warn('[approvals] Source-document update failed:', err.message);
+    }
 
     // Fire-and-forget notification to the internal user who created the link
     if (approval.requestedByUserId) {
