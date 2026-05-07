@@ -540,7 +540,9 @@ export const driveAPI = {
 
 // AI Assistant
 export const aiAPI = {
-  chat:                 (data)  => api.post('/ai/chat', data),
+  // AI replies can take 30-120s (claude -p subprocess + MCP tool chain).
+  // Default 30s axios timeout is too short — override per-request.
+  chat:                 (data)  => api.post('/ai/chat', data, { timeout: 140000 }),
   listConversations:    ()      => api.get('/ai/conversations'),
   getConversation:      (id)    => api.get(`/ai/conversations/${id}`),
   deleteConversation:   (id)    => api.delete(`/ai/conversations/${id}`),
