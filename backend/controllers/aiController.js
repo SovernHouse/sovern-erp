@@ -24,13 +24,16 @@ async function runClaudeSubprocess(fullPrompt) {
     let errOutput = '';
     let settled = false;
 
+    // Pass prompt via stdin — --tools is variadic (<tools...>) so positional
+    // args after it get consumed as tool names, leaving no prompt argument.
     const child = spawn('claude', [
       '-p',
-      '--tools', '',   // text-only: disable Bash/file/MCP tools so Claude responds immediately
-      fullPrompt,
+      '--tools', '',   // text-only: disable Bash/file/MCP tools
     ], {
       env: { ...process.env },
     });
+    child.stdin.write(fullPrompt);
+    child.stdin.end();
 
     // Hard-kill after 90s — shorter than nginx's proxy_read_timeout (150s)
     // so the backend can return a clean 504 before nginx cuts the connection.
