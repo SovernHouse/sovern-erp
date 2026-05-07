@@ -11,6 +11,9 @@ Comprehensive user guide for all portals of the Trading ERP System.
 3. [Factory Portal Guide](#factory-portal-guide)
 4. [Common Workflows](#common-workflows)
 5. [FAQs](#faqs)
+6. [Configurable Dashboard](#configurable-dashboard)
+7. [Google Calendar](#google-calendar)
+8. [Google Drive](#google-drive)
 
 ---
 
@@ -987,6 +990,126 @@ A:
 
 ---
 
+## Configurable Dashboard
+
+### What It Is
+
+The dashboard is fully personalised. Each user has their own widget layout. You choose which widgets to show, how large each one is, and how they are arranged. Your layout is saved to the server, so it persists across devices and sessions.
+
+### Widgets Available
+
+| Widget | What It Shows |
+|---|---|
+| Revenue Summary | Monthly invoiced revenue vs. the prior month |
+| Order Status | Live count of sales orders grouped by status |
+| Pending Approvals | Documents awaiting client confirmation |
+| Recent Activity | Latest CRM interactions across all leads |
+| KPI Overview | A tracked metric with trend and progress toward target |
+| Quick Actions | One-click shortcuts for the most frequent operations |
+| Alerts | System warnings, overdue items, and low-stock thresholds |
+
+Not all widgets are visible by default. Your initial layout is set by your role.
+
+### Customising Your Layout
+
+1. Click the **Customize** button (+ icon) in the top-right corner of the dashboard.
+2. The Customize panel slides in from the right.
+3. Toggle each widget **on** or **off** using the switch next to its name.
+4. Choose a **size** for each widget: Small, Medium, Wide, Full, or Tall.
+5. Click **Apply** to update the dashboard.
+6. **Drag** any widget by its title bar to reorder.
+7. **Resize** a widget by dragging the handle at its bottom-right corner.
+
+### Saving Your Layout
+
+Your layout **auto-saves** 2 seconds after every drag or resize. You can also click **Save Layout** in the Customize panel to save immediately.
+
+To go back to the default layout for your role, click **Reset to Default** in the Customize panel.
+
+### Removing a Widget
+
+Click the **x** icon in the top-right corner of any widget to remove it from the dashboard. Re-add it at any time via the Customize panel.
+
+---
+
+## Google Calendar
+
+### What It Is
+
+Sovern ERP syncs events from your connected Google Calendar accounts every 15 minutes. This keeps your calendar visible alongside your trade operations without switching tabs.
+
+### Viewing Calendar Events
+
+Calendar events from connected Google accounts are available to the AI Assistant and to the Calendar section of the ERP. The AI Assistant can answer questions like "What meetings do I have today?" using your synced calendar data.
+
+### Connecting a Google Account
+
+1. Go to **Settings > Connected Accounts**.
+2. Click **Connect Google Account**.
+3. Authorise the ERP to access your Google Calendar.
+4. Once connected, the sync runs automatically in the background.
+
+### How Sync Works
+
+- The ERP syncs every 15 minutes using Google's incremental sync protocol.
+- Only new and changed events are fetched after the first full sync — this is fast and low on quota.
+- If your account token expires, the sync pauses until you reconnect the account in Settings.
+
+### Linking Calendar Events to Leads
+
+From the Calendar events view, you can link any event to a CRM lead. This attaches the meeting or call to the lead timeline, keeping your deal history complete.
+
+### Tips
+
+- Calendar data is read-only in the ERP. Create and edit events directly in Google Calendar.
+- If events are missing, the sync may not have run yet. Wait up to 15 minutes or check Settings > Connected Accounts to confirm the account is active.
+- Each connected Google account syncs its own calendar independently.
+
+---
+
+## Google Drive
+
+### What It Is
+
+The Google Drive browser lets you browse, open, and download files from your connected Google Drive accounts without leaving the ERP.
+
+### Navigating Files
+
+1. Go to **Documents > Google Drive** in the left navigation menu.
+2. Select a connected Google account from the account selector at the top.
+3. Your Drive opens at the root level. Click any **folder** to open it.
+4. Use the **breadcrumb trail** at the top to navigate back. Click any folder name in the breadcrumb to jump to that level.
+
+### Opening Files
+
+Click the **external link icon** on any file row to open it in Google Drive in a new browser tab.
+
+You need to be signed in to the correct Google account in your browser for the file to open. If the file does not load, sign in to Google in another tab first.
+
+### Downloading Files
+
+Click the **download icon** on any file row to download it directly.
+
+Google Docs, Sheets, and Slides cannot be downloaded directly from the ERP. Open them in Google Drive and use **File > Download** from within Google Drive instead.
+
+### Searching Files
+
+Type in the **Search** bar at the top of the Drive page. Results update automatically as you type and search across all files in the selected account, not just the current folder.
+
+Click **Clear** or press Escape to exit search and return to your current folder view.
+
+### Multiple Google Accounts
+
+If more than one Google account is connected, use the account selector to switch between them. Each account shows its own Drive independently. To add an account, go to **Settings > Connected Accounts**.
+
+### Tips
+
+- The breadcrumb shows your full path from root. Use it to orient yourself in deep folder structures.
+- Search scans the entire Drive for the selected account, not just the folder you are currently in.
+- Drive data is live, not cached. Results always reflect the current state of your Google Drive.
+
+---
+
 **For additional support, contact**: support@tradingerp.com
 
-**Last Updated**: March 16, 2024
+**Last Updated**: 2026-05-07

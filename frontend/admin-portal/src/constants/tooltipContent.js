@@ -297,3 +297,32 @@ export const ROLE_TIPS = {
   customer_service:    'Customers, inquiries, orders, and claims.',
   compliance_officer:  'Factory compliance, inspections, shipments, claims, documents.',
 }
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
+export const DASHBOARD = {
+  revenue:        'Revenue Summary: monthly invoiced revenue vs. the prior month. Sourced from confirmed sales invoices.',
+  orders:         'Order Status: live count of sales orders grouped by status (Confirmed, In Production, Shipped, etc.).',
+  approvals:      'Pending Approvals: document approval requests (PIs, quotations) that clients have not yet responded to.',
+  activity:       'Recent Activity: the latest CRM interactions — calls, emails, and meetings — across all active leads.',
+  kpi:            'KPI Overview: a single tracked metric with current value, trend vs. prior period, and progress toward your target.',
+  actions:        'Quick Actions: one-click shortcuts to the most frequent ERP operations for your role.',
+  alerts:         'Alerts & Notifications: system warnings, overdue items, and low-stock thresholds that need attention.',
+  customize:      'Pick which widgets appear on your dashboard. Toggle each on or off, choose its size, and click Apply. Drag to reorder. Resize from the bottom-right corner of any widget.',
+  saveLayout:     'Save your current widget arrangement to the server. Layout is per-user — saving does not affect other users.',
+  resetToDefault: 'Restore the default widget set for your role, overwriting your saved layout.',
+  removeWidget:   'Remove this widget from your dashboard. Re-add it at any time via Customize.',
+}
+
+// ─── Google Drive ─────────────────────────────────────────────────────────────
+
+export const GOOGLE_DRIVE = {
+  accountSelector: 'Switch between connected Google accounts. Add accounts in Settings → Connected Accounts.',
+  search:          'Search across all files in this Google Drive account. Results update 500 ms after you stop typing.',
+  breadcrumb:      'Your current folder path from root. Click any folder name to navigate back to that level.',
+  openFile:        'Open this file in Google Drive (new tab). Requires an active Google session in your browser.',
+  downloadFile:    'Download this file directly. Only available for files with a direct download link — Google Docs, Sheets, and Slides must be exported from Google Drive.',
+  folderClick:     'Click a folder row to navigate into it.',
+  backToFolder:    'Exit search results and return to your current folder view.',
+  noAccounts:      'No Google account with Drive access is connected. Go to Settings → Connected Accounts to connect one.',
+}

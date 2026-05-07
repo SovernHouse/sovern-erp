@@ -27,6 +27,11 @@
 18. [Security Notes](#18-security-notes)
 19. [Deployment](#19-deployment)
 20. [Known Limitations & Roadmap](#20-known-limitations--roadmap)
+21. [Known Limitations & Roadmap](#21-known-limitations--roadmap)
+22. [AI Assistant Architecture](#22-ai-assistant-architecture)
+23. [Configurable Dashboard](#23-configurable-dashboard)
+24. [Google Calendar Background Sync](#24-google-calendar-background-sync)
+25. [Google Drive File Browser](#25-google-drive-file-browser)
 
 ---
 
@@ -1165,7 +1170,7 @@ frontend/admin-portal/src/
 | Financial fields in DECIMAL | OK for now | Correct for display at current volumes. Production-scale financial systems may prefer integer cents. Re-evaluate when volumes increase. |
 | Sanctions screening | Partial | `Lead.sanctionsScreened` boolean field exists. Manual update flow only. Automated screening (OFAC SDN, EU consolidated, UN consolidated) is the next AI feature to build (Feature 2 of the AI roadmap). |
 | GDPR consent flag | Open | `Lead.gdprConsent`, `gdprConsentObtainedAt`, `gdprConsentChannel` fields not yet added. Required before EU/UK outbound at scale. |
-| Dashboard customization frontend | Planned | Backend complete (POST/GET `/api/dashboard/layout` → `DashboardLayout` model). Frontend widget picker and drag-and-drop layout (react-grid-layout) not yet built. |
+| Dashboard customization frontend | Done | 7-widget configurable dashboard with react-grid-layout drag/resize, per-role defaults, size presets, and layout persistence via `DashboardLayout` model. See Section 23. |
 | Dashboard action reminder banner | Done | Odoo-style banner live. Green = on time, amber = today, red = overdue. |
 | Internal chat + tagging | Done | ChatRoom/Message/Member models, chatController, chatRoutes, chatService, ChatPanel, ChatBubble, /chat page. Omnichannel fields ready for WhatsApp/WeChat/Telegram webhooks. |
 | Chat omnichannel webhooks | Planned | Inbound webhook handler + outbound routing per platform. See Section 20 for integration path. |
@@ -1340,4 +1345,212 @@ mobile/sovern-ops-app/
     dashboard.tsx              ← AI Assistant tile in MODULES grid
   src/services/
     api.ts                     ← ai* function exports + AIConversation/AIMessage types
+```
+
+---
+
+## 23. Configurable Dashboard
+
+### Overview
+
+The dashboard is a per-user configurable widget grid built on `react-grid-layout`. Each user can choose which widgets to display, their sizes, and their positions. Layout is persisted server-side and falls back to a per-role default when no saved layout exists.
+
+### File: `frontend/admin-portal/src/pages/Dashboard/ConfigurableDashboard.jsx`
+
+### Widgets
+
+| Widget ID | Component | Description |
+|---|---|---|
+| `revenue` | `RevenueWidget` | Monthly invoiced revenue vs. prior month |
+| `orders` | `OrderStatusWidget` | Live order count grouped by status |
+| `approvals` | `ApprovalsWidget` | Pending document approvals awaiting client response |
+| `activity` | `ActivityWidget` | Recent CRM interactions across all active leads |
+| `kpi` | `KPIWidget` | Single tracked metric with trend and progress |
+| `actions` | `QuickActionsWidget` | Role-specific one-click shortcuts |
+| `alerts` | `AlertsWidget` | System warnings, overdue items, low-stock thresholds |
+
+Widget components are registered in `WIDGET_COMPONENTS` and metadata (id, label, type, default w/h) is held in `ALL_WIDGETS`.
+
+### Size Presets
+
+| Label | Columns | Rows |
+|---|---|---|
+| Small | 4 | 3 |
+| Medium | 6 | 4 |
+| Wide | 8 | 4 |
+| Full | 12 | 4 |
+| Tall | 6 | 6 |
+
+The 12-column grid means Full-width widgets span the entire row.
+
+### Per-Role Defaults (`ROLE_DEFAULTS`)
+
+Each role has a preset widget layout used when the user has no saved layout. Roles covered: `admin`, `sales`, `operations`, `finance`, `inspector`, `customer`, `factory`. Defaults are defined as `react-grid-layout` layout arrays.
+
+### Layout Persistence
+
+- **GET `/api/dashboard/layout`** — returns the user's saved layout JSON, or `null` if none exists.
+- **POST `/api/dashboard/layout`** — saves the current layout. Body: `{ layout, widgets }`.
+- Auto-save fires 2 seconds after the last drag or resize event (`useDebouncedSave(2000)`).
+- Explicit "Save Layout" button in the configurator panel triggers an immediate save.
+
+### Customization Panel
+
+The `DashboardConfiguratorPanel` (slide-out via the + button in the toolbar) provides:
+- Per-widget toggle (include/exclude)
+- Size selector per widget
+- Apply, Reset to Default, and Cancel actions
+
+`WidgetHeader` renders each widget's title bar with a `.drag-handle` class (required by `react-grid-layout` for handle-only drag) and a remove (×) button.
+
+### File Map
+
+```
+frontend/admin-portal/src/
+  pages/Dashboard/
+    ConfigurableDashboard.jsx    ← main file: grid, configurator, widget registry
+  services/
+    api.js                       ← dashboardAPI (getLayout, saveLayout)
+  constants/
+    tooltipContent.js            ← DASHBOARD export
+    helpContent.js               ← / (dashboard) entry, customization steps
+
+backend/
+  models/
+    DashboardLayout.js           ← userId, layoutData (JSON), widgetsData (JSON)
+  controllers/
+    dashboardController.js       ← getLayout, saveLayout
+  routes/
+    dashboardRoutes.js           ← GET/POST /api/dashboard/layout, requireAuth
+```
+
+---
+
+## 24. Google Calendar Background Sync
+
+### Overview
+
+Google Calendar events are synced into the ERP database on a 15-minute cron schedule. This allows the ERP to query calendar data without hitting the Google API on every request, and enables features like linking calendar events to CRM leads.
+
+### Sync Flow
+
+1. `server.js` schedules `runCalendarSync()` via node-cron every 15 minutes.
+2. `calendarSyncService.js` iterates all active `ConnectedGoogleAccount` records with Calendar scope.
+3. For each account, it calls the Google Calendar API using the stored OAuth tokens (via `getAuthClientForAccount()`).
+4. **Incremental sync** uses the `syncToken` stored on `ConnectedGoogleAccount.calendarSyncToken`. On first run (or after a 410 Gone error), a full sync is performed.
+5. Each event is upserted into the `CalendarEvent` model (unique index on `[google_event_id, connected_account_id]`).
+6. Cancelled events set `status = 'cancelled'`. Deleted events are deactivated.
+7. On `invalid_grant` error, the account's `isActive` flag is set to `false` and sync is skipped.
+
+### CalendarEvent Model
+
+File: `backend/models/CalendarEvent.js`
+
+Key fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `googleEventId` | STRING | The Google Calendar event ID |
+| `connectedAccountId` | UUID FK | Links to `ConnectedGoogleAccount` |
+| `title` | STRING | Event summary |
+| `startAt` / `endAt` | DATE | Datetime for timed events |
+| `startDate` / `endDate` | DATEONLY | Date for all-day events |
+| `isAllDay` | BOOLEAN | |
+| `attendees` | JSON | Array of `{ email, displayName, responseStatus }` |
+| `meetLink` | STRING | Google Meet URL if present |
+| `linkedLeadId` | UUID FK | Optional link to a CRM Lead |
+| `rawEventData` | JSON | Full Google Calendar event payload |
+
+Unique constraint: `[google_event_id, connected_account_id]` prevents duplicate syncs across accounts.
+
+### OAuth Token Handling
+
+Calendar sync reuses the same `ConnectedGoogleAccount` model used by Drive and Gmail. Call `getAuthClientForAccount(account)` from `googleAccountController.js` to get a ready OAuth2 client with auto-refresh.
+
+### File Map
+
+```
+backend/
+  models/
+    CalendarEvent.js             ← event storage model
+  services/
+    calendarSyncService.js       ← sync logic: incremental, upsert, error handling
+  routes/
+    calendarRoutes.js            ← GET /api/calendar/events, /events/:id, /today, PATCH /:id/link-lead
+
+frontend/admin-portal/src/
+  services/
+    api.js                       ← calendarAPI (getEvents, getEvent, getToday, linkLead)
+```
+
+---
+
+## 25. Google Drive File Browser
+
+### Overview
+
+The Drive browser is a live proxy — it does NOT sync Drive data to the ERP database. Every request hits the Google Drive API v3 in real time. This keeps the implementation simple and ensures results are always current.
+
+### Architecture
+
+```
+GoogleDrivePage.jsx  →  driveAPI (api.js)  →  /api/drive/*  →  driveController.js  →  Google Drive API v3
+```
+
+Auth is handled by `getAuthClientForAccount()` from `googleAccountController.js`, which retrieves the stored OAuth tokens for the selected `ConnectedGoogleAccount` and returns an authenticated `google.auth.OAuth2` client.
+
+### Backend: `backend/controllers/driveController.js`
+
+| Export | Route | Description |
+|---|---|---|
+| `listFiles` | GET `/api/drive/files` | List files/folders in a given `folderId` (defaults to root). Supports `pageToken` for pagination. |
+| `getFile` | GET `/api/drive/files/:fileId` | Get metadata for a single file. |
+| `searchFiles` | GET `/api/drive/search` | Full-text search across the account. |
+| `getBreadcrumb` | GET `/api/drive/breadcrumb` | Returns the ancestor chain from root to a given `folderId` as a flat array. |
+
+All routes require `requireAuth` + `requireRole('admin', 'manager')` (see `backend/routes/driveRoutes.js`).
+
+Response envelope: `{ success: true, data: { files: [...], nextPageToken } }` for list/search; `{ success: true, data: [...] }` for breadcrumb.
+
+### Response Unwrapping
+
+The shared axios instance in `api.js` unwraps `{ success: true, data: X }` envelopes via a response interceptor, so callers receive `response.data = X` (not `response.data.data = X`). All data access in `GoogleDrivePage.jsx` must use `res.data.files`, `res.data.nextPageToken`, etc. — NOT `res.data.data.files`.
+
+### Frontend: `GoogleDrivePage.jsx`
+
+File: `frontend/admin-portal/src/pages/GoogleDrive/GoogleDrivePage.jsx`
+
+Features:
+- Account selector: dropdown of connected Google accounts with Drive scope
+- Folder navigation: click a row to enter a folder; state maintained in `currentFolderId`
+- Breadcrumb: fetched via `/api/drive/breadcrumb`; each crumb is clickable to jump to that folder
+- Pagination: "Load more" appends the next page using `nextPageToken`
+- Search: debounced 500 ms; results replace the folder view; clear to return
+- File open: external link to `webViewLink` (opens Google Drive in new tab)
+- File download: direct link to `webContentLink` where available
+
+### Known Limitation
+
+`/api/google/accounts` (used to populate the account selector) is admin-only. Managers who navigate to `/drive` will see "Failed to load connected accounts." A separate endpoint returning role-scoped accounts is needed to resolve this. Low priority while Alex is the sole user.
+
+### File Map
+
+```
+backend/
+  controllers/
+    driveController.js           ← listFiles, getFile, searchFiles, getBreadcrumb
+  routes/
+    driveRoutes.js               ← /api/drive/* routes, requireAuth + requireRole
+
+frontend/admin-portal/src/
+  pages/GoogleDrive/
+    GoogleDrivePage.jsx          ← full Drive browser UI
+  services/
+    api.js                       ← driveAPI (listFiles, getFile, search, breadcrumb)
+  config/
+    rbacConfig.js                ← Google Drive nav item in Documents submenu (admin + manager)
+  App.jsx                        ← /drive route registered
+  constants/
+    tooltipContent.js            ← GOOGLE_DRIVE export
+    helpContent.js               ← /drive entry
 ```

@@ -47,9 +47,11 @@ export const HELP_CONTENT = {
       {
         heading: 'Customising your dashboard',
         steps: [
-          'Click the Configure button (gear icon) in the top right of the dashboard.',
-          'Drag widgets to reorder or toggle them on/off.',
-          'Changes are saved per user — each person has their own layout.',
+          'Click the Customize button (+ icon) in the top right.',
+          'Toggle widgets on or off and choose a size for each, then click Apply.',
+          'Drag widgets to reorder. Resize from the bottom-right corner of any widget.',
+          'Layout auto-saves 2 seconds after every drag or resize. Use Save Layout to save immediately.',
+          'Click Reset to Default to restore the preset layout for your role.',
         ],
       },
     ],
@@ -773,6 +775,51 @@ export const HELP_CONTENT = {
       'Create a dedicated channel for each major deal, customer, or factory to keep context together.',
       'Link ERP records in messages to keep conversations anchored to the actual documents.',
       'External channels (WhatsApp, WeChat, Telegram) let your team handle supplier and buyer communication without leaving the ERP.',
+    ],
+  },
+
+  // ── Google Drive ──────────────────────────────────────────────────────────
+  '/drive': {
+    title: 'Google Drive',
+    summary: 'Browse, open, and download files from your connected Google Drive accounts without leaving the ERP.',
+    sections: [
+      {
+        heading: 'Navigating folders',
+        steps: [
+          'Select a connected Google account from the account selector at the top.',
+          'Click any folder row to open it.',
+          'Use the breadcrumb trail to navigate back up. Click any folder name in the trail to jump to that level.',
+          'Click the back arrow or the parent folder in the breadcrumb to go up one level.',
+        ],
+      },
+      {
+        heading: 'Opening and downloading files',
+        items: [
+          'Click the external link icon on any file row to open it in Google Drive (new tab).',
+          'Click the download icon to download the file directly to your computer.',
+          'Google Docs, Sheets, and Slides cannot be downloaded directly — open them in Drive and use File > Download from there.',
+        ],
+      },
+      {
+        heading: 'Searching files',
+        steps: [
+          'Type in the search bar at the top. Results update 500 ms after you stop typing.',
+          'Search scans all files in the selected account, not just the current folder.',
+          'Click Clear or press Escape to exit search and return to your current folder.',
+        ],
+      },
+      {
+        heading: 'Multiple accounts',
+        body: 'If more than one Google account is connected, use the account selector to switch between them. Each account shows its own Drive tree. To add an account, go to Settings > Connected Accounts.',
+      },
+    ],
+    tips: [
+      'The breadcrumb always shows your full path from root. Use it to orient yourself in deep folder structures.',
+      'Search scans the entire Drive for the selected account — useful when you know the filename but not the folder.',
+    ],
+    warnings: [
+      'Opening a file requires an active Google session in your browser for the correct account. If the file does not open, sign in to Google in another tab first.',
+      'Google Docs, Sheets, and Slides must be exported from within Google Drive. The download button is only available for non-Google file types.',
     ],
   },
 
