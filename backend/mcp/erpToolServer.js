@@ -535,6 +535,7 @@ async function callTool(name, args) {
       if (args.packing)         specs.packing       = args.packing;
       if (args.certifications)  specs.certifications = args.certifications;
 
+      // Products are created inactive — Alex must approve before they're live
       const product = await db.Product.create({
         name:               args.name,
         sku,
@@ -548,10 +549,10 @@ async function callTool(name, args) {
         minOrderQty:        args.min_order_qty        || 1,
         weight:             args.weight               || null,
         hsCode:             args.hs_code              || null,
-        isActive:           true,
+        isActive:           false,
       });
 
-      // Create a ProductPrice record if FOB price is provided
+      // Create a ProductPrice record if FOB price is provided (also inactive pending approval)
       let priceRecord = null;
       if (args.fob_price) {
         // Sovern selling price = factory FOB / (1 - 0.05), i.e. 5% margin by division
@@ -569,7 +570,36 @@ async function callTool(name, args) {
           currency:     'USD',
           validFrom:    new Date(),
           validTo,
-          isActive:     true,
+          isActive:     false, // inactive until Alex approves
+        });
+      }
+
+      // Schedule an approval task for Alex
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dueDateStr = tomorrow.toISOString().slice(0, 10);
+
+      const priceNote = priceRecord
+        ? `\nFactory FOB: USD ${parseFloat(args.fob_price).toFixed(4)} / ${product.unit}\nSovern selling price: USD ${priceRecord.sellingPrice} / ${product.unit}${args.price_valid_until ? `\nPrice valid until: ${args.price_valid_until}` : ''}`
+        : '';
+      const logisticsNote = [
+        specs.departurePort ? `Departure port: ${specs.departurePort}` : null,
+        specs.leadTime      ? `Lead time: ${specs.leadTime}`           : null,
+        specs.packing       ? `Packing: ${specs.packing}`              : null,
+      ].filter(Boolean).join('\n');
+
+      if (USER_ID) {
+        await db.ScheduledActivity.create({
+          type:        'approve',
+          entityType:  'Product',
+          entityId:    product.id,
+          entityLabel: `${product.name} (${product.sku})`,
+          assignedToId:  USER_ID,
+          assignedById:  USER_ID,
+          dueDate:     dueDateStr,
+          priority:    'normal',
+          note:        `New product added by AI assistant — review and approve before use in quotations.\n\nProduct: ${product.name}\nSKU: ${product.sku}${priceNote}${logisticsNote ? '\n' + logisticsNote : ''}`,
+          status:      'pending',
         });
       }
 
@@ -581,15 +611,61 @@ async function callTool(name, args) {
       if (!args.hs_code)           missing.push('HS code');
 
       return {
-        success: true,
-        productId:  product.id,
-        name:       product.name,
-        sku:        product.sku,
-        priceId:    priceRecord?.id || null,
-        sellingPrice: priceRecord ? `USD ${(priceRecord.sellingPrice).toFixed(4)} / ${product.unit}` : null,
+        success:      true,
+        productId:    product.id,
+        name:         product.name,
+        sku:          product.sku,
+        status:       'pending_approval',
+        priceId:      priceRecord?.id || null,
+        sellingPrice: priceRecord ? `USD ${priceRecord.sellingPrice} / ${product.unit}` : null,
         missingFields: missing.length ? missing : null,
-        message: `Product created: ${product.name} (SKU: ${product.sku})${missing.length ? `. Still needed for quotations: ${missing.join(', ')}.` : ' — ready for quotation.'}`,
+        message: `Product created and pending your approval (currently inactive). Approval task scheduled for tomorrow.${missing.length ? ` Still needed for quotations: ${missing.join(', ')}.` : ' All quotation fields present.'}`,
       };
+    }
+
+    case 'approve_product': {
+      const product = await db.Product.findByPk(args.product_id);
+      if (!product) return `Product ${args.product_id} not found.`;
+
+      await product.update({ isActive: true });
+
+      // Activate all prices for this product
+      const priceCount = await db.ProductPrice.update(
+        { isActive: true },
+        { where: { productId: args.product_id } }
+      );
+
+      // Mark approval task(s) done
+      await db.ScheduledActivity.update(
+        { status: 'done', completedAt: new Date(), completedNote: args.note || 'Approved via AI assistant' },
+        { where: { entityType: 'Product', entityId: args.product_id, status: 'pending' } }
+      );
+
+      return {
+        success:       true,
+        productId:     product.id,
+        name:          product.name,
+        sku:           product.sku,
+        pricesActivated: Array.isArray(priceCount) ? priceCount[0] : priceCount,
+        message:       `Product "${product.name}" is now active and available for quotations.`,
+      };
+    }
+
+    case 'list_pending_approvals': {
+      if (!USER_ID) return 'ERP_USER_ID not set.';
+      const tasks = await db.ScheduledActivity.findAll({
+        where: { assignedToId: USER_ID, status: 'pending', type: 'approve' },
+        order: [['dueDate', 'ASC']],
+        limit: 20,
+      });
+      if (!tasks.length) return 'No pending approval tasks.';
+      return tasks.map(t => ({
+        id:          t.id,
+        entity:      `${t.entityType}: ${t.entityLabel || t.entityId}`,
+        note:        t.note,
+        due:         t.dueDate,
+        priority:    t.priority,
+      }));
     }
 
     default:
@@ -842,6 +918,23 @@ const TOOL_DEFS = [
         },
       },
     },
+  },
+  {
+    name: 'approve_product',
+    description: 'Approve a product that was created by the AI assistant. Sets the product and its prices to active so they can be used in quotations. Always call this only after Alex has explicitly confirmed approval.',
+    inputSchema: {
+      type: 'object',
+      required: ['product_id'],
+      properties: {
+        product_id: { type: 'string', description: 'Product ID to approve' },
+        note:       { type: 'string', description: 'Optional approval note' },
+      },
+    },
+  },
+  {
+    name: 'list_pending_approvals',
+    description: 'List all pending approval tasks assigned to Alex. Use this proactively at the start of a session or when Alex asks what needs his attention.',
+    inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'log_activity',
