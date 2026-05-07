@@ -94,12 +94,15 @@ router.get('/admin', cacheRoute(dashboardCacheTTL), requireAuth, requireRole('ad
       where: { status: { [Op.in]: ['draft', 'sent'] } }
     });
 
-    // Quotation -> Order conversion. A quotation counts as "converted"
-    // when its status is 'accepted' (i.e. the buyer signed off and the
-    // sale moved to a sales order). Cancelled quotations are excluded
-    // from the denominator so they don't drag the rate down unfairly.
+    // Quote -> Order conversion. In this workflow, a quotation flips to
+    // status='accepted' only after the customer has signed the sales
+    // order back (the create-from-quotation route enforces this). So
+    // 'accepted' IS the signed-back marker.
+    //
+    // Denominator: quotations actually sent to a customer (status !=
+    // 'draft'). Drafts haven't entered the funnel and shouldn't count.
     const totalQuotations = await db.Quotation.count({
-      where: { status: { [Op.notIn]: ['cancelled'] } }
+      where: { status: { [Op.ne]: 'draft' } }
     });
     const convertedQuotations = await db.Quotation.count({
       where: { status: 'accepted' }

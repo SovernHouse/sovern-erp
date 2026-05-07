@@ -95,7 +95,7 @@ export default function RevenueWidget() {
       <button
         onClick={() => navigate('/quotations')}
         className="w-full p-3 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 text-left transition-colors group"
-        title="Quotations accepted by clients ÷ all quotations (excluding cancelled)"
+        title="Accepted quotations (signed back by client) ÷ quotations sent to customers (excludes drafts)"
       >
         <div className="flex items-center justify-between">
           <div>
@@ -104,7 +104,7 @@ export default function RevenueWidget() {
               {data.totalQuotations > 0 ? `${data.quoteConversionRate}%` : '—'}
             </p>
             <p className="text-xs text-blue-700/80 mt-0.5">
-              {data.convertedQuotations} accepted of {data.totalQuotations} {data.totalQuotations === 1 ? 'quote' : 'quotes'}
+              {data.convertedQuotations} signed back of {data.totalQuotations} {data.totalQuotations === 1 ? 'quote sent' : 'quotes sent'}
             </p>
           </div>
           <ArrowUpRight className="w-4 h-4 text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" />
