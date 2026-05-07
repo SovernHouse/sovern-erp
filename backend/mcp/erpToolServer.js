@@ -522,36 +522,73 @@ async function callTool(name, args) {
         sku = `${prefix}-${suffix}`;
       }
 
-      // Build specifications object — only include keys with values
+      // Build specifications object — includes product specs + logistics/pricing metadata
       const specs = {};
       const specKeys = ['thickness', 'width', 'length', 'material', 'finish', 'color',
         'wearLayer', 'acRating', 'species', 'grade', 'construction', 'clickSystem'];
       for (const k of specKeys) {
         if (args.specifications?.[k] != null) specs[k] = args.specifications[k];
       }
+      // Logistics fields stored in specifications JSON (no dedicated column)
+      if (args.departure_port)  specs.departurePort = args.departure_port;
+      if (args.lead_time)       specs.leadTime      = args.lead_time;
+      if (args.packing)         specs.packing       = args.packing;
+      if (args.certifications)  specs.certifications = args.certifications;
 
       const product = await db.Product.create({
         name:               args.name,
         sku,
-        description:        args.description        || null,
-        salesDescription:   args.sales_description  || null,
+        description:        args.description         || null,
+        salesDescription:   args.sales_description   || null,
         purchaseDescription:args.purchase_description || null,
         categoryId,
         factoryId,
-        unit:               args.unit               || 'sqm',
+        unit:               args.unit                || 'sqm',
         specifications:     specs,
-        minOrderQty:        args.min_order_qty       || 1,
-        weight:             args.weight              || null,
-        hsCode:             args.hs_code             || null,
+        minOrderQty:        args.min_order_qty        || 1,
+        weight:             args.weight               || null,
+        hsCode:             args.hs_code              || null,
         isActive:           true,
       });
 
+      // Create a ProductPrice record if FOB price is provided
+      let priceRecord = null;
+      if (args.fob_price) {
+        // Sovern selling price = factory FOB / (1 - 0.05), i.e. 5% margin by division
+        const costPrice    = parseFloat(args.fob_price);
+        const sellingPrice = parseFloat((costPrice / 0.95).toFixed(4));
+        const validTo      = args.price_valid_until ? new Date(args.price_valid_until) : null;
+
+        priceRecord = await db.ProductPrice.create({
+          productId:  product.id,
+          factoryId,
+          costPrice,
+          priceType:    'FOB',
+          markup:       5,
+          sellingPrice,
+          currency:     'USD',
+          validFrom:    new Date(),
+          validTo,
+          isActive:     true,
+        });
+      }
+
+      const missing = [];
+      if (!args.fob_price)         missing.push('FOB price');
+      if (!specs.departurePort)    missing.push('departure port');
+      if (!specs.leadTime)         missing.push('lead time');
+      if (!args.price_valid_until) missing.push('price validity date');
+      if (!args.hs_code)           missing.push('HS code');
+
       return {
         success: true,
-        productId: product.id,
-        name: product.name,
-        sku: product.sku,
-        message: `Product created: ${product.name} (SKU: ${product.sku})`,
+        productId:  product.id,
+        name:       product.name,
+        sku:        product.sku,
+        priceId:    priceRecord?.id || null,
+        sellingPrice: priceRecord ? `USD ${(priceRecord.sellingPrice).toFixed(4)} / ${product.unit}` : null,
+        missingFields: missing.length ? missing : null,
+        message: `Product created: ${product.name} (SKU: ${product.sku})${missing.length ? `. Still needed for quotations: ${missing.join(', ')}.` : ' — ready for quotation.'}`,
       };
     }
 
@@ -779,6 +816,12 @@ const TOOL_DEFS = [
         min_order_qty:        { type: 'number',  description: 'Minimum order quantity' },
         weight:               { type: 'number',  description: 'Weight per unit (kg)' },
         hs_code:              { type: 'string',  description: 'HS / HTS code for customs' },
+        fob_price:            { type: 'number', description: 'Factory FOB price per unit (USD). Sovern selling price is auto-calculated at FOB / 0.95 (5% margin).' },
+        price_valid_until:    { type: 'string', description: 'Price validity date (ISO format, e.g. 2026-08-31). Required for client quotations.' },
+        departure_port:       { type: 'string', description: 'Port of loading / departure port (e.g. "Qingdao", "Shanghai", "Klang"). Required for client quotations.' },
+        lead_time:            { type: 'string', description: 'Production and shipping lead time (e.g. "30 days ex-stock", "45 days from order confirmation").' },
+        packing:              { type: 'string', description: 'Packing details (e.g. "2.23 sqm/box, 40 boxes/pallet, 22 pallets/40ft").' },
+        certifications:       { type: 'string', description: 'Certifications held (e.g. "FloorScore, CARB2, CE").' },
         specifications: {
           type: 'object',
           description: 'Product specs extracted from the quotation',

@@ -136,9 +136,18 @@ When requesting a quotation from a factory, or when populating a product in the 
 9. MOQ and lead time
 10. Payment terms
 
+### Fields required to create a client quotation (must collect before quoting)
+These four fields are mandatory before any Sovern client quotation can be issued. Flag them as missing if not provided by the factory:
+1. **FOB price** (USD per unit) — factory gate price at origin port
+2. **Departure port** — port of loading (e.g. Qingdao, Shanghai, Klang, Kaohsiung)
+3. **Lead time** — ex-stock or weeks from order confirmation
+4. **Price validity** — the date until which the price is guaranteed (e.g. valid 60 days)
+
 ### General rules for factory inquiry forms
 - Always request FOB price, NOT EXW.
 - Always request price by volume tier (not just single-unit price).
+- Always request departure port — critical for freight calculations and client quotations.
+- Always request price validity period — Sovern cannot quote a buyer without knowing how long the price holds.
 - Always ask for HS code — factories often know it; saves research time.
 - Always ask for certifications relevant to the target market (US buyers: FloorScore, CARB2; EU buyers: CE, EN standards).
 - Format as a numbered list the factory can reply to directly, or offer to send as an Excel if they prefer.
