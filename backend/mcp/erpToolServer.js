@@ -35,6 +35,52 @@ function getGoogleAccountController() {
   return _getAuthClientForAccount;
 }
 
+// ── Generic ERP query helpers ────────────────────────────────────────────────
+// Models the AI must NEVER read (auth/secret data). Anything else loaded by
+// Sequelize is queryable via erp_query.
+const ENTITY_DENYLIST = new Set([
+  'User', 'UserSession', 'PasswordResetToken', 'ConnectedGoogleAccount',
+  'AuditLog', 'ApiKey', 'Webhook',
+]);
+
+// Fields stripped from every returned row regardless of model. Defense in
+// depth in case a denylisted model name slips through (e.g. via include).
+const SENSITIVE_FIELD_RE = /^(password|passwordHash|salt|token|accessToken|refreshToken|secret|apiKey|webhookSecret)$/i;
+
+function listQueryableEntities() {
+  const db = getDb();
+  return Object.keys(db)
+    .filter(k => k !== 'sequelize' && k !== 'Sequelize' && db[k] && db[k].rawAttributes)
+    .filter(k => !ENTITY_DENYLIST.has(k))
+    .sort();
+}
+
+function getEntityModel(name) {
+  if (ENTITY_DENYLIST.has(name)) {
+    throw new Error(`Entity "${name}" is not readable via erp_query.`);
+  }
+  const db = getDb();
+  const Model = db[name];
+  if (!Model || !Model.rawAttributes) {
+    throw new Error(`Unknown entity "${name}". Use erp_list_entities to see what's available.`);
+  }
+  return Model;
+}
+
+function safeAttributesFor(Model) {
+  return Object.keys(Model.rawAttributes).filter(k => !SENSITIVE_FIELD_RE.test(k));
+}
+
+function stringFieldsFor(Model) {
+  return Object.entries(Model.rawAttributes)
+    .filter(([k, attr]) => {
+      if (SENSITIVE_FIELD_RE.test(k)) return false;
+      const t = attr.type && attr.type.constructor && attr.type.constructor.name;
+      return t === 'STRING' || t === 'TEXT' || t === 'CITEXT';
+    })
+    .map(([k]) => k);
+}
+
 // ── MCP stdio transport ───────────────────────────────────────────────────────
 
 let _buf = '';
@@ -105,6 +151,70 @@ async function getGoogleAuth() {
 
 async function callTool(name, args) {
   switch (name) {
+
+    // ── Generic ERP query ───────────────────────────────────────────────────
+    // These three tools let the AI read ANY ERP entity (within a denylist of
+    // auth/secret models) without us hand-wrapping each one.
+
+    case 'erp_list_entities': {
+      const names = listQueryableEntities();
+      return { entities: names, count: names.length };
+    }
+
+    case 'erp_describe_entity': {
+      const Model = getEntityModel(args.entity);
+      const attrs = safeAttributesFor(Model);
+      const searchable = stringFieldsFor(Model);
+      const associations = Object.entries(Model.associations || {}).map(([k, a]) => ({
+        as: k, type: a.associationType, target: a.target.name,
+      }));
+      return {
+        entity: args.entity,
+        tableName: Model.tableName,
+        attributes: attrs,
+        searchableFields: searchable,
+        associations,
+      };
+    }
+
+    case 'erp_query': {
+      const { Op } = require('sequelize');
+      const Model = getEntityModel(args.entity);
+      const attrs = safeAttributesFor(Model);
+      const where = {};
+
+      // Equality filters: { fieldName: value }
+      if (args.where && typeof args.where === 'object') {
+        for (const [k, v] of Object.entries(args.where)) {
+          if (attrs.includes(k)) where[k] = v;
+        }
+      }
+
+      // Free-text search across STRING/TEXT fields
+      if (args.search) {
+        const fields = stringFieldsFor(Model);
+        if (fields.length) {
+          where[Op.or] = fields.map(f => ({ [f]: { [Op.like]: `%${args.search}%` } }));
+        }
+      }
+
+      const rows = await Model.findAll({
+        where,
+        attributes: attrs,
+        limit: Math.min(args.limit || 20, 100),
+        offset: args.offset || 0,
+        order: args.order_by && attrs.includes(args.order_by)
+          ? [[args.order_by, args.order_dir === 'DESC' ? 'DESC' : 'ASC']]
+          : undefined,
+      });
+      const total = await Model.count({ where });
+      return {
+        entity: args.entity,
+        count: rows.length,
+        total,
+        rows: rows.map(r => r.toJSON()),
+      };
+    }
 
     // ── Google Calendar ─────────────────────────────────────────────────────
 
@@ -373,23 +483,42 @@ async function callTool(name, args) {
       const where = {};
       if (args.search) {
         where[Op.or] = [
-          { name:    { [Op.like]: `%${args.search}%` } },
-          { email:   { [Op.like]: `%${args.search}%` } },
-          { company: { [Op.like]: `%${args.search}%` } },
+          { firstName: { [Op.like]: `%${args.search}%` } },
+          { lastName:  { [Op.like]: `%${args.search}%` } },
+          { email:     { [Op.like]: `%${args.search}%` } },
+          { jobTitle:  { [Op.like]: `%${args.search}%` } },
         ];
       }
+      // Filter by side: 'supplier' = contacts attached to a Factory,
+      // 'customer' = contacts attached to a Customer.
+      if (args.side === 'supplier') where.factoryId = { [Op.ne]: null };
+      if (args.side === 'customer') where.customerId = { [Op.ne]: null };
+      if (args.factory_id)  where.factoryId  = args.factory_id;
+      if (args.customer_id) where.customerId = args.customer_id;
+      if (args.is_active !== undefined) where.isActive = !!args.is_active;
+
       const contacts = await getDb().Contact.findAll({
         where,
         limit: Math.min(args.limit || 20, 50),
-        order: [['name', 'ASC']],
-        attributes: ['id', 'name', 'email', 'phone', 'company', 'role',
-          'country', 'wechat', 'whatsapp', 'notes'],
+        order: [['lastName', 'ASC'], ['firstName', 'ASC']],
+        attributes: ['id', 'firstName', 'lastName', 'email', 'phone', 'mobile',
+          'jobTitle', 'department', 'customerId', 'factoryId', 'isPrimary',
+          'website', 'linkedinUrl', 'notes', 'isActive'],
+        include: [
+          { model: getDb().Factory,  attributes: ['id', 'companyName', 'country', 'city'] },
+          { model: getDb().Customer, attributes: ['id', 'companyName', 'country'] },
+        ],
       });
       return contacts.length ? contacts.map(c => c.toJSON()) : 'No contacts found.';
     }
 
     case 'get_contact': {
-      const contact = await getDb().Contact.findByPk(args.id);
+      const contact = await getDb().Contact.findByPk(args.id, {
+        include: [
+          { model: getDb().Factory,  attributes: ['id', 'companyName', 'country', 'city'] },
+          { model: getDb().Customer, attributes: ['id', 'companyName', 'country'] },
+        ],
+      });
       if (!contact) return `Contact ${args.id} not found.`;
       return contact.toJSON();
     }
@@ -401,19 +530,22 @@ async function callTool(name, args) {
       const where = {};
       if (args.search) {
         where[Op.or] = [
-          { name:    { [Op.like]: `%${args.search}%` } },
-          { country: { [Op.like]: `%${args.search}%` } },
-          { city:    { [Op.like]: `%${args.search}%` } },
+          { companyName: { [Op.like]: `%${args.search}%` } },
+          { country:     { [Op.like]: `%${args.search}%` } },
+          { city:        { [Op.like]: `%${args.search}%` } },
         ];
       }
-      if (args.category) where.primaryCategory = args.category;
+      if (args.country) where.country = args.country;
+      if (args.is_active !== undefined) where.isActive = !!args.is_active;
 
       const factories = await getDb().Factory.findAll({
         where,
         limit: Math.min(args.limit || 20, 50),
-        order: [['name', 'ASC']],
-        attributes: ['id', 'name', 'country', 'city', 'primaryCategory',
-          'contactPerson', 'email', 'phone', 'rating', 'notes'],
+        order: [['companyName', 'ASC']],
+        attributes: ['id', 'companyName', 'country', 'city', 'address',
+          'contactPerson', 'email', 'phone', 'rating', 'leadTimeDays',
+          'paymentTerms', 'currency', 'certifications', 'specializations',
+          'notes', 'isActive'],
       });
       return factories.length ? factories.map(f => f.toJSON()) : 'No factories found.';
     }
@@ -422,6 +554,84 @@ async function callTool(name, args) {
       const factory = await getDb().Factory.findByPk(args.id);
       if (!factory) return `Factory ${args.id} not found.`;
       return factory.toJSON();
+    }
+
+    case 'create_factory': {
+      if (!args.company_name) return 'company_name is required.';
+      // Email and phone are required by the model, but if Alex hasn't given
+      // them yet (e.g. backfilling factories from contact data), accept
+      // placeholder values and let him fix the records later.
+      const factory = await getDb().Factory.create({
+        companyName:    args.company_name,
+        contactPerson:  args.contact_person || null,
+        email:          args.email || 'unknown@unknown.local',
+        phone:          args.phone || 'unknown',
+        address:        args.address  || null,
+        city:           args.city     || null,
+        country:        args.country  || null,
+        currency:       args.currency       || 'USD',
+        paymentTerms:   args.payment_terms  || 'Net 60',
+        leadTimeDays:   args.lead_time_days || 30,
+        rating:         args.rating         || 5.0,
+        certifications: args.certifications  || [],
+        specializations:args.specializations || [],
+        notes:          args.notes    || null,
+      });
+      return {
+        success: true,
+        factoryId: factory.id,
+        companyName: factory.companyName,
+        message: `Factory "${factory.companyName}" created. Edit at /factories/${factory.id}.`,
+      };
+    }
+
+    case 'update_factory': {
+      const factory = await getDb().Factory.findByPk(args.id);
+      if (!factory) return `Factory ${args.id} not found.`;
+      const allowed = ['companyName', 'contactPerson', 'email', 'phone',
+        'address', 'city', 'country', 'currency', 'paymentTerms',
+        'leadTimeDays', 'rating', 'certifications', 'specializations', 'notes'];
+      // Map snake_case input to camelCase fields where applicable
+      const aliasMap = {
+        company_name: 'companyName',
+        contact_person: 'contactPerson',
+        payment_terms: 'paymentTerms',
+        lead_time_days: 'leadTimeDays',
+      };
+      const updates = {};
+      for (const [k, v] of Object.entries(args)) {
+        if (k === 'id') continue;
+        const field = aliasMap[k] || k;
+        if (allowed.includes(field)) updates[field] = v;
+      }
+      await factory.update(updates);
+      return { success: true, updated: Object.keys(updates), factory: factory.toJSON() };
+    }
+
+    case 'update_contact': {
+      const contact = await getDb().Contact.findByPk(args.id);
+      if (!contact) return `Contact ${args.id} not found.`;
+      const allowed = ['firstName', 'lastName', 'email', 'phone', 'mobile',
+        'jobTitle', 'department', 'customerId', 'factoryId', 'isPrimary',
+        'website', 'linkedinUrl', 'notes', 'isActive'];
+      const aliasMap = {
+        first_name: 'firstName',
+        last_name: 'lastName',
+        job_title: 'jobTitle',
+        customer_id: 'customerId',
+        factory_id: 'factoryId',
+        is_primary: 'isPrimary',
+        is_active: 'isActive',
+        linkedin_url: 'linkedinUrl',
+      };
+      const updates = {};
+      for (const [k, v] of Object.entries(args)) {
+        if (k === 'id') continue;
+        const field = aliasMap[k] || k;
+        if (allowed.includes(field)) updates[field] = v;
+      }
+      await contact.update(updates);
+      return { success: true, updated: Object.keys(updates), contact: contact.toJSON() };
     }
 
     // ── Quotations ──────────────────────────────────────────────────────────
@@ -817,6 +1027,44 @@ async function callTool(name, args) {
 // ── Tool definitions ──────────────────────────────────────────────────────────
 
 const TOOL_DEFS = [
+  // ── Generic ERP read tools ────────────────────────────────────────────────
+  // Prefer these for ad-hoc reads. They cover every queryable entity in the
+  // ERP without per-table wrappers, so they keep working even when the schema
+  // changes. Use the entity-specific tools (list_leads, list_factories, etc.)
+  // only when you need their richer return shape (joins, computed fields).
+  {
+    name: 'erp_list_entities',
+    description: 'List every ERP entity (Sequelize model) you can query via erp_query. Returns names like Lead, Contact, Factory, Customer, Product, Quotation, Inquiry, Invoice, Payment, PurchaseOrder, Shipment, ScheduledActivity, TriageItem, etc. Auth/secret models are intentionally excluded.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'erp_describe_entity',
+    description: 'Describe an ERP entity: list its attributes, the string fields that free-text search will match, and its associations. Use this before erp_query if you are unsure of the field names.',
+    inputSchema: {
+      type: 'object',
+      required: ['entity'],
+      properties: {
+        entity: { type: 'string', description: 'Entity name from erp_list_entities, e.g. "Factory"' },
+      },
+    },
+  },
+  {
+    name: 'erp_query',
+    description: 'Read rows from any queryable ERP entity. Pass entity (e.g. "Factory"), optional where (equality filters: { country: "Taiwan" }), optional search (free-text across string fields), optional limit / offset / order_by / order_dir. Returns { rows, count, total }.',
+    inputSchema: {
+      type: 'object',
+      required: ['entity'],
+      properties: {
+        entity:    { type: 'string', description: 'Entity name, e.g. "Factory" or "Contact"' },
+        where:     { type: 'object', description: 'Equality filters keyed by field name, e.g. { factoryId: "abc-123" }' },
+        search:    { type: 'string', description: 'Free-text search across string/text fields' },
+        limit:     { type: 'number', description: 'Max rows (default 20, max 100)' },
+        offset:    { type: 'number', description: 'Pagination offset (default 0)' },
+        order_by:  { type: 'string', description: 'Field to sort by (must exist on the entity)' },
+        order_dir: { type: 'string', enum: ['ASC', 'DESC'], description: 'Sort direction (default ASC)' },
+      },
+    },
+  },
   {
     name: 'list_calendar_events',
     description: 'List Google Calendar events. Use to check schedule, availability, or find upcoming meetings.',
@@ -943,18 +1191,22 @@ const TOOL_DEFS = [
   },
   {
     name: 'list_contacts',
-    description: 'List CRM contacts. Search by name, email, or company.',
+    description: 'List CRM contacts (people). Each contact may be linked to a Factory (supplier-side) or Customer (buyer-side) via factoryId/customerId. Returned objects include a Factory and Customer relation.',
     inputSchema: {
       type: 'object',
       properties: {
-        search: { type: 'string', description: 'Search term' },
-        limit:  { type: 'number', description: 'Max results (default: 20)' },
+        search:      { type: 'string', description: 'Search firstName, lastName, email, or jobTitle' },
+        side:        { type: 'string', enum: ['supplier', 'customer'], description: 'supplier = contacts linked to a Factory; customer = contacts linked to a Customer' },
+        factory_id:  { type: 'string', description: 'Only return contacts at this factory' },
+        customer_id: { type: 'string', description: 'Only return contacts at this customer' },
+        is_active:   { type: 'boolean', description: 'Filter by active status' },
+        limit:       { type: 'number', description: 'Max results (default: 20)' },
       },
     },
   },
   {
     name: 'get_contact',
-    description: 'Get full details of a contact.',
+    description: 'Get full details of a contact, including the linked Factory or Customer.',
     inputSchema: {
       type: 'object',
       required: ['id'],
@@ -964,14 +1216,40 @@ const TOOL_DEFS = [
     },
   },
   {
+    name: 'update_contact',
+    description: 'Update a contact. Most useful for setting factoryId or customerId to link a person to their company.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:           { type: 'string',  description: 'Contact ID' },
+        first_name:   { type: 'string' },
+        last_name:    { type: 'string' },
+        email:        { type: 'string' },
+        phone:        { type: 'string' },
+        mobile:       { type: 'string' },
+        job_title:    { type: 'string' },
+        department:   { type: 'string' },
+        factory_id:   { type: 'string',  description: 'Link this person to a Factory' },
+        customer_id:  { type: 'string',  description: 'Link this person to a Customer' },
+        is_primary:   { type: 'boolean' },
+        is_active:    { type: 'boolean' },
+        website:      { type: 'string' },
+        linkedin_url: { type: 'string' },
+        notes:        { type: 'string' },
+      },
+    },
+  },
+  {
     name: 'list_factories',
-    description: 'List factory/supplier records.',
+    description: 'List factory/supplier records (the supplier company itself, not the people). Each factory has a companyName, country, certifications, lead time, etc.',
     inputSchema: {
       type: 'object',
       properties: {
-        search:   { type: 'string', description: 'Search by name, country, or city' },
-        category: { type: 'string', description: 'Filter by product category (Flooring, Auto Parts, Garments, etc.)' },
-        limit:    { type: 'number', description: 'Max results (default: 20)' },
+        search:    { type: 'string',  description: 'Search by companyName, country, or city' },
+        country:   { type: 'string',  description: 'Filter to a specific country' },
+        is_active: { type: 'boolean', description: 'Filter by active status' },
+        limit:     { type: 'number',  description: 'Max results (default: 20)' },
       },
     },
   },
@@ -983,6 +1261,55 @@ const TOOL_DEFS = [
       required: ['id'],
       properties: {
         id: { type: 'string', description: 'Factory ID' },
+      },
+    },
+  },
+  {
+    name: 'create_factory',
+    description: 'Create a new factory (supplier company). Useful for backfilling factories from existing supplier-contact data, or adding a new supplier discovered via outreach. Show Alex the proposed list before mass-creating; do not auto-create dozens of factories without confirmation.',
+    inputSchema: {
+      type: 'object',
+      required: ['company_name'],
+      properties: {
+        company_name:    { type: 'string',  description: 'Factory legal/trade name (required)' },
+        contact_person:  { type: 'string',  description: 'Primary contact person name' },
+        email:           { type: 'string',  description: 'Primary email. If unknown, omit and Alex will fill it in.' },
+        phone:           { type: 'string',  description: 'Primary phone. If unknown, omit.' },
+        address:         { type: 'string' },
+        city:            { type: 'string' },
+        country:         { type: 'string' },
+        currency:        { type: 'string',  description: 'Default USD' },
+        payment_terms:   { type: 'string',  description: 'Default "Net 60"' },
+        lead_time_days:  { type: 'number',  description: 'Default 30' },
+        rating:          { type: 'number',  description: '0-5, default 5.0' },
+        certifications:  { type: 'array',   items: { type: 'string' }, description: 'e.g. ["FSC", "ISO 9001", "CE"]' },
+        specializations: { type: 'array',   items: { type: 'string' }, description: 'e.g. ["SPC flooring", "engineered wood"]' },
+        notes:           { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'update_factory',
+    description: 'Update an existing factory. Use to fill in missing fields (email, phone, certifications) or correct mistakes.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:              { type: 'string',  description: 'Factory ID' },
+        company_name:    { type: 'string' },
+        contact_person:  { type: 'string' },
+        email:           { type: 'string' },
+        phone:           { type: 'string' },
+        address:         { type: 'string' },
+        city:            { type: 'string' },
+        country:         { type: 'string' },
+        currency:        { type: 'string' },
+        payment_terms:   { type: 'string' },
+        lead_time_days:  { type: 'number' },
+        rating:          { type: 'number' },
+        certifications:  { type: 'array', items: { type: 'string' } },
+        specializations: { type: 'array', items: { type: 'string' } },
+        notes:           { type: 'string' },
       },
     },
   },
