@@ -390,13 +390,15 @@ export default function ConnectedAccounts() {
         </div>
       )}
 
-      {/* Setup warning if OAuth not configured */}
-      <div style={{ marginTop: 24, display: 'flex', alignItems: 'flex-start', gap: 8, padding: '12px 16px', background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a', fontSize: 13, color: '#92400e' }}>
-        <AlertCircle size={15} style={{ marginTop: 1, flexShrink: 0 }} />
-        <span>
-          Requires <strong>GOOGLE_CLIENT_ID</strong>, <strong>GOOGLE_CLIENT_SECRET</strong>, and <strong>GOOGLE_REDIRECT_URI</strong> environment variables on the server, plus the Gmail, Calendar, and Drive APIs enabled in your Google Cloud project.
-        </span>
-      </div>
+      {/* Setup warning — only shown when no accounts are connected */}
+      {accounts.length === 0 && !loading && (
+        <div style={{ marginTop: 24, display: 'flex', alignItems: 'flex-start', gap: 8, padding: '12px 16px', background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a', fontSize: 13, color: '#92400e' }}>
+          <AlertCircle size={15} style={{ marginTop: 1, flexShrink: 0 }} />
+          <span>
+            Requires <strong>GOOGLE_CLIENT_ID</strong>, <strong>GOOGLE_CLIENT_SECRET</strong>, and <strong>GOOGLE_REDIRECT_URI</strong> environment variables on the server, plus the Gmail, Calendar, and Drive APIs enabled in your Google Cloud project.
+          </span>
+        </div>
+      )}
     </div>
   )
 }
