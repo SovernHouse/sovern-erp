@@ -10,8 +10,13 @@ import { aiAPI } from '../../services/api'
 import toast from 'react-hot-toast'
 import {
   Send, Plus, Trash2, MessageSquare, Bot, User,
-  ChevronLeft, Loader2, Sparkles, X
+  ChevronLeft, Loader2, Sparkles, X, Pencil, Check,
 } from 'lucide-react'
+
+// localStorage key for the last-active conversation id, so the user
+// resumes their previous chat after closing/reopening the ERP instead
+// of being dropped into an empty new-conversation state.
+const ACTIVE_CONV_KEY = 'sovern.ai.activeConvId'
 
 // ── Markdown-lite renderer ────────────────────────────────────────────────────
 // Handles bold, code blocks, inline code, bullets, numbered lists, headers.
@@ -229,16 +234,53 @@ function TypingIndicator() {
 
 // ── Conversation sidebar item ─────────────────────────────────────────────────
 
-function ConvItem({ conv, active, onClick, onDelete }) {
+function ConvItem({ conv, active, onClick, onDelete, onRename }) {
   const [hovering, setHovering] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draftTitle, setDraftTitle] = useState(conv.title || '')
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (editing) {
+      // Select all text on edit so the user can either replace or extend
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }
+  }, [editing])
+
+  // If the title changes externally (e.g. server-generated title arrives
+  // after first send) and we're not actively editing, sync the draft.
+  useEffect(() => {
+    if (!editing) setDraftTitle(conv.title || '')
+  }, [conv.title, editing])
+
+  function startEdit(e) {
+    e.stopPropagation()
+    setDraftTitle(conv.title || '')
+    setEditing(true)
+  }
+
+  function commitEdit() {
+    const trimmed = draftTitle.trim()
+    if (trimmed && trimmed !== conv.title) {
+      onRename(conv.id, trimmed)
+    }
+    setEditing(false)
+  }
+
+  function cancelEdit() {
+    setDraftTitle(conv.title || '')
+    setEditing(false)
+  }
+
   return (
     <div
-      onClick={onClick}
+      onClick={editing ? undefined : onClick}
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 8,
-        padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+        padding: '8px 10px', borderRadius: 8, cursor: editing ? 'text' : 'pointer',
         background: active ? '#eff6ff' : hovering ? '#f8fafc' : 'transparent',
         border: active ? '1px solid #bfdbfe' : '1px solid transparent',
         transition: 'all 0.1s',
@@ -247,25 +289,65 @@ function ConvItem({ conv, active, onClick, onDelete }) {
     >
       <MessageSquare size={14} color={active ? '#2563eb' : '#94a3b8'} style={{ flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 13, fontWeight: active ? 600 : 400,
-          color: active ? '#1e40af' : '#1e293b',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {conv.title || 'New conversation'}
-        </div>
-        {conv.lastMessageAt && (
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draftTitle}
+            onChange={e => setDraftTitle(e.target.value)}
+            onClick={e => e.stopPropagation()}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); commitEdit() }
+              else if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
+            }}
+            onBlur={commitEdit}
+            maxLength={200}
+            style={{
+              width: '100%', fontSize: 13, fontWeight: active ? 600 : 400,
+              color: active ? '#1e40af' : '#1e293b',
+              border: '1px solid #2563eb', borderRadius: 4,
+              padding: '2px 6px', outline: 'none', background: '#fff',
+            }}
+          />
+        ) : (
+          <div style={{
+            fontSize: 13, fontWeight: active ? 600 : 400,
+            color: active ? '#1e40af' : '#1e293b',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {conv.title || 'New conversation'}
+          </div>
+        )}
+        {conv.lastMessageAt && !editing && (
           <div style={{ fontSize: 11, color: '#94a3b8' }}>
             {formatRelative(conv.lastMessageAt)}
           </div>
         )}
       </div>
-      {hovering && (
+      {hovering && !editing && (
+        <>
+          <button
+            onClick={startEdit}
+            title="Rename"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#64748b', flexShrink: 0 }}
+          >
+            <Pencil size={13} />
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(conv.id) }}
+            title="Delete"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#ef4444', flexShrink: 0 }}
+          >
+            <X size={13} />
+          </button>
+        </>
+      )}
+      {editing && (
         <button
-          onClick={e => { e.stopPropagation(); onDelete(conv.id) }}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#ef4444', flexShrink: 0 }}
+          onClick={e => { e.stopPropagation(); commitEdit() }}
+          title="Save"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#16a34a', flexShrink: 0 }}
         >
-          <X size={13} />
+          <Check size={13} />
         </button>
       )}
     </div>
@@ -298,9 +380,18 @@ export default function AssistantPage() {
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
-  // Load conversation list on mount
+  // Load conversation list on mount, then auto-restore the last-active
+  // conversation (or fall back to the most recent) so the user picks up
+  // where they left off instead of starting fresh on every reload.
   useEffect(() => {
-    loadConversations()
+    (async () => {
+      const loaded = await loadConversations()
+      const stored = localStorage.getItem(ACTIVE_CONV_KEY)
+      const target = stored && loaded.find(c => c.id === stored)
+        ? stored
+        : (loaded[0]?.id || null)
+      if (target) loadConversation(target)
+    })()
   }, [])
 
   // Scroll to bottom on new message
@@ -308,12 +399,21 @@ export default function AssistantPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, sending])
 
+  // Persist the active conversation id so it survives ERP close/reopen
+  useEffect(() => {
+    if (activeConvId) localStorage.setItem(ACTIVE_CONV_KEY, activeConvId)
+    else localStorage.removeItem(ACTIVE_CONV_KEY)
+  }, [activeConvId])
+
   async function loadConversations() {
     try {
       const res = await aiAPI.listConversations()
-      setConversations(res.data || [])
+      const list = res.data || []
+      setConversations(list)
+      return list
     } catch (err) {
       // Non-fatal — may just not have any conversations yet
+      return []
     }
   }
 
@@ -322,7 +422,7 @@ export default function AssistantPage() {
     try {
       const res = await aiAPI.getConversation(id)
       const conv = res.data
-      setActiveConvId(conv.id)
+      setActiveConvId(conv.conversation?.id || conv.id)
       setMessages(conv.messages || [])
     } catch (err) {
       toast.error('Failed to load conversation')
@@ -335,6 +435,20 @@ export default function AssistantPage() {
     setActiveConvId(null)
     setMessages([])
     inputRef.current?.focus()
+  }
+
+  async function handleRename(id, newTitle) {
+    const trimmed = (newTitle || '').trim()
+    if (!trimmed) return
+    // Optimistic update
+    setConversations(prev => prev.map(c => c.id === id ? { ...c, title: trimmed } : c))
+    try {
+      await aiAPI.renameConversation(id, trimmed)
+    } catch (err) {
+      toast.error('Failed to rename conversation')
+      // Revert by reloading list
+      loadConversations()
+    }
   }
 
   async function handleSend() {
@@ -393,6 +507,9 @@ export default function AssistantPage() {
       await aiAPI.deleteConversation(id)
       setConversations(prev => prev.filter(c => c.id !== id))
       if (activeConvId === id) {
+        // Clear the deleted active id from localStorage so the next
+        // mount doesn't try to restore a 404'd conversation.
+        localStorage.removeItem(ACTIVE_CONV_KEY)
         setActiveConvId(null)
         setMessages([])
       }
@@ -479,6 +596,7 @@ export default function AssistantPage() {
                   active={conv.id === activeConvId}
                   onClick={() => loadConversation(conv.id)}
                   onDelete={handleDelete}
+                  onRename={handleRename}
                 />
               ))}
             </div>

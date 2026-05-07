@@ -302,6 +302,26 @@ exports.getConversation = async (req, res) => {
   }
 };
 
+exports.renameConversation = async (req, res) => {
+  try {
+    const { title } = req.body;
+    const trimmed = (title || '').trim();
+    if (!trimmed) return res.status(400).json({ error: 'Title is required' });
+    if (trimmed.length > 200) {
+      return res.status(400).json({ error: 'Title too long (max 200 chars)' });
+    }
+    const conversation = await db.AIConversation.findOne({
+      where: { id: req.params.id, userId: req.user.id },
+    });
+    if (!conversation) return res.status(404).json({ error: 'Not found' });
+    await conversation.update({ title: trimmed });
+    res.json({ ok: true, data: { id: conversation.id, title: trimmed } });
+  } catch (err) {
+    logger.error('[ai] renameConversation error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
 exports.deleteConversation = async (req, res) => {
   try {
     const conversation = await db.AIConversation.findOne({
