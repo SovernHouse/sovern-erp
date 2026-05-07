@@ -177,6 +177,82 @@ async function callTool(name, args) {
       };
     }
 
+    // ── Cross-conversation memory ───────────────────────────────────────────
+    // Lets the assistant recall what was said in past conversations with this
+    // same user. The current thread's history is already injected by the
+    // controller; these tools cover everything older.
+
+    case 'list_recent_conversations': {
+      if (!USER_ID) return 'ERP_USER_ID not set.';
+      const convos = await getDb().AIConversation.findAll({
+        where: { userId: USER_ID },
+        order: [['lastMessageAt', 'DESC'], ['createdAt', 'DESC']],
+        limit: Math.min(args.limit || 20, 50),
+        attributes: ['id', 'title', 'lastMessageAt', 'createdAt', 'messages'],
+      });
+      return convos.map(c => {
+        const msgs = c.messages || [];
+        const lastUser = [...msgs].reverse().find(m => m.role === 'user');
+        return {
+          id: c.id,
+          title: c.title,
+          messageCount: msgs.length,
+          lastMessageAt: c.lastMessageAt,
+          lastUserMessagePreview: lastUser ? lastUser.content.slice(0, 200) : null,
+        };
+      });
+    }
+
+    case 'read_conversation': {
+      if (!USER_ID) return 'ERP_USER_ID not set.';
+      const convo = await getDb().AIConversation.findOne({
+        where: { id: args.id, userId: USER_ID },
+      });
+      if (!convo) return `Conversation ${args.id} not found.`;
+      return {
+        id: convo.id,
+        title: convo.title,
+        lastMessageAt: convo.lastMessageAt,
+        messages: convo.messages || [],
+      };
+    }
+
+    case 'search_conversations': {
+      if (!USER_ID) return 'ERP_USER_ID not set.';
+      if (!args.query) return 'query is required.';
+      const all = await getDb().AIConversation.findAll({
+        where: { userId: USER_ID },
+        order: [['lastMessageAt', 'DESC']],
+        attributes: ['id', 'title', 'lastMessageAt', 'messages'],
+      });
+      const q = args.query.toLowerCase();
+      const matches = [];
+      for (const convo of all) {
+        const msgs = convo.messages || [];
+        const titleHit = (convo.title || '').toLowerCase().includes(q);
+        const hits = msgs.filter(m => (m.content || '').toLowerCase().includes(q));
+        if (titleHit || hits.length) {
+          matches.push({
+            id: convo.id,
+            title: convo.title,
+            lastMessageAt: convo.lastMessageAt,
+            matchCount: hits.length + (titleHit ? 1 : 0),
+            // First 2 matching message snippets so the AI can decide whether
+            // to read_conversation for the full context.
+            snippets: hits.slice(0, 2).map(m => ({
+              role: m.role,
+              excerpt: (m.content || '').slice(
+                Math.max(0, (m.content || '').toLowerCase().indexOf(q) - 60),
+                (m.content || '').toLowerCase().indexOf(q) + 200
+              ),
+            })),
+          });
+        }
+        if (matches.length >= (args.limit || 10)) break;
+      }
+      return matches.length ? matches : 'No matches across past conversations.';
+    }
+
     case 'erp_query': {
       const { Op } = require('sequelize');
       const Model = getEntityModel(args.entity);
@@ -1062,6 +1138,40 @@ const TOOL_DEFS = [
         offset:    { type: 'number', description: 'Pagination offset (default 0)' },
         order_by:  { type: 'string', description: 'Field to sort by (must exist on the entity)' },
         order_dir: { type: 'string', enum: ['ASC', 'DESC'], description: 'Sort direction (default ASC)' },
+      },
+    },
+  },
+  // ── Cross-conversation memory ─────────────────────────────────────────────
+  {
+    name: 'list_recent_conversations',
+    description: 'List your prior conversations with Alex (most-recent first). Each entry includes id, title, message count, last activity time, and a preview of his last message in that thread. Use this to orient yourself at the start of a session, or when Alex says "remember when we discussed..." or "earlier you said...".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max conversations to return (default 20, max 50)' },
+      },
+    },
+  },
+  {
+    name: 'read_conversation',
+    description: 'Read the full message thread of a past conversation by id. Use after list_recent_conversations or search_conversations when you need the actual content.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Conversation id from list_recent_conversations or search_conversations' },
+      },
+    },
+  },
+  {
+    name: 'search_conversations',
+    description: 'Search every past conversation for a keyword or phrase (case-insensitive). Returns matching conversations with id, title, match count, and short snippets. Use this when Alex references something specific from earlier ("the SPC supplier we talked about", "what did I say about margins").',
+    inputSchema: {
+      type: 'object',
+      required: ['query'],
+      properties: {
+        query: { type: 'string', description: 'Keyword or short phrase to find' },
+        limit: { type: 'number', description: 'Max matching conversations (default 10)' },
       },
     },
   },

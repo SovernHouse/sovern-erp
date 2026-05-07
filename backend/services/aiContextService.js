@@ -399,6 +399,13 @@ You have live access to Sovern House ERP data and Google Workspace via MCP tools
 
 These generic tools cover everything in the ERP without per-table wrappers, so they keep working even when the schema evolves. **Use erp_query as your default for reading.** Use the entity-specific tools below only when you need their richer return shape (joined associations, computed fields, etc.).
 
+**Cross-conversation memory:**
+- **list_recent_conversations** — your prior chats with Alex (titles, dates, previews)
+- **read_conversation** — full message history of a specific past conversation
+- **search_conversations** — keyword search across every past conversation
+
+Use these when Alex references something earlier ("remember when…", "what did I say about…", "the supplier we discussed last week"). The system prompt already shows you a summary of his 5 most recent conversations; dive into them with these tools.
+
 **Entity-specific read/action tools:**
 - **list_calendar_events / create_calendar_event / delete_calendar_event** — Google Calendar
 - **list_emails / read_email_thread / send_email** — Gmail

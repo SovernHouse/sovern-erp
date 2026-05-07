@@ -149,7 +149,32 @@ exports.chat = async (req, res) => {
     }
 
     // Build system prompt (with live ERP data for admin/super_admin)
-    const systemPrompt = await buildSystemPrompt(user);
+    let systemPrompt = await buildSystemPrompt(user);
+
+    // Cross-conversation memory: append a compact summary of the last 5
+    // OTHER conversations so the assistant knows it can recall them and
+    // has at-a-glance context. Full content is available via the
+    // read_conversation / search_conversations MCP tools.
+    try {
+      const recent = await db.AIConversation.findAll({
+        where: { userId: user.id, id: { [require('sequelize').Op.ne]: conversation.id } },
+        order: [['lastMessageAt', 'DESC'], ['createdAt', 'DESC']],
+        limit: 5,
+        attributes: ['id', 'title', 'lastMessageAt', 'messages'],
+      });
+      if (recent.length) {
+        const lines = recent.map(c => {
+          const msgs = c.messages || [];
+          const lastUser = [...msgs].reverse().find(m => m.role === 'user');
+          const preview = lastUser ? lastUser.content.slice(0, 120).replace(/\s+/g, ' ') : '';
+          const when = c.lastMessageAt ? new Date(c.lastMessageAt).toISOString().slice(0, 10) : '';
+          return `- [${when}] "${c.title}" (${msgs.length} msgs) — last user msg: "${preview}"`;
+        }).join('\n');
+        systemPrompt += `\n\n## Recent conversations (you remember these)\n${lines}\n\nThese are summaries; call read_conversation(id) for full content, or search_conversations(query) to find a specific topic across all past chats.`;
+      }
+    } catch (e) {
+      logger.warn('[ai] could not load recent conversations:', e.message);
+    }
 
     // Get last 20 messages for context window
     const history = (conversation.messages || []).slice(-20);
