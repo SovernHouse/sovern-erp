@@ -328,6 +328,8 @@ export const settingsAPI = {
   updateEmailTemplate: (id, data) =>
     api.put(`/settings/email-templates/${id}`, data),
   getSystemLogs: (params) => api.get('/settings/logs', { params }),
+  getFrontendErrors: (params) => api.get('/settings/frontend-errors', { params }),
+  clearFrontendErrors: () => api.delete('/settings/frontend-errors'),
 }
 
 // Audit Logs endpoints

@@ -13,6 +13,28 @@ class ErrorBoundary extends React.Component {
   componentDidCatch(error, errorInfo) {
     this.setState({ errorInfo })
     console.error('ErrorBoundary caught an error:', error, errorInfo)
+    this.reportToServer(error, errorInfo)
+  }
+
+  reportToServer(error, errorInfo) {
+    try {
+      const token = localStorage.getItem('authToken')
+      fetch('/api/settings/frontend-errors', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          errorMessage: error?.message || String(error),
+          errorStack: error?.stack,
+          componentStack: errorInfo?.componentStack,
+          pageUrl: window.location.href,
+          userAgent: navigator.userAgent,
+          metadata: { appVersion: import.meta.env.VITE_APP_VERSION || 'unknown' },
+        }),
+      }).catch(() => {}) // fire and forget — never let reporting block the UI
+    } catch { /* never throw from error reporter */ }
   }
 
   handleReset = () => {

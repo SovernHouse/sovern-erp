@@ -192,6 +192,78 @@ router.get('/logs', requireAuth, requireRole('admin'), async (req, res, next) =>
   }
 });
 
+// ─── Frontend Error Reporting ────────────────────────────────────────────────
+
+// POST /frontend-errors — report a client-side crash (auth optional)
+// Uses raw token extraction so a 401 never blocks the report from being saved.
+router.post('/frontend-errors', async (req, res) => {
+  try {
+    const { errorMessage, errorStack, componentStack, pageUrl, userAgent, metadata } = req.body;
+    if (!errorMessage) return res.status(400).json({ success: false, message: 'errorMessage required' });
+
+    let userId = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const authConfig = require('../config/auth');
+        const decoded = jwt.verify(authHeader.slice(7), authConfig.jwt.secret);
+        userId = decoded.id || null;
+      } catch { /* token expired or invalid — log anonymously */ }
+    }
+
+    await db.FrontendError.create({
+      userId,
+      errorMessage: String(errorMessage).slice(0, 1000),
+      errorStack: errorStack ? String(errorStack).slice(0, 10000) : null,
+      componentStack: componentStack ? String(componentStack).slice(0, 10000) : null,
+      pageUrl: pageUrl ? String(pageUrl).slice(0, 2000) : null,
+      userAgent: userAgent ? String(userAgent).slice(0, 500) : null,
+      metadata: metadata || {},
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    // Never let logging fail noisily — always return 200 to the client
+    console.error('[FrontendError] Failed to save:', error.message);
+    res.json({ success: false });
+  }
+});
+
+// GET /frontend-errors — list crashes for admin review
+router.get('/frontend-errors', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { page = 1, limit = 50 } = req.query;
+    const { offset } = getPagination(page, limit);
+
+    const { count, rows } = await db.FrontendError.findAndCountAll({
+      offset,
+      limit: parseInt(limit),
+      order: [['createdAt', 'DESC']],
+      include: [{
+        model: db.User,
+        as: 'user',
+        attributes: ['id', 'email', 'firstName', 'lastName'],
+        required: false,
+      }],
+    });
+
+    res.json(getPaginatedResponse(rows, count, page, limit));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /frontend-errors — clear all crash logs (admin only)
+router.delete('/frontend-errors', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    await db.FrontendError.destroy({ where: {}, truncate: true });
+    res.json({ success: true, message: 'Frontend error log cleared.' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ─── Role Permissions ────────────────────────────────────────────────────────
 const rolePermissionController = require('../controllers/rolePermissionController');
 

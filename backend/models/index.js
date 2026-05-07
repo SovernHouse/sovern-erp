@@ -59,6 +59,7 @@ db.InvoiceItem = require('./InvoiceItem')(sequelize);
 db.Payment = require('./Payment')(sequelize);
 db.Notification = require('./Notification')(sequelize);
 db.AuditLog = require('./AuditLog')(sequelize);
+db.FrontendError = require('./FrontendError')(sequelize);
 db.InventoryItem = require('./InventoryItem')(sequelize);
 db.InventoryTransaction = require('./InventoryTransaction')(sequelize);
 db.Document = require('./Document')(sequelize);
@@ -292,6 +293,9 @@ db.Notification.belongsTo(db.User, { foreignKey: 'userId' });
 
 db.User.hasMany(db.AuditLog, { as: 'auditLogs', foreignKey: 'userId' });
 db.AuditLog.belongsTo(db.User, { as: 'user', foreignKey: 'userId' });
+
+db.User.hasMany(db.FrontendError, { as: 'frontendErrors', foreignKey: 'userId' });
+db.FrontendError.belongsTo(db.User, { as: 'user', foreignKey: 'userId' });
 
 db.ProductCategory.hasMany(db.Product, { as: 'products', foreignKey: 'categoryId' });
 db.Product.belongsTo(db.ProductCategory, { as: 'category', foreignKey: 'categoryId' });
