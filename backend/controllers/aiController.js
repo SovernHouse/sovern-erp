@@ -140,10 +140,13 @@ exports.chat = async (req, res) => {
     });
 
     return res.json({
-      conversationId: conversation.id,
-      title,
-      reply: assistantReply,
-      isNew,
+      success: true,
+      data: {
+        conversationId: conversation.id,
+        title,
+        reply: assistantReply,
+        isNew,
+      },
     });
   } catch (err) {
     logger.error('[ai] chat error:', err.message, err.stack);
@@ -158,9 +161,16 @@ exports.listConversations = async (req, res) => {
     const conversations = await db.AIConversation.findAll({
       where: { userId: req.user.id },
       order: [['lastMessageAt', 'DESC'], ['createdAt', 'DESC']],
-      attributes: ['id', 'title', 'lastMessageAt', 'createdAt'],
     });
-    res.json(conversations);
+    const data = conversations.map(c => ({
+      id: c.id,
+      title: c.title,
+      messageCount: (c.messages || []).length,
+      lastMessageAt: c.lastMessageAt,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    }));
+    res.json({ success: true, data });
   } catch (err) {
     logger.error('[ai] listConversations error:', err.message);
     res.status(500).json({ error: 'Server error' });
@@ -173,7 +183,25 @@ exports.getConversation = async (req, res) => {
       where: { id: req.params.id, userId: req.user.id },
     });
     if (!conversation) return res.status(404).json({ error: 'Not found' });
-    res.json(conversation);
+    const messages = (conversation.messages || []).map(m => ({
+      role: m.role,
+      content: m.content,
+      timestamp: m.createdAt,
+    }));
+    res.json({
+      success: true,
+      data: {
+        conversation: {
+          id: conversation.id,
+          title: conversation.title,
+          messageCount: messages.length,
+          lastMessageAt: conversation.lastMessageAt,
+          createdAt: conversation.createdAt,
+          updatedAt: conversation.updatedAt,
+        },
+        messages,
+      },
+    });
   } catch (err) {
     logger.error('[ai] getConversation error:', err.message);
     res.status(500).json({ error: 'Server error' });
