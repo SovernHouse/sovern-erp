@@ -426,6 +426,101 @@ async function callTool(name, args) {
       }
     }
 
+    // ── Triage / inbox ──────────────────────────────────────────────────────
+
+    case 'list_triage_items': {
+      const { Op } = require('sequelize');
+      const where = {};
+      if (args.status) where.status = args.status;
+      else where.status = 'pending';
+      if (args.search) {
+        where[Op.or] = [
+          { subject:     { [Op.like]: `%${args.search}%` } },
+          { senderEmail: { [Op.like]: `%${args.search}%` } },
+          { senderName:  { [Op.like]: `%${args.search}%` } },
+        ];
+      }
+      const items = await db.TriageItem.findAll({
+        where,
+        order: [['created_at', 'DESC']],
+        limit: Math.min(args.limit || 20, 50),
+        attributes: ['id', 'senderEmail', 'senderName', 'subject', 'intentScore',
+          'suggestedAction', 'status', 'created_at'],
+      });
+      return items.length ? items.map(i => i.toJSON()) : 'No triage items found.';
+    }
+
+    case 'get_triage_item': {
+      const item = await db.TriageItem.findByPk(args.id);
+      if (!item) return `Triage item ${args.id} not found.`;
+      return item.toJSON();
+    }
+
+    // ── Google Drive ────────────────────────────────────────────────────────
+
+    case 'search_drive_files': {
+      const { auth } = await getGoogleAuth();
+      const drive = google.drive({ version: 'v3', auth });
+
+      const query = [
+        args.query ? `fullText contains '${args.query.replace(/'/g, "\\'")}'` : null,
+        args.name  ? `name contains '${args.name.replace(/'/g, "\\'")}'`      : null,
+        "trashed = false",
+      ].filter(Boolean).join(' and ');
+
+      const resp = await drive.files.list({
+        q: query || "trashed = false",
+        pageSize: Math.min(args.limit || 10, 20),
+        fields: 'files(id, name, mimeType, size, modifiedTime, webViewLink)',
+        orderBy: 'modifiedTime desc',
+      });
+
+      const files = resp.data.files || [];
+      return files.length ? files : 'No Drive files found matching that query.';
+    }
+
+    case 'read_drive_file': {
+      const { auth } = await getGoogleAuth();
+      const drive = google.drive({ version: 'v3', auth });
+
+      // Get file metadata to determine type
+      const meta = await drive.files.get({
+        fileId: args.file_id,
+        fields: 'id, name, mimeType',
+      });
+      const { mimeType, name } = meta.data;
+
+      let text = '';
+
+      if (mimeType === 'application/vnd.google-apps.document') {
+        // Google Doc → export as plain text
+        const resp = await drive.files.export(
+          { fileId: args.file_id, mimeType: 'text/plain' },
+          { responseType: 'arraybuffer' }
+        );
+        text = Buffer.from(resp.data).toString('utf8').slice(0, 8000);
+      } else if (mimeType === 'application/vnd.google-apps.spreadsheet') {
+        // Google Sheet → export as CSV
+        const resp = await drive.files.export(
+          { fileId: args.file_id, mimeType: 'text/csv' },
+          { responseType: 'arraybuffer' }
+        );
+        text = Buffer.from(resp.data).toString('utf8').slice(0, 8000);
+      } else if (mimeType === 'text/plain' || mimeType === 'text/csv') {
+        const resp = await drive.files.get(
+          { fileId: args.file_id, alt: 'media' },
+          { responseType: 'arraybuffer' }
+        );
+        text = Buffer.from(resp.data).toString('utf8').slice(0, 8000);
+      } else if (mimeType === 'application/pdf') {
+        return { name, mimeType, note: 'PDF content cannot be extracted via Drive API. Ask Alex to share the text or copy key details.' };
+      } else {
+        return { name, mimeType, note: `File type ${mimeType} is not supported for text extraction.` };
+      }
+
+      return { name, mimeType, content: text };
+    }
+
     // ── Products ────────────────────────────────────────────────────────────
 
     case 'list_product_categories': {
@@ -840,6 +935,52 @@ const TOOL_DEFS = [
       properties: {
         status: { type: 'string', description: 'Filter by status (draft, sent, accepted, rejected)' },
         limit:  { type: 'number', description: 'Max results (default: 20)' },
+      },
+    },
+  },
+  {
+    name: 'list_triage_items',
+    description: 'List emails from the ERP triage inbox (AI-scored inbound emails). Search by sender or subject to find a specific supplier quotation or inquiry.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        search: { type: 'string', description: 'Search by sender email, sender name, or subject' },
+        status: { type: 'string', description: 'Status filter: pending (default), processed, archived' },
+        limit:  { type: 'number', description: 'Max results (default: 20)' },
+      },
+    },
+  },
+  {
+    name: 'get_triage_item',
+    description: 'Read the full content of an email from the ERP triage inbox, including the complete body. Use this to extract product specs, pricing, or any other details from a supplier email.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Triage item ID from list_triage_items' },
+      },
+    },
+  },
+  {
+    name: 'search_drive_files',
+    description: 'Search Google Drive for files. Use to find supplier quotations, spec sheets, or price lists stored in Drive.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Full-text search term (searches inside file content)' },
+        name:  { type: 'string', description: 'Search by file name' },
+        limit: { type: 'number', description: 'Max results (default: 10)' },
+      },
+    },
+  },
+  {
+    name: 'read_drive_file',
+    description: 'Read the text content of a Google Drive file (Google Docs, Sheets, plain text, CSV). Use to extract product specs, pricing tables, or quotation details from a file Alex has shared.',
+    inputSchema: {
+      type: 'object',
+      required: ['file_id'],
+      properties: {
+        file_id: { type: 'string', description: 'Google Drive file ID from search_drive_files' },
       },
     },
   },
