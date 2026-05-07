@@ -529,6 +529,13 @@ export const googleAPI = {
   toggleAccount:    (id) => api.patch(`/google/accounts/${id}/toggle`),
 }
 
+export const driveAPI = {
+  listFiles:   (params) => api.get('/drive/files', { params }),
+  getFile:     (fileId, accountId) => api.get(`/drive/files/${fileId}`, { params: { accountId } }),
+  search:      (params) => api.get('/drive/search', { params }),
+  breadcrumb:  (params) => api.get('/drive/breadcrumb', { params }),
+}
+
 // AI Assistant
 export const aiAPI = {
   chat:                 (data)  => api.post('/ai/chat', data),

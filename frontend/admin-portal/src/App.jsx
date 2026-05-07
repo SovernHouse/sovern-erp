@@ -119,6 +119,9 @@ const ConnectedAccounts = React.lazy(() => import('./pages/Settings/ConnectedAcc
 // AI Assistant
 const AssistantPage = React.lazy(() => import('./pages/AI/AssistantPage'))
 
+// Google Drive
+const GoogleDrivePage = React.lazy(() => import('./pages/GoogleDrive/GoogleDrivePage'))
+
 // Analytics & BI
 const AnalyticsDashboard = React.lazy(() => import('./pages/Analytics/AnalyticsDashboard'))
 const BIDashboard        = React.lazy(() => import('./pages/BI/BIDashboard'))
@@ -327,6 +330,9 @@ function AppRoutes() {
 
       {/* ── Documents ── */}
       <Route path="/documents/templates" element={<P permission="documents"><TemplateManager /></P>} />
+
+      {/* ── Google Drive ── */}
+      <Route path="/drive" element={<P roles={['admin', 'manager']}><GoogleDrivePage /></P>} />
 
       {/* ── Audit Trail ── */}
       <Route path="/internal-approvals" element={<P roles={['admin', 'manager', 'ceo', 'coo']}><InternalApprovalsList /></P>} />

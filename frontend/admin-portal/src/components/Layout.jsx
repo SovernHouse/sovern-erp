@@ -27,6 +27,7 @@ import {
   Layers,
   MessageCircle,
   Sparkles,
+  HardDrive,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useNotifications } from '../hooks/useNotifications'
@@ -95,7 +96,7 @@ function SovernWordmark() {
 
 const iconMap = {
   Home, ShoppingCart, Inbox, Truck, DollarSign, CheckCircle,
-  BarChart3, Cog, Users, Users2, Building2, Package, TrendingUp, FileText, MessageCircle, Sparkles,
+  BarChart3, Cog, Users, Users2, Building2, Package, TrendingUp, FileText, MessageCircle, Sparkles, HardDrive,
 }
 
 export default function Layout({ children }) {

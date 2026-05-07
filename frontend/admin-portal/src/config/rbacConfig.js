@@ -182,6 +182,7 @@ export const NAV_ITEMS_BY_ROLE = {
       icon: 'FileText',
       submenu: [
         { label: 'Document Templates', path: '/documents/templates', permission: 'documents' },
+        { label: 'Google Drive', path: '/drive', roles: ['admin', 'manager'] },
       ],
     },
     {
@@ -265,6 +266,7 @@ export const NAV_ITEMS_BY_ROLE = {
       icon: 'FileText',
       submenu: [
         { label: 'Document Templates', path: '/documents/templates', permission: 'documents' },
+        { label: 'Google Drive', path: '/drive', roles: ['admin', 'manager'] },
       ],
     },
   ],

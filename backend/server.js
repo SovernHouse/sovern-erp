@@ -168,6 +168,7 @@ const approvalRoutes = require('./routes/approvalRoutes');
 const triageRoutes = require('./routes/triageRoutes');
 const googleRoutes = require('./routes/googleRoutes');
 const calendarRoutes = require('./routes/calendarRoutes');
+const driveRoutes = require('./routes/driveRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 
 app.use('/api/auth', authRoutes);
@@ -222,6 +223,7 @@ app.use('/api/approvals', approvalRoutes);
 app.use('/api/triage', triageRoutes);
 app.use('/api/google', googleRoutes);
 app.use('/api/calendar', calendarRoutes);
+app.use('/api/drive', driveRoutes);
 app.use('/api/ai', aiRoutes);
 
 // Chatter (polymorphic message thread)
