@@ -650,9 +650,10 @@ async function callTool(name, args) {
       // Create a ProductPrice record if FOB price is provided (also inactive pending approval)
       let priceRecord = null;
       if (args.fob_price) {
-        // Sovern selling price = factory FOB / (1 - 0.05), i.e. 5% margin by division
+        // Sovern selling price = factory FOB / (1 - margin/100), margin by division
+        const margin       = parseFloat(args.margin ?? 5);
         const costPrice    = parseFloat(args.fob_price);
-        const sellingPrice = parseFloat((costPrice / 0.95).toFixed(4));
+        const sellingPrice = parseFloat((costPrice / (1 - margin / 100)).toFixed(4));
         const validTo      = args.price_valid_until ? new Date(args.price_valid_until) : null;
 
         priceRecord = await db.ProductPrice.create({
@@ -660,7 +661,7 @@ async function callTool(name, args) {
           factoryId,
           costPrice,
           priceType:    'FOB',
-          markup:       5,
+          markup:       margin,
           sellingPrice,
           currency:     'USD',
           validFrom:    new Date(),
@@ -675,7 +676,7 @@ async function callTool(name, args) {
       const dueDateStr = tomorrow.toISOString().slice(0, 10);
 
       const priceNote = priceRecord
-        ? `\nFactory FOB: USD ${parseFloat(args.fob_price).toFixed(4)} / ${product.unit}\nSovern selling price: USD ${priceRecord.sellingPrice} / ${product.unit}${args.price_valid_until ? `\nPrice valid until: ${args.price_valid_until}` : ''}`
+        ? `\nFactory FOB: USD ${parseFloat(args.fob_price).toFixed(4)} / ${product.unit}\nMargin: ${parseFloat(args.margin ?? 5)}%\nSovern selling price: USD ${priceRecord.sellingPrice} / ${product.unit}${args.price_valid_until ? `\nPrice valid until: ${args.price_valid_until}` : ''}`
         : '';
       const logisticsNote = [
         specs.departurePort ? `Departure port: ${specs.departurePort}` : null,
@@ -1033,7 +1034,8 @@ const TOOL_DEFS = [
         min_order_qty:        { type: 'number',  description: 'Minimum order quantity' },
         weight:               { type: 'number',  description: 'Weight per unit (kg)' },
         hs_code:              { type: 'string',  description: 'HS / HTS code for customs' },
-        fob_price:            { type: 'number', description: 'Factory FOB price per unit (USD). Sovern selling price is auto-calculated at FOB / 0.95 (5% margin).' },
+        fob_price:            { type: 'number', description: 'Factory FOB price per unit (USD). Sovern selling price is auto-calculated at FOB / (1 - margin/100).' },
+        margin:               { type: 'number', description: 'Sovern margin % to apply (default: 5). Use whatever Alex specifies — e.g. 8 for 8%, 10 for 10%. Applied by division: selling price = FOB / (1 - margin/100).' },
         price_valid_until:    { type: 'string', description: 'Price validity date (ISO format, e.g. 2026-08-31). Required for client quotations.' },
         departure_port:       { type: 'string', description: 'Port of loading / departure port (e.g. "Qingdao", "Shanghai", "Klang"). Required for client quotations.' },
         lead_time:            { type: 'string', description: 'Production and shipping lead time (e.g. "30 days ex-stock", "45 days from order confirmation").' },
