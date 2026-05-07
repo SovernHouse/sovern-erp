@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import Layout from './components/Layout'
@@ -164,6 +164,7 @@ const InternalApprovalsList = React.lazy(() => import('./pages/InternalApprovals
 // When neither is provided, any authenticated user is allowed through.
 const ProtectedRoute = ({ children, permission, allowedRoles }) => {
   const { isAuthenticated, isLoading } = useAuth()
+  const location = useLocation()
 
   if (isLoading) {
     return (
@@ -179,7 +180,7 @@ const ProtectedRoute = ({ children, permission, allowedRoles }) => {
 
   return (
     <Layout>
-      <ErrorBoundary>
+      <ErrorBoundary key={location.pathname}>
         <RoleGuard permission={permission} allowedRoles={allowedRoles ?? ['*']}>
           {children}
         </RoleGuard>
