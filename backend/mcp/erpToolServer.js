@@ -16,11 +16,24 @@
 
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
-const { google }             = require('googleapis');
-const db                     = require('../models');
-const { getAuthClientForAccount } = require('../controllers/googleAccountController');
+const { google } = require('googleapis');
 
 const USER_ID = process.env.ERP_USER_ID;
+
+// Lazy-load DB and Google auth — loading all 93 models takes ~4s and would
+// block the MCP initialize handshake if done at startup.
+let _db = null;
+let _getAuthClientForAccount = null;
+function getDb() {
+  if (!_db) _db = require('../models');
+  return _db;
+}
+function getGoogleAccountController() {
+  if (!_getAuthClientForAccount) {
+    _getAuthClientForAccount = require('../controllers/googleAccountController').getAuthClientForAccount;
+  }
+  return _getAuthClientForAccount;
+}
 
 // ── MCP stdio transport ───────────────────────────────────────────────────────
 
@@ -78,13 +91,13 @@ async function handleLine(line) {
 
 async function getGoogleAuth() {
   if (!USER_ID) throw new Error('ERP_USER_ID not set — cannot access Google services');
-  const account = await db.ConnectedGoogleAccount.findOne({
+  const account = await getDb().ConnectedGoogleAccount.findOne({
     where: { connectedByUserId: USER_ID, isActive: true },
   });
   if (!account) {
-    throw new Error('No active Google account connected. Go to Settings > Integrations to connect your Google account.');
+    throw new Error('No active Google account connected. Go to ERP Settings > Connected Accounts to connect your Google account.');
   }
-  const auth = await getAuthClientForAccount(account);
+  const auth = await getGoogleAccountController()(account);
   return { auth, account };
 }
 
@@ -284,7 +297,7 @@ async function callTool(name, args) {
           { email:       { [Op.like]: `%${args.search}%` } },
         ];
       }
-      const leads = await db.Lead.findAll({
+      const leads = await getDb().Lead.findAll({
         where,
         limit: Math.min(args.limit || 20, 50),
         order: [['createdAt', 'DESC']],
@@ -296,11 +309,11 @@ async function callTool(name, args) {
     }
 
     case 'get_lead': {
-      const lead = await db.Lead.findByPk(args.id);
+      const lead = await getDb().Lead.findByPk(args.id);
       if (!lead) return `Lead ${args.id} not found.`;
       let activities = [];
       try {
-        activities = await db.Activity.findAll({
+        activities = await getDb().Activity.findAll({
           where: { leadId: args.id },
           limit: 10,
           order: [['createdAt', 'DESC']],
@@ -310,7 +323,7 @@ async function callTool(name, args) {
     }
 
     case 'update_lead': {
-      const lead = await db.Lead.findByPk(args.id);
+      const lead = await getDb().Lead.findByPk(args.id);
       if (!lead) return `Lead ${args.id} not found.`;
       const allowed = ['status', 'stage', 'notes', 'productInterest',
         'estimatedValue', 'priority', 'nextFollowUp'];
@@ -333,7 +346,7 @@ async function callTool(name, args) {
           { company: { [Op.like]: `%${args.search}%` } },
         ];
       }
-      const contacts = await db.Contact.findAll({
+      const contacts = await getDb().Contact.findAll({
         where,
         limit: Math.min(args.limit || 20, 50),
         order: [['name', 'ASC']],
@@ -344,7 +357,7 @@ async function callTool(name, args) {
     }
 
     case 'get_contact': {
-      const contact = await db.Contact.findByPk(args.id);
+      const contact = await getDb().Contact.findByPk(args.id);
       if (!contact) return `Contact ${args.id} not found.`;
       return contact.toJSON();
     }
@@ -363,7 +376,7 @@ async function callTool(name, args) {
       }
       if (args.category) where.primaryCategory = args.category;
 
-      const factories = await db.Factory.findAll({
+      const factories = await getDb().Factory.findAll({
         where,
         limit: Math.min(args.limit || 20, 50),
         order: [['name', 'ASC']],
@@ -374,7 +387,7 @@ async function callTool(name, args) {
     }
 
     case 'get_factory': {
-      const factory = await db.Factory.findByPk(args.id);
+      const factory = await getDb().Factory.findByPk(args.id);
       if (!factory) return `Factory ${args.id} not found.`;
       return factory.toJSON();
     }
@@ -386,13 +399,13 @@ async function callTool(name, args) {
       const where = {};
       if (args.status) where.status = args.status;
 
-      const quotations = await db.Quotation.findAll({
+      const quotations = await getDb().Quotation.findAll({
         where,
         limit: Math.min(args.limit || 20, 50),
         order: [['createdAt', 'DESC']],
         attributes: ['id', 'quotationNumber', 'status', 'totalAmount',
           'currency', 'validUntil', 'createdAt'],
-        include: [{ model: db.Customer, as: 'customer', attributes: ['id', 'name'] }],
+        include: [{ model: getDb().Customer, as: 'customer', attributes: ['id', 'name'] }],
       });
       return quotations.length ? quotations.map(q => q.toJSON()) : 'No quotations found.';
     }
@@ -411,11 +424,11 @@ async function callTool(name, args) {
       if (USER_ID)         data.userId    = USER_ID;
 
       try {
-        const activity = await db.Activity.create(data);
+        const activity = await getDb().Activity.create(data);
         return { success: true, activityId: activity.id };
       } catch (err) {
         // Fall back to ScheduledActivity if Activity model differs
-        const activity = await db.ScheduledActivity.create({
+        const activity = await getDb().ScheduledActivity.create({
           type:    data.type,
           summary: data.subject,
           notes:   data.notes,
@@ -440,7 +453,7 @@ async function callTool(name, args) {
           { senderName:  { [Op.like]: `%${args.search}%` } },
         ];
       }
-      const items = await db.TriageItem.findAll({
+      const items = await getDb().TriageItem.findAll({
         where,
         order: [['created_at', 'DESC']],
         limit: Math.min(args.limit || 20, 50),
@@ -451,7 +464,7 @@ async function callTool(name, args) {
     }
 
     case 'get_triage_item': {
-      const item = await db.TriageItem.findByPk(args.id);
+      const item = await getDb().TriageItem.findByPk(args.id);
       if (!item) return `Triage item ${args.id} not found.`;
       return item.toJSON();
     }
@@ -524,7 +537,7 @@ async function callTool(name, args) {
     // ── Products ────────────────────────────────────────────────────────────
 
     case 'list_product_categories': {
-      const cats = await db.ProductCategory.findAll({
+      const cats = await getDb().ProductCategory.findAll({
         where: { isActive: true },
         order: [['sortOrder', 'ASC'], ['name', 'ASC']],
         attributes: ['id', 'name', 'slug', 'description', 'parentId'],
@@ -544,26 +557,26 @@ async function callTool(name, args) {
       if (args.category_id) where.categoryId = args.category_id;
       if (args.factory_id)  where.factoryId  = args.factory_id;
 
-      const products = await db.Product.findAll({
+      const products = await getDb().Product.findAll({
         where,
         limit: Math.min(args.limit || 20, 50),
         order: [['createdAt', 'DESC']],
         attributes: ['id', 'name', 'sku', 'description', 'unit', 'specifications',
           'minOrderQty', 'hsCode', 'isActive', 'categoryId', 'factoryId'],
         include: [
-          { model: db.ProductCategory, as: 'category', attributes: ['id', 'name'] },
-          { model: db.Factory, as: 'factory', attributes: ['id', 'name', 'country'] },
+          { model: getDb().ProductCategory, as: 'category', attributes: ['id', 'name'] },
+          { model: getDb().Factory, as: 'factory', attributes: ['id', 'name', 'country'] },
         ],
       });
       return products.length ? products.map(p => p.toJSON()) : 'No products found.';
     }
 
     case 'get_product': {
-      const product = await db.Product.findOne({
+      const product = await getDb().Product.findOne({
         where: { id: args.id, deletedAt: null },
         include: [
-          { model: db.ProductCategory, as: 'category', attributes: ['id', 'name'] },
-          { model: db.Factory, as: 'factory', attributes: ['id', 'name', 'country', 'city'] },
+          { model: getDb().ProductCategory, as: 'category', attributes: ['id', 'name'] },
+          { model: getDb().Factory, as: 'factory', attributes: ['id', 'name', 'country', 'city'] },
         ],
       });
       if (!product) return `Product ${args.id} not found.`;
@@ -576,7 +589,7 @@ async function callTool(name, args) {
       // Resolve factory: prefer factory_id, fall back to name search
       let factoryId = args.factory_id;
       if (!factoryId && args.factory_name) {
-        const factory = await db.Factory.findOne({
+        const factory = await getDb().Factory.findOne({
           where: { name: { [Op.like]: `%${args.factory_name}%` } },
           attributes: ['id', 'name'],
         });
@@ -588,13 +601,13 @@ async function callTool(name, args) {
       // Resolve category: prefer category_id, fall back to name search
       let categoryId = args.category_id;
       if (!categoryId && args.category_name) {
-        const cat = await db.ProductCategory.findOne({
+        const cat = await getDb().ProductCategory.findOne({
           where: { name: { [Op.like]: `%${args.category_name}%` }, isActive: true },
           attributes: ['id', 'name'],
         });
         if (!cat) {
           // Create category on the fly if it doesn't exist
-          const newCat = await db.ProductCategory.create({ name: args.category_name });
+          const newCat = await getDb().ProductCategory.create({ name: args.category_name });
           categoryId = newCat.id;
         } else {
           categoryId = cat.id;
@@ -631,7 +644,7 @@ async function callTool(name, args) {
       if (args.certifications)  specs.certifications = args.certifications;
 
       // Products are created inactive — Alex must approve before they're live
-      const product = await db.Product.create({
+      const product = await getDb().Product.create({
         name:               args.name,
         sku,
         description:        args.description         || null,
@@ -656,7 +669,7 @@ async function callTool(name, args) {
         const sellingPrice = parseFloat((costPrice / (1 - margin / 100)).toFixed(4));
         const validTo      = args.price_valid_until ? new Date(args.price_valid_until) : null;
 
-        priceRecord = await db.ProductPrice.create({
+        priceRecord = await getDb().ProductPrice.create({
           productId:  product.id,
           factoryId,
           costPrice,
@@ -685,7 +698,7 @@ async function callTool(name, args) {
       ].filter(Boolean).join('\n');
 
       if (USER_ID) {
-        await db.ScheduledActivity.create({
+        await getDb().ScheduledActivity.create({
           type:        'approve',
           entityType:  'Product',
           entityId:    product.id,
@@ -720,19 +733,19 @@ async function callTool(name, args) {
     }
 
     case 'approve_product': {
-      const product = await db.Product.findByPk(args.product_id);
+      const product = await getDb().Product.findByPk(args.product_id);
       if (!product) return `Product ${args.product_id} not found.`;
 
       await product.update({ isActive: true });
 
       // Activate all prices for this product
-      const priceCount = await db.ProductPrice.update(
+      const priceCount = await getDb().ProductPrice.update(
         { isActive: true },
         { where: { productId: args.product_id } }
       );
 
       // Mark approval task(s) done
-      await db.ScheduledActivity.update(
+      await getDb().ScheduledActivity.update(
         { status: 'done', completedAt: new Date(), completedNote: args.note || 'Approved via AI assistant' },
         { where: { entityType: 'Product', entityId: args.product_id, status: 'pending' } }
       );
@@ -749,7 +762,7 @@ async function callTool(name, args) {
 
     case 'list_pending_approvals': {
       if (!USER_ID) return 'ERP_USER_ID not set.';
-      const tasks = await db.ScheduledActivity.findAll({
+      const tasks = await getDb().ScheduledActivity.findAll({
         where: { assignedToId: USER_ID, status: 'pending', type: 'approve' },
         order: [['dueDate', 'ASC']],
         limit: 20,
@@ -1098,10 +1111,5 @@ const TOOL_DEFS = [
 ];
 
 // ── Startup ───────────────────────────────────────────────────────────────────
-
-db.sequelize.authenticate()
-  .then(() => process.stderr.write('[erp-mcp] DB ready, server listening on stdin\n'))
-  .catch(err => {
-    process.stderr.write(`[erp-mcp] DB connect failed: ${err.message}\n`);
-    process.exit(1);
-  });
+// DB is lazy-loaded on first tool call — do not require('../models') here.
+process.stderr.write('[erp-mcp] Server listening on stdin\n');

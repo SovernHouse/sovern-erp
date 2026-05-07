@@ -43,21 +43,22 @@ function formatConversationForPrompt(messages) {
     .join('\n\n');
 }
 
-async function runClaudeSubprocess(fullPrompt, userId) {
+async function runClaudeSubprocess(fullPrompt, userId, withMcp = true) {
   return new Promise((resolve) => {
     let output = '';
     let errOutput = '';
     let settled = false;
 
-    // --tools ''      disables built-in Bash/file/web tools (security)
-    // --mcp-config    enables our ERP tool server (calendar, gmail, leads, etc.)
-    // Prompt via stdin — --tools is variadic so a positional arg would be
-    // consumed as a tool name, not a prompt.
-    const child = spawn('claude', [
-      '-p',
-      '--tools', '',
-      '--mcp-config', MCP_CONFIG_PATH,
-    ], {
+    // --strict-mcp-config  ignore ~/.claude.json global tools; only use --mcp-config
+    // --mcp-config         enable our ERP tool server (calendar, gmail, leads, etc.)
+    // --disallowed-tools   block built-in file/shell/web tools for security
+    const args = ['-p', '--strict-mcp-config'];
+    if (withMcp) {
+      args.push('--mcp-config', MCP_CONFIG_PATH);
+    }
+    args.push('--disallowed-tools', 'Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch');
+
+    const child = spawn('claude', args, {
       env: { ...process.env, ERP_USER_ID: String(userId || '') },
     });
     child.stdin.write(fullPrompt);
@@ -102,7 +103,7 @@ async function generateTitle(firstMessage) {
   const prompt = 'Generate a short (5 words max) title for a conversation that starts with:\n"' +
     firstMessage.slice(0, 200) + '"\n\nReturn ONLY the title, no quotes, no explanation.';
 
-  const result = await runClaudeSubprocess(prompt, null);
+  const result = await runClaudeSubprocess(prompt, null, false);
   if (result.ok && result.text) {
     return result.text.slice(0, 100).replace(/^["']|["']$/g, '').trim();
   }
