@@ -22,16 +22,32 @@ async function runClaudeSubprocess(fullPrompt) {
   return new Promise((resolve) => {
     let output = '';
     let errOutput = '';
+    let settled = false;
 
-    const child = spawn('claude', ['-p', fullPrompt], {
-      timeout: 120000,
+    const child = spawn('claude', [
+      '-p',
+      '--tools', '',   // text-only: disable Bash/file/MCP tools so Claude responds immediately
+      fullPrompt,
+    ], {
       env: { ...process.env },
     });
+
+    // Hard-kill after 90s — shorter than nginx's proxy_read_timeout (150s)
+    // so the backend can return a clean 504 before nginx cuts the connection.
+    const killTimer = setTimeout(() => {
+      if (!settled) {
+        logger.warn('[ai] Claude subprocess timeout — killing');
+        child.kill('SIGTERM');
+        setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 3000);
+      }
+    }, 90000);
 
     child.stdout.on('data', (d) => { output += d.toString(); });
     child.stderr.on('data', (d) => { errOutput += d.toString(); });
 
     child.on('close', (code) => {
+      settled = true;
+      clearTimeout(killTimer);
       if (code !== 0 && !output.trim()) {
         logger.warn('[ai] Claude subprocess exited with code', code, ':', errOutput.slice(0, 200));
         resolve({ ok: false, text: null, error: errOutput.slice(0, 300) });
@@ -41,6 +57,8 @@ async function runClaudeSubprocess(fullPrompt) {
     });
 
     child.on('error', (err) => {
+      settled = true;
+      clearTimeout(killTimer);
       logger.error('[ai] Claude subprocess error:', err.message);
       resolve({ ok: false, text: null, error: err.message });
     });
