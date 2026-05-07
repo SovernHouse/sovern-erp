@@ -111,6 +111,18 @@ Read the relevant skill file BEFORE starting any task in that domain. Skill file
 
 ---
 
+## Session Continuity — Read These First
+
+At the start of EVERY session, before writing any code:
+
+1. **Read `SESSION.md`** (repo root) — current task, CI status, what was recently shipped, what's next. This is the single source of truth for where work stands. Cowork updates it at the end of every session.
+2. **Read `lessons.md`** (International Trade Company/lessons.md) — hard-won corrections. Read before making any changes.
+
+At the END of every session (or when Alex says to stop):
+- Update `SESSION.md` with: current CI status, what was shipped, what's next, any infrastructure notes that changed.
+
+---
+
 ## Self-Improvement Loop
 
 - **Read lessons.md** at the start of every coding session (International Trade Company/lessons.md)
