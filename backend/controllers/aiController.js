@@ -49,12 +49,16 @@ async function runClaudeSubprocess(systemPrompt, userPrompt, userId, withMcp = t
     let errOutput = '';
     let settled = false;
 
-    // --system-prompt      replace Claude Code's default identity with our ERP
-    //                      system prompt (otherwise it acts as the dev tool)
-    // --strict-mcp-config  ignore ~/.claude.json global tools; only use --mcp-config
-    // --mcp-config         enable our ERP tool server (calendar, gmail, leads, etc.)
-    // --disallowed-tools   block built-in file/shell/web tools for security
-    const args = ['-p', '--system-prompt', systemPrompt, '--strict-mcp-config'];
+    // --system-prompt        replace Claude Code's default identity with our ERP
+    //                        system prompt (otherwise it acts as the dev tool)
+    // --strict-mcp-config    ignore ~/.claude.json global tools; only use --mcp-config
+    // --mcp-config           enable our ERP tool server (calendar, gmail, leads, etc.)
+    // --permission-mode      bypassPermissions so MCP tool calls don't stall
+    //                        waiting for an approval prompt that no human will
+    //                        ever click in a headless subprocess
+    // --disallowed-tools     block built-in file/shell/web tools for security
+    const args = ['-p', '--system-prompt', systemPrompt, '--strict-mcp-config',
+                  '--permission-mode', 'bypassPermissions'];
     if (withMcp) {
       args.push('--mcp-config', MCP_CONFIG_PATH);
     }
@@ -162,6 +166,14 @@ exports.chat = async (req, res) => {
     // Run claude -p with ERP MCP tools
     const result = await runClaudeSubprocess(systemPrompt, userPrompt, user.id);
 
+    // If a timeout middleware already closed the response while we were
+    // waiting on claude, bail out — trying to res.json() now throws
+    // ERR_HTTP_HEADERS_SENT and crashes the request.
+    if (res.headersSent) {
+      logger.warn('[ai] response already sent (likely upstream timeout) — skipping reply persistence');
+      return;
+    }
+
     if (!result.ok) {
       return res.status(502).json({
         error: 'AI assistant is currently unavailable',
@@ -194,6 +206,7 @@ exports.chat = async (req, res) => {
       lastMessageAt: new Date(),
     });
 
+    if (res.headersSent) return;
     return res.json({
       success: true,
       data: {
@@ -205,6 +218,7 @@ exports.chat = async (req, res) => {
     });
   } catch (err) {
     logger.error('[ai] chat error:', err.message, err.stack);
+    if (res.headersSent) return;
     return res.status(500).json({ error: 'Server error', detail: err.message });
   }
 };

@@ -112,9 +112,15 @@ app.use('/api/documents', express.json({ limit: '10mb' }), express.urlencoded({ 
 app.use('/api/exports', express.json({ limit: '10mb' }), express.urlencoded({ limit: '10mb', extended: true }));
 app.use('/api/pdf', express.json({ limit: '10mb' }), express.urlencoded({ limit: '10mb', extended: true }));
 app.use('/api/', generalLimiter);
-// Add request timeout middleware to prevent hanging requests
-const { requestTimeoutMiddleware } = require("./middleware/requestTimeout");
-app.use("/api/", requestTimeoutMiddleware);
+// Add request timeout middleware to prevent hanging requests.
+// AI chat is the one slow endpoint (claude -p subprocess + MCP tool chain
+// can take 60-120s). Apply 150s to it, default 30s to everything else.
+const { createTimeoutMiddleware } = require("./middleware/requestTimeout");
+app.use("/api/ai/chat", createTimeoutMiddleware(150000));
+app.use("/api/", (req, res, next) => {
+  if (req.path === '/ai/chat' || req.path.startsWith('/ai/chat')) return next();
+  return createTimeoutMiddleware(30000)(req, res, next);
+});
 
 const authRoutes = require('./routes/authRoutes');
 const ssoRoutes = require('./routes/ssoRoutes');
