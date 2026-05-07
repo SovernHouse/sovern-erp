@@ -132,6 +132,7 @@ export default function TabLayout() {
       <Tabs.Screen name="purchase-orders" options={{ title: 'Purchase Orders',headerLeft: () => <BackToHome /> }} />
       <Tabs.Screen name="products"        options={{ title: 'Products',       headerLeft: () => <BackToHome /> }} />
       <Tabs.Screen name="customers"       options={{ title: 'Customers',      headerLeft: () => <BackToHome /> }} />
+      <Tabs.Screen name="factories"       options={{ title: 'Factories',      headerLeft: () => <BackToHome /> }} />
       <Tabs.Screen name="assistant"       options={{ title: 'AI Assistant',   headerLeft: () => <BackToHome /> }} />
     </Tabs>
   );

@@ -5,7 +5,7 @@
 ---
 
 ## Last Updated
-2026-05-07 (Taiwan time, seventh session — backfill of six prior sessions of dashboard/AI/RBAC work that were never logged)
+2026-05-07 (Taiwan time, seventh session — mobile parity rounds 1+2: AI rename, e-sign display, CRUD deletes, Factories tab; plus backfill of six prior sessions of dashboard/AI/RBAC work that were never logged)
 
 ---
 
@@ -21,10 +21,12 @@
 - **pm2 still running with `--exp-backoff-restart-delay 100 --max-restarts 15`.**
 - **Deploy:** Frontend builds on the GitHub Actions runner. VM only runs `npm install --omit=dev` (backend) + `pm2 restart`. Peak VM memory during deploy stays under 200MB. `~/deploy.sh` on the VM is **outdated** (still does `npm install` from root which can pull Vite). Do not use it. The GH Actions workflow is the canonical deploy path.
 
-### Mobile Status — BROKEN ⚠️
-- **Mobile app won't open / crashes on launch** as of 2026-05-07. Symptom reported by Alex; root cause not yet pinpointed.
-- **No mobile commits since `c8cfff1` (text-selection fix).** 29 backend/dashboard commits have shipped since, none ported to mobile. Mobile is running stale JS against a moved-forward backend.
-- **Triage required next session.** See "Next Task" below.
+### Mobile Status — RECOVERED + PARITY ROUNDS 1+2 SHIPPED ✅
+- **"Won't open" turned out to be Expo Go's stale cached `exp://192.168.0.47:8081` URL pointing at a Metro server that wasn't running.** Not a code crash. Resolved by restarting Metro and switching to EAS Update for laptop-free operation (see Deploy Process below).
+- **EAS Update wired up:** `eas update --branch preview --platform ios` publishes JS to Expo's CDN at `https://u.expo.dev/76a4e7a2-6585-4212-aa0c-1f8cfe7e001f`. Phone fetches the bundle from Expo's CDN every time it opens — laptop can be off. Free tier ($0/year, 1k MAU). Token lives in `$env:EXPO_TOKEN` (PAT, not password).
+- **Mobile parity round 1 (commit `0d2c371`):** AI rename conversation, e-sign display on quotation+PO, customer/inquiry delete, L-014 hooks-rule fix.
+- **Mobile parity round 2 (this session, factories tab):** Factories list + detail modal + delete (server blocks if open POs); registered in `(tabs)/_layout.tsx` and `dashboard.tsx` module grid.
+- **Pre-existing parity gaps remain:** see "Outstanding parity backlog" below.
 
 ---
 
@@ -83,25 +85,19 @@
 
 ---
 
+## Outstanding parity backlog
+
+The following items still need mobile counterparts. Add to next session unless prioritized differently:
+
+- **Approvals AI-generated items** — backend already routes them to `/api/internal-approvals` so they should appear in mobile's existing Approvals tab. Sanity-check next time real data exists.
+- **Sales Order `signedAt` / `signedByClient` display on mobile** — quotation + PO surfaces are done; SO is the only one left. Add a `app/sales-order/[id].tsx` detail view (mobile currently has no SO-specific screen), then surface the e-sign card.
+- **Factory PO supplier-side sign view** — desktop has `b23b7e7` factory-side PO confirmation with drawn signature canvas. This is a public-link supplier flow (no auth), so it intentionally does NOT belong in the Sovern Ops mobile app per the standing rule. Documented as the legitimate "no mobile parity needed" exception.
+- **Mobile cross-link from Quotation Sourcing Trail → Factory** — quotation detail shows the supplier name read-only; tapping should open the factory detail (now possible since factories tab exists).
+- **Inquiry → Quotation conversion on mobile** — desktop allows converting an inquiry to a quotation; mobile is read-only with status updates only. Add the convert action.
+
 ## Next Task
 
-**1. Triage mobile launch crash (HIGH priority).**
-- Alex reports app won't open / crashes on launch as of 2026-05-07.
-- Mobile JS is unchanged since `c8cfff1`; the crash must be runtime (backend contract drift, EAS Update bundle, or native module mismatch).
-- Need actual crash text from device — start with `npx expo start` and a real device, capture the red-screen error.
-- Likely candidates to investigate first: `/api/auth/me` response shape, `/api/dashboard` response shape, EAS Update channel state.
-
-**2. Mobile parity for the 29-commit dashboard stretch (MEDIUM priority).**
-The following changes shipped on admin portal only and need mobile counterparts (per the ERP Three-Surface Rule):
-- **super_admin role checks** anywhere mobile gates UI by role (currently mobile likely treats super_admin as unauthorized for admin-only screens).
-- **AI assistant:** `aiRenameConversation` API helper + UI; rely on cross-conversation memory implicitly (it's all server-side).
-- **Approvals:** AI-generated approval items now flow into `/api/internal-approvals` — confirm mobile `getPendingApprovals` still resolves correctly.
-- **Inquiry delete:** add `deleteInquiry` API helper + UI.
-- **Customer/factory delete:** add `deleteCustomer`, `deleteFactory` API helpers + UI (currently mobile is read-only for these).
-- **E-sign factory PO confirmation:** decide if mobile needs a supplier-facing sign view, or stays purely on web.
-- **Quotation/SalesOrder/PurchaseOrder:** surface `signedAt` / `signedByClient` / `signedBySupplier` in detail views.
-
-**3. Resume normal feature work** once 1+2 are clear.
+Pick from the parity backlog above OR start the next desktop feature. Whatever ships next, follow the rule: every desktop change ships a mobile counterpart in the same session, OR is explicitly logged as a pending parity task in this file.
 
 ---
 

@@ -177,8 +177,47 @@ export async function deleteCustomer(id: string): Promise<void> {
   await request(`/api/customers/${id}`, { method: 'DELETE' });
 }
 
+// ─── Factories ────────────────────────────────────────────────────────────
+
+export async function getFactories(params?: { search?: string; status?: string; page?: number; limit?: number }) {
+  const qs = new URLSearchParams(
+    Object.entries(params ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+  ).toString();
+  return request<PaginatedResponse<Factory>>(`/api/factories${qs ? `?${qs}` : ''}`);
+}
+
+export async function getFactory(id: string) {
+  const res = await request<{ success: boolean; data: Factory }>(`/api/factories/${id}`);
+  return res.data;
+}
+
 export async function deleteFactory(id: string): Promise<void> {
   await request(`/api/factories/${id}`, { method: 'DELETE' });
+}
+
+// Factory model — supplier directory entry. Backend blocks delete when
+// open POs exist (status NOT IN 'completed'/'cancelled').
+export interface Factory {
+  id: string;
+  companyName: string;
+  contactPerson?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  country?: string;
+  currency?: string;
+  paymentTerms?: string;
+  leadTimeDays?: number;
+  certifications?: string[];
+  specializations?: string[];
+  rating?: number;
+  isActive?: boolean;
+  isConfidential?: boolean;
+  notes?: string;
+  logo?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export async function deleteInquiry(id: string): Promise<void> {

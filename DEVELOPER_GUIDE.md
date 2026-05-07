@@ -1295,15 +1295,18 @@ export const aiAPI = {
 File: `mobile/sovern-ops-app/app/(tabs)/assistant.tsx`
 
 Two-view pattern (same as `chat.tsx`):
-- **View 1 — conversation list:** pull-to-refresh, tap to open, long-press to confirm-delete.
+- **View 1 — conversation list:** pull-to-refresh, tap to open, long-press shows a Rename / Delete / Cancel action menu. Rename opens a modal with a `TextInput` pre-populated with the current title; submit calls `aiRenameConversation` and updates the list optimistically.
 - **View 2 — thread view:** forest-coloured header with ← Back, scrollable `FlatList` of `MsgBubble` components, `WelcomeScreen` as list header when empty, `TypingIndicator` as list footer while awaiting reply, compose bar with multiline `TextInput`.
 
 `stripMarkdown(text)` helper removes `**bold**`, `# headers`, `---` rules, bullet markers, and backtick code so AI responses read cleanly as plain text on mobile.
+
+**Hooks-rule note (L-014):** the role gate (`if (!isAuthorized) return <AccessRestricted/>`) must be a render-time JSX conditional placed AFTER all `useState` / `useEffect` / `useRef` calls, never as an early return above them. Putting it above causes the component to render zero hooks on logout (when `user` becomes null) after rendering 8+ hooks while signed in, which crashes with "Rendered fewer hooks than expected" and trips the ErrorBoundary. The data-loading effect itself guards on `isAuthorized` *inside* the effect — the hook still runs, the side-effect doesn't.
 
 API functions added to `mobile/sovern-ops-app/src/services/api.ts`:
 - `aiChat(message, conversationId?)` — POST `/api/ai/chat`
 - `aiListConversations()` — GET `/api/ai/conversations`
 - `aiGetConversation(id)` — GET `/api/ai/conversations/:id`
+- `aiRenameConversation(id, title)` — PATCH `/api/ai/conversations/:id`
 - `aiDeleteConversation(id)` — DELETE `/api/ai/conversations/:id`
 - `aiClearConversation(id)` — POST `/api/ai/conversations/:id/clear`
 
@@ -1554,3 +1557,113 @@ frontend/admin-portal/src/
     tooltipContent.js            ← GOOGLE_DRIVE export
     helpContent.js               ← /drive entry
 ```
+
+---
+
+## 26. Sovern Ops Mobile App
+
+### Standing rule: mobile mirrors desktop
+
+Every change to the desktop admin portal must ship a mobile counterpart in the same session, OR be explicitly noted in `SESSION.md` as a pending parity task. Mobile is not a thin secondary surface — it mirrors desktop. This rule was codified in 2026-05-07 after a six-session stretch where 29 admin-portal commits shipped without any mobile updates and the apps drifted apart.
+
+Concrete checklist when shipping any feature:
+- New backend endpoint → add to `mobile/sovern-ops-app/src/services/api.ts`, even if the UI surface comes later
+- New role / status / permission → add the role check on mobile
+- New CRUD action on desktop → add the matching action on mobile (with a confirm dialog for destructive actions, since touch surfaces are high-mistap)
+- New display field (signedAt, signedBy*, etc.) → surface it on mobile detail views
+- Public-link supplier/customer flows (no auth) are the only legitimate exception — those aren't part of the Sovern Ops app
+
+### Architecture overview
+
+The mobile app is an Expo (SDK 54) React Native + Expo Router project at `mobile/sovern-ops-app/`. There is no standalone install — the app is opened via Expo Go on the phone, which fetches the JS bundle from EAS Update on Expo's CDN. The phone never talks to the developer's laptop in production.
+
+Stack:
+- Expo SDK 54, React 19.1, React Native 0.81
+- Expo Router for file-based routing (`app/`)
+- Zustand for the auth store; SecureStore for the JWT
+- Custom tab bar (Odoo-style home grid) — see `app/(tabs)/_layout.tsx`
+- Same `/api/*` backend as the admin portal — no mobile-specific routes
+
+### Tabs and screens
+
+```
+app/
+  _layout.tsx                  ← root stack, auth guard, ErrorBoundary
+  index.tsx                    ← splash redirect
+  (auth)/login.tsx
+  (tabs)/
+    _layout.tsx                ← custom bottom tab bar (Home / Inbox / Chat / Settings) + secondary modules registered as Tabs.Screen
+    dashboard.tsx              ← Home: pipeline metrics + Odoo-style module grid
+    triage.tsx                 ← inbox: inbound emails awaiting decision
+    chat.tsx                   ← internal team chat
+    settings.tsx               ← profile + sign out
+    leads.tsx                  ← CRM list
+    quotations.tsx             ← quotation list
+    inquiries.tsx              ← RFQ triage from the road; tap → modal with delete
+    approvals.tsx              ← internal manager approvals (raised by coordinators)
+    activities.tsx             ← upcoming + overdue activities
+    shipments.tsx              ← read-only shipment visibility
+    invoices.tsx               ← read-only invoice visibility
+    purchase-orders.tsx        ← PO list + detail modal with signedBy display
+    products.tsx               ← product catalog
+    customers.tsx              ← customer directory; tap → modal with delete
+    factories.tsx              ← supplier directory; tap → modal with delete (server blocks if open POs)
+    assistant.tsx              ← AI assistant; long-press a conversation for Rename / Delete
+  lead/[id].tsx                ← lead detail
+  quotation/[id].tsx           ← quotation detail with sourcing trail + e-sign card
+src/
+  services/api.ts              ← single source of truth for all REST calls; all helpers must import from this file (never axios direct, see L-032)
+  store/authStore.ts           ← Zustand store: { user, isAuthenticated, setUser, clearUser }
+  constants/config.ts          ← SERVER_URL, SecureStore keys, COLORS palette
+  components/ChatterSection.tsx← shared chatter feed embedded in detail screens
+```
+
+### Detail-screen pattern
+
+Most detail views are rendered as a `Modal` triggered from a list row tap (`customers.tsx`, `factories.tsx`, `inquiries.tsx`, `purchase-orders.tsx`, `invoices.tsx`, `shipments.tsx`). The modal has a forest-coloured header with the entity name on the left, a `🗑` icon for delete actions where supported, and an `✕` close button. This pattern is preferred over Expo Router stack navigation for read-mostly screens because it preserves the back-tab affordance and avoids a redundant header.
+
+Quotation and lead use full stack screens at `app/quotation/[id].tsx` and `app/lead/[id].tsx` because they have richer content (chatter, items, financials).
+
+### E-signature display
+
+Quotation, sales order, and PO models gained `signedAt` + `signedByClient` / `signedBySupplier` fields when the client/supplier signs via the public approve link. Mobile renders a green confirmation card above the Details section when both fields are present:
+
+```
+┌──────────────────────────────────────┐
+│ ✓  Accepted by John Smith            │
+│    May 7, 2026 at 2:14 PM           │
+└──────────────────────────────────────┘
+```
+
+Card lives in `app/quotation/[id].tsx` (Quotation) and the PO detail modal in `app/(tabs)/purchase-orders.tsx` (Purchase Order). Renders only when both signed-fields are populated — never shown for unsigned records.
+
+### CRUD deletes
+
+Mobile-side delete is exposed via a `🗑` icon in the detail modal header → native `Alert` confirm → API call → optimistic list update. Three entities currently support delete on mobile:
+
+- **Customer** (`DELETE /api/customers/:id`) — paranoid soft-delete, removes from all lists
+- **Factory** (`DELETE /api/factories/:id`) — paranoid soft-delete; server blocks deletion when there are open POs (`status NOT IN ('completed', 'cancelled')`) and returns the count in the error message, which mobile surfaces verbatim
+- **Inquiry** (`DELETE /api/inquiries/:id`) — hard delete; server blocks deletion when `convertedToQuotationId` is set
+
+Per the standing rule: any new entity added with delete capability on desktop must add the matching mobile delete action.
+
+### Hooks-rule gotcha (L-014)
+
+Permission/role gates must be expressed as render-time JSX conditional returns placed AFTER all `useState` / `useRef` / `useEffect` / `useCallback` calls. Putting them above the hooks crashes the component on logout: while signed in, all hooks run; on logout, `user` becomes null and the early return runs zero hooks, triggering "Rendered fewer hooks than expected" → ErrorBoundary → "Something went wrong" page. The fix is structural — hoist all hooks above any conditional return; if an effect should not run for unauthorized users, gate it inside the effect (`useEffect(() => { if (!authorized) return; load(); }, [authorized])`). This rule extends beyond auth to feature flags, loading states, and any conditional that can flip between renders of the same mounted component.
+
+### EAS Update deployment
+
+Mobile JS ships via Expo's EAS Update CDN. Native binary is Expo Go itself (no standalone build right now — see the eas.json `preview` and `production` channels for when that changes).
+
+To publish a new bundle:
+```
+$env:EXPO_TOKEN = "<personal-access-token>"
+cd mobile/sovern-ops-app
+eas update --branch preview --platform ios --message "<short description>"
+```
+
+Published bundles appear instantly in Expo Go on the next open. To force-pull on a phone that has the app open: force-quit Expo Go (swipe up from app switcher) and reopen.
+
+Note on TLS: SSL inspection software (Bitdefender, ESET, ZScaler, etc.) intercepts `api.expo.dev` and breaks Node's cert chain. Workaround for one-off publishes is `$env:NODE_TLS_REJECT_UNAUTHORIZED = "0"`. Don't bake this into CI without exporting the corporate root CA via `NODE_EXTRA_CA_CERTS` — the workaround disables ALL cert validation in that Node process.
+
+The web platform fails to bundle because `react-dom` is not installed (we don't need web). Always pass `--platform ios` (or `ios,android`) explicitly to skip web.
