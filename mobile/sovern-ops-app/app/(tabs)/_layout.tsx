@@ -129,6 +129,7 @@ export default function TabLayout() {
       <Tabs.Screen name="activities"      options={{ title: 'Activities',     headerLeft: () => <BackToHome /> }} />
       <Tabs.Screen name="shipments"       options={{ title: 'Shipments',      headerLeft: () => <BackToHome /> }} />
       <Tabs.Screen name="invoices"        options={{ title: 'Invoices',       headerLeft: () => <BackToHome /> }} />
+      <Tabs.Screen name="sales-orders"    options={{ title: 'Sales Orders',   headerLeft: () => <BackToHome /> }} />
       <Tabs.Screen name="purchase-orders" options={{ title: 'Purchase Orders',headerLeft: () => <BackToHome /> }} />
       <Tabs.Screen name="products"        options={{ title: 'Products',       headerLeft: () => <BackToHome /> }} />
       <Tabs.Screen name="customers"       options={{ title: 'Customers',      headerLeft: () => <BackToHome /> }} />

@@ -8,7 +8,7 @@ import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
   Alert, RefreshControl, TouchableOpacity, Linking,
 } from 'react-native';
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { getQuotation, type Quotation, type QuotationItem } from '../../src/services/api';
 import ChatterSection from '../../src/components/ChatterSection';
 import { COLORS } from '../../src/constants/config';
@@ -110,6 +110,7 @@ function LineItemRow({ item, currency }: { item: QuotationItem; currency?: strin
 export default function QuotationDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
+  const router = useRouter();
 
   const [quotation, setQuotation] = useState<Quotation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -201,18 +202,30 @@ export default function QuotationDetailScreen() {
           <SectionHeader title="Sourcing Trail" />
           <View style={styles.card}>
             {quotation.factory ? (
-              <View style={styles.sourcingRow}>
+              <TouchableOpacity
+                style={styles.sourcingRow}
+                onPress={() =>
+                  router.push({
+                    pathname: '/(tabs)/factories',
+                    params: { openId: quotation.factory!.id },
+                  })
+                }
+                activeOpacity={0.6}
+              >
                 <View style={styles.sourcingIcon}>
                   <Text style={styles.sourcingIconText}>🏭</Text>
                 </View>
                 <View style={styles.sourcingBody}>
                   <Text style={styles.sourcingLabel}>Supplier / Factory</Text>
-                  <Text style={styles.sourcingName}>{quotation.factory.companyName}</Text>
+                  <Text style={[styles.sourcingName, styles.sourcingNameLink]}>
+                    {quotation.factory.companyName}
+                  </Text>
                   {quotation.factory.country
                     ? <Text style={styles.sourcingMeta}>{quotation.factory.country}</Text>
                     : null}
                 </View>
-              </View>
+                <Text style={styles.sourcingChevron}>›</Text>
+              </TouchableOpacity>
             ) : null}
 
             {quotation.factory && quotation.lead ? (
@@ -449,8 +462,10 @@ const styles = StyleSheet.create({
   sourcingBody:    { flex: 1 },
   sourcingLabel:   { fontSize: 11, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
   sourcingName:    { fontSize: 15, fontWeight: '700', color: COLORS.ink },
+  sourcingNameLink: { color: COLORS.forest, textDecorationLine: 'underline' },
   sourcingMeta:    { fontSize: 13, color: COLORS.muted, marginTop: 1 },
   sourcingDivider: { height: 1, backgroundColor: COLORS.border, marginHorizontal: 16 },
+  sourcingChevron: { fontSize: 24, color: COLORS.muted, alignSelf: 'center', paddingLeft: 4 },
 
   // Line items
   lineItem:    { paddingHorizontal: 16, paddingVertical: 12 },

@@ -6,6 +6,7 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Linking, Alert,
 } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { getFactories, getFactory, deleteFactory, type Factory } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
 
@@ -228,6 +229,10 @@ function FactoryDetailModal({
 // ─── Screen ───────────────────────────────────────────────────────────────
 
 export default function FactoriesScreen() {
+  // `openId` is set when this tab is navigated to from elsewhere (e.g. the
+  // Quotation Sourcing Trail) to deep-link directly into a factory's detail.
+  const { openId } = useLocalSearchParams<{ openId?: string }>();
+
   const [factories, setFactories] = useState<Factory[]>([]);
   const [filtered, setFiltered]   = useState<Factory[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -250,6 +255,13 @@ export default function FactoriesScreen() {
   }
 
   useEffect(() => { load(); }, []);
+
+  // Deep-link: open the factory detail modal when navigated to with openId.
+  useEffect(() => {
+    if (openId && typeof openId === 'string') {
+      setSelectedId(openId);
+    }
+  }, [openId]);
 
   useEffect(() => {
     const q = search.toLowerCase();

@@ -610,6 +610,69 @@ export interface PurchaseOrder {
   factory?: { id: string; name?: string; companyName?: string }
 }
 
+// ─── Sales Orders ────────────────────────────────────────────────────────
+// Confirmed orders flowing from quotation → SO → fulfilment. Mobile is
+// read + e-sign-display only; create/edit happens on desktop.
+
+export async function getSalesOrders(params?: { search?: string; status?: string; page?: number; limit?: number }) {
+  const qs = new URLSearchParams(
+    Object.entries(params ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+  ).toString()
+  return request<PaginatedResponse<SalesOrder>>(`/api/sales-orders${qs ? `?${qs}` : ''}`)
+}
+
+export async function getSalesOrder(id: string) {
+  const res = await request<{ success: boolean; data: SalesOrder }>(`/api/sales-orders/${id}`)
+  return res.data
+}
+
+export interface SalesOrderItem {
+  id: string
+  productId?: string
+  description?: string
+  quantity: number
+  unit?: string
+  unitPrice: number
+  total: number
+  product?: { id: string; name: string; sku?: string }
+}
+
+export interface SalesOrder {
+  id: string
+  orderNumber: string
+  customerId?: string
+  factoryId?: string
+  quotationId?: string
+  status?: string
+  totalAmount?: number
+  currency?: string
+  expectedDeliveryDate?: string
+  actualDeliveryDate?: string
+  paymentTerms?: string
+  shippingTerms?: string
+  notes?: string
+  // E-signature audit trail. Populated when the customer approves the SO
+  // via the public approve link. IP/UA live on the DocumentApproval row.
+  signedAt?: string
+  signedByClient?: string
+  createdAt: string
+  updatedAt: string
+  items?: SalesOrderItem[]
+  customer?: { id: string; companyName: string; email?: string; country?: string }
+  factory?: { id: string; companyName: string }
+}
+
+export async function convertInquiryToQuotation(
+  id: string,
+  body?: { salesPersonId?: string; discount?: number; taxRate?: number; terms?: string },
+): Promise<Quotation> {
+  const res = await request<{ success: boolean; data: Quotation; message?: string }>(
+    `/api/inquiries/${id}/convert-to-quotation`,
+    { method: 'POST', body: JSON.stringify(body ?? {}) },
+  )
+  return res.data
+}
+
 // ─── Inquiries (RFQs) ────────────────────────────────────────────────────
 // Inbound inquiries from web forms, email, phone, portal. Reps can read +
 // assign on the road. Updating status moves them through the funnel:
@@ -646,6 +709,10 @@ export interface Inquiry {
   notes?: string
   followUpDate?: string
   estimatedValue?: number
+  // Set on the inquiry record once it's been converted to a quotation
+  // (POST /api/inquiries/:id/convert-to-quotation). Mobile uses this to
+  // hide the convert button on already-converted inquiries.
+  convertedToQuotationId?: string | null
   createdAt: string
   updatedAt: string
   customer?: { id: string; companyName: string; email?: string; country?: string }

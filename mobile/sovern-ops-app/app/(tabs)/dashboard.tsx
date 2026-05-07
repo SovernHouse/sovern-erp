@@ -24,6 +24,7 @@ const MODULES = [
   { icon: '🗓️', label: 'Activities',      route: '/(tabs)/activities' },
   { icon: '🚢', label: 'Shipments',       route: '/(tabs)/shipments' },
   { icon: '🧾', label: 'Invoices',        route: '/(tabs)/invoices' },
+  { icon: '📑', label: 'Sales Orders',    route: '/(tabs)/sales-orders' },
   { icon: '📋', label: 'Purchase Orders', route: '/(tabs)/purchase-orders' },
   { icon: '📦', label: 'Products',        route: '/(tabs)/products' },
   { icon: '🏢', label: 'Customers',       route: '/(tabs)/customers' },

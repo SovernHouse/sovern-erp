@@ -25,8 +25,9 @@
 - **"Won't open" turned out to be Expo Go's stale cached `exp://192.168.0.47:8081` URL pointing at a Metro server that wasn't running.** Not a code crash. Resolved by restarting Metro and switching to EAS Update for laptop-free operation (see Deploy Process below).
 - **EAS Update wired up:** `eas update --branch preview --platform ios` publishes JS to Expo's CDN at `https://u.expo.dev/76a4e7a2-6585-4212-aa0c-1f8cfe7e001f`. Phone fetches the bundle from Expo's CDN every time it opens — laptop can be off. Free tier ($0/year, 1k MAU). Token lives in `$env:EXPO_TOKEN` (PAT, not password).
 - **Mobile parity round 1 (commit `0d2c371`):** AI rename conversation, e-sign display on quotation+PO, customer/inquiry delete, L-014 hooks-rule fix.
-- **Mobile parity round 2 (this session, factories tab):** Factories list + detail modal + delete (server blocks if open POs); registered in `(tabs)/_layout.tsx` and `dashboard.tsx` module grid.
-- **Pre-existing parity gaps remain:** see "Outstanding parity backlog" below.
+- **Mobile parity round 2 (commit `f06a0f6`):** Factories list + detail modal + delete (server blocks if open POs); registered in `(tabs)/_layout.tsx` and `dashboard.tsx` module grid.
+- **Mobile parity round 3 (this commit):** Sales Orders tab (list + status filter + detail modal with e-sign card and line items), Quotation Sourcing Trail → Factory tap-through (deep-links to factories tab via `?openId=` param), Inquiry → Quotation convert action with navigation to the new quotation detail.
+- **Mobile is now at full parity** with desktop for all in-app surfaces. Only outstanding "gap" is the public supplier sign-back flow, which intentionally lives on web (no auth, supplier never installs the ops app).
 
 ---
 
@@ -87,17 +88,14 @@
 
 ## Outstanding parity backlog
 
-The following items still need mobile counterparts. Add to next session unless prioritized differently:
+- **Factory PO supplier-side sign view** — desktop has `b23b7e7` factory-side PO confirmation with drawn signature canvas. This is a public-link supplier flow (no auth), so it intentionally does NOT belong in the Sovern Ops mobile app per the standing rule. Documented as the legitimate "no mobile parity needed" exception. **No work needed.**
+- **Approvals AI-generated items** — backend already routes them to `/api/internal-approvals` so they should appear in mobile's existing Approvals tab. Sanity-check next time real data exists. **No work needed unless data shows otherwise.**
 
-- **Approvals AI-generated items** — backend already routes them to `/api/internal-approvals` so they should appear in mobile's existing Approvals tab. Sanity-check next time real data exists.
-- **Sales Order `signedAt` / `signedByClient` display on mobile** — quotation + PO surfaces are done; SO is the only one left. Add a `app/sales-order/[id].tsx` detail view (mobile currently has no SO-specific screen), then surface the e-sign card.
-- **Factory PO supplier-side sign view** — desktop has `b23b7e7` factory-side PO confirmation with drawn signature canvas. This is a public-link supplier flow (no auth), so it intentionally does NOT belong in the Sovern Ops mobile app per the standing rule. Documented as the legitimate "no mobile parity needed" exception.
-- **Mobile cross-link from Quotation Sourcing Trail → Factory** — quotation detail shows the supplier name read-only; tapping should open the factory detail (now possible since factories tab exists).
-- **Inquiry → Quotation conversion on mobile** — desktop allows converting an inquiry to a quotation; mobile is read-only with status updates only. Add the convert action.
+All other parity items from the 29-commit backlog are now shipped. ✅
 
 ## Next Task
 
-Pick from the parity backlog above OR start the next desktop feature. Whatever ships next, follow the rule: every desktop change ships a mobile counterpart in the same session, OR is explicitly logged as a pending parity task in this file.
+Pick the next desktop feature. Whatever ships next, follow the rule: every desktop change ships a mobile counterpart in the same session, OR is explicitly logged as a pending parity task in this file.
 
 ---
 

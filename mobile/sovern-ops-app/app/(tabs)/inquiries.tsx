@@ -7,7 +7,11 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Alert,
 } from 'react-native'
-import { getInquiries, getInquiry, updateInquiryStatus, deleteInquiry, type Inquiry } from '../../src/services/api'
+import { useRouter } from 'expo-router'
+import {
+  getInquiries, getInquiry, updateInquiryStatus, deleteInquiry,
+  convertInquiryToQuotation, type Inquiry,
+} from '../../src/services/api'
 import { COLORS } from '../../src/constants/config'
 
 const STATUS_FILTERS = [
@@ -123,14 +127,44 @@ function InquiryDetailModal({
   onChanged: () => void
   onDeleted: (id: string) => void
 }) {
+  const router = useRouter()
   const [item, setItem] = useState<Inquiry | null>(null)
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [converting, setConverting] = useState(false)
 
   useEffect(() => {
     getInquiry(id).then(setItem).catch(console.error).finally(() => setLoading(false))
   }, [id])
+
+  function confirmConvert() {
+    if (!item) return
+    Alert.alert(
+      'Convert to Quotation',
+      `Generate a draft quotation from ${item.inquiryNumber}? You can edit pricing on the desktop ERP after conversion.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Convert',
+          onPress: async () => {
+            setConverting(true)
+            try {
+              const quotation = await convertInquiryToQuotation(item.id)
+              onChanged()
+              onClose()
+              // Navigate to the new quotation detail so the user can review
+              // and continue editing on either surface.
+              router.push(`/quotation/${quotation.id}`)
+            } catch (err: any) {
+              Alert.alert('Could not convert', err.message ?? 'Server error')
+              setConverting(false)
+            }
+          },
+        },
+      ],
+    )
+  }
 
   function confirmDelete() {
     if (!item) return
@@ -240,6 +274,46 @@ function InquiryDetailModal({
                 <Text style={styles.descText}>{item.notes}</Text>
               </View>
             ) : null}
+            {/* Convert to Quotation — primary action when the inquiry has not
+                yet been converted and is in a status where conversion makes
+                sense. Backend allows conversion from any status; mobile hides
+                the action once an inquiry already has convertedToQuotationId
+                or is terminal (lost/cancelled). */}
+            {!item.convertedToQuotationId
+              && item.status !== 'lost'
+              && item.status !== 'cancelled'
+              && item.status !== 'converted' ? (
+              <View style={{ marginTop: 20 }}>
+                <Text style={styles.actionsLabel}>Quotation</Text>
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.actionBtnPrimary, converting && styles.btnDisabled]}
+                  onPress={confirmConvert}
+                  disabled={converting}
+                >
+                  <Text style={styles.actionBtnText}>
+                    {converting ? 'Converting…' : '→ Convert to Quotation'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {item.convertedToQuotationId ? (
+              <View style={{ marginTop: 20 }}>
+                <Text style={styles.actionsLabel}>Quotation</Text>
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.actionBtnGhost]}
+                  onPress={() => {
+                    onClose()
+                    router.push(`/quotation/${item.convertedToQuotationId}`)
+                  }}
+                >
+                  <Text style={[styles.actionBtnText, styles.actionBtnGhostText]}>
+                    View linked quotation
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
             {transitions.length > 0 ? (
               <View style={{ marginTop: 20 }}>
                 <Text style={styles.actionsLabel}>Update status</Text>
@@ -431,6 +505,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.forest, padding: 12, borderRadius: 8,
     alignItems: 'center', marginBottom: 8,
   },
+  actionBtnPrimary: { backgroundColor: COLORS.forest },
+  actionBtnGhost: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: COLORS.forest,
+  },
+  actionBtnGhostText: { color: COLORS.forest },
   actionBtnText: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   btnDisabled:   { opacity: 0.5 },
   empty: { paddingTop: 80, alignItems: 'center', gap: 8 },

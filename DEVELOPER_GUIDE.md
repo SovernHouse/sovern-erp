@@ -1605,9 +1605,10 @@ app/
     shipments.tsx              ← read-only shipment visibility
     invoices.tsx               ← read-only invoice visibility
     purchase-orders.tsx        ← PO list + detail modal with signedBy display
+    sales-orders.tsx           ← SO list + detail modal with signedAt/signedByClient e-sign card and line items
     products.tsx               ← product catalog
     customers.tsx              ← customer directory; tap → modal with delete
-    factories.tsx              ← supplier directory; tap → modal with delete (server blocks if open POs)
+    factories.tsx              ← supplier directory; tap → modal with delete (server blocks if open POs); accepts ?openId= to deep-link from Quotation Sourcing Trail
     assistant.tsx              ← AI assistant; long-press a conversation for Rename / Delete
   lead/[id].tsx                ← lead detail
   quotation/[id].tsx           ← quotation detail with sourcing trail + e-sign card
@@ -1636,6 +1637,17 @@ Quotation, sales order, and PO models gained `signedAt` + `signedByClient` / `si
 ```
 
 Card lives in `app/quotation/[id].tsx` (Quotation) and the PO detail modal in `app/(tabs)/purchase-orders.tsx` (Purchase Order). Renders only when both signed-fields are populated — never shown for unsigned records.
+
+### Cross-screen navigation
+
+Mobile mirrors the desktop's "click an entity reference and jump to it" pattern via a single convention: the destination screen accepts a route param and auto-opens the relevant detail modal/screen on mount.
+
+Current cross-links:
+
+- **Quotation detail → Factory** — `app/quotation/[id].tsx` makes the Factory row in the Sourcing Trail tappable. `router.push({ pathname: '/(tabs)/factories', params: { openId: <factoryId> } })`. The Factories tab reads `useLocalSearchParams<{ openId?: string }>()` and triggers `setSelectedId(openId)` in a one-shot effect that runs after the list loads.
+- **Inquiry → Quotation** — when an inquiry has been converted, the detail modal exposes "View linked quotation" which routes to `app/quotation/[id].tsx`. When un-converted, it shows "Convert to Quotation" which calls `POST /api/inquiries/:id/convert-to-quotation`, then navigates to the new quotation on success.
+
+When adding more cross-links: keep the param name `openId` so multiple sources can deep-link into the same destination tab without coordinating param names. If a destination needs to disambiguate between deep-link and user-tap, use a separate param like `openSource=quotation-sourcing-trail`.
 
 ### CRUD deletes
 
