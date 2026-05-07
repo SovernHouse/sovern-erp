@@ -13,7 +13,7 @@
  * IP address and user agent are recorded server-side on each response.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { approvalAPI } from '../../services/api'
 import {
@@ -25,7 +25,126 @@ import {
   Clock,
   ThumbsUp,
   ThumbsDown,
+  Eraser,
+  PenLine,
 } from 'lucide-react'
+
+// ─── Signature pad ────────────────────────────────────────────────────────────
+// Lightweight HTML-canvas signature capture — same shape as Odoo's online
+// signature widget. Mouse + touch supported. exposes onChange(dataUrl) so
+// the parent can capture the drawing as a base64 PNG for upload.
+function SignaturePad({ onChange, disabled }) {
+  const canvasRef = useRef(null)
+  const isDrawing = useRef(false)
+  const lastPoint = useRef(null)
+  const [empty, setEmpty] = useState(true)
+
+  // Resize canvas for crisp lines on high-DPR screens. We size the bitmap
+  // to (cssWidth * dpr) and scale the drawing context to match, otherwise
+  // strokes look blurry on retina displays.
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const dpr = window.devicePixelRatio || 1
+    const rect = canvas.getBoundingClientRect()
+    canvas.width = rect.width * dpr
+    canvas.height = rect.height * dpr
+    const ctx = canvas.getContext('2d')
+    ctx.scale(dpr, dpr)
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.strokeStyle = '#0f172a'
+  }, [])
+
+  const pointFromEvent = useCallback((e) => {
+    const canvas = canvasRef.current
+    const rect = canvas.getBoundingClientRect()
+    if (e.touches && e.touches.length) {
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top,
+      }
+    }
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  }, [])
+
+  const start = useCallback((e) => {
+    if (disabled) return
+    e.preventDefault()
+    isDrawing.current = true
+    lastPoint.current = pointFromEvent(e)
+  }, [disabled, pointFromEvent])
+
+  const move = useCallback((e) => {
+    if (!isDrawing.current || disabled) return
+    e.preventDefault()
+    const ctx = canvasRef.current.getContext('2d')
+    const p = pointFromEvent(e)
+    ctx.beginPath()
+    ctx.moveTo(lastPoint.current.x, lastPoint.current.y)
+    ctx.lineTo(p.x, p.y)
+    ctx.stroke()
+    lastPoint.current = p
+    if (empty) setEmpty(false)
+  }, [disabled, pointFromEvent, empty])
+
+  const end = useCallback(() => {
+    if (!isDrawing.current) return
+    isDrawing.current = false
+    lastPoint.current = null
+    if (!empty) {
+      const dataUrl = canvasRef.current.toDataURL('image/png')
+      onChange?.(dataUrl)
+    }
+  }, [empty, onChange])
+
+  const clear = useCallback(() => {
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    setEmpty(true)
+    onChange?.(null)
+  }, [onChange])
+
+  return (
+    <div>
+      <div className="relative border border-gray-300 rounded-lg bg-white" style={{ height: 150 }}>
+        <canvas
+          ref={canvasRef}
+          onMouseDown={start}
+          onMouseMove={move}
+          onMouseUp={end}
+          onMouseLeave={end}
+          onTouchStart={start}
+          onTouchMove={move}
+          onTouchEnd={end}
+          style={{ width: '100%', height: '100%', touchAction: 'none', cursor: disabled ? 'not-allowed' : 'crosshair' }}
+        />
+        {empty && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-gray-300 text-sm select-none">
+            <PenLine className="w-4 h-4 mr-2" />
+            Sign here
+          </div>
+        )}
+      </div>
+      <div className="flex justify-between items-center mt-2">
+        <p className="text-xs text-gray-400">
+          Draw your signature above (mouse or finger).
+        </p>
+        <button
+          type="button"
+          onClick={clear}
+          disabled={disabled || empty}
+          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-40"
+        >
+          <Eraser className="w-3.5 h-3.5" />
+          Clear
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatCurrency(amount, currency = 'USD') {
@@ -95,6 +214,7 @@ export default function ApprovalPage() {
   const [isExpired, setIsExpired] = useState(false)
 
   const [clientName, setClientName] = useState('')
+  const [signatureImage, setSignatureImage] = useState(null)
   const [isApproving, setIsApproving] = useState(false)
   const [isRejecting, setIsRejecting] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
@@ -134,7 +254,10 @@ export default function ApprovalPage() {
   const handleApprove = async () => {
     try {
       setIsApproving(true)
-      await approvalAPI.approve(token, { clientName: clientName.trim() || undefined })
+      await approvalAPI.approve(token, {
+        clientName: clientName.trim() || undefined,
+        signatureImage: signatureImage || undefined,
+      })
       setFinalStatus('approved')
     } catch (err) {
       const msg = err.response?.data?.message || 'Something went wrong. Please try again.'
@@ -385,6 +508,16 @@ export default function ApprovalPage() {
               onChange={(e) => setClientName(e.target.value)}
               disabled={isApproving || isRejecting}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-400 disabled:bg-gray-50"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Signature <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <SignaturePad
+              onChange={setSignatureImage}
+              disabled={isApproving || isRejecting}
             />
           </div>
 

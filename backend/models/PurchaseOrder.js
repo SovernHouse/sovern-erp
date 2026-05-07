@@ -52,6 +52,18 @@ module.exports = (sequelize) => {
     notes: {
       type: DataTypes.TEXT,
       allowNull: true
+    },
+    // Factory e-signature audit trail. Populated when the supplier
+    // confirms the PO via /api/approvals/public/:token/approve.
+    // signedBySupplier holds the name typed at sign time. The IP and
+    // user-agent are kept on the DocumentApproval row.
+    signedAt: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    signedBySupplier: {
+      type: DataTypes.STRING,
+      allowNull: true
     }
   }, {
     paranoid: true, // soft deletes — sets deletedAt instead of hard-deleting

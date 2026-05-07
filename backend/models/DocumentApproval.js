@@ -11,7 +11,7 @@ module.exports = (sequelize) => {
 
     // Which document this approval is for
     entityType: {
-      type: DataTypes.ENUM('ProformaInvoice', 'Quotation', 'SalesOrder'),
+      type: DataTypes.ENUM('ProformaInvoice', 'Quotation', 'SalesOrder', 'PurchaseOrder'),
       allowNull: false,
     },
     entityId: {
@@ -75,6 +75,16 @@ module.exports = (sequelize) => {
       allowNull: true,
     },
     clientUserAgent: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+
+    // Drawn signature, captured from the public approval page's canvas.
+    // Stored as a base64 PNG data URI so it's self-contained and can be
+    // embedded directly in PDFs / emails without a separate file store.
+    // Typical size: 5-30 KB. Sequelize maps TEXT to SQLite TEXT (no
+    // hard length cap on this dialect).
+    signatureImage: {
       type: DataTypes.TEXT,
       allowNull: true,
     },

@@ -99,6 +99,34 @@ async function resolveDocument(entityType, entityId) {
       };
     }
 
+    case 'PurchaseOrder': {
+      const po = await db.PurchaseOrder.findByPk(entityId, {
+        include: [
+          { model: db.Factory, as: 'factory', attributes: ['companyName', 'email', 'country'] },
+          { association: 'items', include: [{ model: db.Product, as: 'product', attributes: ['name'] }] },
+        ],
+      });
+      if (!po) return null;
+      return {
+        type: 'Purchase Order',
+        number: po.poNumber || `PO-${entityId.slice(0, 8)}`,
+        // The "counterparty" on a PO is the factory, not a customer.
+        // Surface as 'supplier' on the public page.
+        supplier: po.factory?.companyName,
+        currency: po.currency || 'USD',
+        total: po.total,
+        expectedDelivery: po.expectedDelivery,
+        items: (po.items || []).map(i => ({
+          description: i.product?.name || i.description,
+          quantity: i.quantity,
+          unit: i.unit,
+          unitPrice: i.unitPrice,
+          total: i.total,
+        })),
+        notes: po.notes,
+      };
+    }
+
     case 'SalesOrder': {
       const so = await db.SalesOrder.findByPk(entityId, {
         include: [
@@ -144,7 +172,7 @@ router.post('/generate', requireAuth, async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'entityType and entityId are required' });
     }
 
-    const supportedTypes = ['ProformaInvoice', 'Quotation', 'SalesOrder'];
+    const supportedTypes = ['ProformaInvoice', 'Quotation', 'SalesOrder', 'PurchaseOrder'];
     if (!supportedTypes.includes(entityType)) {
       return res.status(400).json({
         success: false,
@@ -222,6 +250,14 @@ router.get('/pending', requireAuth, async (req, res, next) => {
               include: [{ model: db.Customer, as: 'customer', attributes: ['companyName'] }],
             });
             customerName  = doc?.customer?.companyName || '';
+            totalValueUSD = doc?.total || 0;
+          } else if (a.entityType === 'PurchaseOrder' && db.PurchaseOrder) {
+            // PO counterparty is the factory; surface as the "name" so
+            // the admin approvals list shows who's expected to sign.
+            const doc = await db.PurchaseOrder.findByPk(a.entityId, {
+              include: [{ model: db.Factory, as: 'factory', attributes: ['companyName'] }],
+            });
+            customerName  = doc?.factory?.companyName || '';
             totalValueUSD = doc?.total || 0;
           }
         } catch { /* lookup failure — return partial data */ }
@@ -420,8 +456,19 @@ router.post('/public/:token/approve', publicApprovalLimiter, async (req, res, ne
       });
     }
 
-    const { clientName, clientEmail } = req.body;
+    const { clientName, clientEmail, signatureImage } = req.body;
     const signedAt = new Date();
+
+    // Reject pathological signature payloads outright. A normal drawn
+    // signature on a 600x150 canvas exports at well under 100 KB; a
+    // 500 KB cap leaves comfortable margin while preventing storage
+    // abuse from a malicious client posting megabyte-scale blobs.
+    let safeSignature = null;
+    if (typeof signatureImage === 'string'
+        && signatureImage.startsWith('data:image/')
+        && signatureImage.length < 500000) {
+      safeSignature = signatureImage;
+    }
 
     await approval.update({
       status: 'approved',
@@ -430,6 +477,7 @@ router.post('/public/:token/approve', publicApprovalLimiter, async (req, res, ne
       respondedAt: signedAt,
       clientIp: req.ip || req.connection?.remoteAddress || null,
       clientUserAgent: req.headers['user-agent'] || null,
+      signatureImage: safeSignature,
     });
 
     // Update the source document so the approval has a downstream effect:
@@ -461,6 +509,21 @@ router.post('/public/:token/approve', publicApprovalLimiter, async (req, res, ne
             signedAt,
             signedByClient: clientName || null,
           });
+        }
+      } else if (approval.entityType === 'PurchaseOrder' && db.PurchaseOrder) {
+        // Mirror of the Quotation/SO flow but for the buy side: factory
+        // confirms the PO, status flips to 'confirmed', signature is
+        // stamped with the supplier's name.
+        const po = await db.PurchaseOrder.findByPk(approval.entityId);
+        if (po) {
+          const updates = {
+            signedAt,
+            signedBySupplier: clientName || null,
+          };
+          if (['draft', 'sent'].includes(po.status)) {
+            updates.status = 'confirmed';
+          }
+          await po.update(updates);
         }
       }
     } catch (err) {
