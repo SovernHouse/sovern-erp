@@ -46,6 +46,105 @@ const SOVERN_HOUSE_CONTEXT = `
 **Documentation:** Commercial invoice, packing list, bill of lading, certificate of origin, Proforma Invoice (PI). LC (letter of credit) for large orders.
 `;
 
+const PRODUCT_SPEC_FRAMEWORK = `
+## Product Specification Framework
+
+When requesting a quotation from a factory, or when populating a product in the ERP, always collect ALL fields listed below for the relevant category. If information is missing, ask for it. For factory outreach, format outstanding fields as a numbered form the factory can fill in directly.
+
+### SPC / LVT / WPC Flooring
+1. Product name / design name
+2. Core type: SPC / LVT / WPC
+3. Total thickness (mm)
+4. Wear layer thickness (mm) — 0.3mm commercial light, 0.5mm residential heavy, 0.7mm+ commercial heavy
+5. Size: width (mm) x length (mm)
+6. Click system: Unilin / 5G click / drop lock / other
+7. Surface finish: flat press / embossed / registered emboss (EIR) / hand scraped
+8. Underlay: none / IXPE attached / cork attached — thickness if attached
+9. AC rating: AC3 / AC4 / AC5
+10. Packing: sqm per box, boxes per pallet, pallets per 20ft container, pallets per 40ft container
+11. Weight: kg per box, kg per sqm
+12. Country of manufacture
+13. HS code (export from country of origin)
+14. Certifications held: FloorScore / CE / CARB2 / ISO / EN14041 / other
+15. FOB price per sqm (USD) — by order volume tier if applicable
+16. MOQ: per design, per order
+17. Lead time: ex-stock / weeks from order confirmation
+18. Payment terms
+19. Sample availability and sample lead time
+
+### HDF / Engineered / Solid Wood Flooring
+1. Product name / species
+2. Construction: solid / engineered (number of plies)
+3. Surface species and grade (e.g. European Oak Select)
+4. Total thickness (mm); top layer thickness for engineered
+5. Size: width (mm) x length (mm)
+6. Edge profile: square / bevelled / micro-bevel
+7. Surface finish: UV lacquer / oil / unfinished
+8. Click system or tongue-and-groove
+9. Packing: sqm per box, boxes per pallet
+10. Weight per sqm
+11. Country of manufacture
+12. HS code
+13. Certifications: FSC / PEFC / CARB2 / CE
+14. FOB price per sqm (USD)
+15. MOQ and lead time
+16. Payment terms
+
+### Auto Parts
+1. Part name and description
+2. OEM part number(s) and compatible aftermarket numbers
+3. Vehicle compatibility: make / model / year range / engine
+4. Material specification
+5. Key dimensions and tolerances (if applicable)
+6. Packaging: individual, inner carton, outer carton — weight and CBM
+7. Country of manufacture
+8. HS code
+9. Certifications: ISO / IATF 16949 / OEM approval
+10. FOB price per piece (USD) — by order volume tier
+11. MOQ
+12. Lead time
+13. Payment terms
+14. Quality warranty period
+
+### Garments (T-shirts, Singlets, Underwear)
+1. Item type and style description
+2. Fabric composition (e.g. 100% combed cotton / 60% cotton 40% polyester)
+3. GSM (grams per square metre)
+4. Available sizes: S / M / L / XL / XXL / XXXL
+5. Available colours (Pantone reference preferred)
+6. Neck/collar style
+7. Labelling: blank / custom woven label / custom heat transfer
+8. Packing: pieces per polybag, pieces per carton, carton dimensions and weight
+9. Country of manufacture
+10. HS code
+11. Certifications: OEKO-TEX Standard 100 / GOTS / other
+12. FOB price per piece (USD) — by order volume tier (e.g. 500pcs / 1000pcs / 5000pcs)
+13. MOQ per colour, per style
+14. Lead time (blank) and lead time (custom label)
+15. Payment terms
+16. Sample cost and lead time
+
+### Bathroom Fixtures / Ironmongery / General Hardware
+1. Product name and model number
+2. Material and finish (e.g. stainless steel 304, brushed nickel)
+3. Key dimensions and weight
+4. Packaging: individual / inner / outer — dimensions and weight
+5. Country of manufacture
+6. HS code
+7. Certifications: CE / cUPC / WRAS / ISO / other relevant
+8. FOB price per piece/set (USD) — by volume tier
+9. MOQ and lead time
+10. Payment terms
+
+### General rules for factory inquiry forms
+- Always request FOB price, NOT EXW.
+- Always request price by volume tier (not just single-unit price).
+- Always ask for HS code — factories often know it; saves research time.
+- Always ask for certifications relevant to the target market (US buyers: FloorScore, CARB2; EU buyers: CE, EN standards).
+- Format as a numbered list the factory can reply to directly, or offer to send as an Excel if they prefer.
+- When uncertain which specs apply, ask for all of them — it is easier to filter out irrelevant fields than to go back for missing ones.
+`;
+
 const TEAM_FRAMEWORK = `
 ## Team Lenses (apply all relevant ones before responding)
 
@@ -264,6 +363,8 @@ You operate as Alex's full executive and operational team. You are talking with 
 Today: ${new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
 
 ${SOVERN_HOUSE_CONTEXT}
+
+${PRODUCT_SPEC_FRAMEWORK}
 
 ${TEAM_FRAMEWORK}
 
