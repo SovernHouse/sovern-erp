@@ -205,7 +205,7 @@ export default function GoogleDrivePage() {
   useEffect(() => {
     googleAPI.listAccounts()
       .then(res => {
-        const all = res.data?.data || []
+        const all = res.data || []
         const driveAccounts = all.filter(a =>
           a.isActive && (a.scopes || []).some(s => s.includes('drive'))
         )
@@ -234,14 +234,14 @@ export default function GoogleDrivePage() {
           : Promise.resolve(null),
       ])
 
-      const newFiles = filesRes.data?.data?.files || []
-      const newToken = filesRes.data?.data?.nextPageToken || null
+      const newFiles = filesRes.data?.files || []
+      const newToken = filesRes.data?.nextPageToken || null
 
       if (pageToken) {
         setFiles(prev => [...prev, ...newFiles])
       } else {
         setFiles(newFiles)
-        setCrumbs(crumbRes ? (crumbRes.data?.data || []) : [])
+        setCrumbs(crumbRes ? (crumbRes.data || []) : [])
       }
       setNextPageToken(newToken)
     } catch (err) {
@@ -302,7 +302,7 @@ export default function GoogleDrivePage() {
       setSearching(true)
       try {
         const res = await driveAPI.search({ accountId: selectedAccountId, q: q.trim() })
-        setSearchResults(res.data?.data?.files || [])
+        setSearchResults(res.data?.files || [])
       } catch {
         toast.error('Search failed')
         setSearchResults(null)
