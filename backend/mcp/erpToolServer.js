@@ -684,6 +684,64 @@ async function callTool(name, args) {
       return { success: true, updated: Object.keys(updates), factory: factory.toJSON() };
     }
 
+    case 'create_contact': {
+      if (!args.first_name && !args.last_name) {
+        return 'first_name or last_name is required.';
+      }
+      if (!args.email) return 'email is required.';
+      if (!args.factory_id && !args.customer_id) {
+        return 'Either factory_id (supplier-side) or customer_id (buyer-side) is required.';
+      }
+      const contact = await getDb().Contact.create({
+        firstName:   args.first_name   || '',
+        lastName:    args.last_name    || '',
+        email:       args.email,
+        phone:       args.phone        || null,
+        mobile:      args.mobile       || null,
+        jobTitle:    args.job_title    || null,
+        department:  args.department   || null,
+        customerId:  args.customer_id  || null,
+        factoryId:   args.factory_id   || null,
+        isPrimary:   args.is_primary === true,
+        website:     args.website      || null,
+        linkedinUrl: args.linkedin_url || null,
+        notes:       args.notes        || null,
+        isActive:    args.is_active !== false,
+      });
+      return {
+        success: true,
+        contactId: contact.id,
+        message: `Contact "${contact.firstName} ${contact.lastName}" created.`,
+        contact: contact.toJSON(),
+      };
+    }
+
+    case 'delete_contact': {
+      const contact = await getDb().Contact.findByPk(args.id);
+      if (!contact) return `Contact ${args.id} not found.`;
+      const name = `${contact.firstName} ${contact.lastName}`.trim();
+      await contact.destroy();
+      return { success: true, deletedContactId: args.id, name };
+    }
+
+    case 'delete_factory': {
+      const factory = await getDb().Factory.findByPk(args.id);
+      if (!factory) return `Factory ${args.id} not found.`;
+      // Block delete if there are open POs — same rule as the REST endpoint.
+      const openPOs = await getDb().PurchaseOrder.count({
+        where: {
+          factoryId: args.id,
+          status: { [require('sequelize').Op.notIn]: ['completed', 'cancelled'] },
+        },
+      }).catch(() => 0);
+      if (openPOs > 0) {
+        return `Cannot delete: factory has ${openPOs} open purchase order(s). Close or cancel them first.`;
+      }
+      const name = factory.companyName;
+      await factory.destroy();
+      return { success: true, deletedFactoryId: args.id, name };
+    }
+
     case 'update_contact': {
       const contact = await getDb().Contact.findByPk(args.id);
       if (!contact) return `Contact ${args.id} not found.`;
@@ -1322,6 +1380,52 @@ const TOOL_DEFS = [
       required: ['id'],
       properties: {
         id: { type: 'string', description: 'Contact ID' },
+      },
+    },
+  },
+  {
+    name: 'create_contact',
+    description: 'Create a new Contact (a person). Must be linked to either a Factory (supplier-side) or a Customer (buyer-side). Use this to create proper standalone contacts like "Cyanine at Naoevo, sales rep" rather than just stuffing the name into Factory.contactPerson.',
+    inputSchema: {
+      type: 'object',
+      required: ['email'],
+      properties: {
+        first_name:   { type: 'string',  description: 'Given name (at least one of first_name/last_name required)' },
+        last_name:    { type: 'string',  description: 'Family name' },
+        email:        { type: 'string',  description: 'Email (required)' },
+        phone:        { type: 'string' },
+        mobile:       { type: 'string' },
+        job_title:    { type: 'string',  description: 'e.g. "Sales Manager", "QC Lead", "Owner"' },
+        department:   { type: 'string' },
+        factory_id:   { type: 'string',  description: 'Link to a Factory (one of factory_id or customer_id is required)' },
+        customer_id:  { type: 'string',  description: 'Link to a Customer (one of factory_id or customer_id is required)' },
+        is_primary:   { type: 'boolean', description: 'Mark as the primary contact for the linked company' },
+        website:      { type: 'string' },
+        linkedin_url: { type: 'string' },
+        notes:        { type: 'string' },
+        is_active:    { type: 'boolean', description: 'Default true' },
+      },
+    },
+  },
+  {
+    name: 'delete_contact',
+    description: 'Delete a Contact (the person record itself). Use to clean up duplicates or wrong entries.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Contact ID' },
+      },
+    },
+  },
+  {
+    name: 'delete_factory',
+    description: 'Delete a Factory. Blocked if there are open purchase orders — close or cancel those first. Soft delete (paranoid).',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Factory ID' },
       },
     },
   },

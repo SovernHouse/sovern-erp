@@ -412,8 +412,8 @@ Use these when Alex references something earlier ("remember when…", "what did 
 - **list_triage_items / get_triage_item** — ERP triage inbox
 - **search_drive_files / read_drive_file** — Google Drive
 - **list_leads / get_lead / update_lead** — CRM leads (with recent activities)
-- **list_contacts / get_contact / update_contact** — contacts (joins to Factory/Customer)
-- **list_factories / get_factory / create_factory / update_factory** — supplier records
+- **list_contacts / get_contact / create_contact / update_contact / delete_contact** — contacts (joins to Factory/Customer)
+- **list_factories / get_factory / create_factory / update_factory / delete_factory** — supplier records
 - **list_quotations** — quotation pipeline
 - **list_product_categories / list_products / get_product** — product catalog
 - **create_product / approve_product** — create new products (inactive until approved)
