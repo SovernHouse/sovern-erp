@@ -8,9 +8,9 @@ const ctrl = require('../controllers/googleAccountController');
 router.get('/oauth/init', requireAuth, asyncHandler(ctrl.initiateOAuth));
 router.get('/oauth/callback', asyncHandler(ctrl.handleCallback)); // no auth — Google redirect
 
-// Account management — admin only
-router.get('/accounts', requireAuth, requireRole('admin'), asyncHandler(ctrl.listAccounts));
-router.delete('/accounts/:id', requireAuth, requireRole('admin'), asyncHandler(ctrl.disconnectAccount));
-router.patch('/accounts/:id/toggle', requireAuth, requireRole('admin'), asyncHandler(ctrl.toggleAccount));
+// Account management — admin and super_admin
+router.get('/accounts', requireAuth, requireRole('admin', 'super_admin'), asyncHandler(ctrl.listAccounts));
+router.delete('/accounts/:id', requireAuth, requireRole('admin', 'super_admin'), asyncHandler(ctrl.disconnectAccount));
+router.patch('/accounts/:id/toggle', requireAuth, requireRole('admin', 'super_admin'), asyncHandler(ctrl.toggleAccount));
 
 module.exports = router;
