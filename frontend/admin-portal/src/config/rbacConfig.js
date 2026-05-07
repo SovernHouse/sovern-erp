@@ -1,4 +1,5 @@
 export const ROLE_PERMISSIONS = {
+  super_admin: ['*'], // everything — founder/CEO level
   admin: ['*'], // everything
   manager: [
     'dashboard',
@@ -780,7 +781,8 @@ const buildNavFromPermissions = (permissions) => {
 // Helper function to get allowed items for a specific role.
 // If the role has a hardcoded nav, use it. Otherwise auto-build from permission strings.
 export const getAllowedNavItems = (role, dynamicPermissions = null) => {
-  if (NAV_ITEMS_BY_ROLE[role]) return NAV_ITEMS_BY_ROLE[role]
+  const resolvedRole = role === 'super_admin' ? 'admin' : role
+  if (NAV_ITEMS_BY_ROLE[resolvedRole]) return NAV_ITEMS_BY_ROLE[resolvedRole]
   // Dynamic fallback — used for custom roles loaded from the DB
   if (dynamicPermissions) return buildNavFromPermissions(dynamicPermissions)
   return [{ label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' }]
