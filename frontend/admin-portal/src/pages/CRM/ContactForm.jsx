@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 const ContactForm = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  // Prefill factoryId when arriving from a Factory detail page
+  // (e.g. /crm/contacts/new?factoryId=abc).
+  const prefilledFactoryId = searchParams.get('factoryId') || '';
   const [loading, setLoading] = useState(!!id);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -21,7 +25,7 @@ const ContactForm = () => {
     jobTitle: '',
     department: '',
     customerId: '',
-    factoryId: '',
+    factoryId: prefilledFactoryId,
     isPrimary: false,
     website: '',
     linkedinUrl: '',
@@ -287,7 +291,7 @@ const ContactForm = () => {
                 >
                   <option value="">Select a customer</option>
                   {customers.map(customer => (
-                    <option key={customer.id} value={customer.id}>{customer.name}</option>
+                    <option key={customer.id} value={customer.id}>{customer.companyName}</option>
                   ))}
                 </select>
               </div>
@@ -302,7 +306,7 @@ const ContactForm = () => {
                 >
                   <option value="">Select a factory</option>
                   {factories.map(factory => (
-                    <option key={factory.id} value={factory.id}>{factory.name}</option>
+                    <option key={factory.id} value={factory.id}>{factory.companyName}</option>
                   ))}
                 </select>
               </div>

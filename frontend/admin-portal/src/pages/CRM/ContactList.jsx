@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import {
   Search,
@@ -9,9 +10,11 @@ import {
   Trash2,
   AlertCircle,
   User,
+  Factory as FactoryIcon,
 } from 'lucide-react';
 
 const ContactList = () => {
+  const navigate = useNavigate();
   const [contacts, setContacts] = useState([]);
   const [filteredContacts, setFilteredContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -113,7 +116,10 @@ const ContactList = () => {
             <h1 className="text-3xl font-bold text-gray-900">Supplier Contacts</h1>
             <p className="text-gray-600 mt-2">{filteredContacts.length} supplier contact{filteredContacts.length === 1 ? '' : 's'}</p>
           </div>
-          <button className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 flex items-center">
+          <button
+            onClick={() => navigate('/crm/contacts/new')}
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 flex items-center"
+          >
             <Plus size={20} className="mr-2" />
             New Contact
           </button>
@@ -147,7 +153,7 @@ const ContactList = () => {
             >
               <option value="">All Factories</option>
               {factories.map(factory => (
-                <option key={factory.id} value={factory.id}>{factory.name}</option>
+                <option key={factory.id} value={factory.id}>{factory.companyName}</option>
               ))}
             </select>
           </div>
@@ -203,11 +209,19 @@ const ContactList = () => {
                 )}
               </div>
 
-              {contact.Customer && (
-                <div className="mb-4 p-3 bg-gray-50 rounded">
-                  <p className="text-xs text-gray-600">Company</p>
-                  <p className="text-sm font-medium text-gray-900">{contact.Customer.name}</p>
-                </div>
+              {contact.Factory && (
+                <button
+                  onClick={() => navigate(`/factories/${contact.factoryId}`)}
+                  className="mb-4 p-3 bg-gray-50 hover:bg-gray-100 rounded w-full text-left transition-colors"
+                >
+                  <p className="text-xs text-gray-600 flex items-center gap-1">
+                    <FactoryIcon size={12} />
+                    Factory
+                  </p>
+                  <p className="text-sm font-medium text-blue-700 mt-1">
+                    {contact.Factory.companyName}
+                  </p>
+                </button>
               )}
 
               {contact.notes && (
@@ -218,7 +232,10 @@ const ContactList = () => {
               )}
 
               <div className="flex gap-2 pt-4 border-t border-gray-200">
-                <button className="flex-1 text-blue-600 hover:bg-blue-50 px-3 py-2 rounded flex items-center justify-center gap-2 text-sm font-medium">
+                <button
+                  onClick={() => navigate(`/crm/contacts/${contact.id}`)}
+                  className="flex-1 text-blue-600 hover:bg-blue-50 px-3 py-2 rounded flex items-center justify-center gap-2 text-sm font-medium"
+                >
                   <Edit2 size={16} />
                   Edit
                 </button>
