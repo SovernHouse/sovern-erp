@@ -166,6 +166,18 @@ async function callTool(name, args) {
           : { dateTime: endTime, timeZone: args.timezone || 'Asia/Taipei' },
         attendees: (args.attendees || []).map(email => ({ email })),
       };
+
+      // Custom reminders: pass minutes-before-event as an array, e.g. [30, 15]
+      // → two popup reminders, 30 and 15 min before. Falls back to calendar
+      // defaults if the array is empty/missing.
+      if (Array.isArray(args.reminders_minutes) && args.reminders_minutes.length) {
+        resource.reminders = {
+          useDefault: false,
+          overrides: args.reminders_minutes
+            .filter(m => Number.isFinite(m) && m >= 0 && m <= 40320) // <= 4 weeks
+            .map(m => ({ method: 'popup', minutes: Math.round(m) })),
+        };
+      }
       if (args.add_meet_link) {
         resource.conferenceData = { createRequest: { requestId: `erp-${Date.now()}` } };
       }
@@ -809,7 +821,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'create_calendar_event',
-    description: 'Create a Google Calendar event. Default duration is 45 min if end_time is omitted. Asia/Taipei timezone by default. Do not ask the user for duration unless they explicitly bring it up.',
+    description: 'Create a Google Calendar event. Default duration is 45 min if end_time is omitted. Asia/Taipei timezone by default. Supports custom popup reminders via reminders_minutes. Do not ask the user for duration unless they explicitly bring it up.',
     inputSchema: {
       type: 'object',
       required: ['title', 'start_time'],
@@ -817,6 +829,7 @@ const TOOL_DEFS = [
         title:              { type: 'string',  description: 'Event title' },
         start_time:         { type: 'string',  description: 'ISO 8601 datetime e.g. 2026-05-10T14:00:00' },
         end_time:           { type: 'string',  description: 'ISO 8601 datetime. Optional — defaults to start_time + 45 min.' },
+        reminders_minutes:  { type: 'array',   items: { type: 'number' }, description: 'Minutes-before-event for popup reminders, e.g. [30, 15] for two popups at 30 and 15 min before. Omit to use the calendar default reminder.' },
         description:        { type: 'string',  description: 'Agenda or notes' },
         location:           { type: 'string',  description: 'Physical address or call link' },
         attendees:          { type: 'array',   items: { type: 'string' }, description: 'Attendee email addresses' },
