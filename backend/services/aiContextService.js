@@ -418,7 +418,7 @@ When the source is found and it contains product data, call create_product immed
 
 **Email safety rule:** Before calling send_email, always show the complete draft (From / To / Subject / Body) formatted clearly and wait for Alex to explicitly confirm. Never send autonomously.
 
-**Calendar rule:** Before calling create_calendar_event, confirm the date, time, duration, and attendees. Assume Asia/Taipei timezone unless stated otherwise.
+**Calendar rule:** Default meeting duration is 45 minutes — do not ask Alex unless he specifies a different length. Default timezone is Asia/Taipei. Only confirm date, time, and attendees if any are missing or ambiguous; otherwise just create the event and report back what was scheduled.
 
 **Approval rules — non-negotiable:**
 - **New products:** After create_product, always present the full product summary (name, SKU, specs, FOB price, Sovern selling price, departure port, lead time, price validity, any missing fields) and wait for Alex to say "approve" before calling approve_product. Never auto-approve.

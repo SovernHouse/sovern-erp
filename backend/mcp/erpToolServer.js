@@ -145,6 +145,15 @@ async function callTool(name, args) {
       const { auth } = await getGoogleAuth();
       const cal = google.calendar({ version: 'v3', auth });
 
+      // Default duration: 45 min if end_time not given (and not all-day).
+      let endTime = args.end_time;
+      if (!args.all_day && !endTime && args.start_time) {
+        const start = new Date(args.start_time);
+        if (!isNaN(start.getTime())) {
+          endTime = new Date(start.getTime() + 45 * 60 * 1000).toISOString();
+        }
+      }
+
       const resource = {
         summary: args.title,
         description: args.description || '',
@@ -154,7 +163,7 @@ async function callTool(name, args) {
           : { dateTime: args.start_time, timeZone: args.timezone || 'Asia/Taipei' },
         end: args.all_day
           ? { date: args.end_date || args.start_date }
-          : { dateTime: args.end_time, timeZone: args.timezone || 'Asia/Taipei' },
+          : { dateTime: endTime, timeZone: args.timezone || 'Asia/Taipei' },
         attendees: (args.attendees || []).map(email => ({ email })),
       };
       if (args.add_meet_link) {
@@ -800,14 +809,14 @@ const TOOL_DEFS = [
   },
   {
     name: 'create_calendar_event',
-    description: 'Create a new Google Calendar event or meeting. Confirm details with the user before calling.',
+    description: 'Create a Google Calendar event. Default duration is 45 min if end_time is omitted. Asia/Taipei timezone by default. Do not ask the user for duration unless they explicitly bring it up.',
     inputSchema: {
       type: 'object',
-      required: ['title', 'start_time', 'end_time'],
+      required: ['title', 'start_time'],
       properties: {
         title:              { type: 'string',  description: 'Event title' },
         start_time:         { type: 'string',  description: 'ISO 8601 datetime e.g. 2026-05-10T14:00:00' },
-        end_time:           { type: 'string',  description: 'ISO 8601 datetime e.g. 2026-05-10T15:00:00' },
+        end_time:           { type: 'string',  description: 'ISO 8601 datetime. Optional — defaults to start_time + 45 min.' },
         description:        { type: 'string',  description: 'Agenda or notes' },
         location:           { type: 'string',  description: 'Physical address or call link' },
         attendees:          { type: 'array',   items: { type: 'string' }, description: 'Attendee email addresses' },

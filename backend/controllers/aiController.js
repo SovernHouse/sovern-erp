@@ -43,16 +43,18 @@ function formatConversationForPrompt(messages) {
     .join('\n\n');
 }
 
-async function runClaudeSubprocess(fullPrompt, userId, withMcp = true) {
+async function runClaudeSubprocess(systemPrompt, userPrompt, userId, withMcp = true) {
   return new Promise((resolve) => {
     let output = '';
     let errOutput = '';
     let settled = false;
 
+    // --system-prompt      replace Claude Code's default identity with our ERP
+    //                      system prompt (otherwise it acts as the dev tool)
     // --strict-mcp-config  ignore ~/.claude.json global tools; only use --mcp-config
     // --mcp-config         enable our ERP tool server (calendar, gmail, leads, etc.)
     // --disallowed-tools   block built-in file/shell/web tools for security
-    const args = ['-p', '--strict-mcp-config'];
+    const args = ['-p', '--system-prompt', systemPrompt, '--strict-mcp-config'];
     if (withMcp) {
       args.push('--mcp-config', MCP_CONFIG_PATH);
     }
@@ -61,7 +63,7 @@ async function runClaudeSubprocess(fullPrompt, userId, withMcp = true) {
     const child = spawn('claude', args, {
       env: { ...process.env, ERP_USER_ID: String(userId || '') },
     });
-    child.stdin.write(fullPrompt);
+    child.stdin.write(userPrompt);
     child.stdin.end();
 
     // Hard-kill after 120s — shorter than nginx's proxy_read_timeout (150s)
@@ -100,10 +102,11 @@ async function runClaudeSubprocess(fullPrompt, userId, withMcp = true) {
 
 // Generate a short title — no MCP tools needed, pass null for userId
 async function generateTitle(firstMessage) {
-  const prompt = 'Generate a short (5 words max) title for a conversation that starts with:\n"' +
-    firstMessage.slice(0, 200) + '"\n\nReturn ONLY the title, no quotes, no explanation.';
+  const sys = 'You generate short conversation titles. Return ONLY the title text — no quotes, no explanation, no preamble.';
+  const userPrompt = 'Generate a 5-word-max title for a conversation that starts with:\n"' +
+    firstMessage.slice(0, 200) + '"';
 
-  const result = await runClaudeSubprocess(prompt, null, false);
+  const result = await runClaudeSubprocess(sys, userPrompt, null, false);
   if (result.ok && result.text) {
     return result.text.slice(0, 100).replace(/^["']|["']$/g, '').trim();
   }
@@ -147,16 +150,17 @@ exports.chat = async (req, res) => {
     // Get last 20 messages for context window
     const history = (conversation.messages || []).slice(-20);
 
-    // Assemble full prompt
+    // User-side prompt: prior conversation + new message.
+    // System prompt is passed via --system-prompt (overrides Claude Code's default).
     const historyText = formatConversationForPrompt(history);
-    let fullPrompt = systemPrompt;
+    let userPrompt = '';
     if (historyText) {
-      fullPrompt += '\n\n## Conversation so far\n\n' + historyText + '\n\n';
+      userPrompt += '## Conversation so far\n\n' + historyText + '\n\n## New message\n\n';
     }
-    fullPrompt += 'Human: ' + message.trim() + '\n\nAssistant:';
+    userPrompt += message.trim();
 
     // Run claude -p with ERP MCP tools
-    const result = await runClaudeSubprocess(fullPrompt, user.id);
+    const result = await runClaudeSubprocess(systemPrompt, userPrompt, user.id);
 
     if (!result.ok) {
       return res.status(502).json({
