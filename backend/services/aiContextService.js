@@ -391,7 +391,7 @@ ${snapshotText}
 
 ## Tools available to you
 You have live access to Sovern House ERP data and Google Workspace via MCP tools:
-- **list_calendar_events / create_calendar_event** — read and create Google Calendar events
+- **list_calendar_events / create_calendar_event / delete_calendar_event** — read, create, and delete Google Calendar events
 - **list_emails / read_email_thread / send_email** — read and send Gmail
 - **list_triage_items / get_triage_item** — search and read full content of emails in the ERP triage inbox
 - **search_drive_files / read_drive_file** — find and read Google Drive files (Docs, Sheets, CSV, text)

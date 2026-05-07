@@ -198,6 +198,17 @@ async function callTool(name, args) {
       };
     }
 
+    case 'delete_calendar_event': {
+      const { auth } = await getGoogleAuth();
+      const cal = google.calendar({ version: 'v3', auth });
+      await cal.events.delete({
+        calendarId: 'primary',
+        eventId: args.event_id,
+        sendUpdates: args.notify_attendees ? 'all' : 'none',
+      });
+      return { success: true, deletedEventId: args.event_id };
+    }
+
     // ── Gmail ───────────────────────────────────────────────────────────────
 
     case 'list_emails': {
@@ -838,6 +849,18 @@ const TOOL_DEFS = [
         all_day:            { type: 'boolean', description: 'All-day event' },
         start_date:         { type: 'string',  description: 'YYYY-MM-DD for all-day events' },
         end_date:           { type: 'string',  description: 'YYYY-MM-DD for all-day events' },
+      },
+    },
+  },
+  {
+    name: 'delete_calendar_event',
+    description: 'Delete a Google Calendar event by its event_id. Use the eventId returned from create_calendar_event or from list_calendar_events. By default does not email attendees about the cancellation.',
+    inputSchema: {
+      type: 'object',
+      required: ['event_id'],
+      properties: {
+        event_id:          { type: 'string',  description: 'Google Calendar event ID' },
+        notify_attendees:  { type: 'boolean', description: 'If true, email all attendees about the cancellation. Default false.' },
       },
     },
   },

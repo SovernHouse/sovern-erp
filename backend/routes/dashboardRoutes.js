@@ -696,9 +696,13 @@ router.post('/layout', requireAuth, async (req, res, next) => {
     if (dashLayout) {
       dashLayout = await dashLayout.update({ layout });
     } else {
+      // DashboardLayout.role is a Sequelize ENUM that does not include
+      // 'super_admin'. Coerce to 'admin' on persistence — the layout table
+      // doesn't care about the distinction (it's a UI preference store).
+      const persistRole = req.user.role === 'super_admin' ? 'admin' : req.user.role;
       dashLayout = await db.DashboardLayout.create({
         userId: req.user.id,
-        role: req.user.role,
+        role: persistRole,
         layout
       });
     }
@@ -852,9 +856,10 @@ router.get('/layout', requireAuth, async (req, res, next) => {
     });
 
     if (!layout) {
+      const persistRole = req.user.role === 'super_admin' ? 'admin' : req.user.role;
       layout = await db.DashboardLayout.create({
         userId: req.user.id,
-        role: req.user.role,
+        role: persistRole,
         layout: [],
         isDefault: false
       });
