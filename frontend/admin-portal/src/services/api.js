@@ -529,6 +529,12 @@ export const googleAPI = {
   listAccounts:     ()   => api.get('/google/accounts'),
   disconnectAccount:(id) => api.delete(`/google/accounts/${id}`),
   toggleAccount:    (id) => api.patch(`/google/accounts/${id}/toggle`),
+
+  // Minimal account list for feature pages (Drive/Calendar/Gmail pickers)
+  // — available to any authenticated user. Optional `scope` filter narrows
+  // to accounts that have the named scope (substring match: 'drive',
+  // 'gmail', 'calendar').
+  listAvailable:    (scope) => api.get('/google/accounts/available', { params: scope ? { scope } : {} }),
 }
 
 export const driveAPI = {

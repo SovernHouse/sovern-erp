@@ -114,11 +114,14 @@ Deploys are **fully automated** via GitHub Actions. After every push to `main`:
 
 ## Deferred / Known Issues
 
-- **Mobile app launch crash (NEW, HIGH).** See Next Task.
-- **Mobile parity gap (NEW, MEDIUM).** 29 commits' worth of dashboard/AI/RBAC work has not been ported. See Next Task.
-- **Drive page: manager permissions gap.** `/api/google/accounts` is admin-only but the Drive page is accessible to managers. Managers see "Failed to load connected accounts". Fix requires a separate endpoint that returns Drive-scoped accounts for the current user's role. Low priority.
-- **Sentry disabled.** `backend/instrument.js` is a stub. No error tracking until @sentry/node is downgraded to v7. Low priority.
-- **`~/deploy.sh` on VM is stale.** Still does `npm install` from root which can pull Vite. Do not use it; the GH Actions workflow is canonical.
+All previously-deferred items resolved this session:
+- ✅ **Mobile app "launch crash"** — was actually a stale Expo Go cached `exp://` URL. Resolved via EAS Update OTA pipeline; phone now loads JS from Expo's CDN, no laptop required.
+- ✅ **Mobile parity gap** — four rounds of porting work shipped; mobile is at full parity with desktop.
+- ✅ **Drive page manager permissions** — new `GET /api/google/accounts/available` endpoint (any authenticated user) feeds the Drive picker. `/api/google/accounts` (with sync telemetry) stays admin-only.
+- ✅ **Sentry @sentry/node v9 → v7** — downgraded; `instrument.js` does real `Sentry.init()` with a defensive try/catch + no-op shim fallback. server.js wired to `Sentry.Handlers.requestHandler()` (early) + `errorHandler()` (before custom errorHandler).
+- ✅ **`~/deploy.sh` on VM** — original script preserved as `~/deploy.sh.bak.20260507`; replaced with a tombstone that exits 1 and points at GH Actions / `pm2 restart`.
+
+No regressions introduced. The TLS-inspection workaround (`NODE_TLS_REJECT_UNAUTHORIZED=0`) was also retired this session — `NODE_EXTRA_CA_CERTS` set persistently on Alex's Windows session, pointing at a PEM dump of the Windows trust store. `eas update` now works without disabling cert validation.
 
 ---
 

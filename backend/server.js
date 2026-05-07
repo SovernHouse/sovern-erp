@@ -39,6 +39,12 @@ const app = express();
 // like express-rate-limit don't throw ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
 app.set('trust proxy', 1);
 
+// Sentry's request handler must be the FIRST middleware to attach so it
+// can capture context for every incoming request, including transactions
+// that fail in subsequent middleware. When SENTRY_DSN is not set this is
+// a no-op (see instrument.js fallback shim).
+app.use(Sentry.Handlers.requestHandler());
+
 const server = http.createServer(app);
 
 const socketCorsOrigins = process.env.SOCKET_IO_CORS_ORIGIN
@@ -356,8 +362,9 @@ app.use((req, res) => {
 // Sentry's Express error handler must be registered BEFORE the app's own
 // errorHandler. It captures uncaught errors and forwards them to Sentry,
 // then passes the error along to the app's errorHandler for the actual
-// HTTP response. If SENTRY_DSN is unset (e.g. local dev), this is a no-op.
-Sentry.setupExpressErrorHandler(app);
+// HTTP response. If SENTRY_DSN is unset (e.g. local dev) or the SDK
+// failed to load, this is a no-op (see instrument.js fallback shim).
+app.use(Sentry.Handlers.errorHandler());
 
 app.use(errorHandler);
 

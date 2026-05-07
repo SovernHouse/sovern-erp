@@ -1691,6 +1691,20 @@ eas update --branch preview --platform ios --message "<short description>"
 
 Published bundles appear instantly in Expo Go on the next open. To force-pull on a phone that has the app open: force-quit Expo Go (swipe up from app switcher) and reopen.
 
-Note on TLS: SSL inspection software (Bitdefender, ESET, ZScaler, etc.) intercepts `api.expo.dev` and breaks Node's cert chain. Workaround for one-off publishes is `$env:NODE_TLS_REJECT_UNAUTHORIZED = "0"`. Don't bake this into CI without exporting the corporate root CA via `NODE_EXTRA_CA_CERTS` — the workaround disables ALL cert validation in that Node process.
+Note on TLS: Alex's machine has SSL inspection software that intercepts `api.expo.dev` (and any HTTPS endpoint), breaking Node's default cert chain validation. The fix on this machine is `NODE_EXTRA_CA_CERTS` pointing at a PEM dump of the Windows trust store (which includes the AV-injected MITM cert). The PEM lives at `C:\Users\Alex\.node_extra_ca_certs.pem` and the env var is set persistently in `HKEY_CURRENT_USER\Environment`, so any new PowerShell session picks it up automatically.
+
+To regenerate the PEM (e.g. after AV updates the cert):
+```powershell
+$out = "$env:USERPROFILE\.node_extra_ca_certs.pem"
+$certs = @()
+$certs += Get-ChildItem -Path Cert:\CurrentUser\Root -ErrorAction SilentlyContinue
+$certs += Get-ChildItem -Path Cert:\LocalMachine\Root -ErrorAction SilentlyContinue
+$pem = foreach ($c in $certs) {
+    "-----BEGIN CERTIFICATE-----`n" + [Convert]::ToBase64String($c.RawData, 'InsertLineBreaks') + "`n-----END CERTIFICATE-----`n"
+}
+$pem -join "" | Set-Content -Encoding ascii -Path $out
+```
+
+Do NOT use `NODE_TLS_REJECT_UNAUTHORIZED=0` — it disables cert validation across the whole Node process and exposes you to actual MITM attacks. The earlier rounds in this session used it as a temporary workaround; that's now retired.
 
 The web platform fails to bundle because `react-dom` is not installed (we don't need web). Always pass `--platform ios` (or `ios,android`) explicitly to skip web.

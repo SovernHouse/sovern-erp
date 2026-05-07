@@ -201,14 +201,14 @@ export default function GoogleDrivePage() {
 
   const searchTimer = useRef(null)
 
-  // Load connected Google accounts on mount
+  // Load connected Google accounts on mount.
+  // Uses /accounts/available (open to any authenticated user) instead of
+  // /accounts (admin-only) so managers can use Drive too. Scope filter is
+  // applied server-side; mobile would do the same thing.
   useEffect(() => {
-    googleAPI.listAccounts()
+    googleAPI.listAvailable('drive')
       .then(res => {
-        const all = res.data || []
-        const driveAccounts = all.filter(a =>
-          a.isActive && (a.scopes || []).some(s => s.includes('drive'))
-        )
+        const driveAccounts = res.data || []
         setAccounts(driveAccounts)
         if (driveAccounts.length > 0) {
           setSelectedAccountId(driveAccounts[0].id)

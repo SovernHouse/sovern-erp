@@ -114,6 +114,32 @@ exports.listAccounts = async (req, res) => {
   return res.json({ success: true, data: accounts });
 };
 
+// ── GET /api/google/accounts/available ──────────────────────────────────────
+// Returns the minimal set of fields (id, email, displayName, scopes,
+// isActive) needed by feature pages — Drive, Calendar, Gmail — so they
+// can populate account pickers. Available to any authenticated user.
+//
+// Why this is a separate endpoint from listAccounts: the management screen
+// at /settings/connected-accounts is admin-only and shows last-sync
+// timestamps + connection state useful for ops. Feature pages just need
+// "which accounts can I query against" and don't need that telemetry.
+//
+// Optional ?scope=drive|gmail|calendar filter narrows to active accounts
+// whose scopes string includes the named scope (substring match against
+// the standard googleapis.com/auth/<scope>... URL).
+exports.listAvailableAccounts = async (req, res) => {
+  const { scope } = req.query;
+  const all = await db.ConnectedGoogleAccount.findAll({
+    where: { isActive: true },
+    attributes: ['id', 'email', 'displayName', 'scopes', 'isActive'],
+    order: [['createdAt', 'ASC']],
+  });
+  const filtered = scope
+    ? all.filter(a => (a.scopes || []).some(s => s.includes(String(scope))))
+    : all;
+  return res.json({ success: true, data: filtered });
+};
+
 // ── DELETE /api/google/accounts/:id ──────────────────────────────────────────
 
 exports.disconnectAccount = async (req, res) => {
