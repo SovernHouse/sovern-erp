@@ -6,10 +6,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
-  Alert, RefreshControl, TouchableOpacity, Linking,
+  Alert, RefreshControl, TouchableOpacity, Linking, Share,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { getQuotation, type Quotation, type QuotationItem } from '../../src/services/api';
+import { getQuotation, generateApprovalLink, type Quotation, type QuotationItem } from '../../src/services/api';
 import ChatterSection from '../../src/components/ChatterSection';
 import { COLORS } from '../../src/constants/config';
 
@@ -115,6 +115,7 @@ export default function QuotationDetailScreen() {
   const [quotation, setQuotation] = useState<Quotation | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [generatingLink, setGeneratingLink] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
     try {
@@ -131,6 +132,41 @@ export default function QuotationDetailScreen() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Generate a public sign-back link the customer can open without logging
+  // in. Backend creates a DocumentApproval row with a UUID token, returns
+  // the URL, and emails it (if email is configured). Mobile shows the
+  // link via the native share sheet so the user can paste/forward it.
+  async function handleSendForSignature() {
+    if (!quotation || generatingLink) return;
+    setGeneratingLink(true);
+    try {
+      const link = await generateApprovalLink('Quotation', quotation.id);
+      Alert.alert(
+        'Signature link ready',
+        `${link.documentLabel}\n\nThe link expires on ${new Date(link.expiresAt).toLocaleDateString()}. Tap Share to send it to the customer.`,
+        [
+          { text: 'Done', style: 'cancel' },
+          {
+            text: 'Open',
+            onPress: () => Linking.openURL(link.approvalUrl),
+          },
+          {
+            text: 'Share',
+            onPress: () =>
+              Share.share({
+                message: `Please review and approve quotation ${link.documentLabel}: ${link.approvalUrl}`,
+                url: link.approvalUrl,
+              }),
+          },
+        ],
+      );
+    } catch (err: any) {
+      Alert.alert('Could not generate link', err.message ?? 'Server error');
+    } finally {
+      setGeneratingLink(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -303,6 +339,30 @@ export default function QuotationDetailScreen() {
           </Text>
         </View>
       </View>
+
+      {/* ── Send for signature (hidden once already signed/terminal) ─── */}
+      {!quotation.signedAt
+        && quotation.status !== 'cancelled'
+        && quotation.status !== 'rejected'
+        && quotation.status !== 'expired' ? (
+        <TouchableOpacity
+          style={[styles.signActionBtn, generatingLink && styles.signActionBtnDisabled]}
+          onPress={handleSendForSignature}
+          disabled={generatingLink}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.signActionIcon}>✉️</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.signActionLabel}>
+              {generatingLink ? 'Generating link…' : 'Send for customer signature'}
+            </Text>
+            <Text style={styles.signActionMeta}>
+              Generates a public approve link the customer can sign without logging in
+            </Text>
+          </View>
+          <Text style={styles.signActionChevron}>›</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {/* ── E-signature (only shown when client has signed) ──────────── */}
       {quotation.signedAt && quotation.signedByClient ? (
@@ -514,4 +574,22 @@ const styles = StyleSheet.create({
   signedBody:     { flex: 1 },
   signedHeadline: { fontSize: 15, fontWeight: '700', color: COLORS.ink },
   signedMeta:     { fontSize: 12, color: COLORS.muted, marginTop: 2 },
+
+  // Send-for-signature CTA
+  signActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.forest + '50',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 16,
+  },
+  signActionBtnDisabled: { opacity: 0.5 },
+  signActionIcon:     { fontSize: 20 },
+  signActionLabel:    { fontSize: 14, fontWeight: '700', color: COLORS.forest },
+  signActionMeta:     { fontSize: 11, color: COLORS.muted, marginTop: 2 },
+  signActionChevron:  { fontSize: 22, color: COLORS.muted, alignSelf: 'center' },
 });

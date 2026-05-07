@@ -255,6 +255,75 @@ export async function updateLeadStatus(id: string, status: string) {
   return res.data;
 }
 
+// ─── Document Approval (public sign-back link generation) ───────────────
+// Generates a public URL the customer/supplier can open without logging in
+// to sign the document. Backend supports: ProformaInvoice, Quotation,
+// SalesOrder, PurchaseOrder.
+
+export type ApprovalEntityType =
+  | 'ProformaInvoice'
+  | 'Quotation'
+  | 'SalesOrder'
+  | 'PurchaseOrder'
+
+export interface ApprovalLink {
+  id: string
+  token: string
+  approvalUrl: string
+  expiresAt: string
+  documentLabel: string
+}
+
+export async function generateApprovalLink(
+  entityType: ApprovalEntityType,
+  entityId: string,
+  opts?: { notes?: string; clientEmail?: string; expiryDays?: number },
+): Promise<ApprovalLink> {
+  const res = await request<{ success: boolean; data: ApprovalLink; message?: string }>(
+    '/api/approvals/generate',
+    {
+      method: 'POST',
+      body: JSON.stringify({ entityType, entityId, ...opts }),
+    },
+  )
+  return res.data
+}
+
+// ─── Scheduled Activities ────────────────────────────────────────────────
+// These are user-assigned tasks. AI-generated approval tasks (created when
+// the AI assistant proposes a new product or quotation) come through here
+// with type='approve'. Mobile Approvals tab merges these alongside
+// InternalApproval rows to mirror the desktop PendingApprovalsWidget.
+
+export async function getMyActivities() {
+  const res = await request<{ success: boolean; data: ScheduledActivity[] }>(
+    '/api/scheduled-activities/my',
+  )
+  return res.data ?? []
+}
+
+export async function markActivityDone(id: string) {
+  return request(`/api/scheduled-activities/${id}/done`, { method: 'PUT' })
+}
+
+export interface ScheduledActivity {
+  id: string
+  // 'approve' = waiting for sign-off; other types are general tasks
+  type: 'approve' | 'follow_up' | 'review' | 'call' | 'other' | string
+  status: 'pending' | 'done' | 'cancelled' | string
+  title: string
+  body?: string
+  entityType?: string
+  entityId?: string
+  dueDate?: string
+  priority?: 'low' | 'normal' | 'high' | string
+  assignedToId?: string
+  assignedById?: string
+  assignedBy?: { id: string; firstName: string; lastName: string }
+  createdAt: string
+  updatedAt: string
+}
+
 // ─── Internal Approvals ──────────────────────────────────────────────────
 // These are manager-approval requests raised by coordinators on Quotations,
 // PIs, Sales Orders, etc. Managed via /api/internal-approvals (not the

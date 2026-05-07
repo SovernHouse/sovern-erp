@@ -26,8 +26,9 @@
 - **EAS Update wired up:** `eas update --branch preview --platform ios` publishes JS to Expo's CDN at `https://u.expo.dev/76a4e7a2-6585-4212-aa0c-1f8cfe7e001f`. Phone fetches the bundle from Expo's CDN every time it opens — laptop can be off. Free tier ($0/year, 1k MAU). Token lives in `$env:EXPO_TOKEN` (PAT, not password).
 - **Mobile parity round 1 (commit `0d2c371`):** AI rename conversation, e-sign display on quotation+PO, customer/inquiry delete, L-014 hooks-rule fix.
 - **Mobile parity round 2 (commit `f06a0f6`):** Factories list + detail modal + delete (server blocks if open POs); registered in `(tabs)/_layout.tsx` and `dashboard.tsx` module grid.
-- **Mobile parity round 3 (this commit):** Sales Orders tab (list + status filter + detail modal with e-sign card and line items), Quotation Sourcing Trail → Factory tap-through (deep-links to factories tab via `?openId=` param), Inquiry → Quotation convert action with navigation to the new quotation detail.
-- **Mobile is now at full parity** with desktop for all in-app surfaces. Only outstanding "gap" is the public supplier sign-back flow, which intentionally lives on web (no auth, supplier never installs the ops app).
+- **Mobile parity round 3 (commit `72bd041`):** Sales Orders tab (list + status filter + detail modal with e-sign card and line items), Quotation Sourcing Trail → Factory tap-through (deep-links to factories tab via `?openId=` param), Inquiry → Quotation convert action with navigation to the new quotation detail.
+- **Mobile parity round 4 (this commit):** Sign-link generation on Quotation/SO/PO detail screens (✉️ "Send for signature" CTA → `POST /api/approvals/generate` → native Share sheet); merged AI-generated approve tasks into the Approvals tab (fetches `/api/scheduled-activities/my` filtered to type='approve' alongside the existing `/api/internal-approvals` source, badges each row Manager/AI, mark-done action for AI rows).
+- **Mobile is now at full parity** with desktop for all in-app surfaces. ✅
 
 ---
 
@@ -88,10 +89,10 @@
 
 ## Outstanding parity backlog
 
-- **Factory PO supplier-side sign view** — desktop has `b23b7e7` factory-side PO confirmation with drawn signature canvas. This is a public-link supplier flow (no auth), so it intentionally does NOT belong in the Sovern Ops mobile app per the standing rule. Documented as the legitimate "no mobile parity needed" exception. **No work needed.**
-- **Approvals AI-generated items** — backend already routes them to `/api/internal-approvals` so they should appear in mobile's existing Approvals tab. Sanity-check next time real data exists. **No work needed unless data shows otherwise.**
+- **Factory PO supplier-side sign view** — public-link supplier flow (no auth, no app install). The supplier never installs the Sovern Ops app, so there's no mobile counterpart to build. **However:** the *triggering* of this flow (generating the sign-back link) IS now on mobile via the "Send for supplier signature" CTA in the PO detail modal, plus the same for SO and Quotation. Round 4. ✅
+- **Approvals AI-generated items** — `ScheduledActivity` rows of type='approve'. Mobile's Approvals tab now fetches both `/api/internal-approvals` AND `/api/scheduled-activities/my` (filtered to type='approve' + status='pending') and merges them with a "Manager" / "AI" badge on each row. Mark-done handler wired for AI rows. Round 4. ✅
 
-All other parity items from the 29-commit backlog are now shipped. ✅
+All parity items from the 29-commit backlog are now shipped. ✅
 
 ## Next Task
 

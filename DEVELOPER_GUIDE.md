@@ -1638,6 +1638,21 @@ Quotation, sales order, and PO models gained `signedAt` + `signedByClient` / `si
 
 Card lives in `app/quotation/[id].tsx` (Quotation) and the PO detail modal in `app/(tabs)/purchase-orders.tsx` (Purchase Order). Renders only when both signed-fields are populated — never shown for unsigned records.
 
+### Sign-link generation from mobile
+
+Quotation detail (`app/quotation/[id].tsx`), Sales Order detail modal (`app/(tabs)/sales-orders.tsx`), and Purchase Order detail modal (`app/(tabs)/purchase-orders.tsx`) each expose a "Send for signature" CTA when the document hasn't been signed and isn't in a terminal state (cancelled / rejected / expired). Tapping it calls `POST /api/approvals/generate` with `{ entityType, entityId }`, gets back a public approve URL, and surfaces it in an Alert with **Open** (`Linking.openURL`) and **Share** (React Native's built-in `Share` API) buttons. The Share path uses the OS share sheet so the user can paste, email, SMS, or WhatsApp the link without leaving the app.
+
+The API helper is `generateApprovalLink(entityType, entityId, opts?)` exported from `src/services/api.ts`. Backend supports four entity types: `ProformaInvoice`, `Quotation`, `SalesOrder`, `PurchaseOrder`. Mobile only wires Quotation / SO / PO; PI doesn't have a mobile detail screen yet (potential future parity item).
+
+### AI-generated approval items in the Approvals tab
+
+The Approvals tab (`app/(tabs)/approvals.tsx`) merges two backend sources to mirror desktop's `PendingApprovalsWidget`:
+
+1. **InternalApproval** — `GET /api/internal-approvals?status=pending`. Manager-approval requests raised by coordinators (e.g. "approve sending this quotation"). Acted on with approve/reject buttons.
+2. **ScheduledActivity (type='approve')** — `GET /api/scheduled-activities/my`, filtered client-side to `type === 'approve' && status === 'pending'`. AI-generated tasks created by the assistant when proposing new products or quotations. Acted on with a single mark-done button.
+
+Both sources are fetched in parallel via `Promise.allSettled` so a single-source failure doesn't blank the tab. Items are merged into a discriminated union `AnyApproval = { kind: 'internal'|'activity'; data: ... }`, sorted by `createdAt` descending, and rendered with a kind badge ("Manager" green / "AI" amber) next to the title so the user can tell them apart. Two card components (`InternalApprovalCard`, `ActivityApprovalCard`) handle each shape.
+
 ### Cross-screen navigation
 
 Mobile mirrors the desktop's "click an entity reference and jump to it" pattern via a single convention: the destination screen accepts a route param and auto-opens the relevant detail modal/screen on mount.

@@ -5,9 +5,12 @@
 import { useEffect, useState } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView,
+  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Alert, Share, Linking,
 } from 'react-native'
-import { getPurchaseOrders, getPurchaseOrder, type PurchaseOrder } from '../../src/services/api'
+import {
+  getPurchaseOrders, getPurchaseOrder, generateApprovalLink,
+  type PurchaseOrder,
+} from '../../src/services/api'
 import { COLORS } from '../../src/constants/config'
 
 const STATUS_FILTERS = [
@@ -87,10 +90,39 @@ function PORow({ po, onPress }: { po: PurchaseOrder; onPress: () => void }) {
 function PODetailModal({ id, onClose }: { id: string; onClose: () => void }) {
   const [item, setItem] = useState<PurchaseOrder | null>(null)
   const [loading, setLoading] = useState(true)
+  const [generatingLink, setGeneratingLink] = useState(false)
 
   useEffect(() => {
     getPurchaseOrder(id).then(setItem).catch(console.error).finally(() => setLoading(false))
   }, [id])
+
+  async function handleSendForSignature() {
+    if (!item || generatingLink) return
+    setGeneratingLink(true)
+    try {
+      const link = await generateApprovalLink('PurchaseOrder', item.id)
+      Alert.alert(
+        'Signature link ready',
+        `${link.documentLabel}\n\nThe link expires on ${new Date(link.expiresAt).toLocaleDateString()}. Tap Share to send it to the supplier.`,
+        [
+          { text: 'Done', style: 'cancel' },
+          { text: 'Open', onPress: () => Linking.openURL(link.approvalUrl) },
+          {
+            text: 'Share',
+            onPress: () =>
+              Share.share({
+                message: `Please confirm purchase order ${link.documentLabel}: ${link.approvalUrl}`,
+                url: link.approvalUrl,
+              }),
+          },
+        ],
+      )
+    } catch (err: any) {
+      Alert.alert('Could not generate link', err.message ?? 'Server error')
+    } finally {
+      setGeneratingLink(false)
+    }
+  }
 
   function row(label: string, value?: string | number | null) {
     if (value == null || value === '') return null
@@ -120,6 +152,27 @@ function PODetailModal({ id, onClose }: { id: string; onClose: () => void }) {
             <View style={{ marginBottom: 12 }}>
               <StatusBadge status={item.status} />
             </View>
+
+            {/* Send for signature — hidden once already signed/cancelled */}
+            {!item.signedAt && item.status !== 'cancelled' ? (
+              <TouchableOpacity
+                style={[styles.signActionBtn, generatingLink && styles.signActionBtnDisabled]}
+                onPress={handleSendForSignature}
+                disabled={generatingLink}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.signActionIcon}>✉️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.signActionLabel}>
+                    {generatingLink ? 'Generating link…' : 'Send for supplier signature'}
+                  </Text>
+                  <Text style={styles.signActionMeta}>
+                    Public approve link the supplier can confirm without logging in
+                  </Text>
+                </View>
+                <Text style={styles.signActionChevron}>›</Text>
+              </TouchableOpacity>
+            ) : null}
 
             {/* Supplier acceptance — only shown when the supplier has signed */}
             {item.signedAt && item.signedBySupplier ? (
@@ -334,4 +387,22 @@ const styles = StyleSheet.create({
   emptyIcon:  { fontSize: 48 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: COLORS.ink },
   emptyText:  { fontSize: 13, color: COLORS.muted, textAlign: 'center', paddingHorizontal: 40 },
+
+  // Send-for-signature CTA
+  signActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.forest + '50',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  signActionBtnDisabled: { opacity: 0.5 },
+  signActionIcon:     { fontSize: 20 },
+  signActionLabel:    { fontSize: 14, fontWeight: '700', color: COLORS.forest },
+  signActionMeta:     { fontSize: 11, color: COLORS.muted, marginTop: 2 },
+  signActionChevron:  { fontSize: 22, color: COLORS.muted, alignSelf: 'center' },
 })
