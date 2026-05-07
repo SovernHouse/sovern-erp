@@ -12,10 +12,11 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, KeyboardAvoidingView,
-  Platform, Pressable, Alert, ScrollView,
+  Platform, Pressable, Alert, ScrollView, Modal,
 } from 'react-native';
 import {
   aiChat, aiListConversations, aiGetConversation, aiDeleteConversation,
+  aiRenameConversation,
   type AIConversation, type AIMessage,
 } from '../../src/services/api';
 import { useAuthStore } from '../../src/store/authStore';
@@ -66,12 +67,27 @@ const SUGGESTIONS = [
 function ConvRow({
   conv,
   onPress,
+  onRename,
   onDelete,
 }: {
   conv: AIConversation;
   onPress: () => void;
+  onRename: () => void;
   onDelete: () => void;
 }) {
+  function showActionMenu() {
+    Alert.alert(
+      conv.title,
+      undefined,
+      [
+        { text: 'Rename', onPress: onRename },
+        { text: 'Delete', style: 'destructive', onPress: confirmDelete },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+      { cancelable: true },
+    );
+  }
+
   function confirmDelete() {
     Alert.alert(
       'Delete conversation',
@@ -87,7 +103,7 @@ function ConvRow({
     <TouchableOpacity
       style={styles.convRow}
       onPress={onPress}
-      onLongPress={confirmDelete}
+      onLongPress={showActionMenu}
       activeOpacity={0.7}
     >
       <View style={styles.convAvatar}>
@@ -180,23 +196,7 @@ function WelcomeScreen({ onSuggestion }: { onSuggestion: (text: string) => void 
 
 export default function AssistantScreen() {
   const { user } = useAuthStore();
-
-  // Role gate — AI assistant is super_admin only
-  if (user?.role !== 'super_admin') {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center',
-        padding: 32, backgroundColor: COLORS.cream }}>
-        <Text style={{ fontSize: 32, marginBottom: 16 }}>🔒</Text>
-        <Text style={{ fontSize: 17, fontWeight: '700', color: COLORS.ink,
-          textAlign: 'center', marginBottom: 8 }}>
-          Access restricted
-        </Text>
-        <Text style={{ fontSize: 14, color: COLORS.muted, textAlign: 'center', lineHeight: 20 }}>
-          The AI assistant is available to administrators only.
-        </Text>
-      </View>
-    );
-  }
+  const isAuthorized = user?.role === 'super_admin';
 
   // ── Conversation list state ────────────────────────────────────────────────
   const [conversations, setConversations] = useState<AIConversation[]>([]);
@@ -213,6 +213,11 @@ export default function AssistantScreen() {
   // ── Compose state ──────────────────────────────────────────────────────────
   const [draft, setDraft]   = useState('');
   const [sending, setSending] = useState(false);
+
+  // ── Rename modal state ─────────────────────────────────────────────────────
+  const [renamingConv, setRenamingConv] = useState<AIConversation | null>(null);
+  const [renameDraft, setRenameDraft]   = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
 
   const listRef = useRef<FlatList>(null);
 
@@ -231,7 +236,13 @@ export default function AssistantScreen() {
     }
   }, []);
 
-  useEffect(() => { loadConversations(); }, [loadConversations]);
+  useEffect(() => {
+    // Skip loading conversations for unauthorized users — and for the
+    // brief render between "user becomes null on logout" and the auth
+    // guard's redirect to /login. Avoids a 403 burst during sign-out.
+    if (!isAuthorized) return;
+    loadConversations();
+  }, [loadConversations, isAuthorized]);
 
   // ── Open conversation ──────────────────────────────────────────────────────
 
@@ -273,6 +284,41 @@ export default function AssistantScreen() {
       setConversations(prev => prev.filter(c => c.id !== convId));
     } catch (err: any) {
       Alert.alert('Error', err.message ?? 'Could not delete conversation.');
+    }
+  }
+
+  // ── Rename conversation ────────────────────────────────────────────────────
+
+  function openRename(conv: AIConversation) {
+    setRenamingConv(conv);
+    setRenameDraft(conv.title);
+  }
+
+  function closeRename() {
+    setRenamingConv(null);
+    setRenameDraft('');
+    setRenameSaving(false);
+  }
+
+  async function submitRename() {
+    if (!renamingConv) return;
+    const next = renameDraft.trim();
+    if (!next || next === renamingConv.title) {
+      closeRename();
+      return;
+    }
+    setRenameSaving(true);
+    try {
+      await aiRenameConversation(renamingConv.id, next);
+      setConversations(prev =>
+        prev.map(c => (c.id === renamingConv.id ? { ...c, title: next } : c)),
+      );
+      // If the renamed thread is currently open, keep the header in sync
+      if (activeConvId === renamingConv.id) setActiveTitle(next);
+      closeRename();
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Could not rename conversation.');
+      setRenameSaving(false);
     }
   }
 
@@ -319,6 +365,26 @@ export default function AssistantScreen() {
     }
   }
 
+  // ── Render: access gate (must come AFTER all hooks above to avoid
+  //    the "fewer hooks than expected" rules-of-hooks violation that
+  //    fires on logout when user.role transitions super_admin → null).
+
+  if (!isAuthorized) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center',
+        padding: 32, backgroundColor: COLORS.cream }}>
+        <Text style={{ fontSize: 32, marginBottom: 16 }}>🔒</Text>
+        <Text style={{ fontSize: 17, fontWeight: '700', color: COLORS.ink,
+          textAlign: 'center', marginBottom: 8 }}>
+          Access restricted
+        </Text>
+        <Text style={{ fontSize: 14, color: COLORS.muted, textAlign: 'center', lineHeight: 20 }}>
+          The AI assistant is available to administrators only.
+        </Text>
+      </View>
+    );
+  }
+
   // ── Render: conversation list ──────────────────────────────────────────────
 
   if (activeConvId === null) {
@@ -348,6 +414,7 @@ export default function AssistantScreen() {
             <ConvRow
               conv={item}
               onPress={() => openConversation(item)}
+              onRename={() => openRename(item)}
               onDelete={() => handleDelete(item.id)}
             />
           )}
@@ -370,6 +437,56 @@ export default function AssistantScreen() {
           )}
           contentContainerStyle={conversations.length === 0 ? { flex: 1 } : { paddingBottom: 24 }}
         />
+
+        {/* Rename modal */}
+        <Modal
+          visible={!!renamingConv}
+          transparent
+          animationType="fade"
+          onRequestClose={closeRename}
+        >
+          <KeyboardAvoidingView
+            style={styles.renameBackdrop}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View style={styles.renameCard}>
+              <Text style={styles.renameTitle}>Rename conversation</Text>
+              <TextInput
+                style={styles.renameInput}
+                value={renameDraft}
+                onChangeText={setRenameDraft}
+                placeholder="Conversation title"
+                placeholderTextColor={COLORS.muted}
+                autoFocus
+                maxLength={200}
+                returnKeyType="done"
+                onSubmitEditing={submitRename}
+                editable={!renameSaving}
+              />
+              <View style={styles.renameActions}>
+                <TouchableOpacity
+                  style={styles.renameBtnGhost}
+                  onPress={closeRename}
+                  disabled={renameSaving}
+                >
+                  <Text style={styles.renameBtnGhostText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.renameBtnPrimary,
+                    (!renameDraft.trim() || renameSaving) && styles.renameBtnDisabled,
+                  ]}
+                  onPress={submitRename}
+                  disabled={!renameDraft.trim() || renameSaving}
+                >
+                  <Text style={styles.renameBtnPrimaryText}>
+                    {renameSaving ? 'Saving…' : 'Save'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       </View>
     );
   }
@@ -589,4 +706,61 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: COLORS.border },
   sendBtnText: { color: '#fff', fontSize: 20, fontWeight: '700' },
+
+  // Rename modal
+  renameBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  renameCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 18,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  renameTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.ink,
+  },
+  renameInput: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: COLORS.ink,
+    backgroundColor: COLORS.cream,
+  },
+  renameActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 4,
+  },
+  renameBtnGhost: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  renameBtnGhostText: { color: COLORS.muted, fontSize: 14, fontWeight: '600' },
+  renameBtnPrimary: {
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    backgroundColor: COLORS.forest,
+  },
+  renameBtnPrimaryText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  renameBtnDisabled: { backgroundColor: COLORS.border },
 });

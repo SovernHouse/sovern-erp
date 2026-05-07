@@ -35,6 +35,14 @@ function fmtDate(iso?: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function fmtDateTime(iso?: string) {
+  if (!iso) return null
+  const d = new Date(iso)
+  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  return `${date} at ${time}`
+}
+
 function fmtMoney(amount?: number, currency: string = 'USD') {
   if (amount == null) return null
   return `${currency} ${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -112,6 +120,24 @@ function PODetailModal({ id, onClose }: { id: string; onClose: () => void }) {
             <View style={{ marginBottom: 12 }}>
               <StatusBadge status={item.status} />
             </View>
+
+            {/* Supplier acceptance — only shown when the supplier has signed */}
+            {item.signedAt && item.signedBySupplier ? (
+              <View style={styles.signedCard}>
+                <View style={styles.signedIcon}>
+                  <Text style={styles.signedIconText}>✓</Text>
+                </View>
+                <View style={styles.signedBody}>
+                  <Text style={styles.signedHeadline}>
+                    Confirmed by {item.signedBySupplier}
+                  </Text>
+                  <Text style={styles.signedMeta}>
+                    {fmtDateTime(item.signedAt)}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
             {row('Supplier', item.factory?.companyName || item.factory?.name)}
             {row('Total', fmtMoney(item.totalAmount, item.currency))}
             {row('Expected Delivery', fmtDate(item.expectedDeliveryDate))}
@@ -282,6 +308,28 @@ const styles = StyleSheet.create({
   detailValue:   { fontSize: 13, color: COLORS.ink, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
   descBox:       { marginTop: 16, padding: 12, backgroundColor: COLORS.white, borderRadius: 8 },
   descText:      { fontSize: 13, color: COLORS.ink, marginTop: 6, lineHeight: 19 },
+
+  // E-signature card
+  signedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: COLORS.success + '12',
+    borderWidth: 1,
+    borderColor: COLORS.success + '40',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  signedIcon: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: COLORS.success,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  signedIconText: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  signedBody:     { flex: 1 },
+  signedHeadline: { fontSize: 15, fontWeight: '700', color: COLORS.ink },
+  signedMeta:     { fontSize: 12, color: COLORS.muted, marginTop: 2 },
   empty: { paddingTop: 80, alignItems: 'center', gap: 8 },
   emptyIcon:  { fontSize: 48 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: COLORS.ink },

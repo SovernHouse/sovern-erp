@@ -7,7 +7,7 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Alert,
 } from 'react-native'
-import { getInquiries, getInquiry, updateInquiryStatus, type Inquiry } from '../../src/services/api'
+import { getInquiries, getInquiry, updateInquiryStatus, deleteInquiry, type Inquiry } from '../../src/services/api'
 import { COLORS } from '../../src/constants/config'
 
 const STATUS_FILTERS = [
@@ -116,18 +116,49 @@ function InquiryDetailModal({
   id,
   onClose,
   onChanged,
+  onDeleted,
 }: {
   id: string
   onClose: () => void
   onChanged: () => void
+  onDeleted: (id: string) => void
 }) {
   const [item, setItem] = useState<Inquiry | null>(null)
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     getInquiry(id).then(setItem).catch(console.error).finally(() => setLoading(false))
   }, [id])
+
+  function confirmDelete() {
+    if (!item) return
+    Alert.alert(
+      'Delete inquiry',
+      `Delete ${item.inquiryNumber}? This cannot be undone from the mobile app.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true)
+            try {
+              await deleteInquiry(item.id)
+              onDeleted(item.id)
+              onClose()
+            } catch (err: any) {
+              // Backend blocks delete when inquiry was already converted to a
+              // quotation — surface that message so it's actionable.
+              Alert.alert('Could not delete', err.message ?? 'Server error')
+              setDeleting(false)
+            }
+          },
+        },
+      ],
+    )
+  }
 
   async function bumpStatus(next: string, label: string) {
     if (!item) return
@@ -170,6 +201,16 @@ function InquiryDetailModal({
           <Text style={styles.modalTitle} numberOfLines={2}>
             {loading ? 'Loading…' : (item?.inquiryNumber ?? 'Inquiry')}
           </Text>
+          {item && !loading ? (
+            <TouchableOpacity
+              onPress={confirmDelete}
+              style={styles.headerIconBtn}
+              disabled={deleting}
+              hitSlop={8}
+            >
+              <Text style={styles.headerIconText}>{deleting ? '…' : '🗑'}</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Text style={styles.closeBtnText}>✕</Text>
           </TouchableOpacity>
@@ -313,6 +354,7 @@ export default function InquiriesScreen() {
           id={selectedId}
           onClose={() => setSelectedId(null)}
           onChanged={() => load(true)}
+          onDeleted={(id) => setItems((prev) => prev.filter((s) => s.id !== id))}
         />
       ) : null}
     </View>
@@ -370,9 +412,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: COLORS.forest, paddingHorizontal: 16, paddingVertical: 14, paddingTop: 50,
   },
-  modalTitle:   { color: COLORS.white, fontSize: 18, fontWeight: '700', flex: 1, marginRight: 12 },
-  closeBtn:     { padding: 4 },
-  closeBtnText: { color: COLORS.white, fontSize: 22 },
+  modalTitle:    { color: COLORS.white, fontSize: 18, fontWeight: '700', flex: 1, marginRight: 12 },
+  headerIconBtn: { padding: 4, marginRight: 4 },
+  headerIconText:{ color: COLORS.white, fontSize: 18 },
+  closeBtn:      { padding: 4 },
+  closeBtnText:  { color: COLORS.white, fontSize: 22 },
   detailScroll: { padding: 16, paddingBottom: 40 },
   detailRow: {
     flexDirection: 'row', justifyContent: 'space-between',

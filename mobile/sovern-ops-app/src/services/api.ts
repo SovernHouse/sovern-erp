@@ -173,6 +173,18 @@ export async function getCustomer(id: string) {
   return res.data;
 }
 
+export async function deleteCustomer(id: string): Promise<void> {
+  await request(`/api/customers/${id}`, { method: 'DELETE' });
+}
+
+export async function deleteFactory(id: string): Promise<void> {
+  await request(`/api/factories/${id}`, { method: 'DELETE' });
+}
+
+export async function deleteInquiry(id: string): Promise<void> {
+  await request(`/api/inquiries/${id}`, { method: 'DELETE' });
+}
+
 // ─── Activities ───────────────────────────────────────────────────────────
 
 export async function getUpcomingActivities() {
@@ -550,6 +562,10 @@ export interface PurchaseOrder {
   paymentTerms?: string
   shippingTerms?: string
   notes?: string
+  // E-signature audit trail. Populated when the supplier confirms the
+  // PO via the public approve link. IP/UA live on the DocumentApproval row.
+  signedAt?: string
+  signedBySupplier?: string
   createdAt: string
   updatedAt: string
   factory?: { id: string; name?: string; companyName?: string }
@@ -652,6 +668,11 @@ export interface Quotation {
   validUntil?: string
   terms?: string
   notes?: string
+  // E-signature audit trail. Populated when the customer signs the
+  // quotation via the public approve link, which also flips status to
+  // 'accepted'. IP/UA live on the DocumentApproval row.
+  signedAt?: string
+  signedByClient?: string
   createdAt: string
   updatedAt: string
   items?: QuotationItem[]
@@ -786,6 +807,19 @@ export async function aiGetConversation(
     success: boolean
     data: { conversation: AIConversation; messages: AIMessage[] }
   }>(`/api/ai/conversations/${id}`)
+  return res.data
+}
+
+export async function aiRenameConversation(
+  id: string,
+  title: string,
+): Promise<{ id: string; title: string }> {
+  // Backend returns { ok: true, data: { id, title } } here (not the usual
+  // { success: true, data } envelope). Both shapes are tolerated below.
+  const res = await request<{ ok?: boolean; success?: boolean; data: { id: string; title: string } }>(
+    `/api/ai/conversations/${id}`,
+    { method: 'PATCH', body: JSON.stringify({ title }) },
+  )
   return res.data
 }
 

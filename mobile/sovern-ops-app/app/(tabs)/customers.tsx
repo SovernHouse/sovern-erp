@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Linking,
+  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Linking, Alert,
 } from 'react-native';
-import { getCustomers, getCustomer, type Customer } from '../../src/services/api';
+import { getCustomers, getCustomer, deleteCustomer, type Customer } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
 
 // ─── Customer Row ─────────────────────────────────────────────────────────
@@ -51,9 +51,18 @@ function CustomerRow({ customer, onPress }: { customer: Customer; onPress: () =>
 
 // ─── Customer Detail Modal ────────────────────────────────────────────────
 
-function CustomerDetailModal({ customerId, onClose }: { customerId: string; onClose: () => void }) {
+function CustomerDetailModal({
+  customerId,
+  onClose,
+  onDeleted,
+}: {
+  customerId: string;
+  onClose: () => void;
+  onDeleted: (id: string) => void;
+}) {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     getCustomer(customerId)
@@ -61,6 +70,33 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [customerId]);
+
+  function confirmDelete() {
+    if (!customer) return;
+    const name = customer.companyName ?? customer.name ?? 'this customer';
+    Alert.alert(
+      'Delete customer',
+      `Delete ${name}? This cannot be undone from the mobile app.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await deleteCustomer(customerId);
+              onDeleted(customerId);
+              onClose();
+            } catch (err: any) {
+              Alert.alert('Could not delete', err.message ?? 'Server error');
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  }
 
   function row(label: string, value?: string | null, isLink?: 'email' | 'phone') {
     if (!value) return null;
@@ -96,6 +132,16 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
           <Text style={styles.modalTitle} numberOfLines={1}>
             {loading ? 'Loading…' : (customer?.companyName ?? customer?.name ?? 'Customer')}
           </Text>
+          {customer && !loading ? (
+            <TouchableOpacity
+              onPress={confirmDelete}
+              style={styles.headerIconBtn}
+              disabled={deleting}
+              hitSlop={8}
+            >
+              <Text style={styles.headerIconText}>{deleting ? '…' : '🗑'}</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Text style={styles.closeBtnText}>✕</Text>
           </TouchableOpacity>
@@ -229,7 +275,11 @@ export default function CustomersScreen() {
 
       {/* Detail Modal */}
       {selectedId ? (
-        <CustomerDetailModal customerId={selectedId} onClose={() => setSelectedId(null)} />
+        <CustomerDetailModal
+          customerId={selectedId}
+          onClose={() => setSelectedId(null)}
+          onDeleted={(id) => setCustomers((prev) => prev.filter((c) => c.id !== id))}
+        />
       ) : null}
     </View>
   );
@@ -280,6 +330,8 @@ const styles = StyleSheet.create({
     paddingTop: 48,
   },
   modalTitle:    { flex: 1, color: COLORS.white, fontSize: 17, fontWeight: '700' },
+  headerIconBtn: { marginLeft: 8, padding: 4 },
+  headerIconText:{ color: COLORS.white, fontSize: 18 },
   closeBtn:      { marginLeft: 12, padding: 4 },
   closeBtnText:  { color: COLORS.white, fontSize: 20 },
   detailScroll:  { padding: 16 },

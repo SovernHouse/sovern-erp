@@ -39,6 +39,14 @@ function formatDate(iso?: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function formatDateTime(iso?: string) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return `${date} at ${time}`;
+}
+
 function isExpiringSoon(iso?: string): boolean {
   if (!iso) return false;
   const diff = new Date(iso).getTime() - Date.now();
@@ -283,6 +291,26 @@ export default function QuotationDetailScreen() {
         </View>
       </View>
 
+      {/* ── E-signature (only shown when client has signed) ──────────── */}
+      {quotation.signedAt && quotation.signedByClient ? (
+        <>
+          <SectionHeader title="Customer Acceptance" />
+          <View style={styles.signedCard}>
+            <View style={styles.signedIcon}>
+              <Text style={styles.signedIconText}>✓</Text>
+            </View>
+            <View style={styles.signedBody}>
+              <Text style={styles.signedHeadline}>
+                Accepted by {quotation.signedByClient}
+              </Text>
+              <Text style={styles.signedMeta}>
+                {formatDateTime(quotation.signedAt)}
+              </Text>
+            </View>
+          </View>
+        </>
+      ) : null}
+
       {/* ── Details ──────────────────────────────────────────────────── */}
       <SectionHeader title="Details" />
       <View style={styles.card}>
@@ -447,4 +475,28 @@ const styles = StyleSheet.create({
   totalSummaryValue: { fontSize: 18, fontWeight: '800', color: COLORS.forest },
 
   termsBody: { padding: 16, fontSize: 13, color: COLORS.ink, lineHeight: 20 },
+
+  // E-signature card
+  signedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: COLORS.success + '12',
+    borderWidth: 1,
+    borderColor: COLORS.success + '40',
+    borderRadius: 12,
+    padding: 14,
+  },
+  signedIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.success,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  signedIconText: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  signedBody:     { flex: 1 },
+  signedHeadline: { fontSize: 15, fontWeight: '700', color: COLORS.ink },
+  signedMeta:     { fontSize: 12, color: COLORS.muted, marginTop: 2 },
 });
