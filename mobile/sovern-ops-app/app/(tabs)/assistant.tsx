@@ -118,7 +118,7 @@ function MsgBubble({ msg }: { msg: AIMessage }) {
         </View>
       )}
       <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
-        <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
+        <Text selectable style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
           {displayText}
         </Text>
       </View>

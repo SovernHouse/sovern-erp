@@ -105,7 +105,7 @@ function MessageBubble({ msg, isMe }: { msg: ChatMessage; isMe: boolean }) {
     <View style={[styles.bubbleWrap, isMe && styles.bubbleWrapMe]}>
       {!isMe && <Text style={styles.bubbleSender}>{name}</Text>}
       <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
-        <Text style={[styles.bubbleText, isMe && styles.bubbleTextMe]}>
+        <Text selectable style={[styles.bubbleText, isMe && styles.bubbleTextMe]}>
           {msg.body ?? ''}
         </Text>
       </View>
