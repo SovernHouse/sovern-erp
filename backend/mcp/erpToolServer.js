@@ -1058,6 +1058,171 @@ async function callTool(name, args) {
       return 'Provide either outreach_email_id or lead_id.';
     }
 
+    case 'get_lead_thread': {
+      // Full single-call lead profile: lead + recent activities + outreach
+      // emails + matched triage items. Saves the AI from making 4-5
+      // separate tool calls when it needs full context on a lead.
+      const lead = await getDb().Lead.findByPk(args.lead_id, {
+        include: [
+          { model: getDb().User, as: 'assignedTo', attributes: ['id', 'name', 'email'], required: false },
+          { model: getDb().Customer, as: 'convertedCustomer', attributes: ['id', 'companyName'], required: false },
+        ],
+      });
+      if (!lead) return `Lead ${args.lead_id} not found.`;
+
+      const [activities, outreach, triageItems] = await Promise.all([
+        getDb().Activity ? getDb().Activity.findAll({
+          where: { leadId: lead.id },
+          order: [['createdAt', 'DESC']],
+          limit: 20,
+        }) : Promise.resolve([]),
+        getDb().OutreachEmail.findAll({
+          where: { leadId: lead.id },
+          order: [['createdAt', 'DESC']],
+          limit: 20,
+        }),
+        getDb().TriageItem ? getDb().TriageItem.findAll({
+          where: { promotedLeadId: lead.id },
+          order: [['createdAt', 'DESC']],
+          limit: 10,
+        }) : Promise.resolve([]),
+      ]);
+
+      // Find any unmatched but related triage items by sender email
+      const moreTriage = lead.email && getDb().TriageItem
+        ? await getDb().TriageItem.findAll({
+            where: { senderEmail: lead.email, promotedLeadId: { [require('sequelize').Op.is]: null } },
+            order: [['createdAt', 'DESC']],
+            limit: 5,
+          })
+        : [];
+
+      return {
+        lead: lead.toJSON(),
+        activities: activities.map(a => a.toJSON ? a.toJSON() : a),
+        outreachEmails: outreach.map(o => o.toJSON()),
+        promotedTriageItems: triageItems.map(t => t.toJSON ? t.toJSON() : t),
+        unprocessedTriageItemsFromSameSender: moreTriage.map(t => t.toJSON ? t.toJSON() : t),
+        summary: {
+          activityCount: activities.length,
+          outreachCount: outreach.length,
+          lastOutreachAt: outreach[0]?.sentAt || null,
+          lastOutreachTouch: outreach[0]?.touchNumber || 0,
+          nextFollowUpDue: outreach.find(o => !o.followUpCompleted)?.followUpDueAt || null,
+        },
+      };
+    }
+
+    case 'match_factories_for_product': {
+      // Suggest factories that look like a fit based on country, product
+      // taxonomy/specialization, certifications, and past sourcing history
+      // (factory appears on existing Quotations / PurchaseOrders for similar
+      // products). Returns a ranked list with reasons.
+      const { Op } = require('sequelize');
+      const { product_description, vertical, country, hs_code,
+              required_certifications = [], min_quantity, target_lead_time_days } = args;
+
+      const allFactories = await getDb().Factory.findAll({
+        where: { isActive: { [Op.ne]: false } },
+        include: [{
+          model: getDb().Product, as: 'products', required: false,
+          attributes: ['id', 'name', 'sku', 'categoryId'],
+        }],
+        limit: 200,
+      });
+
+      const desc = (product_description || '').toLowerCase();
+      const verticalLc = (vertical || '').toLowerCase();
+      const candidates = [];
+
+      for (const f of allFactories) {
+        const reasons = [];
+        let score = 0;
+
+        // Country match
+        if (country && f.country && f.country.toLowerCase() === country.toLowerCase()) {
+          score += 30; reasons.push(`country match (${f.country})`);
+        }
+
+        // Specialization / vertical fit
+        const specs = Array.isArray(f.specializations) ? f.specializations : [];
+        const specsText = specs.map(s => String(s).toLowerCase()).join(' ');
+        if (verticalLc && specsText.includes(verticalLc)) {
+          score += 25; reasons.push(`specialization includes "${vertical}"`);
+        }
+        if (desc) {
+          const descTokens = desc.split(/\s+/).filter(t => t.length > 3);
+          const hits = descTokens.filter(t => specsText.includes(t));
+          if (hits.length) {
+            score += Math.min(20, hits.length * 5);
+            reasons.push(`spec keyword hits: ${hits.slice(0, 3).join(', ')}`);
+          }
+        }
+
+        // Existing product catalog overlap
+        if (f.products && f.products.length > 0 && desc) {
+          const productHit = f.products.find(p =>
+            p.name && desc.split(/\s+/).some(t => t.length > 3 && p.name.toLowerCase().includes(t))
+          );
+          if (productHit) {
+            score += 20; reasons.push(`existing SKU match: ${productHit.sku || productHit.name}`);
+          }
+        }
+
+        // Certification overlap
+        const certs = Array.isArray(f.certifications) ? f.certifications.map(c => String(c).toUpperCase()) : [];
+        const reqCerts = required_certifications.map(c => String(c).toUpperCase());
+        const certHits = reqCerts.filter(c => certs.some(fc => fc.includes(c)));
+        if (reqCerts.length && certHits.length === reqCerts.length) {
+          score += 20; reasons.push(`all required certs present (${certHits.join(', ')})`);
+        } else if (certHits.length) {
+          score += 10; reasons.push(`partial cert match (${certHits.join(', ')})`);
+        }
+
+        // Lead time fit
+        if (target_lead_time_days && f.leadTimeDays) {
+          if (f.leadTimeDays <= target_lead_time_days) {
+            score += 10; reasons.push(`lead time ${f.leadTimeDays}d ≤ target ${target_lead_time_days}d`);
+          }
+        }
+
+        // Rating bump
+        if (f.rating) {
+          score += Math.round((f.rating / 5) * 5);  // 0-5 bump
+          if (f.rating >= 4.5) reasons.push(`rated ${f.rating}/5`);
+        }
+
+        if (score > 0) {
+          candidates.push({
+            factoryId: f.id,
+            companyName: f.companyName,
+            country: f.country,
+            leadTimeDays: f.leadTimeDays,
+            paymentTerms: f.paymentTerms,
+            rating: f.rating,
+            certifications: certs,
+            specializations: specs,
+            score,
+            reasons,
+          });
+        }
+      }
+
+      candidates.sort((a, b) => b.score - a.score);
+      const topN = candidates.slice(0, args.limit || 10);
+
+      if (topN.length === 0) {
+        return 'No factory candidates matched. Consider relaxing the criteria (country, certifications) or check if the supplier database is populated for this product category.';
+      }
+      return {
+        candidatesCount: candidates.length,
+        returned: topN.length,
+        searchedAcross: allFactories.length,
+        topCandidates: topN,
+        criteria: { product_description, vertical, country, hs_code, required_certifications, min_quantity, target_lead_time_days },
+      };
+    }
+
     case 'calculate_landed_cost': {
       const { product_cost, quantity = 1, freight = 0, insurance = 0,
               customs_duty = 0, handling = 0, local_delivery = 0,
@@ -1895,6 +2060,34 @@ const TOOL_DEFS = [
         lead_id:           { type: 'string', description: 'Lead row to schedule a follow-up Activity against' },
         follow_up_at:      { type: 'string', description: 'ISO datetime string (e.g. 2026-05-15T09:00:00Z). Asia/Taipei assumed if no timezone given.' },
         note:              { type: 'string', description: 'Reason / context for the follow-up' },
+      },
+    },
+  },
+  {
+    name: 'get_lead_thread',
+    description: 'Single-call lead profile: returns the lead row plus recent activities, every outreach email sent, all triage items promoted from this lead, AND any unprocessed triage items from the same sender email. Use this when Alex asks about a specific prospect ("where are we with X?") instead of making 4-5 separate read calls.',
+    inputSchema: {
+      type: 'object',
+      required: ['lead_id'],
+      properties: {
+        lead_id: { type: 'string', description: 'Lead ID' },
+      },
+    },
+  },
+  {
+    name: 'match_factories_for_product',
+    description: 'Suggest factories that look like a fit for a given product requirement, ranked by country/specialization/certification/lead-time/rating fit. Activates the "compounding dataset" angle: each new factory and product you add improves future suggestions. Use this when sourcing a new product to identify which existing suppliers could quote it before reaching out to net-new factories.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        product_description:    { type: 'string', description: 'Free-text description of what you\'re sourcing (e.g. "SPC flooring 5mm, 0.5mm wear layer, click-lock")' },
+        vertical:               { type: 'string', description: 'Sovern product vertical: flooring, auto_parts, garments, etc.' },
+        country:                { type: 'string', description: 'Preferred country of origin (e.g. Malaysia, China, Vietnam)' },
+        hs_code:                { type: 'string', description: 'HS / HTS classification (optional, future use)' },
+        required_certifications:{ type: 'array', items: { type: 'string' }, description: 'Required certs (e.g. ["FloorScore", "CARB Phase 2"]). All must match for the full bonus.' },
+        min_quantity:           { type: 'number', description: 'Minimum order quantity in units / containers' },
+        target_lead_time_days:  { type: 'number', description: 'Maximum acceptable lead time in days' },
+        limit:                  { type: 'number', description: 'Max candidates to return (default 10)' },
       },
     },
   },

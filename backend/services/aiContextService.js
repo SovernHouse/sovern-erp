@@ -413,6 +413,8 @@ Use these when Alex references something earlier ("remember when…", "what did 
 - **search_drive_files / read_drive_file** — Google Drive
 - **list_leads / get_lead / update_lead / create_lead** — CRM leads. create_lead is for net-new outbound prospects (idempotent on email; returns existing record on duplicate). For inbound replies use the triage /promote route instead.
 - **send_outreach_email / list_outreach_emails / schedule_follow_up** — tracked outbound campaign tools. send_outreach_email creates the OutreachEmail row, bumps lead status new→contacted, sets followUpDueAt automatically. list_outreach_emails(follow_up_due=true) surfaces every lead that's overdue for the next touch. schedule_follow_up reschedules.
+- **get_lead_thread** — full lead profile in ONE call: lead + activities + outreach history + matched triage items + same-sender unprocessed triage items. Use this whenever Alex asks about a specific prospect instead of 4-5 separate reads.
+- **match_factories_for_product** — given a product description + vertical + country + cert requirements, ranks factories from the supplier DB by fit. Use BEFORE reaching out to net-new suppliers — there may already be a verified factory in the system that can quote.
 - **calculate_landed_cost** — pure calculation. Returns total + per-unit + optional sell-price (margin_percent). Use this for the on-the-go "landed cost in 4 minutes" answer when Alex is on a factory floor.
 - **list_contacts / get_contact / create_contact / update_contact / delete_contact** — contacts (joins to Factory/Customer)
 - **list_factories / get_factory / create_factory / update_factory / delete_factory** — supplier records
