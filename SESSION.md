@@ -5,15 +5,15 @@
 ---
 
 ## Last Updated
-2026-05-08 (Taiwan time, eighth session — triage MCP tool gap closed + Dev Mode AI feature spec'd through Phase 3 + Session-1 backend skeleton built)
+2026-05-08 (Taiwan time, eighth session — triage MCP tool gap closed + complete Dev Mode AI feature shipped: spec'd Phases 0-3, Sessions 1-4 built and deployed, plus boot-sync safety net + pre-existing TS error fixes)
 
 ---
 
 ## Where We Are
 
 ### CI Status
-- **Latest commit (last green deploy):** `881b2014` (chore: clear deferred backlog — Sentry v7, Drive perms, deploy.sh tombstone). Today's two work items below are staged but uncommitted as of 2026-05-08 — Alex pushes from his Windows terminal.
-- CI status: verify with `github_list_runs` after Alex pushes the two new commits.
+- **Latest commit:** `677d280` (Dev Mode Session 4 - mobile parity). All four Dev Mode session commits + the triage MCP commit have shipped CI green and deployed successfully. A small fix-up commit (boot-sync safety net + TS error fixes) follows this update.
+- CI status: verify with `github_list_runs` after the next push.
 
 ### VM Status
 - **ERP online and stable.** No crashes reported during the dashboard/AI/RBAC/e-sign work.
@@ -94,7 +94,16 @@
 
 All parity items from the 29-commit backlog are now shipped. ✅
 
-## This session (2026-05-08) — staged, awaiting Alex's commit + push
+## This session (2026-05-08) — all four dev-mode sessions shipped + triage MCP tool
+
+**Session arc:** triage MCP tool fix → Dev Mode AI feature spec'd Phases 0-3 → Sessions 1-4 of Dev Mode build all pushed and deployed in this single working session at Alex's request. CI green on all four pushes. Live on the VM.
+
+**Commits in this session (newest first):**
+- `c509942` triage MCP tool + Dev Mode Session 1 (DB skeleton)
+- `4d7b837` Dev Mode Session 2 (sandbox + subprocess + runner + notifier)
+- `3907598` Dev Mode Session 3 (admin portal UI + Dev Mode toggle)
+- `677d280` Dev Mode Session 4 (mobile parity)
+- (pending TS+sync fix commit at end of this session)
 
 ### Track 1 — Triage MCP tool gap closed (small, contained)
 **What:** AI-in-ERP previously had `list_triage_items` / `get_triage_item` but no way to flip a triage item's status without picking between dedicated `/spam`, `/dismiss`, `/archive`, `/promote`, `/forward-fanzey` endpoints. Alex hit this trying to mark a Frontech reply as processed from the ERP chat.
@@ -141,11 +150,34 @@ All parity items from the 29-commit backlog are now shipped. ✅
 
 ---
 
+## Dev Mode — what's live now (post Session 4 + boot-sync fix)
+
+| Surface | Status |
+|---|---|
+| `/api/dev-mode/runs` (start/get/list/answer/abort) | ✅ live, super_admin only, 401 without auth |
+| `/api/push-tokens/*` (register/unregister/list) | ✅ live, any auth user |
+| `DevModeRuns` + `ExpoPushTokens` SQLite tables | ✅ created (manual sync first, then via belt-and-braces fix in server.js) |
+| Sandboxed claude subprocess + worktree + PR opener | ✅ live (gh CLI 2.92, gitleaks 8.30.1 installed on VM) |
+| Three-channel notifier (in-app / Expo push / Resend email) | ✅ live; Expo push silently no-ops until mobile registers tokens |
+| Boot recovery for stale runs | ✅ live |
+| Admin portal: Dev Mode toggle + DevRunCard + /ai/dev-runs audit page | ✅ live |
+| Mobile: Dev Mode toggle + DevRunCard + /dev-runs audit screen | ✅ live |
+| Mobile push token registration (native side) | ⏳ deferred — needs expo-notifications + expo-device + EAS dev-client rebuild |
+
+## Known issues found this session
+
+- **Boot-time `sequelize.sync()` silently skipped DevModeRuns + ExpoPushTokens.** Models loaded fine, route registered fine, but `sqlite_master` showed no tables after pm2 restart. Root cause unconfirmed — suspected interaction with `define: { freezeTableName: true }` and explicit `tableName:` overrides hitting an "already exists" early-abort path on an unrelated index. **Mitigation shipped:** belt-and-braces explicit `db.DevModeRun.sync()` + `db.ExpoPushToken.sync()` in server.js boot chain. Idempotent on subsequent boots.
+- **Pre-existing TS errors fixed in this session** (Alex requested):
+  - `mobile/sovern-ops-app/app/(tabs)/activities.tsx:221` — `stickySectionHeaders` → `stickySectionHeadersEnabled` (correct prop in current React Native types).
+  - `mobile/sovern-ops-app/app/lead/[id].tsx:98` — `item.note || item.type` → `item.subject || item.description || item.type`. The Activity model has no `note` field; data was always falling through to `item.type` because `item.note` is undefined.
+
 ## Next Task
 
-**Session 2 of the Dev Mode build:** sandbox setup on the VM (non-root user, worktree directory, gh CLI auth), extended `runClaudeSubprocess` with dev-mode flags (allow Bash/Read/Write/Edit/Glob/Grep, swap MCP config for the dev-only tools, chdir to worktree), gitleaks pre-commit, end-to-end "hello world PR" smoke test.
+**Session 5 (when ready, native build needed):** Mobile push notifications. Add `expo-notifications`, `expo-device`, `expo-constants`. Configure app.json (notification permissions, channel for Android). Add a hook that registers the device's Expo push token on login and calls `registerPushToken()`. Trigger a fresh EAS dev-client / production build (native deps don't ship via EAS Update OTA). Test end-to-end: dev-mode run → push lands on phone → tap → opens GitHub PR.
 
-**Mobile parity status going into Session 2:** API service helpers already mirrored (Session 1). UI-facing parity work for Dev Mode is consolidated into Session 4. No silent deferrals.
+**First real test of the live system:** open the AI Assistant on web or mobile, switch on Dev Mode (super_admin toggle in chat header), say "add a comment to backend/server.js explaining the dev-mode boot recovery hook" or similar trivial change, watch the DevRunCard go through queued → running → opening_pr → completed, then merge the PR from your phone.
+
+**Mobile parity status:** Full parity for Dev Mode UI surfaces. Push notification UI is the only deferred item, scoped explicitly above.
 
 ---
 

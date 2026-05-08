@@ -95,7 +95,7 @@ function ActivityItem({ item }: { item: Activity }) {
     <View style={styles.activityItem}>
       <Text style={styles.activityIcon}>{icon}</Text>
       <View style={styles.activityBody}>
-        <Text style={styles.activityNote}>{item.note || item.type}</Text>
+        <Text style={styles.activityNote}>{item.subject || item.description || item.type}</Text>
         <Text style={styles.activityDate}>{timeAgo(item.createdAt)}</Text>
       </View>
     </View>

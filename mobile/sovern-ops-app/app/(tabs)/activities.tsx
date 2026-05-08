@@ -218,7 +218,7 @@ export default function ActivitiesScreen() {
           </View>
         )}
         contentContainerStyle={totalCount === 0 ? { flex: 1 } : { paddingBottom: 32 }}
-        stickySectionHeaders
+        stickySectionHeadersEnabled
       />
 
       {/* Mark-done modal */}

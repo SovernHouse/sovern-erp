@@ -512,6 +512,24 @@ db.sequelize.authenticate()
         // "duplicate column name" -- column already exists, skip silently
       }
     }
+
+    // Belt-and-braces: explicitly sync the small set of recently-added
+    // tables that the chain-level sync() above can silently miss
+    // (suspected: an index-creation race that catches as "already exists"
+    // and aborts the table create on the same iteration). model.sync() is
+    // idempotent on existing tables.
+    const lateAdditions = ['DevModeRun', 'ExpoPushToken'];
+    for (const modelName of lateAdditions) {
+      if (!db[modelName]) continue;
+      try {
+        await db[modelName].sync();
+      } catch (e) {
+        const msg = (e && e.message) || '';
+        if (!/already exists/i.test(msg)) {
+          logger.warn(`[boot] late sync for ${modelName} failed:`, msg);
+        }
+      }
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {
