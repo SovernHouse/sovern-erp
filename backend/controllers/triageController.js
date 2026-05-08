@@ -280,6 +280,40 @@ exports.archiveItem = async (req, res) => {
   return res.json({ success: true, data: item });
 };
 
+// ─── GENERIC UPDATE (status flips for AI / power users) ──────────────────────
+// Lets the AI assistant flip a triage item's status without picking between
+// /spam, /dismiss, /archive endpoints. Currently scoped to status only.
+// Note: does NOT enforce transition rules (use /promote for promote+lead,
+// /forward-fanzey for forward+email). This is a low-level escape hatch.
+
+const ALLOWED_STATUS = ['pending', 'promoted', 'forwarded', 'spam', 'dismissed', 'archived'];
+
+exports.updateTriageItem = async (req, res) => {
+  const item = await db.TriageItem.findByPk(req.params.id);
+  if (!item) throw new NotFoundError('Triage item not found');
+
+  const updates = {};
+  if (req.body.status !== undefined) {
+    if (!ALLOWED_STATUS.includes(req.body.status)) {
+      throw new ValidationError(
+        `Invalid status: ${req.body.status}. Allowed: ${ALLOWED_STATUS.join(', ')}`
+      );
+    }
+    updates.status = req.body.status;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new ValidationError('No updatable fields provided. Send { status: "..." }.');
+  }
+
+  await item.update(updates);
+  return res.json({
+    success: true,
+    data: item,
+    updated: Object.keys(updates),
+  });
+};
+
 // ─── SYNC NOW (Q4) ───────────────────────────────────────────────────────────
 // Sets a flag the Cowork task checks; does not trigger inline processing.
 

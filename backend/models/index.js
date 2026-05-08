@@ -109,6 +109,9 @@ db.CalendarEvent = require('./CalendarEvent')(sequelize);
 // AI Assistant conversations
 db.AIConversation = require('./AIConversation')(sequelize);
 
+// Dev Mode runs (audit + lifecycle for in-ERP code-change AI subprocesses)
+db.DevModeRun = require('./DevModeRun')(sequelize);
+
 // Load CRM models if they exist.
 // Tolerate missing files (MODULE_NOT_FOUND, e.g. CRM module disabled),
 // but surface any other error (syntax error, runtime throw inside the

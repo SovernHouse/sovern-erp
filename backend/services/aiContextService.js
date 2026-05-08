@@ -409,7 +409,7 @@ Use these when Alex references something earlier ("remember when…", "what did 
 **Entity-specific read/action tools:**
 - **list_calendar_events / create_calendar_event / delete_calendar_event** — Google Calendar
 - **list_emails / read_email_thread / send_email** — Gmail
-- **list_triage_items / get_triage_item** — ERP triage inbox
+- **list_triage_items / get_triage_item / update_triage_item** — ERP triage inbox (update flips status: pending, promoted, forwarded, spam, dismissed, archived. For promote→Lead use the dedicated /promote action; for forward-to-Mohannad use /forward-fanzey)
 - **search_drive_files / read_drive_file** — Google Drive
 - **list_leads / get_lead / update_lead** — CRM leads (with recent activities)
 - **list_contacts / get_contact / create_contact / update_contact / delete_contact** — contacts (joins to Factory/Customer)

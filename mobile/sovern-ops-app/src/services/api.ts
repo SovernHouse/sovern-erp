@@ -532,6 +532,24 @@ export function archiveTriage(id: string) {
   return request(`/api/triage/${id}/archive`, { method: 'PATCH' });
 }
 
+// Generic update — flips status without picking between specific action routes.
+// Mirrors PATCH /api/triage/:id. Use the action-specific helpers above when
+// you need promote+lead-creation or forward+email side-effects.
+export type TriageStatus =
+  | 'pending'
+  | 'promoted'
+  | 'forwarded'
+  | 'spam'
+  | 'dismissed'
+  | 'archived';
+
+export function updateTriageItem(id: string, body: { status?: TriageStatus }) {
+  return request(`/api/triage/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
 export function requestTriageSync() {
   return request('/api/triage/sync-requested', { method: 'POST' });
 }
@@ -572,6 +590,88 @@ export interface TriageItem {
   decidedBy?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── Dev Mode (super_admin only) ─────────────────────────────────────────────
+// Lifecycle endpoints for in-ERP code-change AI subprocesses. The actual
+// runtime ships in Session 2; these helpers exist now for parity so the
+// mobile UI can hook in without another api.ts edit later.
+// Maps to backend/models/DevModeRun.js + backend/routes/devModeRoutes.js.
+
+export type DevModeRunStatus =
+  | 'queued'
+  | 'running'
+  | 'opening_pr'
+  | 'awaiting_clarification'
+  | 'completed'
+  | 'wip'
+  | 'failed'
+  | 'aborted';
+
+export interface DevModeRun {
+  id: string;
+  userId: string;
+  prompt: string;
+  status: DevModeRunStatus;
+  branchName?: string | null;
+  prUrl?: string | null;
+  prNumber?: number | null;
+  prMergedAt?: string | null;
+  filesChanged: Array<{ path: string; additions: number; deletions: number }>;
+  linesAdded: number;
+  linesDeleted: number;
+  turnCount: number;
+  maxTurns: number;
+  tokenUsage: Record<string, number>;
+  estimatedCostUsd?: number | null;
+  errorMessage?: string | null;
+  workTreePath?: string | null;
+  subprocessPid?: number | null;
+  clarificationQuestion?: string | null;
+  clarificationAnswer?: string | null;
+  awaitingSince?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function startDevModeRun(prompt: string) {
+  return request<{ success: boolean; data: DevModeRun; message?: string }>(
+    '/api/dev-mode/runs',
+    { method: 'POST', body: JSON.stringify({ prompt }) },
+  );
+}
+
+export function getDevModeRun(id: string) {
+  return request<{ success: boolean; data: DevModeRun }>(`/api/dev-mode/runs/${id}`);
+}
+
+export function listDevModeRuns(opts: { status?: DevModeRunStatus; page?: number; limit?: number } = {}) {
+  const qs = new URLSearchParams();
+  if (opts.status) qs.set('status', opts.status);
+  if (opts.page) qs.set('page', String(opts.page));
+  if (opts.limit) qs.set('limit', String(opts.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return request<{
+    success: boolean;
+    data: DevModeRun[];
+    pagination: { total: number; page: number; pages: number; pageSize: number };
+  }>(`/api/dev-mode/runs${suffix}`);
+}
+
+export function answerDevModeClarification(id: string, answer: string) {
+  return request<{ success: boolean; data: DevModeRun; message?: string }>(
+    `/api/dev-mode/runs/${id}/answer`,
+    { method: 'POST', body: JSON.stringify({ answer }) },
+  );
+}
+
+export function abortDevModeRun(id: string) {
+  return request<{ success: boolean; data: DevModeRun; message?: string }>(
+    `/api/dev-mode/runs/${id}/abort`,
+    { method: 'POST' },
+  );
 }
 
 // ─── Shipments / Invoices / Purchase Orders (read-only) ──────────────────

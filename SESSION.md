@@ -5,15 +5,15 @@
 ---
 
 ## Last Updated
-2026-05-07 (Taiwan time, seventh session — mobile parity rounds 1+2: AI rename, e-sign display, CRUD deletes, Factories tab; plus backfill of six prior sessions of dashboard/AI/RBAC work that were never logged)
+2026-05-08 (Taiwan time, eighth session — triage MCP tool gap closed + Dev Mode AI feature spec'd through Phase 3 + Session-1 backend skeleton built)
 
 ---
 
 ## Where We Are
 
 ### CI Status
-- **Latest commit:** `b23b7e7` (feat(esign): factory-side PO confirmation + drawn-signature canvas).
-- CI status: verify with `github_list_runs` before any new push — the deploy workflow has been green throughout this stretch but specific run state at session-start should be confirmed live.
+- **Latest commit (last green deploy):** `881b2014` (chore: clear deferred backlog — Sentry v7, Drive perms, deploy.sh tombstone). Today's two work items below are staged but uncommitted as of 2026-05-08 — Alex pushes from his Windows terminal.
+- CI status: verify with `github_list_runs` after Alex pushes the two new commits.
 
 ### VM Status
 - **ERP online and stable.** No crashes reported during the dashboard/AI/RBAC/e-sign work.
@@ -94,9 +94,58 @@
 
 All parity items from the 29-commit backlog are now shipped. ✅
 
+## This session (2026-05-08) — staged, awaiting Alex's commit + push
+
+### Track 1 — Triage MCP tool gap closed (small, contained)
+**What:** AI-in-ERP previously had `list_triage_items` / `get_triage_item` but no way to flip a triage item's status without picking between dedicated `/spam`, `/dismiss`, `/archive`, `/promote`, `/forward-fanzey` endpoints. Alex hit this trying to mark a Frontech reply as processed from the ERP chat.
+
+**Files staged (commit candidate 1):**
+- `backend/controllers/triageController.js` — new `updateTriageItem` handler; status-only, validates against the real enum.
+- `backend/routes/triageRoutes.js` — new `PATCH /api/triage/:id` route, placed after specific action routes.
+- `backend/mcp/erpToolServer.js` — new `update_triage_item` MCP tool case + tool-list entry; fixed the wrong status enum on `list_triage_items` (was 'processed, archived'; real enum is pending/promoted/forwarded/spam/dismissed/archived).
+- `backend/services/aiContextService.js` — system prompt mentions the new tool + correct status values.
+- `mobile/sovern-ops-app/src/services/api.ts` — `updateTriageItem(id, { status })` helper + `TriageStatus` type.
+
+**Important correction:** the original ERP-chat brief said allowed statuses were `pending / processed / archived`. That was wrong. Real enum lives on `backend/models/TriageItem.js`.
+
+**Mobile parity:** ✅ shipped same change set.
+
+### Track 2 — Dev Mode AI feature: specced + Session-1 backend skeleton
+**What:** New capability that lets Alex (super_admin only) make ERP code changes from the in-ERP AI chat (web + mobile) while traveling, without bouncing to Cowork. AI subprocess runs in a sandboxed git worktree on the GCP VM, opens a feature-branch PR via `gh`, Alex merges from GitHub mobile.
+
+**Spec confirmed across Phases 0–3 in chat.** Key decisions:
+- **Trigger:** explicit "Dev Mode" toggle in chat header (super_admin only). Regular AI nudges to switch when it detects a code-change ask.
+- **Architecture:** PR flow only. No direct push to main. You always merge.
+- **Edit scope:** whole repo except `.env*`, `.github/workflows/*`, deploy scripts, `data/erp.db`, `*.key`, `*.pem`, `secrets/*`.
+- **Secrets:** hard block. New env vars proposed via `.env.example` + chat instruction. No password-gated read path (rejected — prompt-injection vector).
+- **Sandbox:** same GCP VM, fresh worktree under `/home/alex/sovern-erp-dev-runs/<runId>/`, non-root user.
+- **Time budget:** 30-min hard timeout.
+- **Caps:** max 5 runs / rolling 24h, max 30 turns / run, auto-pause if regular AI was rate-limited in last hour. (Max-sub model — no dollar cap; cost is rolling-window availability.)
+- **Failure:** commit what works → WIP PR → report blocker. No prod write.
+- **Mid-run Q&A:** lightweight (added per Alex's pushback). AI exits cleanly with `awaiting_clarification`, you answer in chat, backend re-invokes with prior context. 30-min answer timeout falls back to WIP PR.
+- **Notifications:** in-chat reply + Expo push + Resend email summary.
+- **Audit:** full DB-backed `DevModeRun` table.
+- **Whitelabel:** sovereign-only in v1; decide later for commercialization.
+
+**Files staged (commit candidate 2 — Session-1 backend skeleton):**
+- `backend/models/DevModeRun.js` (NEW) — Sequelize model. 25 fields. `tableName: 'DevModeRuns'` so L-034 doesn't apply. JSON columns (`filesChanged`, `tokenUsage`) follow L-023 (no JSON.stringify). User FK declared in `.associate()`.
+- `backend/models/index.js` — register `db.DevModeRun`. The existing `Object.keys(db).forEach(... .associate)` loop wires the User belongsTo automatically.
+- `backend/controllers/devModeController.js` (NEW) — skeleton for `startRun`, `getRun`, `listRuns`, `answerClarification`, `abortRun`. `startRun` enforces the 5-runs/24h cap and the no-concurrent-runs rule, then creates a `queued` row and returns 202. The actual subprocess kickoff is hooked here in Session 2.
+- `backend/routes/devModeRoutes.js` (NEW) — mounts under `/api/dev-mode`, gated by `requireAuth` + `requireRole('super_admin')` (L-031: bare string).
+- `backend/server.js` — register `/api/dev-mode` routes.
+- `mobile/sovern-ops-app/src/services/api.ts` — `startDevModeRun`, `getDevModeRun`, `listDevModeRuns`, `answerDevModeClarification`, `abortDevModeRun` + `DevModeRun` interface + `DevModeRunStatus` type. Mobile UI ships in Session 4.
+
+**Smoke test passed:** `node -e "require('./models')"` loads the model cleanly. Table name is `DevModeRuns`, 25 fields, `requester` association live.
+
+**What's NOT in this session:** the actual subprocess that does code work (Session 2), the chat toggle UI (Session 3), the mobile Dev Mode screens (Session 4), the gh CLI auth + gitleaks setup on the VM (Session 2 infra).
+
+---
+
 ## Next Task
 
-Pick the next desktop feature. Whatever ships next, follow the rule: every desktop change ships a mobile counterpart in the same session, OR is explicitly logged as a pending parity task in this file.
+**Session 2 of the Dev Mode build:** sandbox setup on the VM (non-root user, worktree directory, gh CLI auth), extended `runClaudeSubprocess` with dev-mode flags (allow Bash/Read/Write/Edit/Glob/Grep, swap MCP config for the dev-only tools, chdir to worktree), gitleaks pre-commit, end-to-end "hello world PR" smoke test.
+
+**Mobile parity status going into Session 2:** API service helpers already mirrored (Session 1). UI-facing parity work for Dev Mode is consolidated into Session 4. No silent deferrals.
 
 ---
 

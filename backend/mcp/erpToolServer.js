@@ -845,6 +845,24 @@ async function callTool(name, args) {
       return item.toJSON();
     }
 
+    case 'update_triage_item': {
+      const item = await getDb().TriageItem.findByPk(args.id);
+      if (!item) return `Triage item ${args.id} not found.`;
+      const allowed = ['pending', 'promoted', 'forwarded', 'spam', 'dismissed', 'archived'];
+      const updates = {};
+      if (args.status !== undefined) {
+        if (!allowed.includes(args.status)) {
+          return `Invalid status: ${args.status}. Allowed: ${allowed.join(', ')}`;
+        }
+        updates.status = args.status;
+      }
+      if (!Object.keys(updates).length) {
+        return 'No updatable fields provided. Send { status: "..." }.';
+      }
+      await item.update(updates);
+      return { success: true, updated: Object.keys(updates), item: item.toJSON() };
+    }
+
     // ── Google Drive ────────────────────────────────────────────────────────
 
     case 'search_drive_files': {
@@ -1545,7 +1563,7 @@ const TOOL_DEFS = [
       type: 'object',
       properties: {
         search: { type: 'string', description: 'Search by sender email, sender name, or subject' },
-        status: { type: 'string', description: 'Status filter: pending (default), processed, archived' },
+        status: { type: 'string', enum: ['pending', 'promoted', 'forwarded', 'spam', 'dismissed', 'archived', 'all'], description: 'Status filter (default: pending). Use "all" to see every status.' },
         limit:  { type: 'number', description: 'Max results (default: 20)' },
       },
     },
@@ -1558,6 +1576,18 @@ const TOOL_DEFS = [
       required: ['id'],
       properties: {
         id: { type: 'string', description: 'Triage item ID from list_triage_items' },
+      },
+    },
+  },
+  {
+    name: 'update_triage_item',
+    description: 'Update a triage item (currently: status only). Use this to flip a triage item to spam, dismissed, or archived without going through the dedicated action routes. To create a Lead from a triage item, prefer the /promote action route (this generic update will NOT create the Lead). To forward to Mohannad Fanzey + send the email, prefer the /forward-fanzey action route.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:     { type: 'string', description: 'Triage item ID' },
+        status: { type: 'string', enum: ['pending', 'promoted', 'forwarded', 'spam', 'dismissed', 'archived'], description: 'New status' },
       },
     },
   },

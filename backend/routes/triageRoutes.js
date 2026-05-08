@@ -23,6 +23,10 @@ router.patch('/:id/spam', asyncHandler(triageController.markSpam));
 router.patch('/:id/dismiss', asyncHandler(triageController.dismissItem));
 router.patch('/:id/archive', asyncHandler(triageController.archiveItem));
 
+// ─── Generic update (AI escape hatch — status flips only) ────────────────────
+// Must come AFTER the specific /:id/<action> routes so they take precedence.
+router.patch('/:id', asyncHandler(triageController.updateTriageItem));
+
 // ─── Send email (reply / forward / compose) ───────────────────────────────────
 router.post('/send-email', asyncHandler(triageController.sendEmail));
 

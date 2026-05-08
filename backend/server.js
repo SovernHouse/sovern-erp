@@ -182,6 +182,7 @@ const googleRoutes = require('./routes/googleRoutes');
 const calendarRoutes = require('./routes/calendarRoutes');
 const driveRoutes = require('./routes/driveRoutes');
 const aiRoutes = require('./routes/aiRoutes');
+const devModeRoutes = require('./routes/devModeRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/sso', ssoRoutes);
@@ -237,6 +238,7 @@ app.use('/api/google', googleRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/drive', driveRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/dev-mode', devModeRoutes);
 
 // Chatter (polymorphic message thread)
 const chatterRoutes = require('./routes/chatterRoutes');
