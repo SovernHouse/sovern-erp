@@ -845,6 +845,29 @@ async function callTool(name, args) {
       return item.toJSON();
     }
 
+    case 'sync_inbox_now': {
+      // Fires an in-process gmail-sync run. Returns immediately; new
+      // TriageItem rows land within seconds. Use this when Alex asks
+      // "any new emails?" / "check the inbox" / "did anyone reply?"
+      // since the cron interval is hourly by default.
+      try {
+        const { runGmailSync } = require('../services/gmailSyncService');
+        setImmediate(() => {
+          runGmailSync().catch(err => {
+            // log to stderr so it shows in pm2 logs
+            console.error('[gmail-sync] sync_inbox_now error:', err.message);
+          });
+        });
+        return {
+          success: true,
+          message: 'Gmail sync started in the background. Wait ~10-30 seconds, then call list_triage_items({ status: "pending" }) to see new arrivals.',
+          startedAt: new Date().toISOString(),
+        };
+      } catch (e) {
+        return `Could not start sync: ${e.message}`;
+      }
+    }
+
     case 'update_triage_item': {
       const item = await getDb().TriageItem.findByPk(args.id);
       if (!item) return `Triage item ${args.id} not found.`;
@@ -2099,6 +2122,11 @@ const TOOL_DEFS = [
         id: { type: 'string', description: 'Triage item ID from list_triage_items' },
       },
     },
+  },
+  {
+    name: 'sync_inbox_now',
+    description: 'Trigger an immediate Gmail sync to pull any new emails into the triage inbox. The cron interval is hourly by default (configurable via GMAIL_SYNC_INTERVAL_MINUTES); use this tool for on-demand pulls when Alex wants to check for fresh inbound. Returns immediately; new TriageItem rows land within ~10-30 seconds. Follow up with list_triage_items to read what arrived.',
+    inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'update_triage_item',

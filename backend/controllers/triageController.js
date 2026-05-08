@@ -314,35 +314,54 @@ exports.updateTriageItem = async (req, res) => {
   });
 };
 
-// ─── SYNC NOW (Q4) ───────────────────────────────────────────────────────────
-// Sets a flag the Cowork task checks; does not trigger inline processing.
+// ─── SYNC NOW ────────────────────────────────────────────────────────────────
+// Directly triggers the in-process gmail-sync runner. Replaces the old
+// sentinel-flag pattern that an external Cowork task used to poll — that
+// task no longer exists; gmail-sync is now in-process via node-cron.
+// The sentinel row is still updated for audit / observability so any
+// existing UI that reads syncRequestedAt continues to work.
 
 exports.requestSync = async (req, res) => {
-  // Singleton sentinel row — identified by gmailMessageId, not id.
-  // findOrCreate avoids the SequelizeUniqueConstraintError that upsert(id: newUUID)
-  // causes: Sequelize/SQLite sees it as a fresh INSERT and the unique constraint on
-  // gmailMessageId fires because the sentinel already exists.
   const SYNC_SENTINEL = '__sync_requested__';
   const now = new Date();
 
+  // Update / create the sentinel row (audit trail of last manual sync request)
   const [sentinel, created] = await db.TriageItem.findOrCreate({
     where: { gmailMessageId: SYNC_SENTINEL },
     defaults: {
       senderEmail: 'system@internal',
-      status: 'dismissed', // never shows in UI
+      status: 'dismissed',
       syncRequestedAt: now,
       autoArchiveAt: new Date(now.getTime() + 86400000),
     },
   });
-
   if (!created) {
     await sentinel.update({ syncRequestedAt: now });
   }
 
+  // Fire-and-forget the in-process gmail-sync. We respond immediately so
+  // the UI doesn't block on the actual API calls; results land in the
+  // triage inbox as new TriageItem rows within seconds.
+  let syncStarted = false;
+  try {
+    const { runGmailSync } = require('../services/gmailSyncService');
+    setImmediate(() => {
+      runGmailSync().catch(err => {
+        logger.error('[gmail-sync] Manual trigger error:', err.message);
+      });
+    });
+    syncStarted = true;
+  } catch (err) {
+    logger.warn('[gmail-sync] Could not load runGmailSync (probably googleapis missing):', err.message);
+  }
+
   return res.json({
     success: true,
-    message: 'Sync requested. The Cowork task will pick this up on its next run (within ~1 min if recent activity, or next scheduled interval).',
+    message: syncStarted
+      ? 'Sync started. New emails will appear in the triage inbox within seconds.'
+      : 'Sync flag set, but the in-process runner is not available. Check server logs.',
     requestedAt: now.toISOString(),
+    inProcessSyncStarted: syncStarted,
   });
 };
 

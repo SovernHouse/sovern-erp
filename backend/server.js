@@ -630,10 +630,19 @@ db.sequelize.authenticate()
       try {
         const cron = require('node-cron');
         const { runGmailSync } = require('./services/gmailSyncService');
-        cron.schedule('*/5 * * * *', () => {
+        // Configurable interval (minutes). Default 60 min — was 5 min, lowered
+        // because high-frequency polling burns Gmail API quota on idle days
+        // and produces little extra value over a UI / AI-driven on-demand
+        // "sync now" path (POST /api/triage/sync-requested or the
+        // sync_inbox_now MCP tool).
+        const intervalMin = Math.max(1, parseInt(process.env.GMAIL_SYNC_INTERVAL_MINUTES || '60', 10));
+        const cronExpr = intervalMin >= 60
+          ? `0 */${Math.floor(intervalMin / 60)} * * *`  // every N hours at :00
+          : `*/${intervalMin} * * * *`;                   // every N minutes
+        cron.schedule(cronExpr, () => {
           runGmailSync().catch(err => logger.error('[gmail-sync] Cron error:', err.message));
         });
-        logger.info('[gmail-sync] Gmail sync scheduler initialized (every 5 min)');
+        logger.info(`[gmail-sync] Gmail sync scheduler initialized (every ${intervalMin} min, cron: ${cronExpr})`);
       } catch (error) {
         if (error.code === 'MODULE_NOT_FOUND' && error.message.includes('googleapis')) {
           logger.warn('[gmail-sync] googleapis not installed. Run: npm install (in backend directory)');
