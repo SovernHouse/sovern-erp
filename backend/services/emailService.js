@@ -547,83 +547,199 @@ const sendInspectionScheduledEmail = async (factory, inspection) => {
 };
 
 /**
- * Send outreach email for cold prospecting
- * Plain text only, minimal HTML formatting (no company template wrapper)
- * SMTP must be configured (no Ethereal fallback)
+ * Build the Sovern House outreach HTML + plain-text body. Shared by both
+ * the Gmail API path and the SMTP fallback so the rendered email is
+ * byte-identical regardless of transport.
+ */
+function buildOutreachContent({ bodyText, customSignatureHtml, customSignatureText }) {
+  const bodyHtml = bodyText
+    .split(/\n/)
+    .map(line => line.trim() === '' ? '<br>' : `<span>${line}</span><br>`)
+    .join('\n');
+
+  const signatureHtml = customSignatureHtml || `
+    <div style="margin-top: 36px; font-family: Arial, sans-serif; color: #0E0D0C; line-height: 1.5;">
+      <div style="height: 2px; background-color: #1D5A32; margin-bottom: 24px;"></div>
+      <div style="margin-bottom: 12px;">
+        <img src="https://sovernhouse.co/images/alex-signature@2x.png" alt="" width="116" height="65" style="display: block; border: 0;">
+      </div>
+      <div style="font-size: 15px; font-weight: 700; letter-spacing: 0.02em; color: #0E0D0C; margin-bottom: 3px;">Alexander McConnell</div>
+      <div style="font-size: 12px; color: #5A5855; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 14px;">Founder</div>
+      <div style="font-size: 13px; margin-bottom: 24px;">
+        <a href="https://sovernhouse.co" style="color: #1D5A32; text-decoration: none; font-weight: 600;">sovernhouse.co</a>
+        <span style="color: #C8C4BC; margin: 0 8px;">&middot;</span>
+        <span style="color: #5A5855;">+886 970 781 818</span>
+      </div>
+      <div style="margin-bottom: 14px;">
+        <a href="https://sovernhouse.co" style="text-decoration: none; display: inline-block;">
+          <img src="https://sovernhouse.co/logos/sovern-wordmark-email-light.png" alt="Sovern House" width="200" height="93" style="display: block; border: 0;">
+        </a>
+      </div>
+      <div style="font-size: 12px; color: #5A5855; font-style: italic; letter-spacing: 0.01em; margin-bottom: 16px;">Your buying office in Asia.</div>
+      <div style="font-size: 10px; color: #B0ABA4; border-top: 1px solid #EBEBEB; padding-top: 10px;">Sovern House is a brand of New Route International Exchange Co., Ltd. &mdash; Taiwan.</div>
+    </div>
+  `;
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; font-size: 14px; color: #0E0D0C; line-height: 1.7; max-width: 600px;">
+      <div style="margin-bottom: 24px;">${bodyHtml}</div>
+      ${signatureHtml}
+    </div>
+  `;
+
+  const textContent = customSignatureText
+    ? `${bodyText}\n\n${customSignatureText}`
+    : `${bodyText}\n\n--\nAlexander McConnell\nFounder . Sovern House\nsovernhouse.co . +886 970 781 818\n\nSovern House is a brand of New Route International Exchange Co., Ltd. - Taiwan.`;
+
+  return { htmlContent, textContent };
+}
+
+/**
+ * RFC 2047 encode a header value if it contains non-ASCII chars.
+ * Required because Subject lines / display names with international
+ * characters need MIME encoded-word format.
+ */
+function encodeHeader(value) {
+  if (!value) return '';
+  // eslint-disable-next-line no-control-regex
+  if (/^[\x00-\x7F]+$/.test(value)) return value;  // pure ASCII, no encoding needed
+  return '=?UTF-8?B?' + Buffer.from(value, 'utf8').toString('base64') + '?=';
+}
+
+/**
+ * Send outreach email via Gmail API using the active connected Google
+ * account. Preferred over SMTP because:
+ *  - Single OAuth surface (same scope set as gmail-sync receive)
+ *  - No App Password to rotate / leak
+ *  - Sent messages land in the user's Gmail Sent folder by default
+ *  - No SMTP host/port/TLS configuration to maintain
+ *
+ * Returns { messageId, threadId, via: 'gmail-api', accountEmail }.
+ * Throws if no active connected account exists; the caller (sendOutreachEmail)
+ * decides whether to fall through to SMTP.
+ */
+const sendOutreachEmailViaGmailAPI = async ({ fromAddress, toAddress, toName, subject, bodyText, replyTo, cc, bcc, signatureHtml: customSignatureHtml, signatureText: customSignatureText }) => {
+  const db = require('../models');
+  const { google } = require('googleapis');
+  const { getAuthClientForAccount } = require('../controllers/googleAccountController');
+
+  // Pick the connected account: prefer one matching fromAddress if specified,
+  // otherwise fall back to any active account. Outreach typically comes from
+  // a single configured sender, so this is fine in practice.
+  let account = null;
+  if (fromAddress) {
+    account = await db.ConnectedGoogleAccount.findOne({
+      where: { email: fromAddress, isActive: true },
+    });
+  }
+  if (!account) {
+    account = await db.ConnectedGoogleAccount.findOne({ where: { isActive: true } });
+  }
+  if (!account) {
+    throw new Error('No active connected Google account. Connect one in /settings/connected-accounts.');
+  }
+
+  const auth = await getAuthClientForAccount(account);
+  const gmail = google.gmail({ version: 'v1', auth });
+
+  const { htmlContent, textContent } = buildOutreachContent({ bodyText, customSignatureHtml, customSignatureText });
+
+  // Build RFC 2822 multipart/alternative message
+  const fromHeader = `Sovern House | Alex <${account.email}>`;
+  const toHeader = toName ? `${encodeHeader(toName)} <${toAddress}>` : toAddress;
+  const boundary = '----=_Part_' + Math.random().toString(36).slice(2, 12) + '_' + Date.now();
+
+  const headers = [
+    `From: ${fromHeader}`,
+    `To: ${toHeader}`,
+    `Subject: ${encodeHeader(subject)}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+  ];
+  if (replyTo) headers.push(`Reply-To: ${replyTo}`);
+  if (cc) headers.push(`Cc: ${cc}`);
+  if (bcc) headers.push(`Bcc: ${bcc}`);
+
+  const rfc2822 = [
+    headers.join('\r\n'),
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: 7bit',
+    '',
+    textContent,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: 7bit',
+    '',
+    htmlContent,
+    '',
+    `--${boundary}--`,
+  ].join('\r\n');
+
+  // URL-safe base64 encode (Gmail API requires this variant)
+  const raw = Buffer.from(rfc2822, 'utf8').toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  const result = await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: { raw },
+  });
+
+  logger.info(`[OUTREACH] Sent via Gmail API to ${toAddress}, gmailId=${result.data.id}, account=${account.email}`);
+
+  return {
+    messageId: result.data.id,
+    threadId: result.data.threadId,
+    via: 'gmail-api',
+    accountEmail: account.email,
+  };
+};
+
+/**
+ * Send outreach email for cold prospecting.
+ *
+ * PRIMARY PATH: Gmail API via the connected Google account (OAuth).
+ * FALLBACK: nodemailer SMTP (only if Gmail API path is unavailable AND
+ * SMTP env vars are configured). The fallback exists for:
+ *   - Setups that haven't connected a Google account yet
+ *   - Token-refresh failures (very rare; gmail-sync would also be down)
+ *   - Test environments
+ *
+ * Set OUTREACH_FORCE_SMTP=1 to disable Gmail API entirely (debugging only).
  */
 const sendOutreachEmail = async ({ fromAddress, toAddress, toName, subject, bodyText, replyTo, cc, bcc, signatureHtml: customSignatureHtml, signatureText: customSignatureText }) => {
+  // Try Gmail API first unless explicitly disabled
+  if (process.env.OUTREACH_FORCE_SMTP !== '1') {
+    try {
+      return await sendOutreachEmailViaGmailAPI({
+        fromAddress, toAddress, toName, subject, bodyText, replyTo, cc, bcc,
+        signatureHtml: customSignatureHtml, signatureText: customSignatureText,
+      });
+    } catch (gmailErr) {
+      logger.warn(`[OUTREACH] Gmail API send failed (${gmailErr.message}); falling back to SMTP if configured.`);
+    }
+  }
+
+  // SMTP fallback path
   try {
-    // Check SMTP is configured - no fallback for outreach
     if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-      throw new Error('SMTP not configured for outreach emails — set SMTP_HOST, SMTP_USER, SMTP_PASS in .env');
+      throw new Error('Outreach send failed: Gmail API path unavailable AND SMTP not configured (need either a connected Google account or SMTP_HOST/SMTP_USER/SMTP_PASS).');
     }
 
     const transporterInstance = await getTransporter();
 
-    // Convert plain text body to HTML paragraphs
-    const bodyHtml = bodyText
-      .split(/\n/)
-      .map(line => line.trim() === '' ? '<br>' : `<span>${line}</span><br>`)
-      .join('\n');
-
-    // Use custom signature if provided, otherwise fall back to default Alex/Sovern House signature
-    const signatureHtml = customSignatureHtml || `
-      <div style="margin-top: 36px; font-family: Arial, sans-serif; color: #0E0D0C; line-height: 1.5;">
-
-        <!-- Forest green rule — brand separator -->
-        <div style="height: 2px; background-color: #1D5A32; margin-bottom: 24px;"></div>
-
-        <!-- Handwritten signature -->
-        <div style="margin-bottom: 12px;">
-          <img src="https://sovernhouse.co/images/alex-signature@2x.png" alt="" width="116" height="65" style="display: block; border: 0;">
-        </div>
-
-        <!-- Name -->
-        <div style="font-size: 15px; font-weight: 700; letter-spacing: 0.02em; color: #0E0D0C; margin-bottom: 3px;">Alexander McConnell</div>
-
-        <!-- Title -->
-        <div style="font-size: 12px; color: #5A5855; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 14px;">Founder</div>
-
-        <!-- Contact line -->
-        <div style="font-size: 13px; margin-bottom: 24px;">
-          <a href="https://sovernhouse.co" style="color: #1D5A32; text-decoration: none; font-weight: 600;">sovernhouse.co</a>
-          <span style="color: #C8C4BC; margin: 0 8px;">&middot;</span>
-          <span style="color: #5A5855;">+886 970 781 818</span>
-        </div>
-
-        <!-- Logo — official asset, light/transparent, no dark box -->
-        <div style="margin-bottom: 14px;">
-          <a href="https://sovernhouse.co" style="text-decoration: none; display: inline-block;">
-            <img src="https://sovernhouse.co/logos/sovern-wordmark-email-light.png" alt="Sovern House" width="200" height="93" style="display: block; border: 0;">
-          </a>
-        </div>
-
-        <!-- Tagline -->
-        <div style="font-size: 12px; color: #5A5855; font-style: italic; letter-spacing: 0.01em; margin-bottom: 16px;">Your buying office in Asia.</div>
-
-        <!-- Legal -->
-        <div style="font-size: 10px; color: #B0ABA4; border-top: 1px solid #EBEBEB; padding-top: 10px;">Sovern House is a brand of New Route International Exchange Co., Ltd. &mdash; Taiwan.</div>
-
-      </div>
-    `;
-
-    const htmlContent = `
-      <div style="font-family: Arial, sans-serif; font-size: 14px; color: #0E0D0C; line-height: 1.7; max-width: 600px;">
-        <div style="margin-bottom: 24px;">${bodyHtml}</div>
-        ${signatureHtml}
-      </div>
-    `;
-
-    // Plain text fallback — use custom if provided, otherwise default Alex signature
-    const textWithSig = customSignatureText
-      ? `${bodyText}\n\n${customSignatureText}`
-      : `${bodyText}\n\n--\nAlexander McConnell\nFounder · Sovern House\nsovernhouse.co · +886 970 781 818\n\nSovern House is a brand of New Route International Exchange Co., Ltd. — Taiwan.`;
+    // Reuse the shared content builder so SMTP and Gmail-API renders match byte-for-byte
+    const { htmlContent, textContent } = buildOutreachContent({ bodyText, customSignatureHtml, customSignatureText });
 
     const mailOptions = {
       from: `Sovern House | Alex <${fromAddress || process.env.SMTP_USER}>`,
       to: toName ? `${toName} <${toAddress}>` : toAddress,
       subject: subject,
-      text: textWithSig,
+      text: textContent,
       html: htmlContent,
     };
 
@@ -641,12 +757,13 @@ const sendOutreachEmail = async ({ fromAddress, toAddress, toName, subject, body
 
     const result = await transporterInstance.sendMail(mailOptions);
 
-    logger.info(`[OUTREACH] Sent to ${toAddress}, Subject: ${subject}, MessageId: ${result.messageId}`);
+    logger.info(`[OUTREACH] Sent via SMTP to ${toAddress}, Subject: ${subject}, MessageId: ${result.messageId}`);
 
     return {
       messageId: result.messageId,
       accepted: result.accepted,
       rejected: result.rejected,
+      via: 'smtp',
     };
   } catch (error) {
     logger.error(`[OUTREACH] Error sending to ${toAddress}:`, error.message);
@@ -656,6 +773,7 @@ const sendOutreachEmail = async ({ fromAddress, toAddress, toName, subject, body
 
 module.exports = {
   sendEmail,
+  sendOutreachEmailViaGmailAPI,
   generateEmailTemplate,
   sendQuotationEmail,
   sendProformaInvoiceEmail,
