@@ -12,6 +12,7 @@ import { useAuthStore } from '../src/store/authStore';
 import { CONFIG, COLORS } from '../src/constants/config';
 import { getCurrentUser } from '../src/services/api';
 import type { User } from '../src/services/api';
+import { useDevModePushNotifications } from '../src/hooks/useDevModePushNotifications';
 
 // ─── Error Boundary ───────────────────────────────────────────────────────────
 // Catches render errors in any screen and shows a readable message instead of
@@ -43,6 +44,13 @@ export default function RootLayout() {
   const { isAuthenticated, setUser, clearUser } = useAuthStore();
   const router = useRouter();
   const segments = useSegments();
+
+  // Dev Mode push notifications (super_admin only — the hook itself
+  // gracefully no-ops if there's no auth, no Expo Go, or no permission).
+  // Requires EAS dev-client rebuild for native push to actually register;
+  // until then this is a silent no-op and polling-based card / email
+  // summary cover the notification surface.
+  useDevModePushNotifications();
 
   // On mount: check for an existing access token and validate it.
   // getCurrentUser() handles token refresh transparently — if the access

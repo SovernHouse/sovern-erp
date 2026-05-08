@@ -26,7 +26,7 @@ Analyze this inbound email and extract structured data. Return ONLY valid JSON, 
 Email details:
 From: ${emailData.from}
 Subject: ${emailData.subject}
-Body (first 1000 chars): ${emailData.body?.slice(0, 1000) || '(empty)'}
+Body (first 1500 chars): ${emailData.body?.slice(0, 1500) || '(empty)'}
 
 Return this exact JSON structure:
 {
@@ -37,7 +37,25 @@ Return this exact JSON structure:
   "intentScore": "high|medium|low|spam",
   "suggestedAction": "create_lead|request_info|forward_fanzey|mark_spam|dismiss",
   "detectedLanguage": "ISO 639-1 code e.g. en|ar|fr|es|zh",
-  "isRelevant": true or false
+  "isRelevant": true or false,
+  "draftInquiry": {
+    "products": [
+      {
+        "description": "free-text product description as buyer wrote it",
+        "specs": "specs mentioned: dimensions, material, grade, certifications, etc. or null",
+        "quantity": "numeric quantity if mentioned, else null",
+        "unit": "m2 / pcs / containers / kg / etc. or null",
+        "targetPricePerUnit": "if buyer named a target price, in their currency, else null",
+        "currency": "ISO currency code if mentioned (USD/EUR/etc.) else null"
+      }
+    ],
+    "destinationCountry": "buyer's destination country if stated or inferable, else null",
+    "destinationPort": "port name if stated, else null",
+    "incoterm": "FOB|CIF|EXW|DDP|CFR|DAP if mentioned, else null",
+    "urgency": "asap | within_week | within_month | flexible | null",
+    "paymentTermsHint": "any payment terms hinted (LC, TT, 30/70, etc.) or null",
+    "additionalRequirements": "free-text notes (samples, lead time, certifications, etc.) or null"
+  }
 }
 
 Rules:
@@ -50,7 +68,8 @@ Rules:
 - suggestedAction "request_info": medium intent, needs clarification
 - suggestedAction "mark_spam": obvious spam or automated message
 - suggestedAction "dismiss": not actionable but not spam
-- isRelevant: false if this is from a known internal system (Sentry, Vercel, GitHub, Alibaba promos, bank notifications)`;
+- isRelevant: false if this is from a known internal system (Sentry, Vercel, GitHub, Alibaba promos, bank notifications)
+- draftInquiry: ONLY populate when intentScore is "high" or "medium". Set to null otherwise. The goal is that when Alex opens this triage item, the inquiry data is already extracted so he can convert it to a quotation in seconds.`;
 
   return new Promise((resolve) => {
     let output = '';
@@ -190,7 +209,15 @@ async function processMessage(gmail, messageId, accountEmail) {
     detectedLanguage: intel?.detectedLanguage || 'en',
     subject,
     bodySnippet: body.slice(0, 500) || msg.snippet?.slice(0, 500) || null,
-    rawEmailData: { gmailThreadId: msg.threadId, to, labels: msg.labelIds },
+    // Persist the structured draftInquiry alongside raw metadata so the
+    // in-ERP AI / UI can offer "Convert to Quotation" with the data already
+    // populated. See L-023: pass the raw object, never JSON.stringify.
+    rawEmailData: {
+      gmailThreadId: msg.threadId,
+      to,
+      labels: msg.labelIds,
+      draftInquiry: intel?.draftInquiry || null,
+    },
     isReplyToOutreach,
     matchedOutreachEmailId,
     status: 'pending',

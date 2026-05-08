@@ -1223,6 +1223,126 @@ async function callTool(name, args) {
       };
     }
 
+    case 'create_quotation': {
+      // Creates a draft Quotation with items. Resolves lead→customer:
+      //   - If customer_id passed: use it directly.
+      //   - If lead_id passed and lead.convertedCustomerId set: use that.
+      //   - If lead_id passed without conversion: auto-create a Customer
+      //     from the lead's data, link via convertedCustomerId, proceed.
+      // Generates quotationNumber via incrementCounter (matches the
+      // existing /api/quotations create flow). Sets status='draft'.
+
+      const { customer_id, lead_id, items, currency, valid_days, terms,
+              factory_id, discount, discount_type, tax_rate, payment_terms } = args;
+
+      if (!Array.isArray(items) || items.length === 0) {
+        return 'Missing items array. Each item needs: product_id, quantity, unit_price.';
+      }
+      for (const it of items) {
+        if (!it.product_id || it.quantity === undefined || it.unit_price === undefined) {
+          return 'Each item must have product_id, quantity, unit_price.';
+        }
+      }
+
+      // Resolve customer
+      let resolvedCustomerId = customer_id;
+      let resolvedLeadId = lead_id || null;
+      let lead = null;
+      if (lead_id) {
+        lead = await getDb().Lead.findByPk(lead_id);
+        if (!lead) return `Lead ${lead_id} not found.`;
+        if (lead.convertedCustomerId) {
+          resolvedCustomerId = lead.convertedCustomerId;
+        } else if (!resolvedCustomerId) {
+          // Auto-convert: create a Customer from the lead's data
+          const newCustomer = await getDb().Customer.create({
+            companyName: lead.companyName,
+            contactPerson: lead.contactName,
+            email: lead.email,
+            phone: lead.phone || '',  // Customer.phone is allowNull: false
+            country: lead.country || null,
+            city: lead.city || null,
+            currency: lead.currency || currency || 'USD',
+            paymentTerms: payment_terms || 'Net 30',
+          });
+          resolvedCustomerId = newCustomer.id;
+          // Mark the lead as converted (status=won, convertedCustomerId set)
+          await lead.update({ convertedCustomerId: newCustomer.id, status: 'won', wonDate: new Date() });
+        }
+      }
+      if (!resolvedCustomerId) {
+        return 'Need either customer_id, or lead_id (will auto-convert lead to customer).';
+      }
+
+      // Generate quotationNumber via the existing helper
+      const { generateNumberWithCounter, incrementCounter } = require('../services/numberGenerator');
+      const lastQuotation = await getDb().Quotation.findOne({ order: [['createdAt', 'DESC']] });
+      const counter = incrementCounter(lastQuotation?.quotationNumber);
+      const quotationNumber = generateNumberWithCounter(process.env.DOC_PREFIX_QUOTATION || 'QOT', counter);
+
+      // Compute totals
+      let subtotal = 0;
+      const itemRows = [];
+      for (const it of items) {
+        const product = await getDb().Product.findByPk(it.product_id);
+        const lineTotal = parseFloat(it.quantity) * parseFloat(it.unit_price);
+        subtotal += lineTotal;
+        itemRows.push({
+          productId: it.product_id,
+          description: it.description || (product ? product.name : null),
+          quantity: parseFloat(it.quantity),
+          unit: it.unit || (product ? product.unit : null),
+          unitPrice: parseFloat(it.unit_price),
+          discount: parseFloat(it.discount || 0),
+          total: lineTotal,
+          notes: it.notes || '',
+        });
+      }
+      const discAmt = (discount_type === 'percentage')
+        ? (subtotal * parseFloat(discount || 0)) / 100
+        : parseFloat(discount || 0);
+      const afterDisc = subtotal - discAmt;
+      const taxAmt = (afterDisc * parseFloat(tax_rate || 0)) / 100;
+      const total = afterDisc + taxAmt;
+
+      const validUntil = new Date(Date.now() + (parseInt(valid_days || 30, 10)) * 86400000);
+
+      // Create the quotation
+      const quotation = await getDb().Quotation.create({
+        quotationNumber,
+        customerId: resolvedCustomerId,
+        leadId: resolvedLeadId || null,
+        factoryId: factory_id || null,
+        salesPersonId: USER_ID || null,
+        status: 'draft',
+        subtotal,
+        discount: parseFloat(discount || 0),
+        discountType: discount_type || 'fixed',
+        tax: taxAmt,
+        taxRate: parseFloat(tax_rate || 0),
+        total,
+        currency: currency || 'USD',
+        validUntil,
+        terms: terms || null,
+      });
+
+      // Create the items
+      for (const row of itemRows) {
+        await getDb().QuotationItem.create({ ...row, quotationId: quotation.id });
+      }
+
+      // Reload with items for the return shape
+      const full = await getDb().Quotation.findByPk(quotation.id, {
+        include: [{ model: getDb().QuotationItem, as: 'items' }],
+      });
+
+      return {
+        success: true,
+        quotation: full.toJSON(),
+        message: `Created ${quotation.status} quotation ${quotation.quotationNumber} with ${itemRows.length} item(s). Total: ${currency || 'USD'} ${total.toFixed(2)}.${lead && !customer_id ? ' (Auto-converted lead to customer.)' : ''}`,
+      };
+    }
+
     case 'calculate_landed_cost': {
       const { product_cost, quantity = 1, freight = 0, insurance = 0,
               customs_duty = 0, handling = 0, local_delivery = 0,
@@ -2088,6 +2208,43 @@ const TOOL_DEFS = [
         min_quantity:           { type: 'number', description: 'Minimum order quantity in units / containers' },
         target_lead_time_days:  { type: 'number', description: 'Maximum acceptable lead time in days' },
         limit:                  { type: 'number', description: 'Max candidates to return (default 10)' },
+      },
+    },
+  },
+  {
+    name: 'create_quotation',
+    description: 'Create a draft quotation with line items. Resolves lead→customer automatically: if you pass lead_id and the lead has no Customer record yet, this tool creates one from the lead data and marks the lead as converted (status=won). For inbound replies that already have a Customer, pass customer_id directly. Items must include product_id, quantity, unit_price. Returns the full quotation with items + computed totals. ALWAYS show Alex the full draft (line items + total + Incoterms + validity) and wait for explicit confirmation before treating it as ready to send.',
+    inputSchema: {
+      type: 'object',
+      required: ['items'],
+      properties: {
+        customer_id:     { type: 'string', description: 'Customer ID. Pass this OR lead_id.' },
+        lead_id:         { type: 'string', description: 'Lead ID. Auto-converts lead→customer if no Customer exists yet.' },
+        items: {
+          type: 'array',
+          description: 'Line items. Each: { product_id, quantity, unit_price, description?, unit?, discount?, notes? }',
+          items: {
+            type: 'object',
+            required: ['product_id', 'quantity', 'unit_price'],
+            properties: {
+              product_id:  { type: 'string' },
+              quantity:    { type: 'number' },
+              unit_price:  { type: 'number' },
+              description: { type: 'string' },
+              unit:        { type: 'string' },
+              discount:    { type: 'number' },
+              notes:       { type: 'string' },
+            },
+          },
+        },
+        currency:       { type: 'string', description: 'Currency code (default USD)' },
+        valid_days:     { type: 'number', description: 'Days the quotation is valid (default 30)' },
+        terms:          { type: 'string', description: 'Free-text terms / notes block' },
+        factory_id:     { type: 'string', description: 'Sourcing factory (for the sourcing-trail link)' },
+        discount:       { type: 'number', description: 'Quotation-level discount (default 0)' },
+        discount_type:  { type: 'string', enum: ['percentage', 'fixed'], description: 'Default fixed' },
+        tax_rate:       { type: 'number', description: 'Tax rate % (default 0)' },
+        payment_terms:  { type: 'string', description: 'Payment terms when auto-creating Customer (default "Net 30")' },
       },
     },
   },

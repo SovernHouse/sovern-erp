@@ -409,7 +409,7 @@ Use these when Alex references something earlier ("remember when…", "what did 
 **Entity-specific read/action tools:**
 - **list_calendar_events / create_calendar_event / delete_calendar_event** — Google Calendar
 - **list_emails / read_email_thread / send_email** — Gmail (raw, untracked. Prefer send_outreach_email below for prospect outreach so the OutreachEmail row + sequence cadence are tracked)
-- **list_triage_items / get_triage_item / update_triage_item** — ERP triage inbox (update flips status: pending, promoted, forwarded, spam, dismissed, archived. For promote→Lead use the dedicated /promote action; for forward-to-Mohannad use /forward-fanzey)
+- **list_triage_items / get_triage_item / update_triage_item** — ERP triage inbox (update flips status: pending, promoted, forwarded, spam, dismissed, archived. For promote→Lead use the dedicated /promote action; for forward-to-Mohannad use /forward-fanzey). HIGH/MEDIUM intent items now ship with a pre-extracted rawEmailData.draftInquiry block: products[], destinationCountry, destinationPort, incoterm, urgency, paymentTermsHint, additionalRequirements. When Alex says "convert this to a quotation" or similar, read get_triage_item, then call create_quotation with lead_id (or auto-promote first via /promote) and the items[] mapped from draftInquiry.products. The article's "data entry already done" flow.
 - **search_drive_files / read_drive_file** — Google Drive
 - **list_leads / get_lead / update_lead / create_lead** — CRM leads. create_lead is for net-new outbound prospects (idempotent on email; returns existing record on duplicate). For inbound replies use the triage /promote route instead.
 - **send_outreach_email / list_outreach_emails / schedule_follow_up** — tracked outbound campaign tools. send_outreach_email creates the OutreachEmail row, bumps lead status new→contacted, sets followUpDueAt automatically. list_outreach_emails(follow_up_due=true) surfaces every lead that's overdue for the next touch. schedule_follow_up reschedules.
@@ -418,7 +418,7 @@ Use these when Alex references something earlier ("remember when…", "what did 
 - **calculate_landed_cost** — pure calculation. Returns total + per-unit + optional sell-price (margin_percent). Use this for the on-the-go "landed cost in 4 minutes" answer when Alex is on a factory floor.
 - **list_contacts / get_contact / create_contact / update_contact / delete_contact** — contacts (joins to Factory/Customer)
 - **list_factories / get_factory / create_factory / update_factory / delete_factory** — supplier records
-- **list_quotations** — quotation pipeline (read only; create_quotation is a future tool)
+- **list_quotations / create_quotation** — quotation pipeline. create_quotation auto-resolves lead→customer (creates Customer from lead data and marks lead converted) when needed; takes items array, currency, validity. ALWAYS show the full draft (line items + totals + Incoterms + validity) and wait for explicit confirmation before treating it as ready to send.
 - **list_product_categories / list_products / get_product** — product catalog
 - **create_product / approve_product** — create new products (inactive until approved)
 - **list_pending_approvals** — items waiting for Alex's approval
