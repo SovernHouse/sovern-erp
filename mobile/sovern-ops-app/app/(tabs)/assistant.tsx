@@ -17,10 +17,17 @@ import {
 import {
   aiChat, aiListConversations, aiGetConversation, aiDeleteConversation,
   aiRenameConversation,
+  startDevModeRun, getDevModeRun, answerDevModeClarification,
   type AIConversation, type AIMessage,
+  type DevModeRun, type DevModeRunStatus,
 } from '../../src/services/api';
 import { useAuthStore } from '../../src/store/authStore';
 import { COLORS } from '../../src/constants/config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
+
+const DEV_MODE_KEY = 'sovern.ai.devModeOn';
+const NON_TERMINAL_RUN: DevModeRunStatus[] = ['queued', 'running', 'opening_pr', 'awaiting_clarification'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -123,7 +130,13 @@ function ConvRow({
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
 function MsgBubble({ msg }: { msg: AIMessage }) {
+  // Dev Mode run-card variant: live polling card. Render its own component.
+  if (msg.kind === 'devRun' && msg.runId) {
+    return <DevRunCard runId={msg.runId} timestamp={msg.timestamp} />;
+  }
+
   const isUser = msg.role === 'user';
+  const isDevModeUser = isUser && msg.devMode;
   const displayText = isUser ? msg.content : stripMarkdown(msg.content);
 
   return (
@@ -133,7 +146,14 @@ function MsgBubble({ msg }: { msg: AIMessage }) {
           <Text style={styles.aiBadgeText}>✦</Text>
         </View>
       )}
-      <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
+      <View style={[
+        styles.bubble,
+        isUser ? styles.bubbleUser : styles.bubbleAI,
+        isDevModeUser && styles.bubbleUserDevMode,
+      ]}>
+        {isDevModeUser && (
+          <Text style={styles.devModeBadgeText}>DEV MODE</Text>
+        )}
         <Text selectable style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
           {displayText}
         </Text>
@@ -141,6 +161,151 @@ function MsgBubble({ msg }: { msg: AIMessage }) {
       <Text style={[styles.bubbleTime, isUser && styles.bubbleTimeUser]}>
         {formatAge(msg.timestamp)}
       </Text>
+    </View>
+  );
+}
+
+// ─── DevRunCard ──────────────────────────────────────────────────────────────
+// Live-polling card for an in-flight dev-mode run. Polls /dev-mode/runs/:id
+// every 4s while non-terminal; renders status, branch, diff, error,
+// clarification (with inline answer input), and PR link when done.
+
+function devRunStatusLabel(s: DevModeRunStatus): string {
+  switch (s) {
+    case 'queued':                 return 'Queued';
+    case 'running':                return 'Running';
+    case 'opening_pr':             return 'Opening PR';
+    case 'awaiting_clarification': return 'Awaiting answer';
+    case 'completed':              return 'Completed';
+    case 'wip':                    return 'WIP';
+    case 'failed':                 return 'Failed';
+    case 'aborted':                return 'Aborted';
+    default:                       return s;
+  }
+}
+function devRunStatusColor(s: DevModeRunStatus): string {
+  switch (s) {
+    case 'completed':              return '#059669';
+    case 'wip':                    return '#d97706';
+    case 'failed':                 return '#dc2626';
+    case 'aborted':                return '#475569';
+    case 'awaiting_clarification': return '#d97706';
+    case 'opening_pr':             return '#7c3aed';
+    case 'running':                return '#2563eb';
+    default:                       return '#64748b';
+  }
+}
+
+function DevRunCard({ runId, timestamp }: { runId: string; timestamp: string }) {
+  const [run, setRun] = useState<DevModeRun | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [answer, setAnswer] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await getDevModeRun(runId);
+      if (res.data) setRun(res.data);
+    } catch (e: any) {
+      setError(e.message ?? 'Failed to load run');
+    }
+  }, [runId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    if (!run) return;
+    if (!NON_TERMINAL_RUN.includes(run.status)) return;
+    const t = setInterval(refresh, 4000);
+    return () => clearInterval(t);
+  }, [run, refresh]);
+
+  async function submitAnswer() {
+    if (!answer.trim()) return;
+    setSubmitting(true);
+    try {
+      await answerDevModeClarification(runId, answer.trim());
+      setAnswer('');
+      await refresh();
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Failed to submit answer');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <View style={[styles.bubbleWrap]}>
+      <View style={styles.aiBadge}>
+        <Text style={styles.aiBadgeText}>{'<>'}</Text>
+      </View>
+      <View style={[styles.bubble, styles.bubbleAI, styles.devRunCard]}>
+        {error && <Text style={{ color: '#991b1b' }}>⚠️ {error}</Text>}
+        {!error && !run && <Text style={{ color: '#64748b' }}>Starting dev-mode run...</Text>}
+        {run && (
+          <>
+            <View style={styles.devRunStatusRow}>
+              <View style={[styles.devRunPill, { backgroundColor: devRunStatusColor(run.status) + '22', borderColor: devRunStatusColor(run.status) }]}>
+                <Text style={{ color: devRunStatusColor(run.status), fontWeight: '700', fontSize: 11 }}>
+                  {devRunStatusLabel(run.status)}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 11, color: '#94a3b8', marginLeft: 8 }}>
+                turn {run.turnCount}/{run.maxTurns}
+              </Text>
+            </View>
+            {run.branchName && (
+              <Text style={styles.devRunMetaText} numberOfLines={1} ellipsizeMode="middle">
+                branch: {run.branchName}
+              </Text>
+            )}
+            {(run.linesAdded > 0 || run.linesDeleted > 0) && (
+              <Text style={styles.devRunMetaText}>
+                diff: +{run.linesAdded} / -{run.linesDeleted} across {run.filesChanged?.length || 0} files
+              </Text>
+            )}
+            {run.errorMessage && (
+              <View style={styles.devRunErrBox}>
+                <Text style={styles.devRunErrText}>{run.errorMessage}</Text>
+              </View>
+            )}
+            {run.status === 'awaiting_clarification' && run.clarificationQuestion && (
+              <View style={styles.devRunClarifyBox}>
+                <Text style={styles.devRunClarifyLabel}>AI is asking</Text>
+                <Text style={styles.devRunClarifyText}>{run.clarificationQuestion}</Text>
+                <TextInput
+                  style={styles.devRunAnswerInput}
+                  value={answer}
+                  onChangeText={setAnswer}
+                  placeholder="Your answer..."
+                  placeholderTextColor="#94a3b8"
+                  multiline
+                  editable={!submitting}
+                />
+                <Pressable
+                  style={[styles.devRunSubmit, (!answer.trim() || submitting) && { opacity: 0.5 }]}
+                  onPress={submitAnswer}
+                  disabled={!answer.trim() || submitting}
+                >
+                  <Text style={styles.devRunSubmitText}>{submitting ? '...' : 'Submit'}</Text>
+                </Pressable>
+              </View>
+            )}
+            {run.prUrl && (
+              <Pressable
+                style={styles.devRunPrBtn}
+                onPress={() => {
+                  if (run.prUrl) {
+                    require('expo-linking').openURL(run.prUrl).catch(() => {});
+                  }
+                }}
+              >
+                <Text style={styles.devRunPrBtnText}>Review PR #{run.prNumber || '?'} →</Text>
+              </Pressable>
+            )}
+          </>
+        )}
+      </View>
+      <Text style={styles.bubbleTime}>{formatAge(timestamp)}</Text>
     </View>
   );
 }
@@ -197,6 +362,17 @@ function WelcomeScreen({ onSuggestion }: { onSuggestion: (text: string) => void 
 export default function AssistantScreen() {
   const { user } = useAuthStore();
   const isAuthorized = user?.role === 'super_admin';
+  const isSuperAdmin = isAuthorized;
+  const router = useRouter();
+
+  // ── Dev Mode state (super_admin only, persisted in AsyncStorage) ───────────
+  const [devMode, setDevMode] = useState(false);
+  useEffect(() => {
+    AsyncStorage.getItem(DEV_MODE_KEY).then(v => { if (v === '1') setDevMode(true); });
+  }, []);
+  useEffect(() => {
+    AsyncStorage.setItem(DEV_MODE_KEY, devMode ? '1' : '0');
+  }, [devMode]);
 
   // ── Conversation list state ────────────────────────────────────────────────
   const [conversations, setConversations] = useState<AIConversation[]>([]);
@@ -329,6 +505,44 @@ export default function AssistantScreen() {
     if (!body || sending) return;
     setDraft('');
     setSending(true);
+
+    // Dev Mode branch (super_admin only): spawn a sandboxed code-change
+    // run instead of calling /ai/chat. Push a live DevRunCard message
+    // into the thread that polls the run state.
+    if (devMode && isSuperAdmin) {
+      const userMsg: AIMessage = {
+        role: 'user',
+        content: body,
+        timestamp: new Date().toISOString(),
+        devMode: true,
+      };
+      setMessages(prev => [...prev, userMsg]);
+      try {
+        const res = await startDevModeRun(body);
+        const run = res.data;
+        if (run) {
+          const cardMsg: AIMessage = {
+            role: 'assistant',
+            content: '',
+            timestamp: new Date().toISOString(),
+            kind: 'devRun',
+            runId: run.id,
+          };
+          setMessages(prev => [...prev, cardMsg]);
+        }
+      } catch (err: any) {
+        const errMsg: AIMessage = {
+          role: 'assistant',
+          content: '⚠️ ' + (err.message ?? 'Could not start dev-mode run.'),
+          timestamp: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, errMsg]);
+      } finally {
+        setSending(false);
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 150);
+      }
+      return;
+    }
 
     // Optimistic user bubble
     const userMsg: AIMessage = {
@@ -509,8 +723,30 @@ export default function AssistantScreen() {
         <Text style={styles.threadTitle} numberOfLines={1}>
           {isNewThread ? 'New conversation' : activeTitle}
         </Text>
-        <View style={{ width: 56 }} />
+        {isSuperAdmin ? (
+          <Pressable
+            style={[styles.devModeToggle, devMode && styles.devModeToggleOn]}
+            onPress={() => setDevMode(v => !v)}
+            hitSlop={6}
+          >
+            <Text style={[styles.devModeToggleText, devMode && styles.devModeToggleTextOn]}>
+              {'</>'} {devMode ? 'ON' : 'OFF'}
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={{ width: 56 }} />
+        )}
       </View>
+
+      {/* View runs history link (super_admin only) */}
+      {isSuperAdmin && (
+        <Pressable
+          onPress={() => router.push('/dev-runs')}
+          style={styles.devRunsLink}
+        >
+          <Text style={styles.devRunsLinkText}>View Dev Mode runs history →</Text>
+        </Pressable>
+      )}
 
       {loadingThread ? (
         <View style={styles.center}>
@@ -539,7 +775,9 @@ export default function AssistantScreen() {
           style={styles.composeInput}
           value={draft}
           onChangeText={setDraft}
-          placeholder="Ask Sovern AI…"
+          placeholder={devMode && isSuperAdmin
+            ? 'Describe a code change for the dev agent…'
+            : 'Ask Sovern AI…'}
           placeholderTextColor={COLORS.muted}
           multiline
           maxLength={4000}
@@ -547,7 +785,11 @@ export default function AssistantScreen() {
           editable={!sending}
         />
         <Pressable
-          style={[styles.sendBtn, (!draft.trim() || sending) && styles.sendBtnDisabled]}
+          style={[
+            styles.sendBtn,
+            (!draft.trim() || sending) && styles.sendBtnDisabled,
+            devMode && isSuperAdmin && styles.sendBtnDevMode,
+          ]}
           onPress={() => handleSend()}
           disabled={!draft.trim() || sending}
         >
@@ -763,4 +1005,80 @@ const styles = StyleSheet.create({
   },
   renameBtnPrimaryText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   renameBtnDisabled: { backgroundColor: COLORS.border },
+
+  // ── Dev Mode ───────────────────────────────────────────────────────────────
+  devModeToggle: {
+    width: 56,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 99,
+    borderWidth: 1,
+    borderColor: '#ffffff55',
+    alignItems: 'center',
+  },
+  devModeToggleOn: {
+    backgroundColor: '#ffffff',
+    borderColor: '#ffffff',
+  },
+  devModeToggleText: { color: '#ffffff', fontSize: 10, fontWeight: '700' },
+  devModeToggleTextOn: { color: COLORS.forest },
+
+  devRunsLink: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    backgroundColor: COLORS.forest + '12',
+  },
+  devRunsLinkText: { color: COLORS.forest, fontSize: 12, fontWeight: '600' },
+
+  bubbleUserDevMode: { backgroundColor: '#0f172a' },
+  devModeBadgeText: {
+    color: '#ffffffaa', fontSize: 9, fontWeight: '700', letterSpacing: 0.6,
+    marginBottom: 2,
+  },
+
+  sendBtnDevMode: { backgroundColor: '#0f172a' },
+
+  devRunCard: {
+    backgroundColor: '#fff',
+    borderColor: '#e2e8f0',
+    borderWidth: 1,
+    minWidth: 240,
+  },
+  devRunStatusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  devRunPill: {
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 99, borderWidth: 1,
+  },
+  devRunMetaText: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  devRunErrBox: {
+    marginTop: 6, padding: 8,
+    backgroundColor: '#fef2f2', borderRadius: 6,
+  },
+  devRunErrText: { color: '#991b1b', fontSize: 12 },
+  devRunClarifyBox: {
+    marginTop: 8, padding: 10,
+    backgroundColor: '#fef3c7', borderRadius: 6,
+  },
+  devRunClarifyLabel: {
+    color: '#854d0e', fontSize: 10, fontWeight: '700',
+    letterSpacing: 0.6, marginBottom: 4,
+  },
+  devRunClarifyText: { color: '#854d0e', fontSize: 13, marginBottom: 6 },
+  devRunAnswerInput: {
+    borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 6,
+    paddingHorizontal: 8, paddingVertical: 6,
+    fontSize: 13, color: COLORS.ink, minHeight: 40,
+  },
+  devRunSubmit: {
+    marginTop: 6, alignSelf: 'flex-start',
+    backgroundColor: '#0f172a', borderRadius: 6,
+    paddingHorizontal: 12, paddingVertical: 6,
+  },
+  devRunSubmitText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  devRunPrBtn: {
+    marginTop: 8, alignSelf: 'flex-start',
+    backgroundColor: '#0f172a', borderRadius: 6,
+    paddingHorizontal: 12, paddingVertical: 8,
+  },
+  devRunPrBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 });

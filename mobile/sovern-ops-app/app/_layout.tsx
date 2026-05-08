@@ -103,6 +103,11 @@ export default function RootLayout() {
             headerBackTitle: 'Leads',
           }}
         />
+        {/* Dev Mode runs (super_admin only — gated inside the screen) */}
+        <Stack.Screen
+          name="dev-runs"
+          options={{ headerShown: false }}
+        />
       </Stack>
     </>
   );

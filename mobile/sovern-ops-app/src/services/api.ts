@@ -1081,6 +1081,14 @@ export interface AIMessage {
   role: 'user' | 'assistant'
   content: string
   timestamp: string
+  /**
+   * Optional dev-mode metadata. Set on assistant messages of kind='devRun'
+   * (live polling cards) and on user messages that triggered a dev-mode run
+   * (devMode=true). Other AIMessage rows ignore both fields.
+   */
+  kind?: 'devRun'
+  runId?: string
+  devMode?: boolean
 }
 
 export interface AIChatResponse {
