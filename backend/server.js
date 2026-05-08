@@ -183,6 +183,7 @@ const calendarRoutes = require('./routes/calendarRoutes');
 const driveRoutes = require('./routes/driveRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const devModeRoutes = require('./routes/devModeRoutes');
+const pushTokenRoutes = require('./routes/pushTokenRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/sso', ssoRoutes);
@@ -239,6 +240,7 @@ app.use('/api/calendar', calendarRoutes);
 app.use('/api/drive', driveRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/dev-mode', devModeRoutes);
+app.use('/api/push-tokens', pushTokenRoutes);
 
 // Chatter (polymorphic message thread)
 const chatterRoutes = require('./routes/chatterRoutes');
@@ -526,6 +528,17 @@ db.sequelize.authenticate()
       logger.info('Module system initialized');
     } catch (error) {
       logger.error('Failed to initialize module system:', error.message);
+    }
+  })
+  .then(async () => {
+    // Dev-mode boot recovery: any run still in non-terminal status is from
+    // a process that died before completion — mark them failed so users
+    // aren't left with phantom "running" rows.
+    try {
+      const { recoverStaleRuns } = require('./services/devModeRunner');
+      await recoverStaleRuns();
+    } catch (e) {
+      logger.warn('[dev-mode] Boot recovery skipped:', e.message);
     }
   })
   .then(async () => {

@@ -112,6 +112,9 @@ db.AIConversation = require('./AIConversation')(sequelize);
 // Dev Mode runs (audit + lifecycle for in-ERP code-change AI subprocesses)
 db.DevModeRun = require('./DevModeRun')(sequelize);
 
+// Expo push tokens (mobile push notifications, used by dev-mode notifier)
+db.ExpoPushToken = require('./ExpoPushToken')(sequelize);
+
 // Load CRM models if they exist.
 // Tolerate missing files (MODULE_NOT_FOUND, e.g. CRM module disabled),
 // but surface any other error (syntax error, runtime throw inside the

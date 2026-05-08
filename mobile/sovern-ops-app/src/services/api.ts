@@ -674,6 +674,39 @@ export function abortDevModeRun(id: string) {
   );
 }
 
+// ─── Expo push token registration ────────────────────────────────────────────
+// Mobile registers its Expo push token on login so the backend can fire
+// dev-mode notifications via exp.host. Available to any authenticated user.
+
+export type ExpoPushPlatform = 'ios' | 'android' | 'web';
+
+export interface ExpoPushTokenRow {
+  id: string;
+  deviceId: string | null;
+  platform: ExpoPushPlatform | null;
+  isActive: boolean;
+  lastSeenAt: string | null;
+  createdAt: string;
+}
+
+export function registerPushToken(token: string, opts: { deviceId?: string; platform?: ExpoPushPlatform } = {}) {
+  return request<{ success: boolean; data: ExpoPushTokenRow }>('/api/push-tokens/register', {
+    method: 'POST',
+    body: JSON.stringify({ token, ...opts }),
+  });
+}
+
+export function unregisterPushToken(token: string) {
+  return request<{ success: boolean; message: string }>('/api/push-tokens/unregister', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
+}
+
+export function listMyPushTokens() {
+  return request<{ success: boolean; data: ExpoPushTokenRow[] }>('/api/push-tokens/me');
+}
+
 // ─── Shipments / Invoices / Purchase Orders (read-only) ──────────────────
 // Three backend modules used for on-the-road visibility. All read-only on
 // mobile — creation/edit happens on the desktop ERP.

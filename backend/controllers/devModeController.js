@@ -13,6 +13,7 @@ const { Op } = require('sequelize');
 const db = require('../models');
 const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger.js');
+const { spawnRun } = require('../services/devModeRunner');
 
 const MAX_RUNS_PER_24H = 5;
 const ANSWER_TIMEOUT_MS = 30 * 60 * 1000; // 30 min — matches the spec's stuck-fallback window
@@ -61,13 +62,14 @@ exports.startRun = async (req, res) => {
 
   logger.info(`[dev-mode] Run ${run.id} queued by user ${req.user.id}.`);
 
-  // Session 2 will hook the subprocess kickoff here. For now: just respond.
+  // Kick off the runner asynchronously. The HTTP response goes back
+  // immediately; the run continues in the background.
+  spawnRun(run.id);
+
   return res.status(202).json({
     success: true,
     data: run,
-    message:
-      'Run queued. Session-1 backend skeleton — subprocess runtime ships in the next session. ' +
-      'Until then, the run will stay queued; you can list/get/cancel it but no code work will happen.',
+    message: 'Run queued. The dev-mode AI is now working in a sandboxed worktree on the VM.',
   });
 };
 
@@ -144,16 +146,19 @@ exports.answerClarification = async (req, res) => {
 
   await run.update({
     clarificationAnswer: answer.trim(),
-    status: 'queued', // back into the queue; Session-2 runtime will pick it up
+    status: 'queued',
     awaitingSince: null,
   });
 
-  logger.info(`[dev-mode] Run ${run.id} clarification answered; re-queued.`);
+  logger.info(`[dev-mode] Run ${run.id} clarification answered; resuming.`);
+
+  // Resume the runner with the worktree preserved from before the pause.
+  spawnRun(run.id, { isResume: true });
 
   return res.json({
     success: true,
     data: run,
-    message: 'Answer recorded. Run will resume on the next runtime tick (Session 2).',
+    message: 'Answer recorded. AI is resuming with your answer in context.',
   });
 };
 
