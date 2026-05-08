@@ -863,6 +863,242 @@ async function callTool(name, args) {
       return { success: true, updated: Object.keys(updates), item: item.toJSON() };
     }
 
+    // ── Outbound prospecting & outreach ─────────────────────────────────────
+
+    case 'create_lead': {
+      const { company_name, contact_name, email } = args;
+      if (!company_name || !contact_name || !email) {
+        return 'Missing required fields. Need: company_name, contact_name, email.';
+      }
+      // Light email format guard — Sequelize's isEmail validator catches the
+      // rest server-side.
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return `Invalid email: ${email}`;
+      }
+      // Idempotency: if a lead with this email already exists, return it
+      // rather than creating a duplicate. Use existing record, signal no-op.
+      const existing = await getDb().Lead.findOne({ where: { email } });
+      if (existing) {
+        return {
+          success: true,
+          duplicate: true,
+          lead: existing.toJSON(),
+          message: `Lead already exists for ${email} (id=${existing.id}). Returning existing record.`,
+        };
+      }
+      const lead = await getDb().Lead.create({
+        companyName: company_name,
+        contactName: contact_name,
+        email,
+        phone: args.phone || null,
+        country: args.country || null,
+        city: args.city || null,
+        website: args.website || null,
+        linkedinUrl: args.linkedin_url || null,
+        industry: args.industry || null,
+        vertical: args.vertical || null,
+        productInterests: Array.isArray(args.product_interests) ? args.product_interests : [],
+        estimatedValue: args.estimated_value || null,
+        source: args.source || 'other',
+        status: 'new',
+        leadType: args.lead_type || 'outbound_prospect',
+        description: args.notes || null,
+        tags: Array.isArray(args.tags) ? args.tags : [],
+        assignedToId: USER_ID || null,
+      });
+      return { success: true, lead: lead.toJSON() };
+    }
+
+    case 'send_outreach_email': {
+      const { lead_id, subject, body_text } = args;
+      if (!lead_id || !subject || !body_text) {
+        return 'Missing required fields. Need: lead_id, subject, body_text.';
+      }
+      const lead = await getDb().Lead.findByPk(lead_id);
+      if (!lead) return `Lead ${lead_id} not found.`;
+
+      const { sendOutreachEmail } = require('../services/emailService');
+      const fromAddress = process.env.SMTP_USER;
+
+      // Resolve user's default signature, if any (mirrors triageController.sendEmail).
+      let signatureHtml = null;
+      let signatureText = null;
+      try {
+        const { generateSignatureHtml, generateSignatureText } =
+          require('../controllers/emailSignatureController');
+        const sig = USER_ID
+          ? await getDb().EmailSignature.findOne({ where: { userId: USER_ID, isDefault: true } })
+            || await getDb().EmailSignature.findOne({ where: { isDefault: true } })
+          : await getDb().EmailSignature.findOne({ where: { isDefault: true } });
+        if (sig) {
+          signatureHtml = generateSignatureHtml(sig);
+          signatureText = generateSignatureText(sig);
+        }
+      } catch (_) { /* signature is non-critical */ }
+
+      let smtpResult = null;
+      let sendError = null;
+      try {
+        smtpResult = await sendOutreachEmail({
+          fromAddress,
+          toAddress: lead.email,
+          toName: lead.contactName,
+          subject,
+          bodyText: body_text,
+          cc: args.cc || null,
+          bcc: args.bcc || null,
+          signatureHtml,
+          signatureText,
+        });
+      } catch (e) {
+        sendError = e.message || String(e);
+      }
+
+      // Always create the OutreachEmail row, even on send failure, so we have
+      // an audit trail and can retry.
+      const touchNumber = args.touch_number || 1;
+      const followUpDays = args.follow_up_days || (touchNumber === 1 ? 3 : touchNumber === 2 ? 5 : 7);
+      const followUpDueAt = new Date(Date.now() + followUpDays * 86400000);
+
+      const row = await getDb().OutreachEmail.create({
+        leadId: lead.id,
+        sentByUserId: USER_ID || null,
+        fromAddress,
+        toAddress: lead.email,
+        toName: lead.contactName,
+        subject,
+        bodyText: body_text,
+        touchNumber,
+        status: sendError ? 'failed' : 'sent',
+        sentAt: sendError ? null : new Date(),
+        smtpMessageId: smtpResult?.messageId || null,
+        followUpDueAt,
+        errorMessage: sendError || null,
+      });
+
+      // Lead status: bump 'new' → 'contacted' on first successful send
+      if (!sendError && lead.status === 'new') {
+        await lead.update({ status: 'contacted' });
+      }
+
+      if (sendError) {
+        return {
+          success: false,
+          error: `Email send failed: ${sendError}. OutreachEmail row created (id=${row.id}) for retry.`,
+          outreachEmail: row.toJSON(),
+        };
+      }
+      return {
+        success: true,
+        outreachEmail: row.toJSON(),
+        followUpDueAt: followUpDueAt.toISOString(),
+        message: `Sent to ${lead.email}. Follow-up due ${followUpDueAt.toISOString().slice(0, 10)} (touch ${touchNumber}).`,
+      };
+    }
+
+    case 'list_outreach_emails': {
+      const { Op } = require('sequelize');
+      const where = {};
+      if (args.lead_id) where.leadId = args.lead_id;
+      if (args.status) where.status = args.status;
+      if (args.touch_number) where.touchNumber = args.touch_number;
+      if (args.follow_up_due) {
+        where.followUpDueAt = { [Op.lte]: new Date() };
+        where.followUpCompleted = false;
+        where.status = 'sent';  // only completed sends are followup-eligible
+      }
+      const rows = await getDb().OutreachEmail.findAll({
+        where,
+        order: [['createdAt', 'DESC']],
+        limit: Math.min(args.limit || 20, 100),
+        include: [{
+          model: getDb().Lead, as: 'lead',
+          attributes: ['id', 'companyName', 'contactName', 'email', 'country', 'status'],
+        }],
+      });
+      if (!rows.length) {
+        return args.follow_up_due
+          ? 'No outreach emails are due for follow-up right now.'
+          : 'No outreach emails matching those filters.';
+      }
+      return rows.map(r => r.toJSON());
+    }
+
+    case 'schedule_follow_up': {
+      const { outreach_email_id, lead_id, follow_up_at, note } = args;
+      if (!follow_up_at) return 'Missing follow_up_at (ISO date string).';
+      const date = new Date(follow_up_at);
+      if (isNaN(date.getTime())) return `Invalid follow_up_at: ${follow_up_at}`;
+
+      if (outreach_email_id) {
+        const oe = await getDb().OutreachEmail.findByPk(outreach_email_id);
+        if (!oe) return `Outreach email ${outreach_email_id} not found.`;
+        await oe.update({ followUpDueAt: date, followUpNote: note || oe.followUpNote, followUpCompleted: false });
+        return { success: true, scope: 'outreach_email', id: oe.id, followUpDueAt: date.toISOString() };
+      }
+      if (lead_id) {
+        const lead = await getDb().Lead.findByPk(lead_id);
+        if (!lead) return `Lead ${lead_id} not found.`;
+        await lead.update({ expectedCloseDate: lead.expectedCloseDate || date });
+        // Also log an Activity row for visibility on the lead detail page.
+        if (getDb().Activity) {
+          await getDb().Activity.create({
+            type: 'follow_up',
+            subject: 'Follow-up scheduled',
+            description: note || `Follow-up scheduled for ${date.toISOString().slice(0, 10)}`,
+            scheduledAt: date,
+            leadId: lead.id,
+            userId: USER_ID || null,
+            isCompleted: false,
+            priority: 'medium',
+          });
+        }
+        return { success: true, scope: 'lead', id: lead.id, scheduledAt: date.toISOString() };
+      }
+      return 'Provide either outreach_email_id or lead_id.';
+    }
+
+    case 'calculate_landed_cost': {
+      const { product_cost, quantity = 1, freight = 0, insurance = 0,
+              customs_duty = 0, handling = 0, local_delivery = 0,
+              currency = 'USD', margin_percent } = args;
+      if (product_cost === undefined || product_cost === null) {
+        return 'Missing product_cost (FOB price per unit).';
+      }
+      const fobPerUnit = parseFloat(product_cost);
+      const qty = parseFloat(quantity);
+      const totalProductCost = fobPerUnit * qty;
+      const f = parseFloat(freight);
+      const ins = parseFloat(insurance);
+      const duty = parseFloat(customs_duty);
+      const h = parseFloat(handling);
+      const ld = parseFloat(local_delivery);
+      const totalLandedCost = totalProductCost + f + ins + duty + h + ld;
+      const costPerUnit = qty > 0 ? totalLandedCost / qty : totalLandedCost;
+      const breakdown = {
+        product: totalProductCost,
+        freight: f,
+        insurance: ins,
+        customsDuty: duty,
+        handling: h,
+        localDelivery: ld,
+        totalLandedCost,
+        costPerUnit,
+        currency,
+      };
+      // Optional margin / sell-price suggestion for the 4-min on-phone case
+      if (margin_percent !== undefined && margin_percent !== null) {
+        const m = parseFloat(margin_percent);
+        if (m >= 0 && m < 100) {
+          breakdown.marginPercent = m;
+          breakdown.sellPricePerUnit = costPerUnit / (1 - m / 100);
+          breakdown.sellPriceTotal = breakdown.sellPricePerUnit * qty;
+          breakdown.profitTotal = breakdown.sellPriceTotal - totalLandedCost;
+        }
+      }
+      return breakdown;
+    }
+
     // ── Google Drive ────────────────────────────────────────────────────────
 
     case 'search_drive_files': {
@@ -1588,6 +1824,96 @@ const TOOL_DEFS = [
       properties: {
         id:     { type: 'string', description: 'Triage item ID' },
         status: { type: 'string', enum: ['pending', 'promoted', 'forwarded', 'spam', 'dismissed', 'archived'], description: 'New status' },
+      },
+    },
+  },
+  {
+    name: 'create_lead',
+    description: 'Create a new outbound prospect lead in the CRM. Use this for net-new prospects you found via research, customs data, or referrals — NOT for inbound replies (those go through the triage /promote route). Idempotent on email: if a lead with the same email already exists, returns the existing record instead of creating a duplicate.',
+    inputSchema: {
+      type: 'object',
+      required: ['company_name', 'contact_name', 'email'],
+      properties: {
+        company_name:     { type: 'string', description: 'Company / buyer organisation name' },
+        contact_name:     { type: 'string', description: 'Primary contact full name' },
+        email:            { type: 'string', description: 'Primary contact email (must be valid format)' },
+        phone:            { type: 'string', description: 'Phone number (optional)' },
+        country:          { type: 'string', description: 'Country (e.g. United States, Egypt)' },
+        city:             { type: 'string', description: 'City' },
+        website:          { type: 'string', description: 'Company website URL' },
+        linkedin_url:     { type: 'string', description: 'Contact LinkedIn URL' },
+        industry:         { type: 'string', description: 'Industry / vertical (free text)' },
+        vertical:         { type: 'string', description: 'Sovern product vertical (e.g. flooring, auto_parts, garments)' },
+        product_interests:{ type: 'array', items: { type: 'string' }, description: 'Product subcategory slugs (e.g. ["spc", "lvt"])' },
+        estimated_value:  { type: 'number', description: 'Estimated deal value in USD' },
+        source:           { type: 'string', enum: ['website', 'referral', 'trade_show', 'cold_call', 'social_media', 'advertisement', 'other'], description: 'Lead source' },
+        lead_type:        { type: 'string', enum: ['inbound', 'outbound_prospect', 'supplier_contact'], description: 'Default: outbound_prospect' },
+        notes:            { type: 'string', description: 'Free-text notes / context' },
+        tags:             { type: 'array', items: { type: 'string' }, description: 'Tags' },
+      },
+    },
+  },
+  {
+    name: 'send_outreach_email',
+    description: 'Send a tracked outreach email to a lead. Creates an OutreachEmail row (sequence step + follow-up due date), bumps lead status new→contacted on first send, and uses the Sovern House signature. ALWAYS show the full draft (subject + body + recipient) to Alex and wait for explicit confirmation before calling this tool — never auto-send. For untracked one-off Gmail use send_email instead.',
+    inputSchema: {
+      type: 'object',
+      required: ['lead_id', 'subject', 'body_text'],
+      properties: {
+        lead_id:        { type: 'string', description: 'Lead ID (from list_leads or create_lead)' },
+        subject:        { type: 'string', description: 'Email subject' },
+        body_text:      { type: 'string', description: 'Plain-text body (will be wrapped in HTML with the Sovern signature)' },
+        touch_number:   { type: 'number', description: 'Sequence step (1=initial, 2=first follow-up, etc.). Default 1.' },
+        follow_up_days: { type: 'number', description: 'Days until follow-up is due. Default: touch1=3, touch2=5, touch3+=7' },
+        cc:             { type: 'string', description: 'CC address(es), comma-separated' },
+        bcc:            { type: 'string', description: 'BCC address(es), comma-separated' },
+      },
+    },
+  },
+  {
+    name: 'list_outreach_emails',
+    description: 'List outreach emails with filters. Use follow_up_due=true to identify which leads are overdue for a follow-up. Use lead_id to see the full sequence sent to one prospect.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        lead_id:       { type: 'string', description: 'Filter to one lead' },
+        status:        { type: 'string', enum: ['queued', 'sent', 'failed', 'bounced'] },
+        touch_number:  { type: 'number', description: 'Filter by sequence step' },
+        follow_up_due: { type: 'boolean', description: 'true = show only sends whose follow-up is due now and not yet completed' },
+        limit:         { type: 'number', description: 'Max results (default 20, max 100)' },
+      },
+    },
+  },
+  {
+    name: 'schedule_follow_up',
+    description: 'Set or reschedule a follow-up date. Pass outreach_email_id to update an OutreachEmail row\'s followUpDueAt, OR lead_id to log a follow-up Activity against a lead and set its expectedCloseDate. Use this when Alex says "remind me to follow up on X next Tuesday" or after a reply that asks for a delay.',
+    inputSchema: {
+      type: 'object',
+      required: ['follow_up_at'],
+      properties: {
+        outreach_email_id: { type: 'string', description: 'OutreachEmail row to reschedule (preferred when applicable)' },
+        lead_id:           { type: 'string', description: 'Lead row to schedule a follow-up Activity against' },
+        follow_up_at:      { type: 'string', description: 'ISO datetime string (e.g. 2026-05-15T09:00:00Z). Asia/Taipei assumed if no timezone given.' },
+        note:              { type: 'string', description: 'Reason / context for the follow-up' },
+      },
+    },
+  },
+  {
+    name: 'calculate_landed_cost',
+    description: 'Calculate landed cost for a product import. Returns full breakdown: product, freight, insurance, customs duty, handling, local delivery, total landed cost, cost per unit. If margin_percent is provided, also returns sell-price suggestions using Sovern House\'s standard formula: sell_price = cost / (1 - margin/100). Pure calculation — does NOT persist to the LandedCostCalculation table; use the /api/landed-costs endpoint for that.',
+    inputSchema: {
+      type: 'object',
+      required: ['product_cost'],
+      properties: {
+        product_cost:    { type: 'number', description: 'FOB / EXW unit cost in the working currency' },
+        quantity:        { type: 'number', description: 'Units (default 1)' },
+        freight:         { type: 'number', description: 'Total freight cost (not per-unit). Default 0' },
+        insurance:       { type: 'number', description: 'Total insurance cost. Default 0' },
+        customs_duty:    { type: 'number', description: 'Total customs duty. Default 0' },
+        handling:        { type: 'number', description: 'Port/handling charges. Default 0' },
+        local_delivery:  { type: 'number', description: 'Inland/local delivery to buyer. Default 0' },
+        currency:        { type: 'string', description: 'Currency code (default USD)' },
+        margin_percent:  { type: 'number', description: 'Sovern margin % to apply (e.g. 5 for 5%). Returns suggested sell prices when set.' },
       },
     },
   },
