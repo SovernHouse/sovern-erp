@@ -118,6 +118,7 @@ const ConnectedAccounts = React.lazy(() => import('./pages/Settings/ConnectedAcc
 
 // AI Assistant
 const AssistantPage = React.lazy(() => import('./pages/AI/AssistantPage'))
+const DevRunsPage = React.lazy(() => import('./pages/AI/DevRunsPage'))
 
 // Google Drive
 const GoogleDrivePage = React.lazy(() => import('./pages/GoogleDrive/GoogleDrivePage'))
@@ -358,6 +359,7 @@ function AppRoutes() {
 
       {/* ── AI Assistant ── */}
       <Route path="/ai/assistant"  element={<P roles={['super_admin','admin','coo','sales_rep','finance','operations','viewer']}><AssistantPage /></P>} />
+      <Route path="/ai/dev-runs"   element={<P roles={['super_admin']}><DevRunsPage /></P>} />
 
       {/* ── CRM / Pipeline ── */}
       <Route path="/crm"                       element={<P permission="outreach"><CRMDashboard /></P>} />

@@ -6,12 +6,18 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { aiAPI } from '../../services/api'
+import { aiAPI, devModeAPI } from '../../services/api'
+import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 import {
   Send, Plus, Trash2, MessageSquare, Bot, User,
   ChevronLeft, Loader2, Sparkles, X, Pencil, Check,
+  Code, ExternalLink, AlertTriangle, CheckCircle2, XCircle, HelpCircle, GitPullRequest, StopCircle, Play,
 } from 'lucide-react'
+
+// Dev Mode (super_admin only) — toggle persisted across reloads
+const DEV_MODE_KEY = 'sovern.ai.devModeOn'
+const NON_TERMINAL_RUN = ['queued', 'running', 'opening_pr', 'awaiting_clarification']
 
 // localStorage key for the last-active conversation id, so the user
 // resumes their previous chat after closing/reopening the ERP instead
@@ -160,6 +166,16 @@ function renderMarkdown(text) {
 
 function MessageBubble({ msg }) {
   const isUser = msg.role === 'user'
+
+  // Dev-mode user prompts get a Code badge so it's visually obvious which
+  // turns spawned a dev run.
+  const isDevModeUser = isUser && msg.devMode
+
+  // Dev-mode run cards have their own component
+  if (msg.kind === 'devRun') {
+    return <DevRunCard runId={msg.runId} createdAt={msg.createdAt} />
+  }
+
   return (
     <div style={{
       display: 'flex',
@@ -172,16 +188,16 @@ function MessageBubble({ msg }) {
       <div style={{
         width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: isUser ? '#2563eb' : '#0f172a',
+        background: isUser ? (isDevModeUser ? '#0f172a' : '#2563eb') : '#0f172a',
         color: '#fff',
       }}>
-        {isUser ? <User size={15} /> : <Bot size={15} />}
+        {isDevModeUser ? <Code size={15} /> : isUser ? <User size={15} /> : <Bot size={15} />}
       </div>
 
       {/* Bubble */}
       <div style={{
         maxWidth: '75%',
-        background: isUser ? '#2563eb' : '#fff',
+        background: isUser ? (isDevModeUser ? '#0f172a' : '#2563eb') : '#fff',
         color: isUser ? '#fff' : '#1e293b',
         borderRadius: isUser ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
         padding: '10px 14px',
@@ -190,6 +206,9 @@ function MessageBubble({ msg }) {
         boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
         border: isUser ? 'none' : '1px solid #e2e8f0',
       }}>
+        {isDevModeUser && (
+          <div style={{ fontSize: 10, fontWeight: 700, opacity: 0.7, marginBottom: 4, letterSpacing: 0.6 }}>DEV MODE</div>
+        )}
         {isUser
           ? <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
           : renderMarkdown(msg.content)
@@ -202,6 +221,160 @@ function MessageBubble({ msg }) {
       </div>
     </div>
   )
+}
+
+// ── Dev Run Card ──────────────────────────────────────────────────────────────
+// Live-status card for an in-flight dev-mode run. Polls every 4s while
+// the run is non-terminal; renders final state + PR link when done.
+
+function DevRunCard({ runId, createdAt }) {
+  const [run, setRun] = useState(null)
+  const [error, setError] = useState(null)
+  const [answer, setAnswer] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await devModeAPI.getRun(runId)
+      if (res.data?.data) setRun(res.data.data)
+    } catch (e) {
+      setError(e.response?.data?.error || e.message)
+    }
+  }, [runId])
+
+  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => {
+    if (!run) return
+    if (!NON_TERMINAL_RUN.includes(run.status)) return
+    const t = setInterval(refresh, 4000)
+    return () => clearInterval(t)
+  }, [run, refresh])
+
+  async function submitAnswer() {
+    if (!answer.trim()) return
+    setSubmitting(true)
+    try {
+      await devModeAPI.answerClarification(runId, answer.trim())
+      setAnswer('')
+      await refresh()
+      toast.success('Answer submitted; AI is resuming.')
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Failed to submit answer')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const meta = run ? statusMetaInline(run.status) : { color: '#64748b', bg: '#f1f5f9', label: 'Loading' }
+  const Icon = meta.icon || Loader2
+
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', margin: '12px 0' }}>
+      <div style={{
+        width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: '#0f172a', color: '#fff',
+      }}>
+        <Code size={15} />
+      </div>
+      <div style={{
+        maxWidth: '85%',
+        background: '#fff',
+        color: '#1e293b',
+        borderRadius: '4px 16px 16px 16px',
+        padding: '12px 14px',
+        fontSize: 14,
+        lineHeight: 1.5,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+        border: '1px solid #e2e8f0',
+        minWidth: 280,
+      }}>
+        {error && <div style={{ color: '#991b1b' }}>⚠️ {error}</div>}
+        {!error && !run && <div style={{ color: '#64748b' }}><Loader2 size={14} style={{ animation: 'spin 1s linear infinite', verticalAlign: 'middle', marginRight: 6 }} /> Starting dev-mode run...</div>}
+        {run && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                background: meta.bg, color: meta.color, fontWeight: 600, fontSize: 11,
+                padding: '3px 8px', borderRadius: 99,
+              }}>
+                <Icon size={11} style={meta.spin ? { animation: 'spin 1s linear infinite' } : {}} />
+                {meta.label}
+              </span>
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>turn {run.turnCount || 0}/{run.maxTurns || 30}</span>
+            </div>
+            {run.branchName && (
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>
+                branch: <code style={{ background: '#f1f5f9', padding: '1px 5px', borderRadius: 4, fontFamily: 'monospace' }}>{run.branchName}</code>
+              </div>
+            )}
+            {run.linesAdded > 0 || run.linesDeleted > 0 ? (
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>diff: +{run.linesAdded || 0} / -{run.linesDeleted || 0} across {run.filesChanged?.length || 0} files</div>
+            ) : null}
+            {run.errorMessage && (
+              <div style={{ fontSize: 12, color: '#991b1b', background: '#fef2f2', padding: 8, borderRadius: 6, marginTop: 6 }}>
+                {run.errorMessage}
+              </div>
+            )}
+            {run.status === 'awaiting_clarification' && run.clarificationQuestion && (
+              <div style={{ marginTop: 8, padding: 10, background: '#fef3c7', borderRadius: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#854d0e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>AI is asking</div>
+                <pre style={{ margin: 0, fontSize: 13, whiteSpace: 'pre-wrap', fontFamily: 'inherit', color: '#854d0e' }}>{run.clarificationQuestion}</pre>
+                <textarea
+                  value={answer}
+                  onChange={e => setAnswer(e.target.value)}
+                  placeholder="Your answer..."
+                  rows={2}
+                  style={{ width: '100%', marginTop: 6, padding: 6, border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, fontFamily: 'inherit' }}
+                />
+                <button
+                  onClick={submitAnswer}
+                  disabled={submitting || !answer.trim()}
+                  style={{
+                    marginTop: 6, background: '#0f172a', color: '#fff',
+                    border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 600,
+                    cursor: submitting || !answer.trim() ? 'default' : 'pointer',
+                    opacity: submitting || !answer.trim() ? 0.5 : 1,
+                  }}
+                >
+                  {submitting ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite', verticalAlign: 'middle' }} /> : 'Submit'}
+                </button>
+              </div>
+            )}
+            {run.prUrl && (
+              <a href={run.prUrl} target="_blank" rel="noreferrer" style={{
+                marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: '#0f172a', color: '#fff', padding: '6px 12px',
+                borderRadius: 6, fontSize: 12, fontWeight: 600, textDecoration: 'none',
+              }}>
+                <GitPullRequest size={12} /> Review PR #{run.prNumber || '?'} <ExternalLink size={11} />
+              </a>
+            )}
+          </>
+        )}
+        {createdAt && (
+          <div style={{ fontSize: 10, opacity: 0.5, marginTop: 6, textAlign: 'right' }}>
+            {new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function statusMetaInline(status) {
+  switch (status) {
+    case 'queued':                 return { icon: Play,         color: '#64748b', bg: '#f1f5f9', label: 'Queued' }
+    case 'running':                return { icon: Loader2,      color: '#2563eb', bg: '#eff6ff', label: 'Running',          spin: true }
+    case 'opening_pr':             return { icon: GitPullRequest,color: '#7c3aed', bg: '#f5f3ff', label: 'Opening PR' }
+    case 'awaiting_clarification': return { icon: HelpCircle,   color: '#d97706', bg: '#fef3c7', label: 'Awaiting answer' }
+    case 'completed':              return { icon: CheckCircle2, color: '#059669', bg: '#ecfdf5', label: 'Completed' }
+    case 'wip':                    return { icon: AlertTriangle,color: '#d97706', bg: '#fef3c7', label: 'WIP' }
+    case 'failed':                 return { icon: XCircle,      color: '#dc2626', bg: '#fee2e2', label: 'Failed' }
+    case 'aborted':                return { icon: StopCircle,   color: '#475569', bg: '#f1f5f9', label: 'Aborted' }
+    default:                       return { icon: Loader2,      color: '#64748b', bg: '#f1f5f9', label: status }
+  }
 }
 
 // ── Typing indicator ──────────────────────────────────────────────────────────
@@ -369,6 +542,9 @@ function formatRelative(dateStr) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AssistantPage() {
+  const { user } = useAuth()
+  const isSuperAdmin = user?.role === 'super_admin'
+
   const [conversations, setConversations] = useState([])
   const [activeConvId, setActiveConvId] = useState(null)
   const [messages, setMessages] = useState([])
@@ -376,6 +552,18 @@ export default function AssistantPage() {
   const [sending, setSending] = useState(false)
   const [loadingConv, setLoadingConv] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+
+  // Dev Mode: super_admin-only toggle. When ON, the input spawns a
+  // sandboxed dev-mode AI run instead of the regular chat reply.
+  const [devMode, setDevMode] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem(DEV_MODE_KEY) === '1'
+  })
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(DEV_MODE_KEY, devMode ? '1' : '0')
+    }
+  }, [devMode])
 
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -454,6 +642,44 @@ export default function AssistantPage() {
   async function handleSend() {
     const text = input.trim()
     if (!text || sending) return
+
+    // Dev Mode branch: spawn a sandboxed AI code-change run, push a
+    // live-status card into the chat, no /ai/chat call. Only available
+    // to super_admin.
+    if (devMode && isSuperAdmin) {
+      setInput('')
+      setSending(true)
+      setMessages(prev => [...prev, {
+        role: 'user',
+        content: text,
+        createdAt: new Date().toISOString(),
+        devMode: true,
+      }])
+      try {
+        const res = await devModeAPI.startRun(text)
+        const run = res.data?.data
+        if (run) {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            kind: 'devRun',
+            runId: run.id,
+            content: '',
+            createdAt: new Date().toISOString(),
+          }])
+        }
+      } catch (err) {
+        const msg = err.response?.data?.error || err.message || 'Failed to start dev-mode run'
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: '⚠️ ' + msg,
+          createdAt: new Date().toISOString(),
+        }])
+      } finally {
+        setSending(false)
+        inputRef.current?.focus()
+      }
+      return
+    }
 
     setInput('')
     setSending(true)
@@ -620,7 +846,7 @@ export default function AssistantPage() {
                 <MessageSquare size={18} />
               </button>
             )}
-            <Bot size={18} color="#2563eb" />
+            <Bot size={18} color={devMode ? '#0f172a' : '#2563eb'} />
             <span style={{ fontWeight: 600, fontSize: 15, color: '#1e293b' }}>
               {activeConvId
                 ? (conversations.find(c => c.id === activeConvId)?.title || 'Conversation')
@@ -632,6 +858,29 @@ export default function AssistantPage() {
             }}>
               Full context
             </span>
+
+            <span style={{ flex: 1 }} />
+
+            {/* Dev Mode toggle (super_admin only) */}
+            {isSuperAdmin && (
+              <button
+                onClick={() => setDevMode(v => !v)}
+                title={devMode
+                  ? 'Dev Mode is ON — your next message will spawn a sandboxed code-change AI run'
+                  : 'Switch on Dev Mode for code changes (super_admin only). PR-based, runs in a sandboxed worktree on the VM.'}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  background: devMode ? '#0f172a' : '#fff',
+                  color: devMode ? '#fff' : '#475569',
+                  border: '1px solid ' + (devMode ? '#0f172a' : '#e2e8f0'),
+                  borderRadius: 99, padding: '4px 10px', fontSize: 12, fontWeight: 600,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                }}
+              >
+                <Code size={13} />
+                Dev Mode {devMode ? 'ON' : 'OFF'}
+              </button>
+            )}
           </div>
 
           {/* Messages area */}
@@ -673,7 +922,9 @@ export default function AssistantPage() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask anything about the business, get email drafts, analyse data..."
+                placeholder={devMode && isSuperAdmin
+                  ? 'Describe a code change. The dev agent will edit the repo, commit, and open a PR...'
+                  : 'Ask anything about the business, get email drafts, analyse data...'}
                 rows={1}
                 style={{
                   flex: 1, border: 'none', background: 'transparent',
@@ -705,8 +956,10 @@ export default function AssistantPage() {
                 }
               </button>
             </div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, textAlign: 'center' }}>
-              Enter to send, Shift+Enter for new line. Powered by Claude (Max subscription).
+            <div style={{ fontSize: 11, color: devMode && isSuperAdmin ? '#0f172a' : '#94a3b8', marginTop: 6, textAlign: 'center' }}>
+              {devMode && isSuperAdmin
+                ? <><Code size={11} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Dev Mode: next message spawns a sandboxed code-change AI. Up to 30 min, max 5/24h. PR opens for your review.</>
+                : 'Enter to send, Shift+Enter for new line. Powered by Claude (Max subscription).'}
             </div>
           </div>
         </div>

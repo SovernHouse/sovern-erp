@@ -556,4 +556,23 @@ export const aiAPI = {
   clearConversation:    (id)          => api.post(`/ai/conversations/${id}/clear`),
 }
 
+// Dev Mode (super_admin only) — sandboxed AI code-change runs.
+// startRun returns 202 immediately; the run completes in the background
+// and the client should poll getRun (or react to a Notification row).
+export const devModeAPI = {
+  startRun:              (prompt)               => api.post('/dev-mode/runs', { prompt }),
+  listRuns:              (params)               => api.get('/dev-mode/runs', { params }),
+  getRun:                (id)                   => api.get(`/dev-mode/runs/${id}`),
+  answerClarification:   (id, answer)           => api.post(`/dev-mode/runs/${id}/answer`, { answer }),
+  abortRun:              (id)                   => api.post(`/dev-mode/runs/${id}/abort`),
+}
+
+// Expo push tokens — admin portal doesn't push but this is here for
+// completeness / future web-push.
+export const pushTokensAPI = {
+  register:    (token, opts) => api.post('/push-tokens/register', { token, ...(opts || {}) }),
+  unregister:  (token)       => api.post('/push-tokens/unregister', { token }),
+  listMine:    ()            => api.get('/push-tokens/me'),
+}
+
 export default api
