@@ -1715,6 +1715,30 @@ async function callTool(name, args) {
       }));
     }
 
+    // ── Customers (lookup wrapper) ──────────────────────────────────────────
+
+    case 'list_customers': {
+      const { Op } = require('sequelize');
+      const where = {};
+      if (args.search) {
+        where[Op.or] = [
+          { companyName: { [Op.like]: `%${args.search}%` } },
+          { country:     { [Op.like]: `%${args.search}%` } },
+          { city:        { [Op.like]: `%${args.search}%` } },
+          { email:       { [Op.like]: `%${args.search}%` } },
+        ];
+      }
+      if (args.country) where.country = args.country;
+      const customers = await getDb().Customer.findAll({
+        where,
+        limit: Math.min(args.limit || 20, 50),
+        order: [['createdAt', 'DESC']],
+        attributes: ['id', 'companyName', 'email', 'phone', 'country',
+          'city', 'currency', 'paymentTerms', 'creditLimit', 'isActive'],
+      });
+      return customers.length ? customers.map(c => c.toJSON()) : 'No customers found.';
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}. Available tools: ${TOOL_DEFS.map(t => t.name).join(', ')}`);
   }
@@ -2425,6 +2449,18 @@ const TOOL_DEFS = [
         lead_id:    { type: 'string', description: 'Lead ID to attach to' },
         contact_id: { type: 'string', description: 'Contact ID to attach to' },
         due_date:   { type: 'string', description: 'Due date for tasks (ISO format)' },
+      },
+    },
+  },
+  {
+    name: 'list_customers',
+    description: 'List existing Sovern House customers (the buyer side of the trade — companies we sell to). Use for the /clients lookup slash command and any ad-hoc search across the customer book. For sourcing NEW prospective buyers, do NOT use this — point Alex at /new-clients which kicks off a background research run.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        search:  { type: 'string', description: 'Free-text search across company name, country, city, email' },
+        country: { type: 'string', description: 'Filter by country (exact match)' },
+        limit:   { type: 'number', description: 'Max results (default 20, max 50)' },
       },
     },
   },
