@@ -119,6 +119,17 @@ db.ExpoPushToken = require('./ExpoPushToken')(sequelize);
 // /new-clients and /new-suppliers slash commands).
 db.ResearchTask = require('./ResearchTask')(sequelize);
 
+// Expenses module (item 4): personal + inspector expense tracking with
+// multi-currency, multi-office reimbursement routing, and client P&L
+// attribution. Order matters here only because the FK declarations in
+// associate() reference each other; Sequelize wires associate after all
+// models load so this is fine in any order, but listed in dependency-friendly
+// order for human readability.
+db.ReimbursementOffice = require('./ReimbursementOffice')(sequelize);
+db.Trip                = require('./Trip')(sequelize);
+db.ExpenseSubmission   = require('./ExpenseSubmission')(sequelize);
+db.Expense             = require('./Expense')(sequelize);
+
 // Load CRM models if they exist.
 // Tolerate missing files (MODULE_NOT_FOUND, e.g. CRM module disabled),
 // but surface any other error (syntax error, runtime throw inside the

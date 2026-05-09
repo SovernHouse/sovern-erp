@@ -520,7 +520,8 @@ db.sequelize.authenticate()
     // (suspected: an index-creation race that catches as "already exists"
     // and aborts the table create on the same iteration). model.sync() is
     // idempotent on existing tables.
-    const lateAdditions = ['DevModeRun', 'ExpoPushToken', 'ResearchTask'];
+    const lateAdditions = ['DevModeRun', 'ExpoPushToken', 'ResearchTask',
+      'ReimbursementOffice', 'Trip', 'ExpenseSubmission', 'Expense'];
     for (const modelName of lateAdditions) {
       if (!db[modelName]) continue;
       try {
