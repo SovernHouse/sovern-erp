@@ -5,7 +5,7 @@
 ---
 
 ## Last Updated
-2026-05-09 (Taiwan time, tenth session continued — Expenses module FULLY OPEN TO ALL USERS + backend permission model reworked + iOS build config fixed. Desktop Expenses page exists but needs OTA investigation per Mac notes. Expo Go OTA blocker still unresolved; iOS simulator via Windows not possible; Android option available. See notes below.)
+2026-05-09 17:28 Taiwan time (eleventh session — Fixed Expenses nav visibility bug + reorganized admin nav by business workflow. Desktop Expenses tab now showing and properly positioned in Finance section. Mobile Expenses screen already built in previous session. L-037 lesson added: keep hardcoded nav arrays and fallback nav builder in sync to avoid UI invisibility bugs.)
 
 ---
 
