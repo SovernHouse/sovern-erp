@@ -120,6 +120,7 @@ const ConnectedAccounts = React.lazy(() => import('./pages/Settings/ConnectedAcc
 const AssistantPage = React.lazy(() => import('./pages/AI/AssistantPage'))
 const DevRunsPage = React.lazy(() => import('./pages/AI/DevRunsPage'))
 const ResearchPage = React.lazy(() => import('./pages/AI/ResearchPage'))
+const ExpensesPage = React.lazy(() => import('./pages/Expenses/ExpensesPage'))
 
 // Google Drive
 const GoogleDrivePage = React.lazy(() => import('./pages/GoogleDrive/GoogleDrivePage'))
@@ -362,6 +363,7 @@ function AppRoutes() {
       <Route path="/ai/assistant"  element={<P roles={['super_admin','admin','coo','sales_rep','finance','operations','viewer']}><AssistantPage /></P>} />
       <Route path="/ai/dev-runs"   element={<P roles={['super_admin']}><DevRunsPage /></P>} />
       <Route path="/ai/research"   element={<P roles={['super_admin','admin']}><ResearchPage /></P>} />
+      <Route path="/expenses"      element={<P roles={['super_admin','admin']}><ExpensesPage /></P>} />
 
       {/* ── CRM / Pipeline ── */}
       <Route path="/crm"                       element={<P permission="outreach"><CRMDashboard /></P>} />
