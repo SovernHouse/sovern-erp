@@ -25,6 +25,8 @@ import {
   aiRenameConversation, uploadAttachment,
   startDevModeRun, getDevModeRun, answerDevModeClarification,
   startResearchTask, getCustomers, getFactories, getProducts,
+  listExpenses, createExpense, listExpenseOffices,
+  createExpenseSubmission, generateSubmissionReport,
   type AIConversation, type AIMessage, type AIAttachment,
   type DevModeRun, type DevModeRunStatus,
   type ResearchTaskMode,
@@ -70,7 +72,10 @@ function stripMarkdown(text: string): string {
 
 // ─── Slash commands ───────────────────────────────────────────────────────────
 
-type SlashKind = 'new-clients' | 'new-suppliers' | 'clients' | 'suppliers' | 'products';
+type SlashKind =
+  | 'new-clients' | 'new-suppliers'
+  | 'clients' | 'suppliers' | 'products'
+  | 'expense' | 'expenses' | 'expense-report';
 
 interface ParsedSlash {
   kind: SlashKind;
@@ -84,11 +89,14 @@ interface SlashSpec {
 }
 
 const SLASH_COMMANDS: SlashSpec[] = [
-  { name: 'new-clients',   args: '<brief>', desc: 'Source NEW client prospects (background research, 5-15 min)' },
-  { name: 'new-suppliers', args: '<brief>', desc: 'Source NEW factories (background research, 5-15 min)' },
-  { name: 'clients',       args: '<query>', desc: 'Search existing customers' },
-  { name: 'suppliers',     args: '<query>', desc: 'Search existing factories' },
-  { name: 'products',      args: '<query>', desc: 'Search existing products' },
+  { name: 'new-clients',    args: '<brief>',                    desc: 'Source NEW client prospects (background research, 5-15 min)' },
+  { name: 'new-suppliers',  args: '<brief>',                    desc: 'Source NEW factories (background research, 5-15 min)' },
+  { name: 'clients',        args: '<query>',                    desc: 'Search existing customers' },
+  { name: 'suppliers',      args: '<query>',                    desc: 'Search existing factories' },
+  { name: 'products',       args: '<query>',                    desc: 'Search existing products' },
+  { name: 'expense',        args: '<amount> <ccy> <description>', desc: 'Quick-log an expense (e.g. /expense 142 TWD taxi from airport)' },
+  { name: 'expenses',       args: '[unpaid|all]',               desc: 'List recent expenses (default: unpaid only)' },
+  { name: 'expense-report', args: '<office-code>',              desc: 'Bundle all draft expenses for an office into a report (XLSX in Drive)' },
 ];
 
 // Returns the list of commands matching the current input, OR null if the
@@ -105,9 +113,24 @@ function suggestSlashCommands(input: string): SlashSpec[] | null {
 function parseSlashCommand(input: string): ParsedSlash | null {
   const trimmed = input.trim();
   if (!trimmed.startsWith('/')) return null;
-  const m = trimmed.match(/^\/(new-clients|new-suppliers|clients|suppliers|products)(?:\s+([\s\S]+))?$/i);
+  const m = trimmed.match(/^\/(new-clients|new-suppliers|clients|suppliers|products|expense-report|expenses|expense)(?:\s+([\s\S]+))?$/i);
   if (!m) return null;
   return { kind: m[1].toLowerCase() as SlashKind, arg: (m[2] || '').trim() };
+}
+
+// Parse "142 TWD taxi from airport" → { amount: 142, currency: 'TWD', description: 'taxi from airport' }
+// Tolerant: amount can come with $ / NT$ / ¥, currency is best-effort.
+function parseExpenseArgs(arg: string): { amount: number | null; currency: string; description: string } {
+  const cleaned = arg.replace(/^[$¥₫฿]|NT\$/gi, '').trim();
+  // Match leading number (with optional decimal)
+  const m = cleaned.match(/^(\d+(?:\.\d+)?)\s+(\S+)\s+(.*)$/);
+  if (!m) {
+    // Maybe just number + description (no currency)
+    const m2 = cleaned.match(/^(\d+(?:\.\d+)?)\s+(.*)$/);
+    if (m2) return { amount: Number(m2[1]), currency: 'USD', description: m2[2].trim() };
+    return { amount: null, currency: 'USD', description: arg };
+  }
+  return { amount: Number(m[1]), currency: m[2].toUpperCase().slice(0, 3), description: m[3].trim() };
 }
 
 async function runSlashCommand(slash: ParsedSlash, conversationId: string | null): Promise<string> {
@@ -143,6 +166,65 @@ async function runSlashCommand(slash: ParsedSlash, conversationId: string | null
       const rows = (res as any).data ?? (res as any).items ?? [];
       if (!rows.length) return arg ? `No products match "${arg}".` : 'No products found.';
       return formatRowList(rows.slice(0, 20), p => `**${p.name || p.sku}**${p.sku ? ` (${p.sku})` : ''}${p.category?.name ? ` — ${p.category.name}` : ''}`);
+    }
+
+    case 'expense': {
+      if (!slash.arg) {
+        return 'Need an amount + currency + description — e.g. `/expense 142 TWD taxi from airport for LAU trip`.';
+      }
+      const { amount, currency, description } = parseExpenseArgs(slash.arg);
+      if (amount == null) {
+        return 'Could not parse the amount. Format: `/expense <amount> <currency> <description>`. Example: `/expense 580 USD hotel at LAU`.';
+      }
+      const created = await createExpense({
+        category: 'Other',
+        description,
+        originalCurrency: currency,
+        originalAmount: amount,
+        submissionStatus: 'draft',
+      });
+      const e = created.data;
+      return `✓ Logged: **${currency} ${amount.toLocaleString()}** — ${description}\n\nStatus: draft. Open the Expenses tab to attach a receipt or assign to a customer/office. Task ID: \`${e.id.slice(0, 8)}\``;
+    }
+
+    case 'expenses': {
+      const arg = slash.arg.trim().toLowerCase();
+      const params = arg === 'all' ? { limit: 20 } : { paid: false, limit: 20 };
+      const res = await listExpenses(params);
+      const rows = res.data || [];
+      if (!rows.length) return arg === 'all' ? 'No expenses found.' : 'No unpaid expenses. 🎉';
+      const lines = rows.map(e =>
+        `- ${e.entryDate} · **${e.originalCurrency} ${Number(e.originalAmount).toLocaleString()}** — ${e.description || e.category}` +
+        (e.submissionStatus !== 'draft' ? ` _(${e.submissionStatus})_` : ''),
+      );
+      return `${arg === 'all' ? 'All' : 'Unpaid'} expenses (last ${rows.length}):\n${lines.join('\n')}`;
+    }
+
+    case 'expense-report': {
+      const officeArg = slash.arg.trim();
+      if (!officeArg) {
+        return 'Specify an office code — e.g. `/expense-report SOVERN_TW`. Run `/expenses` first to see what\'s pending.';
+      }
+      const officesRes = await listExpenseOffices();
+      const offices = officesRes.data || [];
+      const office = offices.find(o =>
+        o.code.toLowerCase() === officeArg.toLowerCase() ||
+        o.displayName.toLowerCase() === officeArg.toLowerCase(),
+      );
+      if (!office) {
+        const list = offices.map(o => `${o.code} (${o.displayName})`).join(', ') || 'none registered yet';
+        return `No office matches "${officeArg}". Available: ${list}.`;
+      }
+      if (!office.exportTemplateKey) {
+        return `Office **${office.code}** has no export template set. Open Settings → Offices and pick one of: \`expense_to_alex_v2\`, \`inspector_travel_v2\`, \`custom_csv\`.`;
+      }
+      // Group all draft expenses for this office into a new submission, then
+      // generate the report XLSX.
+      const subRes = await createExpenseSubmission({ officeId: office.id });
+      const sub = subRes.data;
+      const repRes = await generateSubmissionReport(sub.id);
+      const file = repRes.data?.driveFile;
+      return `📑 Report generated for **${office.code}** using \`${repRes.data?.templateKey}\`.\n\n${file?.webViewLink ? `[Open in Drive](${file.webViewLink})` : `Drive file ID: \`${file?.id}\``}`;
     }
   }
 }

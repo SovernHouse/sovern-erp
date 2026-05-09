@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { aiAPI, devModeAPI, researchAPI, customersAPI, factoriesAPI, productsAPI } from '../../services/api'
+import { aiAPI, devModeAPI, researchAPI, customersAPI, factoriesAPI, productsAPI, expensesAPI } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 import {
@@ -28,11 +28,14 @@ const NON_TERMINAL_RUN = ['queued', 'running', 'opening_pr', 'awaiting_clarifica
 // /products <query>      → search existing products — instant
 
 const SLASH_COMMANDS = [
-  { name: 'new-clients',   args: '<brief>', desc: 'Source NEW client prospects (background research, 5-15 min)' },
-  { name: 'new-suppliers', args: '<brief>', desc: 'Source NEW factories (background research, 5-15 min)' },
-  { name: 'clients',       args: '<query>', desc: 'Search existing customers' },
-  { name: 'suppliers',     args: '<query>', desc: 'Search existing factories' },
-  { name: 'products',      args: '<query>', desc: 'Search existing products' },
+  { name: 'new-clients',    args: '<brief>',                      desc: 'Source NEW client prospects (background research, 5-15 min)' },
+  { name: 'new-suppliers',  args: '<brief>',                      desc: 'Source NEW factories (background research, 5-15 min)' },
+  { name: 'clients',        args: '<query>',                      desc: 'Search existing customers' },
+  { name: 'suppliers',      args: '<query>',                      desc: 'Search existing factories' },
+  { name: 'products',       args: '<query>',                      desc: 'Search existing products' },
+  { name: 'expense',        args: '<amount> <ccy> <description>', desc: 'Quick-log an expense (e.g. /expense 142 TWD taxi from airport)' },
+  { name: 'expenses',       args: '[unpaid|all]',                 desc: 'List recent expenses (default: unpaid only)' },
+  { name: 'expense-report', args: '<office-code>',                desc: 'Bundle all draft expenses for an office into a report (XLSX in Drive)' },
 ]
 
 // Returns the suggested commands for the current input, OR null when the
@@ -48,9 +51,20 @@ function suggestSlashCommands(input) {
 function parseSlashCommand(input) {
   const trimmed = (input || '').trim()
   if (!trimmed.startsWith('/')) return null
-  const m = trimmed.match(/^\/(new-clients|new-suppliers|clients|suppliers|products)(?:\s+([\s\S]+))?$/i)
+  // Order matters: longer keywords first so /expense-report doesn't match /expense.
+  const m = trimmed.match(/^\/(new-clients|new-suppliers|clients|suppliers|products|expense-report|expenses|expense)(?:\s+([\s\S]+))?$/i)
   if (!m) return null
   return { kind: m[1].toLowerCase(), arg: (m[2] || '').trim() }
+}
+
+// "142 TWD taxi from airport" → { amount, currency, description }
+function parseExpenseArgs(arg) {
+  const cleaned = String(arg || '').replace(/^[$¥₫฿]|NT\$/gi, '').trim()
+  const m = cleaned.match(/^(\d+(?:\.\d+)?)\s+(\S+)\s+(.*)$/)
+  if (m) return { amount: Number(m[1]), currency: m[2].toUpperCase().slice(0, 3), description: m[3].trim() }
+  const m2 = cleaned.match(/^(\d+(?:\.\d+)?)\s+(.*)$/)
+  if (m2) return { amount: Number(m2[1]), currency: 'USD', description: m2[2].trim() }
+  return { amount: null, currency: 'USD', description: arg }
 }
 
 async function runSlashCommand(slash, conversationId) {
@@ -93,6 +107,62 @@ async function runSlashCommand(slash, conversationId) {
         `- **${p.name || p.sku}**${p.sku ? ` (${p.sku})` : ''}${p.category?.name ? ` — ${p.category.name}` : ''}`
       ).join('\n')
     }
+
+    case 'expense': {
+      if (!slash.arg) {
+        return 'Need an amount + currency + description — e.g. `/expense 142 TWD taxi from airport for LAU trip`.'
+      }
+      const { amount, currency, description } = parseExpenseArgs(slash.arg)
+      if (amount == null) {
+        return 'Could not parse the amount. Format: `/expense <amount> <currency> <description>`. Example: `/expense 580 USD hotel at LAU`.'
+      }
+      const res = await expensesAPI.create({
+        category: 'Other',
+        description,
+        originalCurrency: currency,
+        originalAmount: amount,
+        submissionStatus: 'draft',
+      })
+      const e = res.data?.data
+      return `✓ Logged: **${currency} ${amount.toLocaleString()}** — ${description}\n\nStatus: draft. Open the Expenses page to attach a receipt or assign to a customer/office. ID: \`${e?.id?.slice(0, 8)}\``
+    }
+
+    case 'expenses': {
+      const arg = slash.arg.trim().toLowerCase()
+      const params = arg === 'all' ? { limit: 20 } : { paid: false, limit: 20 }
+      const res = await expensesAPI.list(params)
+      const rows = res.data?.data || []
+      if (!rows.length) return arg === 'all' ? 'No expenses found.' : 'No unpaid expenses. 🎉'
+      const lines = rows.map(e =>
+        `- ${e.entryDate} · **${e.originalCurrency} ${Number(e.originalAmount).toLocaleString()}** — ${e.description || e.category}` +
+        (e.submissionStatus !== 'draft' ? ` _(${e.submissionStatus})_` : ''),
+      )
+      return `${arg === 'all' ? 'All' : 'Unpaid'} expenses (last ${rows.length}):\n${lines.join('\n')}`
+    }
+
+    case 'expense-report': {
+      const officeArg = slash.arg.trim()
+      if (!officeArg) return 'Specify an office code — e.g. `/expense-report SOVERN_TW`. Run `/expenses` first to see what\'s pending.'
+      const officesRes = await expensesAPI.listOffices()
+      const offices = officesRes.data?.data || []
+      const office = offices.find(o =>
+        o.code?.toLowerCase() === officeArg.toLowerCase() ||
+        o.displayName?.toLowerCase() === officeArg.toLowerCase(),
+      )
+      if (!office) {
+        const list = offices.map(o => `${o.code} (${o.displayName})`).join(', ') || 'none registered yet'
+        return `No office matches "${officeArg}". Available: ${list}.`
+      }
+      if (!office.exportTemplateKey) {
+        return `Office **${office.code}** has no export template set. PATCH /api/expense-offices/${office.id} with one of: \`expense_to_alex_v2\`, \`inspector_travel_v2\`, \`custom_csv\`.`
+      }
+      const subRes = await expensesAPI.createSubmission({ officeId: office.id })
+      const sub = subRes.data?.data
+      const repRes = await expensesAPI.generateReport(sub.id)
+      const file = repRes.data?.data?.driveFile
+      return `📑 Report generated for **${office.code}** using \`${repRes.data?.data?.templateKey}\`.\n\n${file?.webViewLink ? `[Open in Drive](${file.webViewLink})` : `Drive file ID: \`${file?.id}\``}`
+    }
+
     default:
       return null
   }

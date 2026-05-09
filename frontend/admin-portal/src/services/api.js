@@ -589,6 +589,34 @@ export const researchAPI = {
   cancelTask: (id)                          => api.post(`/research/tasks/${id}/cancel`),
 }
 
+// Expenses module (item 4) — used by the /expense, /expenses, /expense-report
+// slash commands plus the admin expenses page. Mounted at /api so paths are
+// /api/expenses, /api/expense-offices, /api/expense-trips, /api/expense-submissions.
+export const expensesAPI = {
+  // Expense CRUD
+  list:               (params)              => api.get('/expenses', { params }),
+  get:                (id)                  => api.get(`/expenses/${id}`),
+  create:             (data)                => api.post('/expenses', data),
+  update:             (id, data)            => api.patch(`/expenses/${id}`, data),
+  remove:             (id)                  => api.delete(`/expenses/${id}`),
+  extractFromReceipt: (driveFileId)         => api.post('/expenses/extract-from-receipt', { driveFileId }, { timeout: 90000 }),
+  // Office CRUD
+  listOffices:        (params)              => api.get('/expense-offices', { params }),
+  createOffice:       (data)                => api.post('/expense-offices', data),
+  updateOffice:       (id, data)            => api.patch(`/expense-offices/${id}`, data),
+  removeOffice:       (id)                  => api.delete(`/expense-offices/${id}`),
+  // Trip CRUD
+  listTrips:          ()                    => api.get('/expense-trips'),
+  createTrip:         (data)                => api.post('/expense-trips', data),
+  updateTrip:         (id, data)            => api.patch(`/expense-trips/${id}`, data),
+  removeTrip:         (id)                  => api.delete(`/expense-trips/${id}`),
+  // Submissions + reports
+  listSubmissions:    (params)              => api.get('/expense-submissions', { params }),
+  createSubmission:   (data)                => api.post('/expense-submissions', data),
+  updateSubmission:   (id, data)            => api.patch(`/expense-submissions/${id}`, data),
+  generateReport:     (id)                  => api.post(`/expense-submissions/${id}/generate-report`, {}, { timeout: 60000 }),
+}
+
 // Expo push tokens — admin portal doesn't push but this is here for
 // completeness / future web-push.
 export const pushTokensAPI = {

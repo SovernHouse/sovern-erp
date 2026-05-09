@@ -1295,3 +1295,67 @@ export function cancelResearchTask(id: string) {
     { method: 'POST' },
   );
 }
+
+// ─── Expenses (item 4) ─────────────────────────────────────────────────────
+// Lifecycle helpers for the /expense slash commands. Full CRUD lives at
+// /api/expenses, /api/expense-offices, /api/expense-trips,
+// /api/expense-submissions; this helper file keeps it lean to what the chat
+// commands actually need.
+
+export interface ExpenseRow {
+  id: string
+  entryDate: string
+  category: string
+  description?: string | null
+  originalCurrency: string
+  originalAmount: number
+  usdAmount?: number | null
+  customerId?: string | null
+  factoryId?: string | null
+  submittingOfficeId?: string | null
+  submissionStatus: 'draft' | 'submitted' | 'paid' | 'rejected' | 'not_claimable'
+  paidAt?: string | null
+  notes?: string | null
+}
+
+export interface ReimbursementOfficeRow {
+  id: string
+  code: string
+  displayName: string
+  defaultCurrency: string
+  exportTemplateKey?: string | null
+}
+
+export function listExpenses(params?: { status?: string; paid?: boolean; limit?: number }) {
+  const qs = new URLSearchParams()
+  if (params?.status) qs.set('status', params.status)
+  if (params?.paid != null) qs.set('paid', String(params.paid))
+  if (params?.limit) qs.set('limit', String(params.limit))
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  return request<{ success: boolean; data: ExpenseRow[] }>(`/api/expenses${suffix}`)
+}
+
+export function createExpense(body: Partial<ExpenseRow>) {
+  return request<{ success: boolean; data: ExpenseRow }>(
+    '/api/expenses',
+    { method: 'POST', body: JSON.stringify(body) },
+  )
+}
+
+export function listExpenseOffices() {
+  return request<{ success: boolean; data: ReimbursementOfficeRow[] }>('/api/expense-offices')
+}
+
+export function createExpenseSubmission(body: { officeId: string; periodStart?: string; periodEnd?: string; expenseIds?: string[]; notes?: string }) {
+  return request<{ success: boolean; data: any; message?: string }>(
+    '/api/expense-submissions',
+    { method: 'POST', body: JSON.stringify(body) },
+  )
+}
+
+export function generateSubmissionReport(submissionId: string) {
+  return request<{ success: boolean; data: any; message?: string }>(
+    `/api/expense-submissions/${submissionId}/generate-report`,
+    { method: 'POST' },
+  )
+}
