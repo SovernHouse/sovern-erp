@@ -5,15 +5,47 @@
 ---
 
 ## Last Updated
-2026-05-09 (Taiwan time, tenth session — AI UX wins (mobile nav swap, copy/paste fix, slash autocomplete, voice input, photo + document attachments) shipped + complete Expenses module shipped end-to-end: models, controllers, routes, AI receipt extraction, Drive exporters (expense_to_alex_v2 + inspector_travel_v2 + custom_csv), three new slash commands (/expense /expenses /expense-report), client P&L endpoint with revenue-share allocation + direct-cost ratio, and admin /expenses page with offices + report generation. Mobile expense entry UI is the only remaining piece, blocked on EAS native rebuild. Spec: docs/features/2026-05-09-ai-ux-and-expenses-spec.md.)
+2026-05-09 (Taiwan time, tenth session — AI UX + Expenses module shipped end-to-end. Final stretch hit a blocker on the Expo Go OTA pathway that needs follow-up investigation from the Desktop. See "OPEN: Expo Go OTA not picking up new bundle" below before resuming.)
 
 ---
 
 ## Where We Are
 
+### 🚨 OPEN: Expo Go OTA not picking up new bundle (mid-investigation)
+
+**Symptom:** Alex opened Sovern Ops via Expo Go on his iPhone after I shipped `eas update --branch preview --platform ios` (update group `f0efbb1e-09a1-48ed-9eeb-2cb9a49962e1` from commit `b4c43c7`). Bottom nav still shows **Settings**, not **AI**. Force-quit + reopen didn't change it. Bundle on the Expo CDN definitely contains the navbar swap (verified `git show b4c43c7:mobile/sovern-ops-app/app/(tabs)/_layout.tsx`).
+
+**What I got wrong this session and need to be honest about:** When the OTA didn't show, I jumped to "Expo Go doesn't read EAS Update channels — past OTAs must have been Metro." Alex correctly pushed back: a previous session (the eighth) explicitly set up EAS Update so the laptop could be off, and that was working in production. So my dismissal was wrong. I was investigating runtime version / channel-branch linkage when Alex switched to Desktop.
+
+**Channel/branch linkage IS correct** — verified via `eas channel:list`:
+- Channel `preview` → branch `preview` → group `f0efbb1e` (my push, 6 min before the symptom).
+- Runtime "1.0.0" matches what's been working previously.
+
+**Possibilities still on the table for next-session investigation:**
+1. **Stale cache that needs harder eviction.** Force-quit may not be enough; "shake to reload" or clearing Expo Go's app data might help.
+2. **Runtime version mismatch with the Expo Go binary version.** If Alex's Expo Go binary has been auto-updated to a newer SDK while the project is still on SDK 54 + runtime "1.0.0", the bundles may no longer match. Run `eas update:list --branch preview --limit 10` to compare past working updates' runtimes vs mine.
+3. **The `b4c43c7` revert commit dropped expo-speech-recognition but the published bundle still references it.** The revert commit removed the import + plugin. But if my OTA bundle was built BEFORE my revert was committed (timing race), it would still try to import expo-speech-recognition and crash → Expo Go falls back to last working bundle. Worth re-running `eas update --branch preview --platform ios` from current HEAD to publish a clean bundle on the corrected code, then check.
+4. **Custom dev-client distinction.** Despite Alex saying "Expo Go", the prior session may have built him a custom dev-client (different from the App Store Expo Go) that handles EAS Update. That custom build itself may need refreshing/reinstalling to pick up native dep changes (expo-image-picker, expo-document-picker were added in this session).
+5. **`policy: appVersion` runtime not what Expo Go uses.** Past working OTAs may have used a different runtime policy that we accidentally broke.
+
+**Where to start next session:**
+```
+cd mobile/sovern-ops-app
+EXPO_TOKEN=<your-PAT> eas update:list --branch preview --limit 10
+# Compare: do past working updates have runtime "1.0.0"? Or something else?
+EXPO_TOKEN=<your-PAT> eas build:list --limit 5
+# Did a custom build get registered at some point that I missed?
+```
+
+Also: the PAT used this session (`mMjHu8RCSAJjszr6WR28gyzI-WEGFBKFY7yAKm2G`) was pasted into the chat transcript without the `!` prefix, so it ended up in the conversation log. **Rotate it at https://expo.dev/settings/access-tokens** before resuming.
+
 ### CI Status
-- **Latest commit:** `1ec1313` (admin Expenses page — item 4f). All session commits CI green and deployed. Backend health 200 confirmed live.
+- **Latest commit:** `b4c43c7` (revert — drop expo-speech-recognition for Expo Go compatibility). All session commits CI green and deployed. Backend health 200 confirmed live.
+- **Mobile bundle status:** uncertain — `eas update --branch preview --platform ios` was run successfully (group `f0efbb1e`) but the change isn't reflecting in Alex's Expo Go on iPhone. See "OPEN: Expo Go OTA not picking up new bundle" above.
 - **Commits this session (newest first):**
+  - `b4c43c7` revert(mobile): drop expo-speech-recognition — Expo Go incompatibility (no Apple Dev account → custom iOS build not feasible → voice removed from mobile, kept on admin web)
+  - `23048d4` chore(mobile): set ITSAppUsesNonExemptEncryption=false in app.json
+  - `00cddde` chore: vendor skills + lessons from desktop (security-reviewed) — pushed from Desktop via `scripts/sync-skills-to-repo.sh`
   - `1ec1313` feat(expenses): admin Expenses page with offices + report generation (4f)
   - `98700fb` feat(reports): GET /api/customers/:id/profitability — client P&L (4e)
   - `f3da278` feat(expenses): /expense, /expenses, /expense-report slash commands (4d-2)
@@ -54,7 +86,7 @@
 
 ---
 
-## Recently Shipped (this stretch — eight sessions, 53 commits)
+## Recently Shipped (this stretch — eight sessions, 56 commits)
 
 ### E-signature flow (latest) ✅
 - **`b23b7e7` feat(esign): factory-side PO confirmation + drawn-signature canvas** — supplier-facing PO approve page with name + drawn signature.
@@ -294,7 +326,20 @@ The MCP loads on next Claude Code start in this directory. Today the nginx swap 
 
 ## Next Task
 
-**Highest priority: real test of everything that just shipped.**
+**Pickup point from Desktop:**
+
+1. **Resolve the Expo Go OTA blocker.** Read the "🚨 OPEN" section at the top of "Where We Are". Five specific hypotheses to test, with the exact commands to run. Most likely culprit (my guess): possibility 3 — bundle was built/published from stale code before the revert commit landed. Re-running `eas update --branch preview --platform ios` from current HEAD on Desktop (where the working flow already exists) is the cheapest test.
+2. **Rotate the leaked PAT** at https://expo.dev/settings/access-tokens — `mMjHu8RC...` is in this session's chat transcript.
+3. **Test the new Expenses page** at `/expenses` on the admin web (already live and working — separate from the mobile blocker).
+
+**Once mobile OTA resumes working, the tested feature set on phone should be:**
+- Item 0: AI Assistant in bottom nav (Settings moved to Home grid)
+- Item 1: word-level text selection in chat bubbles + long-press → Share
+- Item 1.5: type `/` for command autocomplete
+- Item 3: 📎 button → camera / photo library / file picker → AI vision
+- (NOT shipping to mobile: item 2 voice — needs custom build / Apple Dev; item 4 expense entry UI — deferred)
+
+**Highest priority once unblocked: real test of everything that just shipped.**
 
 1. **Test the new admin Expenses page** at `/expenses`. Create an office (Settings > Offices > New). Pick `expense_to_alex_v2` as the template. Manually log 2-3 expenses across different currencies. Run "Generate report" — should produce an XLSX in Drive at `Sovern ERP/Expense reports/<office.code>/YYYY-MM/` matching the existing template shape.
 2. **Test slash commands in admin chat:** `/expense 142 TWD taxi`, `/expenses unpaid`, `/expense-report SOVERN_TW`.
