@@ -107,6 +107,7 @@ export const ROLE_PERMISSIONS = {
 export const NAV_ITEMS_BY_ROLE = {
   admin: [
     { label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' },
+    // ── Sales & Customer Management ──────────────────────────────────────
     {
       label: 'Sales',
       icon: 'ShoppingCart',
@@ -114,14 +115,24 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Customers', path: '/customers', permission: 'customers' },
         { label: 'Inquiries', path: '/inquiries', permission: 'inquiries' },
         { label: 'Quotations', path: '/quotations', permission: 'quotations' },
-        {
-          label: 'Proforma Invoices',
-          path: '/proforma-invoices',
-          permission: 'proforma',
-        },
+        { label: 'Proforma Invoices', path: '/proforma-invoices', permission: 'proforma' },
         { label: 'Sales Orders', path: '/orders', permission: 'orders' },
       ],
     },
+    {
+      label: 'Business Development',
+      icon: 'Users2',
+      submenu: [
+        { label: 'CRM Dashboard', path: '/crm', permission: 'outreach' },
+        { label: 'Leads', path: '/crm/leads', permission: 'outreach' },
+        { label: 'Pipeline', path: '/crm/pipeline', permission: 'outreach' },
+        { label: 'Activities', path: '/crm/activities', permission: 'outreach' },
+        { label: 'Supplier Contacts', path: '/crm/contacts', permission: 'outreach' },
+        { label: 'Email Inbox', path: '/crm/inbox', permission: 'outreach' },
+        { label: 'Client Contacts', path: '/client-contacts', permission: 'outreach' },
+      ],
+    },
+    // ── Supply Chain & Operations ────────────────────────────────────────
     {
       label: 'Procurement',
       icon: 'Inbox',
@@ -130,11 +141,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Products', path: '/products', permission: 'products' },
         { label: 'Spec Templates', path: '/products/spec-templates', permission: 'products' },
         { label: 'Product Categories', path: '/products/categories', permission: 'products' },
-        {
-          label: 'Purchase Orders',
-          path: '/purchase-orders',
-          permission: 'purchase-orders',
-        },
+        { label: 'Purchase Orders', path: '/purchase-orders', permission: 'purchase-orders' },
       ],
     },
     {
@@ -144,8 +151,10 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Packing Lists', path: '/packing-lists', permission: 'packing-lists' },
         { label: 'Shipments', path: '/shipments', permission: 'shipments' },
         { label: 'Inspections', path: '/inspections', permission: 'inspections' },
+        { label: 'Inventory', path: '/inventory', permission: 'inventory' },
       ],
     },
+    // ── Finance & Expenses ───────────────────────────────────────────────
     {
       label: 'Finance',
       icon: 'DollarSign',
@@ -153,31 +162,25 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Invoices', path: '/invoices', permission: 'invoices' },
         { label: 'Payments', path: '/payments', permission: 'payments' },
         { label: 'Claims', path: '/claims', permission: 'claims' },
+        { label: 'Expenses', path: '/expenses', permission: 'expenses' },
+        { label: 'Approvals', path: '/internal-approvals', permission: 'approvals' },
       ],
     },
+    // ── Intelligence & Analytics ─────────────────────────────────────────
     {
-      label: 'Operations',
-      icon: 'CheckCircle',
-      submenu: [{ label: 'Inventory', path: '/inventory', permission: 'inventory' }],
-    },
-    {
-      label: 'Outreach',
-      icon: 'Users2',
+      label: 'Intelligence',
+      icon: 'TrendingUp',
       submenu: [
-        { label: 'CRM Dashboard',   path: '/crm',              permission: 'outreach' },
-        { label: 'Leads',           path: '/crm/leads',        permission: 'outreach' },
-        { label: 'Pipeline',        path: '/crm/pipeline',     permission: 'outreach' },
-        { label: 'Activities',      path: '/crm/activities',   permission: 'outreach' },
-        { label: 'Supplier Contacts', path: '/crm/contacts',   permission: 'outreach' },
-        { label: 'Email Inbox',     path: '/crm/inbox',        permission: 'outreach' },
-        { label: 'Client Contacts', path: '/client-contacts',  permission: 'outreach' },
+        { label: 'Reports', path: '/reports', permission: 'reports' },
+        { label: 'Analytics', path: '/analytics', permission: 'analytics' },
+        { label: 'BI Dashboard', path: '/bi-dashboard', permission: 'bi-dashboard' },
+        { label: 'AI Research', path: '/ai/research', permission: 'outreach' },
       ],
     },
+    // ── Tools & Communication ────────────────────────────────────────────
+    { label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' },
     { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
-    { label: 'Approvals', icon: 'CheckCircle', path: '/internal-approvals' },
-    { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
-    { label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' },
-    { label: 'BI Dashboard', icon: 'BarChart3', path: '/bi-dashboard', permission: 'bi-dashboard' },
+    // ── Administration ──────────────────────────────────────────────────────
     {
       label: 'Documents',
       icon: 'FileText',
@@ -191,20 +194,20 @@ export const NAV_ITEMS_BY_ROLE = {
       icon: 'Cog',
       submenu: [
         { label: 'General', path: '/settings', permission: 'settings' },
-        { label: 'Product Attributes', path: '/settings/product-attributes', permission: 'settings' },
-        { label: 'Price Lists', path: '/settings/price-lists', permission: 'settings' },
         { label: 'Users', path: '/settings/users', permission: 'settings' },
+        { label: 'Role Permissions', path: '/settings/role-permissions', permission: 'settings' },
         { label: 'Email Templates', path: '/settings/email-templates', permission: 'settings' },
         { label: 'Email Signatures', path: '/settings/email-signatures', permission: 'settings' },
-        { label: 'Role Permissions', path: '/settings/role-permissions', permission: 'settings' },
+        { label: 'Product Attributes', path: '/settings/product-attributes', permission: 'settings' },
         { label: 'Product Taxonomy', path: '/settings/product-taxonomy', permission: 'settings' },
+        { label: 'Price Lists', path: '/settings/price-lists', permission: 'settings' },
         { label: 'Bulk Import', path: '/settings/bulk-import', permission: 'settings' },
         { label: 'Mobile App', path: '/settings/mobile-app', permission: 'settings' },
         { label: 'Connected Accounts', path: '/settings/connected-accounts', roles: ['admin', 'super_admin'] },
       ],
     },
-    { label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' },
-    { label: 'Expenses', icon: 'Receipt', path: '/expenses', roles: ['super_admin', 'admin'] },
+    // ── Dev Mode (super_admin only) ─────────────────────────────────────
+    { label: 'Dev Mode runs', icon: 'Code', path: '/ai/dev-runs', roles: ['super_admin'] },
   ],
   manager: [
     { label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' },
