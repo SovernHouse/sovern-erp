@@ -31,13 +31,10 @@ const getRoutePath = (req) => {
 const apmMiddleware = (req, res, next) => {
   // Record start time using high-resolution timer
   const startTime = process.hrtime();
-  const startMs = Date.now();
 
-  // Capture the original send function
-  const originalSend = res.send;
-
-  // Override the send function to capture response
-  res.send = function (data) {
+  // Use res.on('finish') hook instead of wrapping res.send/res.json.
+  // This fires exactly once after headers are sent and is the cleanest approach.
+  res.on('finish', () => {
     // Calculate response time
     const [seconds, nanoseconds] = process.hrtime(startTime);
     const responseTimeMs = Math.round(seconds * 1000 + nanoseconds / 1000000);
@@ -59,15 +56,7 @@ const apmMiddleware = (req, res, next) => {
         `[SLOW REQUEST] ${req.method} ${routePath} - ${res.statusCode} ${responseTimeMs}ms`
       );
     }
-
-    // Call the original send
-    return originalSend.call(this, data);
-  };
-
-  // NOTE: res.json is intentionally NOT overridden here.
-  // Express's res.json() calls res.send() internally, so the res.send override
-  // above already captures every JSON response. Overriding both would record
-  // metrics twice per request.
+  });
 
   next();
 };
