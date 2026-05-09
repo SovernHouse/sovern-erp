@@ -12,7 +12,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, KeyboardAvoidingView,
-  Platform, Pressable, Alert, ScrollView, Modal,
+  Platform, Pressable, Alert, ScrollView, Modal, Share,
 } from 'react-native';
 import {
   aiChat, aiListConversations, aiGetConversation, aiDeleteConversation,
@@ -199,6 +199,13 @@ function MsgBubble({ msg }: { msg: AIMessage }) {
   const isDevModeUser = isUser && msg.devMode;
   const displayText = isUser ? msg.content : stripMarkdown(msg.content);
 
+  // Long-press → system share sheet with the bubble's text. iOS / Android
+  // both surface "Copy" as a one-tap action there. This complements the
+  // word-level selection that `selectable` already provides on the Text node.
+  const handleLongPress = () => {
+    Share.share({ message: displayText }).catch(() => {});
+  };
+
   return (
     <View style={[styles.bubbleWrap, isUser && styles.bubbleWrapUser]}>
       {!isUser && (
@@ -206,18 +213,22 @@ function MsgBubble({ msg }: { msg: AIMessage }) {
           <Text style={styles.aiBadgeText}>✦</Text>
         </View>
       )}
-      <View style={[
-        styles.bubble,
-        isUser ? styles.bubbleUser : styles.bubbleAI,
-        isDevModeUser && styles.bubbleUserDevMode,
-      ]}>
+      <Pressable
+        onLongPress={handleLongPress}
+        delayLongPress={500}
+        style={[
+          styles.bubble,
+          isUser ? styles.bubbleUser : styles.bubbleAI,
+          isDevModeUser && styles.bubbleUserDevMode,
+        ]}
+      >
         {isDevModeUser && (
           <Text style={styles.devModeBadgeText}>DEV MODE</Text>
         )}
         <Text selectable style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
           {displayText}
         </Text>
-      </View>
+      </Pressable>
       <Text style={[styles.bubbleTime, isUser && styles.bubbleTimeUser]}>
         {formatAge(msg.timestamp)}
       </Text>
@@ -853,7 +864,11 @@ export default function AssistantScreen() {
         <FlatList
           ref={listRef}
           data={messages}
-          keyExtractor={(_, i) => String(i)}
+          // STABLE keys based on timestamp+role so React doesn't tear down
+          // existing bubbles when a new message is appended. Index-based keys
+          // re-mount every visible bubble on each append, which kills any
+          // in-progress text selection.
+          keyExtractor={(item) => `${item.timestamp}-${item.role}`}
           renderItem={({ item }) => <MsgBubble msg={item} />}
           ListHeaderComponent={messages.length === 0 ? (
             <WelcomeScreen onSuggestion={(text) => handleSend(text)} />

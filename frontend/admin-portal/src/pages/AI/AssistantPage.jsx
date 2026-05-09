@@ -5,7 +5,7 @@
  * All roles get a role-scoped version.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { aiAPI, devModeAPI, researchAPI, customersAPI, factoriesAPI, productsAPI } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
@@ -224,8 +224,14 @@ function renderMarkdown(text) {
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
-function MessageBubble({ msg }) {
+// Memoised so re-renders of the parent (each new streaming message append)
+// don't re-render existing bubbles. Without this, every append re-runs
+// renderMarkdown for every visible reply, which re-creates the DOM nodes
+// underneath any in-progress text selection — killing copy/paste mid-drag.
+const MessageBubble = React.memo(function MessageBubble({ msg }) {
   const isUser = msg.role === 'user'
+  const [hovered, setHovered] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   // Dev-mode user prompts get a Code badge so it's visually obvious which
   // turns spawned a dev run.
@@ -236,14 +242,27 @@ function MessageBubble({ msg }) {
     return <DevRunCard runId={msg.runId} createdAt={msg.createdAt} />
   }
 
+  function copyContent() {
+    if (!navigator?.clipboard) return
+    navigator.clipboard.writeText(msg.content || '').then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }).catch(() => {})
+  }
+
   return (
-    <div style={{
-      display: 'flex',
-      gap: 10,
-      alignItems: 'flex-start',
-      flexDirection: isUser ? 'row-reverse' : 'row',
-      margin: '12px 0',
-    }}>
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex',
+        gap: 10,
+        alignItems: 'flex-start',
+        flexDirection: isUser ? 'row-reverse' : 'row',
+        margin: '12px 0',
+        position: 'relative',
+      }}
+    >
       {/* Avatar */}
       <div style={{
         width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
@@ -265,6 +284,7 @@ function MessageBubble({ msg }) {
         lineHeight: 1.6,
         boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
         border: isUser ? 'none' : '1px solid #e2e8f0',
+        position: 'relative',
       }}>
         {isDevModeUser && (
           <div style={{ fontSize: 10, fontWeight: 700, opacity: 0.7, marginBottom: 4, letterSpacing: 0.6 }}>DEV MODE</div>
@@ -278,10 +298,43 @@ function MessageBubble({ msg }) {
             {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
         )}
+
+        {/* Copy-on-hover button. Visible only on assistant replies (no point
+            for user messages that the user just typed). */}
+        {!isUser && hovered && msg.content && (
+          <button
+            onClick={copyContent}
+            title="Copy reply"
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 6,
+              border: '1px solid #e2e8f0',
+              background: copied ? '#dcfce7' : '#f8fafc',
+              color: copied ? '#166534' : '#475569',
+              borderRadius: 6,
+              padding: '3px 8px',
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'background 0.15s, color 0.15s',
+            }}
+          >
+            {copied ? '✓ Copied' : 'Copy'}
+          </button>
+        )}
       </div>
     </div>
   )
-}
+}, (prev, next) => (
+  // Re-render only when the message itself changes. Identity by createdAt+role+content
+  // is sufficient — those are the only fields the bubble visualises.
+  prev.msg === next.msg ||
+  (prev.msg?.createdAt === next.msg?.createdAt &&
+   prev.msg?.role === next.msg?.role &&
+   prev.msg?.content === next.msg?.content &&
+   prev.msg?.kind === next.msg?.kind)
+))
 
 // ── Dev Run Card ──────────────────────────────────────────────────────────────
 // Live-status card for an in-flight dev-mode run. Polls every 4s while
@@ -979,7 +1032,11 @@ export default function AssistantPage() {
             ) : (
               <>
                 {messages.map((msg, idx) => (
-                  <MessageBubble key={idx} msg={msg} />
+                  // STABLE keys based on createdAt+role so React doesn't tear
+                  // down existing bubbles on each new append. Index keys would
+                  // re-mount every visible bubble on every chat update, which
+                  // kills any in-progress text selection.
+                  <MessageBubble key={`${msg.createdAt}-${msg.role}-${idx}`} msg={msg} />
                 ))}
                 {sending && <TypingIndicator />}
                 <div ref={messagesEndRef} />
