@@ -185,6 +185,7 @@ const aiRoutes = require('./routes/aiRoutes');
 const devModeRoutes = require('./routes/devModeRoutes');
 const pushTokenRoutes = require('./routes/pushTokenRoutes');
 const researchRoutes = require('./routes/researchRoutes');
+const expenseRoutes = require('./routes/expenseRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/sso', ssoRoutes);
@@ -243,6 +244,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/dev-mode', devModeRoutes);
 app.use('/api/push-tokens', pushTokenRoutes);
 app.use('/api/research', researchRoutes);
+app.use('/api', expenseRoutes); // mounts /api/expenses, /api/expense-offices, /api/expense-trips, /api/expense-submissions
 
 // Chatter (polymorphic message thread)
 const chatterRoutes = require('./routes/chatterRoutes');
