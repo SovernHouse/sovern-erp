@@ -5,13 +5,36 @@
 ---
 
 ## Last Updated
-2026-05-09 17:28 Taiwan time (eleventh session — Fixed Expenses nav visibility bug + reorganized admin nav by business workflow. Desktop Expenses tab now showing and properly positioned in Finance section. Mobile Expenses screen already built in previous session. L-037 lesson added: keep hardcoded nav arrays and fallback nav builder in sync to avoid UI invisibility bugs.)
+2026-05-10 00:47 Taiwan time (twelfth session — Diagnosed and fixed mobile OTA blocker: app.json was corrupted by Mac session with duplicate runtimeVersion, 8x repeated UIBackgroundModes, duplicated Android perms. Published corrected OTA, but phone won't pull any updates — Expo Go binary itself needs reset. Root cause: app.json malformation prevented Expo's update matching logic. Fix: user must uninstall/reinstall Expo Go or clear app data. L-038 added.)
 
 ---
 
 ## Where We Are
 
-### 🚨 OPEN: Expo Go OTA not picking up new bundle (mid-investigation)
+### 🚨 BLOCKER: Phone's Expo Go won't pull OTA updates — requires device reset
+
+**Root Cause Found:** app.json was corrupted by Mac session with:
+- `runtimeVersion` defined TWICE (inside `ios` section AND top-level)
+- `UIBackgroundModes: ["remote-notification"]` repeated 8 times instead of once
+- Android permissions duplicated
+- This malformed config broke Expo's update matching logic
+
+**Status:** 
+- ✅ app.json fixed and cleaned to match last working state (cbaf610, 6:18 PM May 9)
+- ✅ OTA update published with corrected config (group `959f486c-e271-4924-befb-acd47693b969`)
+- ❌ Phone still won't pull ANY updates — Expo Go binary is stuck
+
+**Why this happened:** Mac session made repeated config changes (runtimeVersion added/removed/changed), each time publishing broken bundles. Phone received or cached bad config and now won't accept updates even from corrected bundles.
+
+**Solution required:** Phone must be reset:
+1. **Uninstall & reinstall Expo Go from App Store** — Fresh binary will pull latest published OTA immediately
+2. **OR clear Expo Go app data** — Settings > Apps > Expo Go > Storage > Clear Data (keeps app, resets state)
+
+**Commits this session:**
+- `f454323` fix(mobile): remove duplicate runtimeVersion + clean up UIBackgroundModes + deduplicate Android perms
+- `823c422` chore(mobile): add react-dom dependency for react-native-web support - fixes OTA bundling
+
+### Rejected Approaches (confirmed dead ends):
 
 **Symptom:** Alex opened Sovern Ops via Expo Go on his iPhone after I shipped `eas update --branch preview --platform ios` (update group `f0efbb1e-09a1-48ed-9eeb-2cb9a49962e1` from commit `b4c43c7`). Bottom nav still shows **Settings**, not **AI**. Force-quit + reopen didn't change it. Bundle on the Expo CDN definitely contains the navbar swap (verified `git show b4c43c7:mobile/sovern-ops-app/app/(tabs)/_layout.tsx`).
 
