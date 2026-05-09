@@ -70,7 +70,7 @@ function todayString() {
   return d.toISOString().split('T')[0]
 }
 
-function ExpenseRow({ expense, onPress }: { expense: ExpenseRow; onPress: () => void }) {
+function ExpenseRowComponent({ expense, onPress }: { expense: ExpenseRow; onPress: () => void }) {
   const styles = useStyles()
   return (
     <TouchableOpacity style={styles.row} onPress={onPress}>
@@ -538,7 +538,7 @@ export default function ExpensesScreen() {
         data={filtered}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <ExpenseRow expense={item} onPress={() => setSelectedId(item.id)} />
+          <ExpenseRowComponent expense={item} onPress={() => setSelectedId(item.id)} />
         )}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={COLORS.forest} />
