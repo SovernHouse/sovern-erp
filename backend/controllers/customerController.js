@@ -297,6 +297,161 @@ const getDashboard = async (req, res, next) => {
   }
 };
 
+// ── Customer profitability (item 4e) ────────────────────────────────────────
+// GET /api/customers/:id/profitability?from=YYYY-MM-DD&to=YYYY-MM-DD
+//
+// Returns the per-customer P&L Alex needs to see real margin after costs.
+// Default period: trailing 12 months (so the dashboard can render without
+// the user picking dates first).
+//
+// Allocation policy (per spec DECIDE 4B = option A):
+//   - Direct expenses: Expense rows with customerId = X.
+//   - Allocated overhead: Expenses with customerId IS NULL ("general
+//     business" — rent, salary, software), allocated to this customer in
+//     proportion to its share of period revenue. So if X is 30% of period
+//     revenue, X absorbs 30% of overhead.
+//   - directCostRatio = directExpenses / revenue (extra column for the UI).
+//     Lets you spot high-touch low-margin clients regardless of overhead
+//     allocation choice.
+//
+// All amounts in USD. Expense rows use usdAmount when set; falls back to
+// originalAmount only when originalCurrency = 'USD' (so totals don't get
+// inflated by mixing currencies).
+const getProfitability = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const customer = await db.Customer.findByPk(id);
+    if (!customer) throw new NotFoundError('Customer not found');
+
+    const now = new Date();
+    const defaultFrom = new Date(now); defaultFrom.setMonth(defaultFrom.getMonth() - 12);
+    const from = req.query.from ? new Date(req.query.from) : defaultFrom;
+    const to   = req.query.to   ? new Date(req.query.to)   : now;
+    const fromIso = from.toISOString().slice(0, 10);
+    const toIso   = to.toISOString().slice(0, 10);
+
+    // ─── Revenue: Invoice rows for this customer in the period ───────────────
+    let invoicedTotal = 0;
+    let paidTotal = 0;
+    if (db.Invoice) {
+      const invoices = await db.Invoice.findAll({
+        where: {
+          customerId: id,
+          createdAt: { [Op.between]: [from, to] },
+        },
+        attributes: ['id', 'totalAmount', 'paidAmount', 'currency', 'status'],
+      });
+      for (const inv of invoices) {
+        // Invoice totals are stored in the customer's currency typically; for
+        // the v1 P&L we treat all numerics as USD-equivalent (most Sovern
+        // invoices are USD anyway). A fuller version would convert via
+        // ExchangeRate using each invoice's currency + invoice date.
+        invoicedTotal += Number(inv.totalAmount) || 0;
+        paidTotal     += Number(inv.paidAmount)  || 0;
+      }
+    }
+
+    // ─── COGS: PurchaseOrder costs for this customer's SalesOrders ────────────
+    let cogsTotal = 0;
+    if (db.PurchaseOrder && db.SalesOrder) {
+      const salesOrders = await db.SalesOrder.findAll({
+        where: { customerId: id, createdAt: { [Op.between]: [from, to] } },
+        attributes: ['id'],
+      });
+      const soIds = salesOrders.map(so => so.id);
+      if (soIds.length > 0) {
+        const pos = await db.PurchaseOrder.findAll({
+          where: { salesOrderId: { [Op.in]: soIds } },
+          attributes: ['id', 'totalAmount', 'currency'],
+        });
+        for (const po of pos) cogsTotal += Number(po.totalAmount) || 0;
+      }
+    }
+
+    // ─── Direct expenses: Expense rows with customerId = X ──────────────────
+    const directExpenseRows = await db.Expense.findAll({
+      where: {
+        customerId: id,
+        entryDate: { [Op.between]: [fromIso, toIso] },
+      },
+      attributes: ['id', 'usdAmount', 'originalAmount', 'originalCurrency'],
+    });
+    const directExpensesTotal = directExpenseRows.reduce((sum, e) => {
+      if (e.usdAmount != null) return sum + Number(e.usdAmount);
+      if ((e.originalCurrency || '').toUpperCase() === 'USD') return sum + Number(e.originalAmount || 0);
+      return sum; // skip rows with no usdAmount + non-USD currency to avoid mixing
+    }, 0);
+
+    // ─── Allocated overhead: unattributed Expense rows × this client's revenue share ─
+    const overheadRows = await db.Expense.findAll({
+      where: {
+        customerId: null,
+        factoryId: null,
+        entryDate: { [Op.between]: [fromIso, toIso] },
+      },
+      attributes: ['id', 'usdAmount', 'originalAmount', 'originalCurrency'],
+    });
+    const overheadTotal = overheadRows.reduce((sum, e) => {
+      if (e.usdAmount != null) return sum + Number(e.usdAmount);
+      if ((e.originalCurrency || '').toUpperCase() === 'USD') return sum + Number(e.originalAmount || 0);
+      return sum;
+    }, 0);
+
+    // Total revenue across all customers in the period (denominator for share)
+    let totalPeriodRevenue = invoicedTotal;
+    if (db.Invoice) {
+      const allInvoices = await db.Invoice.findAll({
+        where: { createdAt: { [Op.between]: [from, to] } },
+        attributes: ['totalAmount'],
+      });
+      totalPeriodRevenue = allInvoices.reduce((s, i) => s + (Number(i.totalAmount) || 0), 0);
+    }
+    const revenueShare = totalPeriodRevenue > 0 ? invoicedTotal / totalPeriodRevenue : 0;
+    const allocatedOverhead = overheadTotal * revenueShare;
+
+    // ─── Aggregates ─────────────────────────────────────────────────────────
+    const grossProfit = invoicedTotal - cogsTotal;
+    const netProfit   = grossProfit - directExpensesTotal - allocatedOverhead;
+    const directCostRatio = invoicedTotal > 0 ? directExpensesTotal / invoicedTotal : null;
+
+    return res.json(getSuccessResponse({
+      customer: {
+        id: customer.id,
+        companyName: customer.companyName,
+        country: customer.country,
+      },
+      period: { from: fromIso, to: toIso },
+      currency: 'USD',
+      revenue: {
+        invoiced: round2(invoicedTotal),
+        paid:     round2(paidTotal),
+      },
+      cogs: round2(cogsTotal),
+      directExpenses: {
+        total: round2(directExpensesTotal),
+        count: directExpenseRows.length,
+      },
+      allocatedOverhead: {
+        total:        round2(allocatedOverhead),
+        basis:        'revenue_share',
+        revenueShare: round4(revenueShare),
+        overheadPool: round2(overheadTotal),
+      },
+      grossProfit: round2(grossProfit),
+      netProfit:   round2(netProfit),
+      // Per DECIDE 4B: surface the high-touch signal alongside the
+      // allocation-based net so the user can spot expensive clients
+      // independent of allocation method.
+      directCostRatio: directCostRatio != null ? round4(directCostRatio) : null,
+    }));
+  } catch (err) {
+    next(err);
+  }
+};
+
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+function round4(n) { return Math.round((Number(n) || 0) * 10000) / 10000; }
+
 module.exports = {
   create,
   getAll,
@@ -305,5 +460,6 @@ module.exports = {
   delete: delete_,
   getBalance,
   getOrderHistory,
-  getDashboard
+  getDashboard,
+  getProfitability,
 };

@@ -51,4 +51,6 @@ router.get('/:id/order-history', requireAuth, customerController.getOrderHistory
 
 router.get('/:id/dashboard', requireAuth, customerController.getDashboard);
 
+router.get('/:id/profitability', requireAuth, customerController.getProfitability);
+
 module.exports = router;
