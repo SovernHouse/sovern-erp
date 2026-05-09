@@ -295,6 +295,13 @@ exports.listExpenses = async (req, res) => {
   try {
     const { status, customerId, factoryId, tripId, officeId, paid, search, limit, offset } = req.query;
     const where = {};
+
+    // User-scoping: non-super_admin users see only their own expenses.
+    const isAdmin = req.user.role === 'super_admin';
+    if (!isAdmin) {
+      where.userId = req.user.id;
+    }
+
     if (status) where.submissionStatus = status;
     if (customerId) where.customerId = customerId;
     if (factoryId) where.factoryId = factoryId;
@@ -326,6 +333,11 @@ exports.getExpense = async (req, res) => {
   try {
     const expense = await db.Expense.findByPk(req.params.id);
     if (!expense) return notFound(res, 'Expense');
+    // Non-super_admin users can only view their own expenses.
+    const isAdmin = req.user.role === 'super_admin';
+    if (!isAdmin && expense.userId !== req.user.id) {
+      return res.status(403).json({ error: 'You can only view your own expenses.' });
+    }
     res.json({ success: true, data: expense });
   } catch (err) {
     logger.error('[expenses] getExpense error:', err.message);
@@ -397,6 +409,11 @@ exports.updateExpense = async (req, res) => {
   try {
     const expense = await db.Expense.findByPk(req.params.id);
     if (!expense) return notFound(res, 'Expense');
+    // Non-super_admin users can only update their own expenses.
+    const isAdmin = req.user.role === 'super_admin';
+    if (!isAdmin && expense.userId !== req.user.id) {
+      return res.status(403).json({ error: 'You can only update your own expenses.' });
+    }
     const allowed = [
       'entryDate', 'category', 'description',
       'originalCurrency', 'originalAmount', 'usdAmount', 'fxRateUsed',
@@ -434,6 +451,11 @@ exports.deleteExpense = async (req, res) => {
   try {
     const expense = await db.Expense.findByPk(req.params.id);
     if (!expense) return notFound(res, 'Expense');
+    // Non-super_admin users can only delete their own expenses.
+    const isAdmin = req.user.role === 'super_admin';
+    if (!isAdmin && expense.userId !== req.user.id) {
+      return res.status(403).json({ error: 'You can only delete your own expenses.' });
+    }
     if (expense.submissionStatus === 'submitted' || expense.submissionStatus === 'paid') {
       return res.status(409).json({
         error: 'Cannot delete a submitted or paid expense. Mark not_claimable instead.',

@@ -5,7 +5,7 @@
 ---
 
 ## Last Updated
-2026-05-09 (Taiwan time, tenth session — AI UX wins (mobile nav swap, copy/paste fix, slash autocomplete, voice input, photo + document attachments) shipped + complete Expenses module shipped end-to-end: models, controllers, routes, AI receipt extraction, Drive exporters (expense_to_alex_v2 + inspector_travel_v2 + custom_csv), three new slash commands (/expense /expenses /expense-report), client P&L endpoint with revenue-share allocation + direct-cost ratio, and admin /expenses page with offices + report generation. Mobile expense entry UI is the only remaining piece, blocked on EAS native rebuild. Spec: docs/features/2026-05-09-ai-ux-and-expenses-spec.md.)
+2026-05-09 (Taiwan time, tenth session continued — Expenses module FULLY OPEN TO ALL USERS. Permission model changed: expenses routes now gated on `requireAuth` (all users) with user-scoping in controller so non-super_admin users see only their own expenses. Offices/Trips/Submissions remain super_admin-only. Ownership checks added to getExpense/updateExpense/deleteExpense. Mobile app immediately ready for Alex to log expenses. Three-Surface Rule documented (lessons.md L-035) and super_admin principle (lessons.md L-036) added.)
 
 ---
 

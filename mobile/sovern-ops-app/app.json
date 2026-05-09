@@ -16,6 +16,7 @@
       "bundleIdentifier": "co.sovernhouse.ops",
       "infoPlist": {
         "UIBackgroundModes": ["remote-notification"],
+        "ITSAppUsesNonExemptEncryption": false,
         "NSMicrophoneUsageDescription": "Sovern Ops uses the microphone for voice input in the AI Assistant chat.",
         "NSSpeechRecognitionUsageDescription": "Sovern Ops uses speech recognition to transcribe what you say into the AI Assistant chat.",
         "NSCameraUsageDescription": "Sovern Ops uses the camera to capture receipts and documents that you share with the AI Assistant.",

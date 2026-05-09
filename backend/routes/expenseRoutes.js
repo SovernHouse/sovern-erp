@@ -20,35 +20,44 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 //   /api/expenses/...
 //   /api/expense-submissions/...
 
-const gate = [requireAuth, requireRole('admin', 'super_admin')];
+// CRITICAL: Super Admin supercedes all other roles and must have access to EVERYTHING.
+// authGate: all authenticated users can perform expense operations (user-scoped in controller).
+// adminGate: only super_admin can perform (admin configuration, submissions, etc.).
+const authGate = [requireAuth];
+const adminGate = [requireAuth, requireRole('super_admin')];
 
 // ── Reimbursement offices ────────────────────────────────────────────────────
-router.get   ('/expense-offices',          ...gate, c.listOffices);
-router.post  ('/expense-offices',          ...gate, c.createOffice);
-router.get   ('/expense-offices/:id',      ...gate, c.getOffice);
-router.patch ('/expense-offices/:id',      ...gate, c.updateOffice);
-router.delete('/expense-offices/:id',      ...gate, c.deleteOffice);
+// Admin-only; employees don't manage office configurations.
+router.get   ('/expense-offices',          ...adminGate, c.listOffices);
+router.post  ('/expense-offices',          ...adminGate, c.createOffice);
+router.get   ('/expense-offices/:id',      ...adminGate, c.getOffice);
+router.patch ('/expense-offices/:id',      ...adminGate, c.updateOffice);
+router.delete('/expense-offices/:id',      ...adminGate, c.deleteOffice);
 
 // ── Trips ────────────────────────────────────────────────────────────────────
-router.get   ('/expense-trips',            ...gate, c.listTrips);
-router.post  ('/expense-trips',            ...gate, c.createTrip);
-router.get   ('/expense-trips/:id',        ...gate, c.getTrip);
-router.patch ('/expense-trips/:id',        ...gate, c.updateTrip);
-router.delete('/expense-trips/:id',        ...gate, c.deleteTrip);
+// Admin-only; employees don't manage trips.
+router.get   ('/expense-trips',            ...adminGate, c.listTrips);
+router.post  ('/expense-trips',            ...adminGate, c.createTrip);
+router.get   ('/expense-trips/:id',        ...adminGate, c.getTrip);
+router.patch ('/expense-trips/:id',        ...adminGate, c.updateTrip);
+router.delete('/expense-trips/:id',        ...adminGate, c.deleteTrip);
 
 // ── Expenses ─────────────────────────────────────────────────────────────────
-router.get   ('/expenses',                          ...gate, c.listExpenses);
-router.post  ('/expenses',                          ...gate, c.createExpense);
-router.post  ('/expenses/extract-from-receipt',     ...gate, c.extractFromReceipt);
-router.get   ('/expenses/:id',                      ...gate, c.getExpense);
-router.patch ('/expenses/:id',                      ...gate, c.updateExpense);
-router.delete('/expenses/:id',                      ...gate, c.deleteExpense);
+// Open to all authenticated users. Controller enforces user-scoping (non-admins
+// see/edit only their own expenses). Receipt extraction open to all users.
+router.get   ('/expenses',                          ...authGate, c.listExpenses);
+router.post  ('/expenses',                          ...authGate, c.createExpense);
+router.post  ('/expenses/extract-from-receipt',     ...authGate, c.extractFromReceipt);
+router.get   ('/expenses/:id',                      ...authGate, c.getExpense);
+router.patch ('/expenses/:id',                      ...authGate, c.updateExpense);
+router.delete('/expenses/:id',                      ...authGate, c.deleteExpense);
 
 // ── Submissions ──────────────────────────────────────────────────────────────
-router.get   ('/expense-submissions',                       ...gate, c.listSubmissions);
-router.post  ('/expense-submissions',                       ...gate, c.createSubmission);
-router.get   ('/expense-submissions/:id',                   ...gate, c.getSubmission);
-router.patch ('/expense-submissions/:id',                   ...gate, c.updateSubmission);
-router.post  ('/expense-submissions/:id/generate-report',   ...gate, c.generateSubmissionReport);
+// Admin-only; only managers/admins create and finalize submission batches.
+router.get   ('/expense-submissions',                       ...adminGate, c.listSubmissions);
+router.post  ('/expense-submissions',                       ...adminGate, c.createSubmission);
+router.get   ('/expense-submissions/:id',                   ...adminGate, c.getSubmission);
+router.patch ('/expense-submissions/:id',                   ...adminGate, c.updateSubmission);
+router.post  ('/expense-submissions/:id/generate-report',   ...adminGate, c.generateSubmissionReport);
 
 module.exports = router;
