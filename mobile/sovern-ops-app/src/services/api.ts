@@ -1342,6 +1342,20 @@ export function createExpense(body: Partial<ExpenseRow>) {
   )
 }
 
+export function updateExpense(id: string, body: Partial<ExpenseRow>) {
+  return request<{ success: boolean; data: ExpenseRow }>(
+    `/api/expenses/${id}`,
+    { method: 'PATCH', body: JSON.stringify(body) },
+  )
+}
+
+export function deleteExpense(id: string) {
+  return request<{ success: boolean }>(
+    `/api/expenses/${id}`,
+    { method: 'DELETE' },
+  )
+}
+
 export function listExpenseOffices() {
   return request<{ success: boolean; data: ReimbursementOfficeRow[] }>('/api/expense-offices')
 }

@@ -29,6 +29,7 @@ const MODULES = [
   { icon: '📦', label: 'Products',        route: '/(tabs)/products' },
   { icon: '🏢', label: 'Customers',       route: '/(tabs)/customers' },
   { icon: '🏭', label: 'Factories',       route: '/(tabs)/factories' },
+  { icon: '💸', label: 'Expenses',        route: '/(tabs)/expenses' },
   { icon: '✦',  label: 'AI Assistant',   route: '/(tabs)/assistant' },
   { icon: '🔎', label: 'AI Research',    route: '/(tabs)/research' },
   { icon: '⚙️', label: 'Settings',       route: '/(tabs)/settings' },

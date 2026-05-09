@@ -22,6 +22,8 @@ Alex is the CEO/Founder of Sovern House (New Route International Exchange Co., L
 
 **6. No fictional data.** All leads, customers, suppliers, and contacts must be real verified entities. Never invent fake companies or emails.
 
+**7. The Three-Surface Rule — every admin feature ships to mobile on the same commit.** Any feature added to the admin portal MUST be added to the mobile app (`mobile/sovern-ops-app/`) in the same PR/commit. No exceptions. If mobile UI cannot ship in the same commit (e.g. blocked on EAS native rebuild), the commit must be held until mobile is ready, OR the feature must be explicitly marked WIP with a companion task tracking the mobile half. Shipping admin-only is not "done."
+
 ---
 
 ## The Team
