@@ -204,6 +204,7 @@ export const NAV_ITEMS_BY_ROLE = {
       ],
     },
     { label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' },
+    { label: 'Expenses', icon: 'Receipt', path: '/expenses', roles: ['super_admin', 'admin'] },
   ],
   manager: [
     { label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' },
