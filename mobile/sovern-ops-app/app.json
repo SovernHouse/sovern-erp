@@ -29,7 +29,7 @@
         "backgroundColor": "#1B2E1E"
       },
       "package": "co.sovernhouse.ops",
-      "permissions": ["NOTIFICATIONS", "POST_NOTIFICATIONS", "RECORD_AUDIO", "CAMERA", "READ_EXTERNAL_STORAGE"]
+      "permissions": ["NOTIFICATIONS", "POST_NOTIFICATIONS", "CAMERA", "READ_EXTERNAL_STORAGE"]
     },
     "scheme": "sovern-ops",
     "plugins": [
@@ -42,14 +42,6 @@
           "icon": "./assets/notification-icon.png",
           "color": "#1D5A32",
           "defaultChannel": "dev-mode"
-        }
-      ],
-      [
-        "expo-speech-recognition",
-        {
-          "microphonePermission": "Allow Sovern Ops to use the microphone for voice input.",
-          "speechRecognitionPermission": "Allow Sovern Ops to transcribe your speech for the AI Assistant.",
-          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
         }
       ],
       [

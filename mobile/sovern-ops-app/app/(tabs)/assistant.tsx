@@ -14,12 +14,14 @@ import {
   RefreshControl, ActivityIndicator, TextInput, KeyboardAvoidingView,
   Platform, Pressable, Alert, ScrollView, Modal, Share,
 } from 'react-native';
-import {
-  ExpoSpeechRecognitionModule,
-  useSpeechRecognitionEvent,
-  type ExpoSpeechRecognitionResultEvent,
-  type ExpoSpeechRecognitionErrorEvent,
-} from 'expo-speech-recognition';
+// NOTE: voice input on mobile was removed because it would require
+// expo-speech-recognition (a native module not in Expo Go), and ship a
+// custom native build (which iOS-side requires an Apple Dev account).
+// Voice still works on the admin web AssistantPage via the browser's
+// built-in webkitSpeechRecognition API. If we ever ship a custom mobile
+// build (Android APK or iOS with Apple Dev membership), the package
+// ~3.1.3 + the press-and-hold mic UI can come back from git history at
+// commit 87d9793.
 import {
   aiChat, aiListConversations, aiGetConversation, aiDeleteConversation,
   aiRenameConversation, uploadAttachment,
@@ -589,18 +591,6 @@ export default function AssistantScreen() {
   const [draft, setDraft]   = useState('');
   const [sending, setSending] = useState(false);
 
-  // ── Voice input state (item 2) ─────────────────────────────────────────────
-  // Press-and-hold the 🎙️ button: ExpoSpeechRecognitionModule.start() while
-  // held, .stop() on release. Live partial results stream into a separate
-  // buffer; on final result the full transcript is appended to the draft so
-  // Alex reviews and taps send manually (DECIDE 2B).
-  const [recording, setRecording] = useState(false);
-  const [voiceError, setVoiceError] = useState<string | null>(null);
-  // Snapshot of the draft at recording start, so we append cleanly without
-  // doubling up if partial results fired between renders.
-  const draftAtRecordStart = useRef<string>('');
-  const accumulatedTranscript = useRef<string>('');
-
   // ── Attachment state (item 3) ──────────────────────────────────────────────
   // Files the user has picked but not yet sent. Each shown as a chip above
   // the composer; tap × to remove. On send, the array is passed to aiChat
@@ -670,74 +660,6 @@ export default function AssistantScreen() {
     setMessages([]);
     setDraft('');
     loadConversations();
-  }
-
-  // ── Voice recognition events ───────────────────────────────────────────────
-  // Hooks must be declared at the top level. They're no-ops when not recording.
-
-  useSpeechRecognitionEvent('result', (e: ExpoSpeechRecognitionResultEvent) => {
-    // The library streams partial + final results. We accumulate into a ref
-    // and rebuild the draft from (snapshot + accumulated) so partial flicker
-    // doesn't double-append.
-    const last = e.results?.[e.results.length - 1];
-    if (!last) return;
-    const text = last.transcript || '';
-    if (e.isFinal) {
-      accumulatedTranscript.current = (accumulatedTranscript.current + ' ' + text).trim();
-    }
-    const snapshot = draftAtRecordStart.current;
-    const live = e.isFinal
-      ? accumulatedTranscript.current
-      : (accumulatedTranscript.current + ' ' + text).trim();
-    setDraft(snapshot ? `${snapshot} ${live}`.trim() : live);
-  });
-
-  useSpeechRecognitionEvent('error', (e: ExpoSpeechRecognitionErrorEvent) => {
-    setVoiceError(e.error || 'speech recognition failed');
-    setRecording(false);
-  });
-
-  useSpeechRecognitionEvent('end', () => {
-    setRecording(false);
-  });
-
-  async function startVoiceRecording() {
-    if (recording || sending) return;
-    setVoiceError(null);
-    accumulatedTranscript.current = '';
-    draftAtRecordStart.current = draft;
-
-    try {
-      const perms = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      if (!perms.granted) {
-        setVoiceError('Microphone or speech recognition permission denied. Enable in Settings.');
-        return;
-      }
-      // Multi-language auto-detect: try EN first, then ZH-TW, then ZH-CN.
-      // The library uses the device's default if `lang` doesn't match any
-      // installed model. Listing zh-TW first after en biases toward Taipei
-      // since that's where Alex spends most time.
-      ExpoSpeechRecognitionModule.start({
-        lang: 'en-US',
-        interimResults: true,
-        continuous: true,
-        contextualStrings: ['Sovern', 'LAU', 'SHAW', 'WIN', 'KTB', 'PFE', 'JMC', 'OSD'],
-        addsPunctuation: true,
-        // Non-iOS-only options ignored on other platforms.
-      });
-      setRecording(true);
-    } catch (err: any) {
-      setVoiceError(err?.message || 'could not start recording');
-      setRecording(false);
-    }
-  }
-
-  function stopVoiceRecording() {
-    if (!recording) return;
-    try {
-      ExpoSpeechRecognitionModule.stop();
-    } catch (_) { /* idempotent */ }
-    setRecording(false);
   }
 
   // ── Attachment handlers (item 3) ───────────────────────────────────────────
@@ -1260,10 +1182,10 @@ export default function AssistantScreen() {
         </View>
       )}
       {attachmentError && (
-        <View style={styles.voiceErrorBar}>
-          <Text style={styles.voiceErrorText} numberOfLines={2}>⚠️ {attachmentError}</Text>
+        <View style={styles.inlineErrorBar}>
+          <Text style={styles.inlineErrorText} numberOfLines={2}>⚠️ {attachmentError}</Text>
           <Pressable onPress={() => setAttachmentError(null)}>
-            <Text style={styles.voiceErrorDismiss}>✕</Text>
+            <Text style={styles.inlineErrorDismiss}>✕</Text>
           </Pressable>
         </View>
       )}
@@ -1279,24 +1201,13 @@ export default function AssistantScreen() {
         >
           <Text style={styles.micBtnText}>📎</Text>
         </Pressable>
-        {/* 🎙️ press-and-hold to dictate. On release, transcript fills the
-            input and Alex taps send manually. */}
-        <Pressable
-          style={[styles.micBtn, recording && styles.micBtnActive]}
-          onPressIn={startVoiceRecording}
-          onPressOut={stopVoiceRecording}
-          disabled={sending}
-          accessibilityLabel="Hold to dictate"
-        >
-          <Text style={styles.micBtnText}>{recording ? '◉' : '🎙️'}</Text>
-        </Pressable>
         <TextInput
           style={styles.composeInput}
           value={draft}
           onChangeText={setDraft}
           placeholder={devMode && isSuperAdmin
             ? 'Describe a code change for the dev agent…'
-            : recording ? 'Listening…' : 'Ask Sovern AI…'}
+            : 'Ask Sovern AI…'}
           placeholderTextColor={COLORS.muted}
           multiline
           maxLength={4000}
@@ -1315,14 +1226,6 @@ export default function AssistantScreen() {
           <Text style={styles.sendBtnText}>{sending ? '…' : '↑'}</Text>
         </Pressable>
       </View>
-      {voiceError && (
-        <View style={styles.voiceErrorBar}>
-          <Text style={styles.voiceErrorText} numberOfLines={2}>⚠️ {voiceError}</Text>
-          <Pressable onPress={() => setVoiceError(null)}>
-            <Text style={styles.voiceErrorDismiss}>✕</Text>
-          </Pressable>
-        </View>
-      )}
     </KeyboardAvoidingView>
   );
 }
@@ -1476,6 +1379,8 @@ const styles = StyleSheet.create({
   sendBtnDisabled: { backgroundColor: COLORS.border },
   sendBtnText: { color: '#fff', fontSize: 20, fontWeight: '700' },
 
+  // micBtn was originally for the voice mic button, now reused for the
+  // attachment 📎 button. Voice was dropped from mobile (Expo Go limitation).
   micBtn: {
     width: 40,
     height: 40,
@@ -1487,13 +1392,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 4,
   },
-  micBtnActive: {
-    backgroundColor: '#fee2e2',
-    borderColor: '#dc2626',
-  },
   micBtnText: { fontSize: 18 },
 
-  voiceErrorBar: {
+  // Generic error-strip styles used by the attachmentError bar (and any
+  // future inline error). Was named voiceError* before mobile voice was
+  // removed; renamed to be content-agnostic.
+  inlineErrorBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1503,8 +1407,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  voiceErrorText: { color: '#7f1d1d', fontSize: 12, flex: 1, marginRight: 8 },
-  voiceErrorDismiss: { color: '#7f1d1d', fontSize: 18, paddingHorizontal: 6 },
+  inlineErrorText: { color: '#7f1d1d', fontSize: 12, flex: 1, marginRight: 8 },
+  inlineErrorDismiss: { color: '#7f1d1d', fontSize: 18, paddingHorizontal: 6 },
 
   slashPanel: {
     backgroundColor: COLORS.white,
