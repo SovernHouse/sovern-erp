@@ -31,6 +31,7 @@ const MODULES = [
   { icon: '🏭', label: 'Factories',       route: '/(tabs)/factories' },
   { icon: '✦',  label: 'AI Assistant',   route: '/(tabs)/assistant' },
   { icon: '🔎', label: 'AI Research',    route: '/(tabs)/research' },
+  { icon: '⚙️', label: 'Settings',       route: '/(tabs)/settings' },
 ] as const;
 
 // ─── Sub-components ───────────────────────────────────────────────────────────

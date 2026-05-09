@@ -12,13 +12,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../src/constants/config';
 
 // Tabs that have their own bottom-nav slot
-const PRIMARY_TABS = new Set(['triage', 'chat', 'settings']);
+const PRIMARY_TABS = new Set(['triage', 'chat', 'assistant']);
 
 const NAV_ITEMS = [
   { name: 'dashboard', icon: '🏠', label: 'Home' },
   { name: 'triage',   icon: '📥', label: 'Inbox' },
   { name: 'chat',     icon: '🗨️', label: 'Chat' },
-  { name: 'settings', icon: '⚙️', label: 'Settings' },
+  { name: 'assistant', icon: '✦', label: 'AI' },
 ] as const;
 
 // ─── Back Button for secondary modules ───────────────────────────────────────
@@ -117,7 +117,7 @@ export default function TabLayout() {
       <Tabs.Screen name="dashboard" options={{ title: 'Home' }} />
       <Tabs.Screen name="triage"    options={{ title: 'Inbox' }} />
       <Tabs.Screen name="chat"      options={{ title: 'Chat' }} />
-      <Tabs.Screen name="settings"  options={{ title: 'Settings' }} />
+      <Tabs.Screen name="assistant" options={{ title: 'AI Assistant' }} />
 
       {/* -- Accessible via Home grid, not in tab bar ----------------------- */}
       {/* All secondary modules get a ‹ back button in the header so users  */}
@@ -134,8 +134,8 @@ export default function TabLayout() {
       <Tabs.Screen name="products"        options={{ title: 'Products',       headerLeft: () => <BackToHome /> }} />
       <Tabs.Screen name="customers"       options={{ title: 'Customers',      headerLeft: () => <BackToHome /> }} />
       <Tabs.Screen name="factories"       options={{ title: 'Factories',      headerLeft: () => <BackToHome /> }} />
-      <Tabs.Screen name="assistant"       options={{ title: 'AI Assistant',   headerLeft: () => <BackToHome /> }} />
       <Tabs.Screen name="research"        options={{ title: 'AI Research',    headerLeft: () => <BackToHome /> }} />
+      <Tabs.Screen name="settings"        options={{ title: 'Settings',       headerLeft: () => <BackToHome /> }} />
     </Tabs>
   );
 }
