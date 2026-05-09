@@ -56,13 +56,18 @@ async function runClaudeSubprocess(systemPrompt, userPrompt, userId, withMcp = t
     // --permission-mode      bypassPermissions so MCP tool calls don't stall
     //                        waiting for an approval prompt that no human will
     //                        ever click in a headless subprocess
-    // --disallowed-tools     block built-in file/shell/web tools for security
+    // --disallowed-tools     block local file/shell tools for security. WebFetch
+    //                        and WebSearch are intentionally allowed so the AI
+    //                        can answer travel/quick-lookup asks (hotels,
+    //                        restaurants, contacts, news). Heavy multi-step
+    //                        sourcing belongs in the Tier 2 background runner,
+    //                        not this synchronous chat path.
     const args = ['-p', '--system-prompt', systemPrompt, '--strict-mcp-config',
                   '--permission-mode', 'bypassPermissions'];
     if (withMcp) {
       args.push('--mcp-config', MCP_CONFIG_PATH);
     }
-    args.push('--disallowed-tools', 'Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch');
+    args.push('--disallowed-tools', 'Bash,Read,Write,Edit,Glob,Grep');
 
     const child = spawn('claude', args, {
       env: { ...process.env, ERP_USER_ID: String(userId || '') },
@@ -70,16 +75,18 @@ async function runClaudeSubprocess(systemPrompt, userPrompt, userId, withMcp = t
     child.stdin.write(userPrompt);
     child.stdin.end();
 
-    // Hard-kill after 120s — shorter than nginx's proxy_read_timeout (150s)
+    // Hard-kill after 240s — shorter than nginx's proxy_read_timeout (270s)
     // so the backend can return a clean error before nginx cuts the connection.
-    // Increased from 90s to allow for multi-step tool call chains.
+    // Bumped from 120s to give web-research asks (WebSearch/WebFetch enabled
+    // above) room to do 1-3 lookups + synthesis without timing out. Heavier
+    // multi-minute research belongs in the Tier 2 background runner.
     const killTimer = setTimeout(() => {
       if (!settled) {
         logger.warn('[ai] Claude subprocess timeout — killing');
         child.kill('SIGTERM');
         setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 3000);
       }
-    }, 120000);
+    }, 240000);
 
     child.stdout.on('data', (d) => { output += d.toString(); });
     child.stderr.on('data', (d) => { errOutput += d.toString(); });
