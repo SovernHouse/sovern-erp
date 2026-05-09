@@ -20,6 +20,7 @@
 const { Op } = require('sequelize');
 const db = require('../models');
 const logger = require('../utils/logger.js');
+const { extractFromReceipt } = require('../services/expenseExtractionService');
 
 const VALID_SUBMISSION_STATUS = ['draft', 'submitted', 'paid', 'rejected', 'not_claimable'];
 const VALID_FREQUENCIES = ['monthly', 'quarterly', 'ad_hoc'];
@@ -477,6 +478,44 @@ exports.createSubmission = async (req, res) => {
     });
   } catch (err) {
     logger.error('[expenses] createSubmission error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ─── AI receipt extraction ───────────────────────────────────────────────────
+// POST /api/expenses/extract-from-receipt — body: { driveFileId }
+// Spawns a claude -p subprocess that reads the receipt photo via the
+// read_attachment MCP tool and returns suggested Expense field values.
+// The caller (mobile/admin UI) renders these as a pre-filled draft form.
+// Synchronous — returns within ~30s typically.
+
+exports.extractFromReceipt = async (req, res) => {
+  try {
+    const { driveFileId } = req.body;
+    if (!driveFileId || typeof driveFileId !== 'string') {
+      return badRequest(res, 'driveFileId is required');
+    }
+    const result = await extractFromReceipt(driveFileId);
+    if (!result.ok) {
+      return res.status(502).json({
+        error: 'Receipt extraction failed',
+        detail: result.error,
+        rawOutput: result.rawOutput || undefined,
+      });
+    }
+    return res.json({
+      success: true,
+      data: {
+        ...result.fields,
+        // Provenance fields the caller should pass back to POST /api/expenses
+        // when creating the row, so the audit trail is preserved.
+        aiExtractedFromDriveFileId: driveFileId,
+        aiExtractionConfidence: result.fields.confidence ?? null,
+        receiptDriveFileIds: [driveFileId],
+      },
+    });
+  } catch (err) {
+    logger.error('[expenses] extractFromReceipt error:', err.message);
     res.status(500).json({ error: err.message });
   }
 };

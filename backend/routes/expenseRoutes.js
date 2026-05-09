@@ -37,11 +37,12 @@ router.patch ('/expense-trips/:id',        ...gate, c.updateTrip);
 router.delete('/expense-trips/:id',        ...gate, c.deleteTrip);
 
 // ── Expenses ─────────────────────────────────────────────────────────────────
-router.get   ('/expenses',                 ...gate, c.listExpenses);
-router.post  ('/expenses',                 ...gate, c.createExpense);
-router.get   ('/expenses/:id',             ...gate, c.getExpense);
-router.patch ('/expenses/:id',             ...gate, c.updateExpense);
-router.delete('/expenses/:id',             ...gate, c.deleteExpense);
+router.get   ('/expenses',                          ...gate, c.listExpenses);
+router.post  ('/expenses',                          ...gate, c.createExpense);
+router.post  ('/expenses/extract-from-receipt',     ...gate, c.extractFromReceipt);
+router.get   ('/expenses/:id',                      ...gate, c.getExpense);
+router.patch ('/expenses/:id',                      ...gate, c.updateExpense);
+router.delete('/expenses/:id',                      ...gate, c.deleteExpense);
 
 // ── Submissions ──────────────────────────────────────────────────────────────
 router.get   ('/expense-submissions',      ...gate, c.listSubmissions);
