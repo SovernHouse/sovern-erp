@@ -248,10 +248,12 @@ The "more than one office" answer maps to a small lookup table. Each office has 
 | `defaultCurrency` | STRING(3) | Reimbursement happens in this currency. |
 | `claimsFrequency` | ENUM | `monthly` / `quarterly` / `ad_hoc`. |
 | `acceptedCategories` | JSON array | Whitelist of categories this office covers. Empty = all. |
-| `exportTemplateKey` | STRING | Which exporter to use ("expense_to_alex_v2" / "inspector_travel_v2" / "custom"). |
+| `exportTemplateKey` | STRING NULLABLE | Which exporter to use ("expense_to_alex_v2" / "inspector_travel_v2" / "custom_csv"). NULL until first report run; UI prompts to pick on first export. |
 | `notes` | TEXT NULLABLE | Free notes about the office, contact person, where to send the report. |
 
-Initial seed (you fill these in on first use): the offices you mentioned. We won't hardcode any.
+**Default values for new offices:** `claimsFrequency = 'ad_hoc'`, `exportTemplateKey = NULL`, `acceptedCategories = []` (= all). Alex tightens these per office as patterns emerge.
+
+**Seed:** none. Table is empty by default. Alex creates offices via the admin UI as needed; a default placeholder office "Personal" can be auto-created on the first expense if no office has been registered yet, so the very first expense entry doesn't get blocked on office setup.
 
 #### `ExpenseSubmission`
 
@@ -404,19 +406,18 @@ Total estimated effort: roughly 2-3 days of focused work for items 0-3, another 
 
 ---
 
-## Open DECIDE blocks (must resolve before coding)
+## Resolved DECIDE blocks
 
-- **2A** — Voice recognition language(s)
-- **2B** — Auto-send vs auto-fill on voice release
-- **4A** — Re-enable file Read in chat subprocess (with path whitelist) for "AI read this PDF on my laptop"
-- **4B** — Overhead allocation basis for client P&L
-- **4C** — Backfill historical expense sheets, yes or no
+| ID | Decision |
+|---|---|
+| 2A | Voice langs: **EN + ZH-TW + ZH-CN** (auto-detect across all three) |
+| 2B | Voice button: **auto-fill the input field; tap send manually** (review before commit) |
+| 4A | File Read in chat subprocess: **enabled, with path whitelist** (`~/Desktop`, `~/Downloads`, the sovern-erp repo, the receipts Drive folder) |
+| 4B | Overhead allocation: **revenue share + a "Direct cost / Revenue %" column on the report** for the high-touch signal. No composite math. |
+| 4C | Historical backfill: **none** — start clean from 2026 |
+| Office list | **No seed.** Table starts empty; Alex creates offices via admin UI as needed; default `frequency=ad_hoc`, `exportTemplateKey=NULL`. A placeholder "Personal" office is auto-created on the first expense if the table is empty so initial entry doesn't block on setup. |
 
-Plus you still owe me one piece of info:
-
-- **Office list** — names + currency + format key + claim frequency for each `ReimbursementOffice` you'll seed. Two or three sentences per office is plenty.
-
-Once those are resolved, Build sequence rows 1-2 can ship the same day; #3-4 a few days later after the EAS rebuild; #5-10 over the following stretch.
+All five DECIDEs and the office-list question now resolved. Build sequence is unblocked end-to-end.
 
 ---
 
