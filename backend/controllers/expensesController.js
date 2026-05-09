@@ -18,9 +18,16 @@
  */
 
 const { Op } = require('sequelize');
+const { google } = require('googleapis');
+const stream = require('stream');
 const db = require('../models');
 const logger = require('../utils/logger.js');
 const { extractFromReceipt } = require('../services/expenseExtractionService');
+const { generateReport } = require('../services/expenseExporters');
+const { getAuthClientForAccount } = require('./googleAccountController');
+
+const DRIVE_ROOT_FOLDER     = 'Sovern ERP';
+const DRIVE_REPORTS_SUBFOLDER = 'Expense reports';
 
 const VALID_SUBMISSION_STATUS = ['draft', 'submitted', 'paid', 'rejected', 'not_claimable'];
 const VALID_FREQUENCIES = ['monthly', 'quarterly', 'ad_hoc'];
@@ -33,6 +40,57 @@ function badRequest(res, message) {
 
 function notFound(res, what) {
   return res.status(404).json({ error: `${what} not found` });
+}
+
+// Drive helpers — find/create the folder chain `Sovern ERP/Expense reports/<office.code>/YYYY-MM/`
+// and upload an XLSX/CSV buffer there. Returns the new file's metadata.
+async function getDriveClientForUser(userId) {
+  const account = await db.ConnectedGoogleAccount.findOne({
+    where: { connectedByUserId: userId, isActive: true },
+  });
+  if (!account) {
+    const err = new Error('No active Google account connected. Connect one in Settings → Connected Accounts.');
+    err.statusCode = 412;
+    throw err;
+  }
+  const auth = await getAuthClientForAccount(account);
+  return google.drive({ version: 'v3', auth });
+}
+
+async function findOrCreateFolder(drive, name, parentId) {
+  const safe = String(name).replace(/'/g, "\\'");
+  const q = `mimeType = 'application/vnd.google-apps.folder' and name = '${safe}' and trashed = false` +
+            (parentId ? ` and '${parentId}' in parents` : '');
+  const list = await drive.files.list({ q, fields: 'files(id,name)', pageSize: 1 });
+  if (list.data.files && list.data.files.length > 0) return list.data.files[0].id;
+  const created = await drive.files.create({
+    requestBody: {
+      name,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: parentId ? [parentId] : [],
+    },
+    fields: 'id',
+  });
+  return created.data.id;
+}
+
+async function getReportFolderId(drive, officeCode) {
+  const root = await findOrCreateFolder(drive, DRIVE_ROOT_FOLDER, null);
+  const sub  = await findOrCreateFolder(drive, DRIVE_REPORTS_SUBFOLDER, root);
+  const off  = await findOrCreateFolder(drive, officeCode || 'UNKNOWN', sub);
+  const ym   = new Date().toISOString().slice(0, 7);
+  return findOrCreateFolder(drive, ym, off);
+}
+
+async function uploadBufferToDrive(drive, folderId, filename, buffer, mimeType) {
+  const passthrough = new stream.PassThrough();
+  passthrough.end(buffer);
+  const created = await drive.files.create({
+    requestBody: { name: filename, parents: [folderId] },
+    media: { mimeType, body: passthrough },
+    fields: 'id,name,mimeType,size,webViewLink',
+  });
+  return created.data;
 }
 
 // Look up the (USD → target) rate; return { rate, usdAmount } or { rate: null }
@@ -479,6 +537,69 @@ exports.createSubmission = async (req, res) => {
   } catch (err) {
     logger.error('[expenses] createSubmission error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+};
+
+// ─── Submission report generation ────────────────────────────────────────────
+// POST /api/expense-submissions/:id/generate-report
+// Builds the XLSX (or CSV) for the submission using the office's
+// exportTemplateKey, uploads it to Drive at
+// "Sovern ERP/Expense reports/<office.code>/YYYY-MM/", and stamps
+// submission.exportFileDriveFileId.
+
+exports.generateSubmissionReport = async (req, res) => {
+  try {
+    const sub = await db.ExpenseSubmission.findByPk(req.params.id);
+    if (!sub) return notFound(res, 'Submission');
+    const office = await db.ReimbursementOffice.findByPk(sub.officeId);
+    if (!office) return notFound(res, 'Office');
+    if (!office.exportTemplateKey) {
+      return res.status(412).json({
+        error: `Office "${office.code}" has no exportTemplateKey set yet. PATCH /api/expense-offices/${office.id} with one of: expense_to_alex_v2, inspector_travel_v2, custom_csv.`,
+      });
+    }
+
+    // Pull the expense rows in this batch + any inspector users referenced.
+    const expenses = await db.Expense.findAll({ where: { submissionBatchId: sub.id } });
+    const inspectorIds = [...new Set(expenses.map(e => e.inspectorId).filter(Boolean))];
+    const users = inspectorIds.length > 0 && db.User
+      ? await db.User.findAll({ where: { id: { [Op.in]: inspectorIds } }, attributes: ['id', 'name', 'email'] })
+      : [];
+    const tripIds = [...new Set(expenses.map(e => e.tripId).filter(Boolean))];
+    const trips = tripIds.length > 0
+      ? await db.Trip.findAll({ where: { id: { [Op.in]: tripIds } } })
+      : [];
+
+    const report = await generateReport({ office, expenses, trips, users, submission: sub });
+
+    // Upload to Drive
+    const drive = await getDriveClientForUser(req.user.id);
+    const folderId = await getReportFolderId(drive, office.code);
+    const driveFile = await uploadBufferToDrive(
+      drive, folderId, report.filename, report.buffer, report.contentType,
+    );
+
+    await sub.update({ exportFileDriveFileId: driveFile.id });
+
+    return res.json({
+      success: true,
+      data: {
+        submission: sub,
+        templateKey: report.templateKey,
+        driveFile: {
+          id: driveFile.id,
+          name: driveFile.name,
+          mimeType: driveFile.mimeType,
+          webViewLink: driveFile.webViewLink || null,
+          sizeBytes: driveFile.size ? Number(driveFile.size) : null,
+        },
+      },
+      message: `Report generated (${report.templateKey}) and uploaded to Drive.`,
+    });
+  } catch (err) {
+    const code = err.statusCode || 500;
+    logger.error('[expenses] generateSubmissionReport error:', err.message);
+    res.status(code).json({ error: err.message });
   }
 };
 

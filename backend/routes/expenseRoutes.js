@@ -45,9 +45,10 @@ router.patch ('/expenses/:id',                      ...gate, c.updateExpense);
 router.delete('/expenses/:id',                      ...gate, c.deleteExpense);
 
 // ── Submissions ──────────────────────────────────────────────────────────────
-router.get   ('/expense-submissions',      ...gate, c.listSubmissions);
-router.post  ('/expense-submissions',      ...gate, c.createSubmission);
-router.get   ('/expense-submissions/:id',  ...gate, c.getSubmission);
-router.patch ('/expense-submissions/:id',  ...gate, c.updateSubmission);
+router.get   ('/expense-submissions',                       ...gate, c.listSubmissions);
+router.post  ('/expense-submissions',                       ...gate, c.createSubmission);
+router.get   ('/expense-submissions/:id',                   ...gate, c.getSubmission);
+router.patch ('/expense-submissions/:id',                   ...gate, c.updateSubmission);
+router.post  ('/expense-submissions/:id/generate-report',   ...gate, c.generateSubmissionReport);
 
 module.exports = router;
