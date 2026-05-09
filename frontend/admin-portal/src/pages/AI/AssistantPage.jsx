@@ -27,6 +27,24 @@ const NON_TERMINAL_RUN = ['queued', 'running', 'opening_pr', 'awaiting_clarifica
 // /suppliers <query>     → search existing factories — instant
 // /products <query>      → search existing products — instant
 
+const SLASH_COMMANDS = [
+  { name: 'new-clients',   args: '<brief>', desc: 'Source NEW client prospects (background research, 5-15 min)' },
+  { name: 'new-suppliers', args: '<brief>', desc: 'Source NEW factories (background research, 5-15 min)' },
+  { name: 'clients',       args: '<query>', desc: 'Search existing customers' },
+  { name: 'suppliers',     args: '<query>', desc: 'Search existing factories' },
+  { name: 'products',      args: '<query>', desc: 'Search existing products' },
+]
+
+// Returns the suggested commands for the current input, OR null when the
+// autocomplete should be hidden (no leading slash, or already past the
+// command into the argument).
+function suggestSlashCommands(input) {
+  if (!input || !input.startsWith('/')) return null
+  if (input.includes(' ')) return null  // user is past the command into the arg
+  const prefix = input.slice(1).toLowerCase()
+  return SLASH_COMMANDS.filter(c => c.name.startsWith(prefix))
+}
+
 function parseSlashCommand(input) {
   const trimmed = (input || '').trim()
   if (!trimmed.startsWith('/')) return null
@@ -942,7 +960,47 @@ export default function AssistantPage() {
     }
   }
 
+  // Slash autocomplete navigation: when suggestions are visible, intercept
+  // ArrowUp/Down to move highlight, Tab/Enter to insert, Esc to dismiss.
+  // Falls through to the default Enter→send handler when no suggestions.
+  const [slashHighlight, setSlashHighlight] = useState(0)
+  const slashSuggestions = suggestSlashCommands(input)
+  const slashOpen = !!slashSuggestions && slashSuggestions.length > 0
+  // Reset highlight when the suggestion list changes shape so it never
+  // points past the end.
+  useEffect(() => {
+    if (slashOpen && slashHighlight >= slashSuggestions.length) setSlashHighlight(0)
+  }, [slashOpen, slashSuggestions, slashHighlight])
+
+  function insertSlash(name) {
+    setInput('/' + name + ' ')
+    setSlashHighlight(0)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
   function handleKeyDown(e) {
+    if (slashOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSlashHighlight(h => (h + 1) % slashSuggestions.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSlashHighlight(h => (h - 1 + slashSuggestions.length) % slashSuggestions.length)
+        return
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault()
+        insertSlash(slashSuggestions[slashHighlight].name)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setInput('')
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -1111,7 +1169,51 @@ export default function AssistantPage() {
           <div style={{
             flexShrink: 0, background: '#fff', borderTop: '1px solid #e2e8f0',
             padding: '12px 16px',
+            position: 'relative',
           }}>
+            {/* Slash command autocomplete — appears as a floating panel
+                anchored above the textarea when input starts with '/' and
+                hasn't yet been completed by a space. ArrowUp/Down navigates,
+                Tab/Enter inserts, Esc clears. */}
+            {slashOpen && (
+              <div style={{
+                position: 'absolute',
+                left: 16, right: 16, bottom: 'calc(100% - 8px)',
+                background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8,
+                boxShadow: '0 -4px 12px rgba(0,0,0,0.06)',
+                maxHeight: 240, overflowY: 'auto',
+                padding: 4,
+              }}>
+                {slashSuggestions.map((c, i) => (
+                  <div
+                    key={c.name}
+                    onClick={() => insertSlash(c.name)}
+                    onMouseEnter={() => setSlashHighlight(i)}
+                    style={{
+                      padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
+                      background: i === slashHighlight ? '#eff6ff' : 'transparent',
+                      display: 'flex', alignItems: 'baseline', gap: 10,
+                    }}
+                  >
+                    <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#1d5a32' }}>
+                      /{c.name}
+                    </span>
+                    <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>
+                      {c.args}
+                    </span>
+                    <span style={{ fontSize: 12, color: '#475569', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {c.desc}
+                    </span>
+                  </div>
+                ))}
+                <div style={{
+                  borderTop: '1px solid #f1f5f9', marginTop: 4, paddingTop: 4,
+                  fontSize: 11, color: '#94a3b8', padding: '6px 10px',
+                }}>
+                  ↑↓ to navigate · Tab/Enter to insert · Esc to clear
+                </div>
+              </div>
+            )}
             <div style={{
               display: 'flex', gap: 10, alignItems: 'flex-end',
               background: '#f8fafc', border: '1px solid #e2e8f0',

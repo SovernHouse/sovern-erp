@@ -75,6 +75,31 @@ interface ParsedSlash {
   arg: string;
 }
 
+interface SlashSpec {
+  name: SlashKind;
+  args: string;
+  desc: string;
+}
+
+const SLASH_COMMANDS: SlashSpec[] = [
+  { name: 'new-clients',   args: '<brief>', desc: 'Source NEW client prospects (background research, 5-15 min)' },
+  { name: 'new-suppliers', args: '<brief>', desc: 'Source NEW factories (background research, 5-15 min)' },
+  { name: 'clients',       args: '<query>', desc: 'Search existing customers' },
+  { name: 'suppliers',     args: '<query>', desc: 'Search existing factories' },
+  { name: 'products',      args: '<query>', desc: 'Search existing products' },
+];
+
+// Returns the list of commands matching the current input, OR null if the
+// autocomplete should be hidden (no leading slash, or user is past the
+// command and into the argument).
+function suggestSlashCommands(input: string): SlashSpec[] | null {
+  if (!input.startsWith('/')) return null;
+  // Once the user types a space, they're typing the argument — hide.
+  if (input.includes(' ')) return null;
+  const prefix = input.slice(1).toLowerCase();
+  return SLASH_COMMANDS.filter(c => c.name.startsWith(prefix));
+}
+
 function parseSlashCommand(input: string): ParsedSlash | null {
   const trimmed = input.trim();
   if (!trimmed.startsWith('/')) return null;
@@ -967,6 +992,29 @@ export default function AssistantScreen() {
         />
       )}
 
+      {/* Slash command autocomplete — appears when input starts with '/' and
+          there's no space yet. Tap a row to insert the command + a trailing
+          space (cursor now ready for the argument). */}
+      {(() => {
+        const suggestions = suggestSlashCommands(draft);
+        if (!suggestions || suggestions.length === 0) return null;
+        return (
+          <View style={styles.slashPanel}>
+            {suggestions.map(c => (
+              <TouchableOpacity
+                key={c.name}
+                onPress={() => setDraft('/' + c.name + ' ')}
+                style={styles.slashRow}
+              >
+                <Text style={styles.slashCmd}>/{c.name}</Text>
+                <Text style={styles.slashArgs}>{c.args}</Text>
+                <Text style={styles.slashDesc} numberOfLines={1}>{c.desc}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        );
+      })()}
+
       {/* Compose bar */}
       <View style={styles.compose}>
         {/* 🎙️ press-and-hold to dictate. On release, transcript fills the
@@ -1195,6 +1243,35 @@ const styles = StyleSheet.create({
   },
   voiceErrorText: { color: '#7f1d1d', fontSize: 12, flex: 1, marginRight: 8 },
   voiceErrorDismiss: { color: '#7f1d1d', fontSize: 18, paddingHorizontal: 6 },
+
+  slashPanel: {
+    backgroundColor: COLORS.white,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    maxHeight: 220,
+  },
+  slashRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  slashCmd: {
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.forest,
+    marginRight: 8,
+  },
+  slashArgs: {
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 12,
+    color: COLORS.muted,
+    marginRight: 12,
+  },
+  slashDesc: { fontSize: 12, color: COLORS.ink, flex: 1 },
 
   // Rename modal
   renameBackdrop: {
