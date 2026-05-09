@@ -16,9 +16,6 @@
       "bundleIdentifier": "co.sovernhouse.ops",
       "infoPlist": {
         "UIBackgroundModes": [
-          "remote-notification",
-          "remote-notification",
-          "remote-notification",
           "remote-notification"
         ],
         "ITSAppUsesNonExemptEncryption": false,
@@ -26,9 +23,6 @@
         "NSSpeechRecognitionUsageDescription": "Sovern Ops uses speech recognition to transcribe what you say into the AI Assistant chat.",
         "NSCameraUsageDescription": "Sovern Ops uses the camera to capture receipts and documents that you share with the AI Assistant.",
         "NSPhotoLibraryUsageDescription": "Sovern Ops accesses your photo library so you can attach images to the AI Assistant chat."
-      },
-      "runtimeVersion": {
-        "policy": "appVersion"
       }
     },
     "android": {
@@ -38,11 +32,6 @@
       },
       "package": "co.sovernhouse.ops",
       "permissions": [
-        "android.permission.NOTIFICATIONS",
-        "android.permission.POST_NOTIFICATIONS",
-        "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.RECORD_AUDIO",
         "android.permission.NOTIFICATIONS",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.CAMERA",
@@ -80,6 +69,9 @@
     },
     "updates": {
       "url": "https://u.expo.dev/76a4e7a2-6585-4212-aa0c-1f8cfe7e001f"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   }
 }
