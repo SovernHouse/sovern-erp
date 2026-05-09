@@ -5,15 +5,22 @@
 ---
 
 ## Last Updated
-2026-05-09 (Taiwan time, tenth session — AI UX wins (mobile nav swap, copy/paste fix, slash autocomplete, voice input, photo + document attachments) shipped + Expenses module backend partially shipped (models 4a, controllers/routes 4b). Items 4c-4f and mobile expense UI deferred. Spec at docs/features/2026-05-09-ai-ux-and-expenses-spec.md.)
+2026-05-09 (Taiwan time, tenth session — AI UX wins (mobile nav swap, copy/paste fix, slash autocomplete, voice input, photo + document attachments) shipped + complete Expenses module shipped end-to-end: models, controllers, routes, AI receipt extraction, Drive exporters (expense_to_alex_v2 + inspector_travel_v2 + custom_csv), three new slash commands (/expense /expenses /expense-report), client P&L endpoint with revenue-share allocation + direct-cost ratio, and admin /expenses page with offices + report generation. Mobile expense entry UI is the only remaining piece, blocked on EAS native rebuild. Spec: docs/features/2026-05-09-ai-ux-and-expenses-spec.md.)
 
 ---
 
 ## Where We Are
 
 ### CI Status
-- **Latest commit:** `cca01a7` (fix: inline auth gate per route — repairs the 4b regression that broke /api/health). All commits since the previous SESSION update have shipped CI green; the latest deploy was running at the time of this update — verify with `gh run list --limit 3`.
+- **Latest commit:** `1ec1313` (admin Expenses page — item 4f). All session commits CI green and deployed. Backend health 200 confirmed live.
 - **Commits this session (newest first):**
+  - `1ec1313` feat(expenses): admin Expenses page with offices + report generation (4f)
+  - `98700fb` feat(reports): GET /api/customers/:id/profitability — client P&L (4e)
+  - `f3da278` feat(expenses): /expense, /expenses, /expense-report slash commands (4d-2)
+  - `e5c3b5e` feat(expenses): Drive exporters + report-generation endpoint (4d-1)
+  - `8a5e97c` feat(expenses): receipt photo → AI extraction (4c)
+  - `f064838` chore: track laptop setup + skills sync scripts
+  - `f8b0c52` docs: SESSION.md — wrap up tenth session, items 0-3 + 4a+4b shipped (mid-session save)
   - `cca01a7` fix(expenses): inline auth gate per route (don't break /api/health)
   - `f02dd7c` feat(expenses): controllers + routes for all four resources (4b)
   - `ded660e` feat(expenses): models — Expense, ReimbursementOffice, Trip, Submission (4a)
@@ -47,7 +54,7 @@
 
 ---
 
-## Recently Shipped (this stretch — eight sessions, 46 commits)
+## Recently Shipped (this stretch — eight sessions, 53 commits)
 
 ### E-signature flow (latest) ✅
 - **`b23b7e7` feat(esign): factory-side PO confirmation + drawn-signature canvas** — supplier-facing PO approve page with name + drawn signature.
@@ -126,13 +133,19 @@ All parity items from the 29-commit backlog are now shipped. ✅
 - **Item 4a — expense models** (commit `ded660e`): four new tables — Expense (26 fields), ReimbursementOffice, Trip, ExpenseSubmission. Multi-currency by design. All FKs in `.associate()` per L-034. JSON columns raw per L-023. ✅ live (tables created on next backend boot via belt-and-braces lateAdditions sync).
 - **Item 4b — expense controllers + routes** (commits `f02dd7c`, `cca01a7`): full CRUD for all four resources at /api/expense-offices, /api/expense-trips, /api/expenses, /api/expense-submissions. Auto-create "Personal" office on empty table per spec. FX conversion via existing ExchangeRate model. createSubmission groups + flips status + snapshots totalsByCurrency. updateSubmission with paidAt propagates to all rows in batch. ✅ live now (regression-fixed: auth gate moved from router-level to per-route inline middleware so /api/health 200 stays unauthenticated).
 
+### Items shipped after the mid-session save
+
+- **Item 4c (commit `8a5e97c`)** — `POST /api/expenses/extract-from-receipt`. Synchronous endpoint that spawns claude -p with the ERP MCP, reads the receipt via `read_attachment`, and returns a structured JSON `{entryDate, originalCurrency, originalAmount, vendor, suggestedCategory, suggestedDescription, country, confidence, notes}` for the UI to render as a pre-filled draft. Currency-disambiguation rules built into the system prompt (NT$ → TWD, ¥ → CNY, ₫ → VND, ฿ → THB).
+- **Item 4d-1 (commit `e5c3b5e`)** — Drive exporters in `backend/services/expenseExporters.js`: three templates (`expense_to_alex_v2`, `inspector_travel_v2`, `custom_csv`) + a `generateReport` dispatch function. New endpoint `POST /api/expense-submissions/:id/generate-report` builds the XLSX, uploads to Drive at `Sovern ERP/Expense reports/<office.code>/YYYY-MM/`, stamps `submission.exportFileDriveFileId`. Smoke-tested locally: produces a 6.9KB multi-currency XLSX matching the source-sheet shape.
+- **Item 4d-2 (commit `f3da278`)** — three new slash commands on both surfaces: `/expense <amount> <ccy> <description>` (parses tolerant input including currency symbols, creates a draft Expense), `/expenses [unpaid|all]` (lists recent rows), `/expense-report <office-code>` (bundles drafts into a submission, generates XLSX, returns a Drive link). Slash regex order: `/expense-report` before `/expense` so it matches first. Slash autocomplete catalog now shows 8 commands.
+- **Item 4e (commit `98700fb`)** — `GET /api/customers/:id/profitability?from=&to=`. Returns revenue/COGS/directExpenses/allocatedOverhead/grossProfit/netProfit/directCostRatio. Allocation by revenue share per DECIDE 4B; direct-cost ratio surfaced as a separate column for the high-touch signal. Default period: trailing 12 months. v1 treats stored numerics as USD-equivalent (most Sovern invoices are USD); a fuller per-invoice FX conversion is left for v2.
+- **Item 4f (commit `1ec1313`)** — `frontend/admin-portal/src/pages/Expenses/ExpensesPage.jsx`. Single-page UI: filter strip (status, paid, office) + per-currency totals + table with edit/delete + drawer create/edit form + "Generate report" office picker that runs createSubmission → generateReport and opens the Drive XLSX in a new tab + nested OfficesModal for full ReimbursementOffice CRUD with exportTemplateKey picker. Wired at `/expenses` route; sidebar nav entry added.
+
 ### Items NOT yet shipped (next-session work)
 
-- **Item 4c** — receipt extraction runner. Mirrors researchRunner pattern: claude -p subprocess that reads receipt photos from Drive (via the new read_attachment MCP tool), returns structured fields (date, amount, currency, vendor, suggestedCategory, suggestedCustomerId, confidence), creates draft Expense rows for review.
-- **Item 4d** — slash commands `/expense`, `/expenses`, `/expense-report`. Plus the two Drive exporters: `expense_to_alex_v2` (single sheet, multi-currency, paid-batch markers, total row — matches Alex's existing template) and `inspector_travel_v2` (per-inspector tabs, monthly subtotals — matches the existing inspector sheet).
-- **Item 4e** — client P&L endpoint `GET /api/customers/:id/profitability` with revenue-share allocation + direct-cost / revenue ratio column (DECIDE 4B locked: option A).
-- **Item 4f** — admin UI: expenses table + submission flow + exporter UI.
-- **Mobile expense entry UI** — needs the EAS native rebuild first (camera + document picker), then expense entry screens for the on-the-road flow (camera→AI extract→draft form).
+- **Mobile expense entry UI** — needs the EAS native rebuild first (camera + document picker — items 2 + 3 native deps). Then expense entry screens for the on-the-road flow (camera → AI extract via `/api/expenses/extract-from-receipt` → draft form). Backend support is fully ready.
+- **Customer profitability page UI** — endpoint shipped (4e); a dedicated chart-y page with the per-line breakdown is the natural next add. AI can already call the endpoint via `erp_query` or a direct fetch in chat for ad-hoc reporting.
+- **Receipt-attached-via-chat → expense flow** — when Alex drops a receipt photo into the AI chat, the AI sees it via `read_attachment`. A natural next iteration: a system-prompt rule that nudges "want me to log this as an expense?" + a thin slash like `/log-expense <conversation-attachment>` that wires the existing extraction endpoint to chat.
 
 ### Known blockers / pending operational items
 
@@ -281,19 +294,29 @@ The MCP loads on next Claude Code start in this directory. Today the nginx swap 
 
 ## Next Task
 
-**Continue Item 4 (expenses) — pick up at 4c:**
-1. **4c — receipt extraction runner** (~1 commit): mirror the `researchRunner` pattern at `backend/services/researchRunner.js` to build `backend/services/expenseExtractionRunner.js`. AI subprocess gets a receipt photo's Drive file ID, calls `read_attachment` to view it, returns a structured JSON `{date, amount, currency, vendor, suggestedCategory, suggestedCustomerId, confidence}`. Runner creates a draft Expense row with `aiExtractedFromDriveFileId` + `aiExtractionConfidence`. Three-channel notifier on completion (reuse `researchNotifier` shape). Same boot recovery + background spawn pattern.
-2. **4d — slash commands + Drive exporters** (~1-2 commits): add `/expense <amount> <ccy> <description>`, `/expenses [filter]`, `/expense-report <office>` to mobile + admin slash command catalogs. Drive exporters: `expense_to_alex_v2` (single multi-currency sheet matching the existing template — see Alex's `Expense To Alex YYYY.xlsx` files in Downloads + Desktop/_Organized/Spreadsheets) and `inspector_travel_v2` (per-inspector tabs matching `Details of the inspector's travel expenses YYYY.xlsx`). Use `exceljs` (already a backend dep). Output XLSX, save to Drive at `Sovern ERP/Expense reports/<office>/YYYY-MM/`, stamp `ExpenseSubmission.exportFileDriveFileId`.
-3. **4e — client P&L endpoint** (~1 commit): `GET /api/customers/:id/profitability?from=&to=`. Sum revenue (Invoice/Quotation), COGS (PurchaseOrder), direct expenses (Expense.customerId = X), allocated overhead (sum of all unallocated Expense rows × this customer's revenue share of period). Add a `directCostRatio` column = direct expenses / revenue. Per DECIDE 4B: revenue share allocation, no composite math.
-4. **4f — admin UI** (~1-2 commits): expenses table + filter sidebar + create/edit drawer; submission flow; export button per office; client P&L page reachable from Customer detail.
-5. **Mobile expense entry UI** (~1 commit, ships AFTER EAS rebuild): camera flow → AI extract → draft form. Uses items 2+3 mobile pickers.
+**Highest priority: real test of everything that just shipped.**
 
-**Operational (carryover from prior session):**
-- **EAS native rebuild required** for mobile to pick up voice + photo pickers. Run `cd mobile/sovern-ops-app && eas build --platform ios --profile preview`. ~15-20 min. EAS Update OTA does NOT pick up native deps. Already documented in CI Status above.
-- Restart Claude Code in this directory once to load the `sovern-vm` MCP server (registered in `~/.claude/settings.json` last session). Future infra ops can use `vm_exec` instead of raw Bash.
+1. **Test the new admin Expenses page** at `/expenses`. Create an office (Settings > Offices > New). Pick `expense_to_alex_v2` as the template. Manually log 2-3 expenses across different currencies. Run "Generate report" — should produce an XLSX in Drive at `Sovern ERP/Expense reports/<office.code>/YYYY-MM/` matching the existing template shape.
+2. **Test slash commands in admin chat:** `/expense 142 TWD taxi`, `/expenses unpaid`, `/expense-report SOVERN_TW`.
+3. **Test receipt extraction:** drop a real receipt photo into the AI chat (📎 button). AI should call `read_attachment`, see the image, and read out the structured fields. Then on the admin Expenses page, create from those values manually for now (the explicit "from receipt" UI flow is a v2 add).
+4. **Test the client P&L endpoint:** `curl https://erp.sovernhouse.co/api/customers/<id>/profitability` (with auth header). Verify revenue + cogs + directExpenses + allocatedOverhead + netProfit + directCostRatio all populate sensibly.
+
+**EAS native rebuild still owed for mobile:**
+- `cd mobile/sovern-ops-app && eas build --platform ios --profile preview` (~15-20 min).
+- After install, mobile picks up: voice mic button (item 2), camera + library + document picker (item 3), expense entry screens (item 4 mobile UI — to be built once rebuild lands).
+- Until then mobile users see voice + 📎 button wired but the underlying native modules aren't bundled, so taps will error.
+
+**Operational:**
+- Restart Claude Code in this directory once to load the `sovern-vm` MCP server (registered in `~/.claude/settings.json` last session). Future infra ops use `vm_exec` instead of raw Bash.
 - Schedule a VM reboot window for the kernel update (`*** System restart required ***` warning on login). Pre-existing.
 
-**Mobile parity status:** AI chat surfaces (mobile + admin) at parity except mobile-only items pending EAS rebuild (voice mic button works in admin web today; mobile has the UI wired but the native module isn't installed yet). Expense module mobile entry UI is the next batch after rebuild.
+**Polish backlog (deprioritised; pick when you have appetite):**
+- Receipt-photo-in-chat → "want me to log this as an expense?" prompt → one-click create. Glue between item 3 (chat photos) and item 4 (expenses).
+- Customer profitability admin page (the endpoint is live; needs a chart-y UI under `/customers/:id/profitability`).
+- Mobile expense entry screens: list + detail + camera capture flow.
+- Per-invoice FX conversion in the client P&L (v1 treats numerics as USD-equivalent).
+
+**Mobile parity status:** AI chat at parity once EAS rebuild runs. Expenses module is admin-only until mobile entry UI ships.
 
 ---
 
