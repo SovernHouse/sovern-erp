@@ -115,6 +115,10 @@ db.DevModeRun = require('./DevModeRun')(sequelize);
 // Expo push tokens (mobile push notifications, used by dev-mode notifier)
 db.ExpoPushToken = require('./ExpoPushToken')(sequelize);
 
+// AI Research tasks (audit + lifecycle for Tier 2 background sourcing runs:
+// /new-clients and /new-suppliers slash commands).
+db.ResearchTask = require('./ResearchTask')(sequelize);
+
 // Load CRM models if they exist.
 // Tolerate missing files (MODULE_NOT_FOUND, e.g. CRM module disabled),
 // but surface any other error (syntax error, runtime throw inside the

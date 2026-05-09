@@ -184,6 +184,7 @@ const driveRoutes = require('./routes/driveRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const devModeRoutes = require('./routes/devModeRoutes');
 const pushTokenRoutes = require('./routes/pushTokenRoutes');
+const researchRoutes = require('./routes/researchRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/sso', ssoRoutes);
@@ -241,6 +242,7 @@ app.use('/api/drive', driveRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/dev-mode', devModeRoutes);
 app.use('/api/push-tokens', pushTokenRoutes);
+app.use('/api/research', researchRoutes);
 
 // Chatter (polymorphic message thread)
 const chatterRoutes = require('./routes/chatterRoutes');
@@ -518,7 +520,7 @@ db.sequelize.authenticate()
     // (suspected: an index-creation race that catches as "already exists"
     // and aborts the table create on the same iteration). model.sync() is
     // idempotent on existing tables.
-    const lateAdditions = ['DevModeRun', 'ExpoPushToken'];
+    const lateAdditions = ['DevModeRun', 'ExpoPushToken', 'ResearchTask'];
     for (const modelName of lateAdditions) {
       if (!db[modelName]) continue;
       try {
@@ -557,6 +559,16 @@ db.sequelize.authenticate()
       await recoverStaleRuns();
     } catch (e) {
       logger.warn('[dev-mode] Boot recovery skipped:', e.message);
+    }
+  })
+  .then(async () => {
+    // Research-task boot recovery: same pattern as dev-mode. Any
+    // queued/running task on boot was orphaned by a process restart.
+    try {
+      const { recoverStaleResearchTasks } = require('./services/researchRunner');
+      await recoverStaleResearchTasks();
+    } catch (e) {
+      logger.warn('[research] Boot recovery skipped:', e.message);
     }
   })
   .then(async () => {
