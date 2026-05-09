@@ -568,6 +568,16 @@ export const devModeAPI = {
   abortRun:              (id)                   => api.post(`/dev-mode/runs/${id}/abort`),
 }
 
+// AI Research — Tier 2 background sourcing tasks. startTask returns 202
+// and the runner notifies via Notification row + appended chat message
+// when done. listTasks/getTask are read; cancelTask SIGTERMs the subprocess.
+export const researchAPI = {
+  startTask:  (mode, brief, conversationId) => api.post('/research/tasks', { mode, brief, conversationId }),
+  listTasks:  (params)                      => api.get('/research/tasks', { params }),
+  getTask:    (id)                          => api.get(`/research/tasks/${id}`),
+  cancelTask: (id)                          => api.post(`/research/tasks/${id}/cancel`),
+}
+
 // Expo push tokens — admin portal doesn't push but this is here for
 // completeness / future web-push.
 export const pushTokensAPI = {

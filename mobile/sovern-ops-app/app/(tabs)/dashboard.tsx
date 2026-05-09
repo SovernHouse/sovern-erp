@@ -30,6 +30,7 @@ const MODULES = [
   { icon: '🏢', label: 'Customers',       route: '/(tabs)/customers' },
   { icon: '🏭', label: 'Factories',       route: '/(tabs)/factories' },
   { icon: '✦',  label: 'AI Assistant',   route: '/(tabs)/assistant' },
+  { icon: '🔎', label: 'AI Research',    route: '/(tabs)/research' },
 ] as const;
 
 // ─── Sub-components ───────────────────────────────────────────────────────────

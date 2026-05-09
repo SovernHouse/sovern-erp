@@ -18,8 +18,10 @@ import {
   aiChat, aiListConversations, aiGetConversation, aiDeleteConversation,
   aiRenameConversation,
   startDevModeRun, getDevModeRun, answerDevModeClarification,
+  startResearchTask, getCustomers, getFactories, getProducts,
   type AIConversation, type AIMessage,
   type DevModeRun, type DevModeRunStatus,
+  type ResearchTaskMode,
 } from '../../src/services/api';
 import { useAuthStore } from '../../src/store/authStore';
 import { COLORS } from '../../src/constants/config';
@@ -56,6 +58,64 @@ function stripMarkdown(text: string): string {
     .replace(/^---+$/gm, '─────────────')  // hr
     .replace(/^[*\-+] /gm, '• ')           // bullet list items
     .replace(/`([^`]+)`/g, '$1');          // inline code
+}
+
+// ─── Slash commands ───────────────────────────────────────────────────────────
+
+type SlashKind = 'new-clients' | 'new-suppliers' | 'clients' | 'suppliers' | 'products';
+
+interface ParsedSlash {
+  kind: SlashKind;
+  arg: string;
+}
+
+function parseSlashCommand(input: string): ParsedSlash | null {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith('/')) return null;
+  const m = trimmed.match(/^\/(new-clients|new-suppliers|clients|suppliers|products)(?:\s+([\s\S]+))?$/i);
+  if (!m) return null;
+  return { kind: m[1].toLowerCase() as SlashKind, arg: (m[2] || '').trim() };
+}
+
+async function runSlashCommand(slash: ParsedSlash, conversationId: string | null): Promise<string> {
+  switch (slash.kind) {
+    case 'new-clients':
+    case 'new-suppliers': {
+      if (!slash.arg || slash.arg.length < 5) {
+        return 'Need a brief — e.g. `/' + slash.kind + ' canadian brake-pad importers, mid-size`. What country, product, and rough size are we looking for?';
+      }
+      const mode: ResearchTaskMode = slash.kind === 'new-clients' ? 'clients' : 'suppliers';
+      const res = await startResearchTask(mode, slash.arg, conversationId ?? undefined);
+      const task = res.data;
+      const what = mode === 'clients' ? 'client prospects' : 'suppliers';
+      return `🔎 Researching new ${what}.\n\nBrief: "${slash.arg.slice(0, 200)}"\n\nThis runs in the background (5-15 min). I'll drop the results back here when done — push notification + email summary too. You can check progress in **AI Assistant → Research** or cancel from the same screen.\n\nTask ID: \`${task.id.slice(0, 8)}\``;
+    }
+    case 'clients': {
+      const arg = slash.arg.trim();
+      const res = await getCustomers(arg ? { search: arg, page: 1 } : { page: 1 });
+      const rows = (res as any).data ?? (res as any).items ?? [];
+      if (!rows.length) return arg ? `No customers match "${arg}".` : 'No customers found.';
+      return formatRowList(rows.slice(0, 20), c => `**${c.companyName}**${c.country ? ` — ${c.country}` : ''}${c.email ? ` — ${c.email}` : ''}`);
+    }
+    case 'suppliers': {
+      const arg = slash.arg.trim();
+      const res = await getFactories(arg ? { search: arg, page: 1, limit: 20 } : { page: 1, limit: 20 });
+      const rows = (res as any).data ?? (res as any).items ?? [];
+      if (!rows.length) return arg ? `No suppliers match "${arg}".` : 'No suppliers found.';
+      return formatRowList(rows.slice(0, 20), f => `**${f.companyName}**${f.country ? ` — ${f.country}` : ''}${f.specializations?.length ? ` (${f.specializations.slice(0, 3).join(', ')})` : ''}`);
+    }
+    case 'products': {
+      const arg = slash.arg.trim();
+      const res = await getProducts(arg ? { search: arg, page: 1, limit: 20 } : { page: 1, limit: 20 });
+      const rows = (res as any).data ?? (res as any).items ?? [];
+      if (!rows.length) return arg ? `No products match "${arg}".` : 'No products found.';
+      return formatRowList(rows.slice(0, 20), p => `**${p.name || p.sku}**${p.sku ? ` (${p.sku})` : ''}${p.category?.name ? ` — ${p.category.name}` : ''}`);
+    }
+  }
+}
+
+function formatRowList<T>(rows: T[], render: (row: T) => string): string {
+  return rows.map(r => '- ' + render(r)).join('\n');
 }
 
 // ─── Welcome suggestions (same set as admin portal) ───────────────────────────
@@ -505,6 +565,43 @@ export default function AssistantScreen() {
     if (!body || sending) return;
     setDraft('');
     setSending(true);
+
+    // Slash-command branch: intercept /new-clients, /new-suppliers (Tier 2
+    // background research), and /clients, /suppliers, /products (instant
+    // ERP lookups). Handled client-side so the AI never sees them and the
+    // routing is predictable. Falls through to /ai/chat for anything else.
+    const slash = parseSlashCommand(body);
+    if (slash) {
+      const userMsg: AIMessage = {
+        role: 'user',
+        content: body,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, userMsg]);
+      try {
+        const reply = await runSlashCommand(slash, activeConvId);
+        // /new-X starts a background task; the runner's notifier will append
+        // the result back to this conversation when it lands. /X commands
+        // return the result immediately.
+        const assistantMsg: AIMessage = {
+          role: 'assistant',
+          content: reply,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, assistantMsg]);
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 150);
+      } catch (err: any) {
+        const errMsg: AIMessage = {
+          role: 'assistant',
+          content: '⚠️ ' + (err.message ?? 'Slash command failed.'),
+          timestamp: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, errMsg]);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
 
     // Dev Mode branch (super_admin only): spawn a sandboxed code-change
     // run instead of calling /ai/chat. Push a live DevRunCard message

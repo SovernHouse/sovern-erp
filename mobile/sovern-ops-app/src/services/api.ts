@@ -1146,3 +1146,92 @@ export async function aiDeleteConversation(id: string): Promise<void> {
 export async function aiClearConversation(id: string): Promise<void> {
   await request(`/api/ai/conversations/${id}/clear`, { method: 'POST' })
 }
+
+// ─── Research tasks (Tier 2 background sourcing) ─────────────────────────────
+// Lifecycle endpoints for /new-clients and /new-suppliers slash commands.
+// Maps to backend/models/ResearchTask.js + backend/routes/researchRoutes.js.
+
+export type ResearchTaskMode = 'clients' | 'suppliers';
+
+export type ResearchTaskStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export interface ResearchFinding {
+  type: 'lead' | 'factory' | 'customer';
+  draftId?: string | null;
+  companyName: string;
+  country?: string | null;
+  sourceUrl?: string | null;
+  evidence?: string | null;
+  // Set when the finding was deduped against an existing row instead of creating one.
+  dedupedAgainst?: { id: string; type: string; companyName: string } | null;
+  // Set when the finding was rejected (missing fields, invalid email, etc.).
+  skipped?: string | null;
+}
+
+export interface ResearchTask {
+  id: string;
+  userId: string;
+  mode: ResearchTaskMode;
+  brief: string;
+  conversationId?: string | null;
+  status: ResearchTaskStatus;
+  summary?: string | null;
+  findings: ResearchFinding[];
+  findingsCount: number;
+  draftsCreated: number;
+  duplicatesFound: number;
+  tokenUsage: Record<string, number>;
+  estimatedCostUsd?: number | null;
+  errorMessage?: string | null;
+  subprocessPid?: number | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function startResearchTask(
+  mode: ResearchTaskMode,
+  brief: string,
+  conversationId?: string,
+) {
+  return request<{ success: boolean; data: ResearchTask; message?: string }>(
+    '/api/research/tasks',
+    { method: 'POST', body: JSON.stringify({ mode, brief, conversationId }) },
+  );
+}
+
+export function getResearchTask(id: string) {
+  return request<{ success: boolean; data: ResearchTask }>(`/api/research/tasks/${id}`);
+}
+
+export function listResearchTasks(opts: {
+  status?: ResearchTaskStatus;
+  mode?: ResearchTaskMode;
+  page?: number;
+  limit?: number;
+} = {}) {
+  const qs = new URLSearchParams();
+  if (opts.status) qs.set('status', opts.status);
+  if (opts.mode) qs.set('mode', opts.mode);
+  if (opts.page) qs.set('page', String(opts.page));
+  if (opts.limit) qs.set('limit', String(opts.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return request<{
+    success: boolean;
+    data: ResearchTask[];
+    pagination: { total: number; page: number; pages: number; pageSize: number };
+  }>(`/api/research/tasks${suffix}`);
+}
+
+export function cancelResearchTask(id: string) {
+  return request<{ success: boolean; data: ResearchTask; message?: string }>(
+    `/api/research/tasks/${id}/cancel`,
+    { method: 'POST' },
+  );
+}

@@ -775,6 +775,8 @@ const buildNavFromPermissions = (permissions) => {
     { label: 'Connected Accounts', path: '/settings/connected-accounts', roles: ['admin', 'super_admin'] },
   ]})
   nav.push({ label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' })
+  // AI Research (admin + super_admin — Tier 2 background sourcing audit).
+  nav.push({ label: 'AI Research', icon: 'Search', path: '/ai/research', roles: ['super_admin', 'admin'] })
   // Dev Mode runs (super_admin only — gated client-side here AND server-side
   // by requireRole('super_admin') in backend/routes/devModeRoutes.js).
   nav.push({ label: 'Dev Mode runs', icon: 'Code', path: '/ai/dev-runs', roles: ['super_admin'] })

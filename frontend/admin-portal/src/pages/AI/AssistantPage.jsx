@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { aiAPI, devModeAPI } from '../../services/api'
+import { aiAPI, devModeAPI, researchAPI, customersAPI, factoriesAPI, productsAPI } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 import {
@@ -18,6 +18,66 @@ import {
 // Dev Mode (super_admin only) — toggle persisted across reloads
 const DEV_MODE_KEY = 'sovern.ai.devModeOn'
 const NON_TERMINAL_RUN = ['queued', 'running', 'opening_pr', 'awaiting_clarification']
+
+// ─── Slash commands ───────────────────────────────────────────────────────────
+// /new-clients <brief>   → start research task (mode: clients) — background
+// /new-suppliers <brief> → start research task (mode: suppliers) — background
+// /clients <query>       → search existing customers — instant
+// /suppliers <query>     → search existing factories — instant
+// /products <query>      → search existing products — instant
+
+function parseSlashCommand(input) {
+  const trimmed = (input || '').trim()
+  if (!trimmed.startsWith('/')) return null
+  const m = trimmed.match(/^\/(new-clients|new-suppliers|clients|suppliers|products)(?:\s+([\s\S]+))?$/i)
+  if (!m) return null
+  return { kind: m[1].toLowerCase(), arg: (m[2] || '').trim() }
+}
+
+async function runSlashCommand(slash, conversationId) {
+  switch (slash.kind) {
+    case 'new-clients':
+    case 'new-suppliers': {
+      if (!slash.arg || slash.arg.length < 5) {
+        return `Need a brief — e.g. \`/${slash.kind} canadian brake-pad importers, mid-size\`. What country, product, and rough size are we looking for?`
+      }
+      const mode = slash.kind === 'new-clients' ? 'clients' : 'suppliers'
+      const res = await researchAPI.startTask(mode, slash.arg, conversationId || undefined)
+      const task = res.data?.data
+      const what = mode === 'clients' ? 'client prospects' : 'suppliers'
+      return `🔎 Researching new ${what}.\n\nBrief: "${slash.arg.slice(0, 200)}"\n\nThis runs in the background (5-15 min). I'll drop the results back here when done — push notification + email summary too. Track progress at **AI Assistant → Research** or cancel from the same screen.\n\nTask ID: \`${task ? task.id.slice(0, 8) : '—'}\``
+    }
+    case 'clients': {
+      const arg = slash.arg.trim()
+      const res = await customersAPI.getAll(arg ? { search: arg, page: 1 } : { page: 1 })
+      const rows = res.data?.data ?? res.data?.items ?? []
+      if (!rows.length) return arg ? `No customers match "${arg}".` : 'No customers found.'
+      return rows.slice(0, 20).map(c =>
+        `- **${c.companyName}**${c.country ? ` — ${c.country}` : ''}${c.email ? ` — ${c.email}` : ''}`
+      ).join('\n')
+    }
+    case 'suppliers': {
+      const arg = slash.arg.trim()
+      const res = await factoriesAPI.getAll(arg ? { search: arg, page: 1, limit: 20 } : { page: 1, limit: 20 })
+      const rows = res.data?.data ?? res.data?.items ?? []
+      if (!rows.length) return arg ? `No suppliers match "${arg}".` : 'No suppliers found.'
+      return rows.slice(0, 20).map(f =>
+        `- **${f.companyName}**${f.country ? ` — ${f.country}` : ''}${f.specializations?.length ? ` (${f.specializations.slice(0, 3).join(', ')})` : ''}`
+      ).join('\n')
+    }
+    case 'products': {
+      const arg = slash.arg.trim()
+      const res = await productsAPI.getAll(arg ? { search: arg, page: 1, limit: 20 } : { page: 1, limit: 20 })
+      const rows = res.data?.data ?? res.data?.items ?? []
+      if (!rows.length) return arg ? `No products match "${arg}".` : 'No products found.'
+      return rows.slice(0, 20).map(p =>
+        `- **${p.name || p.sku}**${p.sku ? ` (${p.sku})` : ''}${p.category?.name ? ` — ${p.category.name}` : ''}`
+      ).join('\n')
+    }
+    default:
+      return null
+  }
+}
 
 // localStorage key for the last-active conversation id, so the user
 // resumes their previous chat after closing/reopening the ERP instead
@@ -642,6 +702,28 @@ export default function AssistantPage() {
   async function handleSend() {
     const text = input.trim()
     if (!text || sending) return
+
+    // Slash-command branch: intercept /new-clients, /new-suppliers (Tier 2
+    // background research), and /clients, /suppliers, /products (instant
+    // ERP lookups). Handled client-side so the AI never sees them and the
+    // routing is predictable.
+    const slash = parseSlashCommand(text)
+    if (slash) {
+      setInput('')
+      setSending(true)
+      setMessages(prev => [...prev, { role: 'user', content: text, createdAt: new Date().toISOString() }])
+      try {
+        const reply = await runSlashCommand(slash, activeConvId)
+        setMessages(prev => [...prev, { role: 'assistant', content: reply, createdAt: new Date().toISOString() }])
+      } catch (err) {
+        const msg = err.response?.data?.error || err.message || 'Slash command failed.'
+        setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ ' + msg, createdAt: new Date().toISOString() }])
+      } finally {
+        setSending(false)
+        inputRef.current?.focus()
+      }
+      return
+    }
 
     // Dev Mode branch: spawn a sandboxed AI code-change run, push a
     // live-status card into the chat, no /ai/chat call. Only available
