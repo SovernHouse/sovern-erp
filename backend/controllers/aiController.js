@@ -1,6 +1,7 @@
 /**
  * AI Controller
- * Handles the in-ERP Claude assistant: chat, conversation management.
+ * Handles the in-ERP Claude assistant: chat, conversation management,
+ * file attachments uploaded to Google Drive.
  * Uses `claude -p` subprocess (Max subscription) with the ERP MCP tool server
  * for Google Calendar, Gmail, leads, contacts, factories, and quotations.
  */
@@ -9,9 +10,15 @@ const { spawn }  = require('child_process');
 const fs         = require('fs');
 const os         = require('os');
 const path       = require('path');
+const { google } = require('googleapis');
 const db         = require('../models');
 const logger     = require('../utils/logger');
 const { buildSystemPrompt } = require('../services/aiContextService');
+const { getAuthClientForAccount } = require('./googleAccountController');
+
+// Drive folder names — kept as constants so admin/mobile can show them too.
+const DRIVE_ROOT_FOLDER  = 'Sovern ERP';
+const DRIVE_AI_SUBFOLDER = 'AI uploads';
 
 // ── MCP config — written once at module load, reused for all requests ─────────
 // Points claude -p to the ERP MCP tool server. Path is resolved at runtime so
@@ -41,6 +48,55 @@ function formatConversationForPrompt(messages) {
   return messages
     .map(m => (m.role === 'user' ? 'Human' : 'Assistant') + ': ' + m.content)
     .join('\n\n');
+}
+
+// Find the user's active Google account that has Drive scope. Returns the
+// account record + an authed Drive client, or throws a clear error.
+async function getDriveClientForUser(userId) {
+  const account = await db.ConnectedGoogleAccount.findOne({
+    where: { connectedByUserId: userId, isActive: true },
+  });
+  if (!account) {
+    const err = new Error('No active Google account connected. Connect one in Settings → Connected Accounts.');
+    err.statusCode = 412; // precondition failed
+    throw err;
+  }
+  const hasDrive = (account.scopes || []).some(s => s.includes('drive'));
+  if (!hasDrive) {
+    const err = new Error('Connected Google account is missing Drive scope. Reconnect via Settings → Connected Accounts.');
+    err.statusCode = 412;
+    throw err;
+  }
+  const auth = await getAuthClientForAccount(account);
+  return { account, drive: google.drive({ version: 'v3', auth }) };
+}
+
+// Find-or-create a folder by name under a parent. Caches results in-process
+// for the duration of one HTTP request to avoid repeating the lookup.
+async function findOrCreateFolder(drive, name, parentId) {
+  const safe = String(name).replace(/'/g, "\\'");
+  const q = `mimeType = 'application/vnd.google-apps.folder' and name = '${safe}' and trashed = false` +
+            (parentId ? ` and '${parentId}' in parents` : '');
+  const list = await drive.files.list({ q, fields: 'files(id,name)', pageSize: 1 });
+  if (list.data.files && list.data.files.length > 0) return list.data.files[0].id;
+  const created = await drive.files.create({
+    requestBody: {
+      name,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: parentId ? [parentId] : [],
+    },
+    fields: 'id',
+  });
+  return created.data.id;
+}
+
+// Resolve "Sovern ERP / AI uploads / YYYY-MM" (creating segments as needed).
+async function getAiUploadsFolderId(drive) {
+  const root = await findOrCreateFolder(drive, DRIVE_ROOT_FOLDER, null);
+  const sub  = await findOrCreateFolder(drive, DRIVE_AI_SUBFOLDER, root);
+  const ym   = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const month = await findOrCreateFolder(drive, ym, sub);
+  return month;
 }
 
 async function runClaudeSubprocess(systemPrompt, userPrompt, userId, withMcp = true) {
@@ -128,12 +184,20 @@ async function generateTitle(firstMessage) {
 
 exports.chat = async (req, res) => {
   try {
-    const { message, conversationId } = req.body;
+    const { message, conversationId, attachments } = req.body;
     const user = req.user;
 
     if (!message || !message.trim()) {
       return res.status(400).json({ error: 'Message is required' });
     }
+
+    // Validate attachments shape (kept lean — heavy validation already
+    // happened at upload time). Each entry must at least carry a Drive ID.
+    const attachmentList = Array.isArray(attachments)
+      ? attachments
+        .filter(a => a && typeof a === 'object' && typeof a.driveFileId === 'string')
+        .slice(0, 5) // cap per message
+      : [];
 
     // Load or create conversation
     let conversation;
@@ -195,6 +259,17 @@ exports.chat = async (req, res) => {
     }
     userPrompt += message.trim();
 
+    // If the user attached files, append a directive instructing the AI to
+    // fetch each via the read_attachment MCP tool. The tool returns the file
+    // as MCP image content (or text content for PDFs/text files), which
+    // claude -p ingests into the model context.
+    if (attachmentList.length > 0) {
+      userPrompt += '\n\n## Attached files\nThe user attached ' + attachmentList.length +
+        ' file' + (attachmentList.length === 1 ? '' : 's') + '. Call `read_attachment(file_id)` for each ' +
+        'to view its contents before responding:\n' +
+        attachmentList.map(a => `- ${a.name || '(unnamed)'} (file_id: "${a.driveFileId}")`).join('\n');
+    }
+
     // Run claude -p with ERP MCP tools
     const result = await runClaudeSubprocess(systemPrompt, userPrompt, user.id);
 
@@ -215,10 +290,16 @@ exports.chat = async (req, res) => {
 
     const assistantReply = result.text;
 
-    // Append messages to conversation
+    // Append messages to conversation. User message carries any attachments
+    // (so the chat history rendering can show inline thumbnails on reload).
     const updatedMessages = [
       ...history,
-      { role: 'user', content: message.trim(), createdAt: new Date().toISOString() },
+      {
+        role: 'user',
+        content: message.trim(),
+        createdAt: new Date().toISOString(),
+        ...(attachmentList.length > 0 ? { attachments: attachmentList } : {}),
+      },
       { role: 'assistant', content: assistantReply, createdAt: new Date().toISOString() },
     ];
 
@@ -354,5 +435,60 @@ exports.clearConversation = async (req, res) => {
   } catch (err) {
     logger.error('[ai] clearConversation error:', err.message);
     res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// ── Attachments ───────────────────────────────────────────────────────────────
+// POST /api/ai/attachments — upload a file the user wants to share with the
+// AI in chat. Stored in their Google Drive at "Sovern ERP/AI uploads/YYYY-MM/"
+// (per the spec storage decision). Multer parses multipart/form-data into
+// req.file before this handler runs.
+
+exports.uploadAttachment = async (req, res) => {
+  let tmpPath = null;
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided. Send as multipart/form-data with field name "file".' });
+    }
+    tmpPath = req.file.path;
+    const { drive } = await getDriveClientForUser(req.user.id);
+    const folderId = await getAiUploadsFolderId(drive);
+
+    // Upload bytes to Drive
+    const fileStream = fs.createReadStream(tmpPath);
+    const created = await drive.files.create({
+      requestBody: {
+        name: req.file.originalname,
+        parents: [folderId],
+      },
+      media: {
+        mimeType: req.file.mimetype,
+        body: fileStream,
+      },
+      fields: 'id,name,mimeType,size,webViewLink,thumbnailLink,createdTime',
+    });
+
+    const file = created.data;
+    return res.status(201).json({
+      success: true,
+      data: {
+        driveFileId:  file.id,
+        name:         file.name,
+        mimeType:     file.mimeType,
+        sizeBytes:    file.size ? Number(file.size) : (req.file.size || null),
+        webViewLink:  file.webViewLink || null,
+        thumbnailUrl: file.thumbnailLink || null,
+        createdTime:  file.createdTime || null,
+      },
+    });
+  } catch (err) {
+    const code = err.statusCode || 500;
+    logger.error('[ai] uploadAttachment error:', err.message);
+    return res.status(code).json({ error: err.message || 'Upload failed' });
+  } finally {
+    // Always clean up the multer tempfile.
+    if (tmpPath) {
+      try { fs.unlinkSync(tmpPath); } catch (_) { /* file already gone */ }
+    }
   }
 };

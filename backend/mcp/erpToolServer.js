@@ -120,8 +120,17 @@ async function handleLine(line) {
       mcpSend({ jsonrpc: '2.0', id, result: { tools: TOOL_DEFS } });
     } else if (method === 'tools/call') {
       const result = await callTool(params.name, params.arguments || {});
-      const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-      mcpSend({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }] } });
+      // A tool can return raw MCP content (e.g. image type for vision) by
+      // returning `{ __mcpContent: [{type, data, mimeType}, ...] }`. Anything
+      // else is wrapped as a single text content item.
+      let content;
+      if (result && typeof result === 'object' && Array.isArray(result.__mcpContent)) {
+        content = result.__mcpContent;
+      } else {
+        const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+        content = [{ type: 'text', text }];
+      }
+      mcpSend({ jsonrpc: '2.0', id, result: { content } });
     } else if (id !== undefined) {
       mcpSend({ jsonrpc: '2.0', id, error: { code: -32601, message: `Unknown method: ${method}` } });
     }
@@ -1472,6 +1481,165 @@ async function callTool(name, args) {
       return { name, mimeType, content: text };
     }
 
+    case 'read_attachment': {
+      // Returns the file contents in a form claude -p can ingest:
+      //  - images  → MCP image content (base64) so vision works directly
+      //  - PDF     → extracted text (pdf-parse), truncated to 16KB
+      //  - DOCX    → extracted text (mammoth)
+      //  - XLSX/XLS → extracted as a list of sheets, each as CSV-style text (exceljs)
+      //  - text/CSV → direct text
+      //  - Google Docs/Sheets → exported via Drive export API
+      //  - .doc (legacy Word) → not supported, ask to re-save as .docx
+      // Files live under "Sovern ERP/AI uploads/YYYY-MM/" (uploaded via
+      // POST /api/ai/attachments) but read_attachment also works on any
+      // arbitrary Drive file the user has access to.
+      const TEXT_CAP = 16000;
+      const { auth } = await getGoogleAuth();
+      const drive = google.drive({ version: 'v3', auth });
+
+      const meta = await drive.files.get({
+        fileId: args.file_id,
+        fields: 'id,name,mimeType,size,webViewLink',
+      });
+      const { mimeType, name, webViewLink } = meta.data;
+
+      async function downloadBytes() {
+        const resp = await drive.files.get(
+          { fileId: args.file_id, alt: 'media' },
+          { responseType: 'arraybuffer' }
+        );
+        return Buffer.from(resp.data);
+      }
+
+      // Image → vision content
+      if (/^image\//i.test(mimeType)) {
+        const buf = await downloadBytes();
+        return {
+          __mcpContent: [
+            { type: 'text', text: `Attachment: ${name} (${mimeType})` },
+            { type: 'image', data: buf.toString('base64'), mimeType },
+          ],
+        };
+      }
+
+      // PDF → pdf-parse text
+      if (mimeType === 'application/pdf') {
+        try {
+          // pdf-parse loads test PDFs at top-level when imported as `pdf-parse`.
+          // Use the inner module path to skip that auto-execute and avoid a
+          // boot-time crash if the test fixtures aren't bundled.
+          const pdfParse = require('pdf-parse/lib/pdf-parse.js');
+          const buf = await downloadBytes();
+          const parsed = await pdfParse(buf);
+          const text = (parsed.text || '').trim();
+          return {
+            name, mimeType,
+            pageCount: parsed.numpages || null,
+            content: text.length > TEXT_CAP
+              ? text.slice(0, TEXT_CAP) + `\n\n... (truncated; full file ${parsed.numpages || '?'} pages, view at ${webViewLink || '(no link)'})`
+              : text,
+          };
+        } catch (e) {
+          return { name, mimeType, error: `PDF parse failed: ${e.message}`, webViewLink };
+        }
+      }
+
+      // DOCX → mammoth text
+      if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        try {
+          const mammoth = require('mammoth');
+          const buf = await downloadBytes();
+          const result = await mammoth.extractRawText({ buffer: buf });
+          const text = (result.value || '').trim();
+          return {
+            name, mimeType,
+            content: text.length > TEXT_CAP ? text.slice(0, TEXT_CAP) + '\n\n... (truncated)' : text,
+          };
+        } catch (e) {
+          return { name, mimeType, error: `DOCX parse failed: ${e.message}`, webViewLink };
+        }
+      }
+
+      // XLSX / XLS → exceljs (already a backend dep). Returns each sheet as
+      // tab-separated rows so the AI sees structure without needing to parse.
+      if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          || mimeType === 'application/vnd.ms-excel') {
+        try {
+          const ExcelJS = require('exceljs');
+          const buf = await downloadBytes();
+          const wb = new ExcelJS.Workbook();
+          await wb.xlsx.load(buf);
+          const sheets = [];
+          let totalChars = 0;
+          for (const ws of wb.worksheets) {
+            const lines = [];
+            ws.eachRow({ includeEmpty: false }, (row) => {
+              const cells = [];
+              row.eachCell({ includeEmpty: true }, (c) => {
+                const v = c.value == null ? '' : (typeof c.value === 'object' && c.value.text ? c.value.text : String(c.value));
+                cells.push(v.replace(/\t/g, ' ').replace(/\n/g, ' '));
+              });
+              lines.push(cells.join('\t'));
+            });
+            const sheetText = lines.join('\n');
+            sheets.push({ name: ws.name, rows: lines.length, content: sheetText.slice(0, TEXT_CAP) });
+            totalChars += sheetText.length;
+            if (totalChars > TEXT_CAP * 3) break; // hard cap across all sheets
+          }
+          return { name, mimeType, sheetCount: wb.worksheets.length, sheets };
+        } catch (e) {
+          return { name, mimeType, error: `XLSX parse failed: ${e.message}`, webViewLink };
+        }
+      }
+
+      // Legacy Word .doc — no good Node lib. Ask user to convert.
+      if (mimeType === 'application/msword') {
+        return {
+          name, mimeType,
+          note: 'Legacy .doc format not supported. Re-save as .docx and re-upload, or paste the relevant text.',
+          webViewLink,
+        };
+      }
+
+      // Plain text / CSV / TSV
+      if (/^text\//i.test(mimeType)) {
+        const buf = await downloadBytes();
+        const text = buf.toString('utf8');
+        return {
+          name, mimeType,
+          content: text.length > TEXT_CAP ? text.slice(0, TEXT_CAP) + '\n\n... (truncated)' : text,
+        };
+      }
+
+      // Google Doc → export to text/plain
+      if (mimeType === 'application/vnd.google-apps.document') {
+        const resp = await drive.files.export(
+          { fileId: args.file_id, mimeType: 'text/plain' },
+          { responseType: 'arraybuffer' }
+        );
+        const text = Buffer.from(resp.data).toString('utf8');
+        return {
+          name, mimeType,
+          content: text.length > TEXT_CAP ? text.slice(0, TEXT_CAP) + '\n\n... (truncated)' : text,
+        };
+      }
+
+      // Google Sheet → export to CSV
+      if (mimeType === 'application/vnd.google-apps.spreadsheet') {
+        const resp = await drive.files.export(
+          { fileId: args.file_id, mimeType: 'text/csv' },
+          { responseType: 'arraybuffer' }
+        );
+        const text = Buffer.from(resp.data).toString('utf8');
+        return {
+          name, mimeType,
+          content: text.length > TEXT_CAP ? text.slice(0, TEXT_CAP) + '\n\n... (truncated)' : text,
+        };
+      }
+
+      return { name, mimeType, note: `File type ${mimeType} not supported by read_attachment.`, webViewLink };
+    }
+
     // ── Products ────────────────────────────────────────────────────────────
 
     case 'list_product_categories': {
@@ -2461,6 +2629,17 @@ const TOOL_DEFS = [
         search:  { type: 'string', description: 'Free-text search across company name, country, city, email' },
         country: { type: 'string', description: 'Filter by country (exact match)' },
         limit:   { type: 'number', description: 'Max results (default 20, max 50)' },
+      },
+    },
+  },
+  {
+    name: 'read_attachment',
+    description: 'Read a file the user attached to the chat (📎 button on mobile or web) OR any other Drive file by ID. Supports: images (returned as MCP vision content so you SEE them — receipts, business cards, screenshots, signs, photos of paperwork), PDFs (text extracted via pdf-parse, up to 16KB), Word .docx (text via mammoth), Excel .xlsx and .xls (per-sheet rows in tab-separated format via exceljs), Google Docs and Sheets (exported via Drive API), and plain text/CSV/TSV. Legacy .doc Word files are NOT supported — ask the user to re-save as .docx. Always call this when the user attaches files; never ask them to paste content you can fetch yourself.',
+    inputSchema: {
+      type: 'object',
+      required: ['file_id'],
+      properties: {
+        file_id: { type: 'string', description: 'Drive file ID (provided in the user prompt under "## Attached files", or any Drive ID the user references)' },
       },
     },
   },

@@ -420,6 +420,7 @@ Use these when Alex references something earlier ("remember when…", "what did 
 - **list_contacts / get_contact / create_contact / update_contact / delete_contact** — contacts (joins to Factory/Customer)
 - **list_factories / get_factory / create_factory / update_factory / delete_factory** — supplier records
 - **list_customers** — search existing Sovern House customers (the buyer side). Backs the /clients lookup slash command.
+- **read_attachment** — view a file the user attached to the chat (image, PDF, text). When the user prompt has an "## Attached files" section, ALWAYS call this for each listed file_id BEFORE responding. Images return as MCP image content (you SEE them). For receipts, business cards, screenshots, signs — extract the relevant text and act on it (offer to create_lead / create_contact / create a draft Expense row when relevant).
 - **list_quotations / create_quotation** — quotation pipeline. create_quotation auto-resolves lead→customer (creates Customer from lead data and marks lead converted) when needed; takes items array, currency, validity. ALWAYS show the full draft (line items + totals + Incoterms + validity) and wait for explicit confirmation before treating it as ready to send.
 - **list_product_categories / list_products / get_product** — product catalog
 - **create_product / approve_product** — create new products (inactive until approved)
