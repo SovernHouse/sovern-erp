@@ -15,7 +15,11 @@
       "supportsTablet": false,
       "bundleIdentifier": "co.sovernhouse.ops",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": ["remote-notification"],
+        "NSMicrophoneUsageDescription": "Sovern Ops uses the microphone for voice input in the AI Assistant chat.",
+        "NSSpeechRecognitionUsageDescription": "Sovern Ops uses speech recognition to transcribe what you say into the AI Assistant chat.",
+        "NSCameraUsageDescription": "Sovern Ops uses the camera to capture receipts and documents that you share with the AI Assistant.",
+        "NSPhotoLibraryUsageDescription": "Sovern Ops accesses your photo library so you can attach images to the AI Assistant chat."
       }
     },
     "android": {
@@ -24,7 +28,7 @@
         "backgroundColor": "#1B2E1E"
       },
       "package": "co.sovernhouse.ops",
-      "permissions": ["NOTIFICATIONS", "POST_NOTIFICATIONS"]
+      "permissions": ["NOTIFICATIONS", "POST_NOTIFICATIONS", "RECORD_AUDIO", "CAMERA", "READ_EXTERNAL_STORAGE"]
     },
     "scheme": "sovern-ops",
     "plugins": [
@@ -37,6 +41,21 @@
           "icon": "./assets/notification-icon.png",
           "color": "#1D5A32",
           "defaultChannel": "dev-mode"
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow Sovern Ops to use the microphone for voice input.",
+          "speechRecognitionPermission": "Allow Sovern Ops to transcribe your speech for the AI Assistant.",
+          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Sovern Ops to access your photos so you can attach images to the AI Assistant.",
+          "cameraPermission": "Allow Sovern Ops to use the camera to capture receipts and documents."
         }
       ]
     ],

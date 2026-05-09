@@ -13,6 +13,7 @@ import {
   Send, Plus, Trash2, MessageSquare, Bot, User,
   ChevronLeft, Loader2, Sparkles, X, Pencil, Check,
   Code, ExternalLink, AlertTriangle, CheckCircle2, XCircle, HelpCircle, GitPullRequest, StopCircle, Play,
+  Mic, MicOff,
 } from 'lucide-react'
 
 // Dev Mode (super_admin only) — toggle persisted across reloads
@@ -681,6 +682,68 @@ export default function AssistantPage() {
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
+  // ── Voice input (item 2) ─────────────────────────────────────────────────
+  // Browser SpeechRecognition. Click 🎙️ to toggle; transcript fills the input
+  // and Alex tap sends manually (DECIDE 2B). Multi-language autodetect via
+  // sequential restart fallback (Web Speech API doesn't support real autodetect
+  // — we just default to en-US which is permissive of common ZH proper nouns).
+  const recognitionRef = useRef(null)
+  const inputAtRecordStart = useRef('')
+  const [recording, setRecording] = useState(false)
+  const [voiceError, setVoiceError] = useState(null)
+  const SpeechRecognitionClass = typeof window !== 'undefined'
+    ? (window.SpeechRecognition || window.webkitSpeechRecognition)
+    : null
+
+  function toggleRecording() {
+    if (!SpeechRecognitionClass) {
+      setVoiceError('Voice input not supported in this browser. Use Chrome, Edge, or Safari.')
+      return
+    }
+    if (recording) {
+      try { recognitionRef.current?.stop() } catch (_) {}
+      setRecording(false)
+      return
+    }
+    setVoiceError(null)
+    inputAtRecordStart.current = input
+    const recog = new SpeechRecognitionClass()
+    recog.lang = 'en-US'
+    recog.continuous = true
+    recog.interimResults = true
+    recog.maxAlternatives = 1
+    let finalText = ''
+    recog.onresult = (e) => {
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i]
+        if (r.isFinal) finalText += r[0].transcript + ' '
+        else interim += r[0].transcript
+      }
+      const live = (finalText + interim).trim()
+      const snapshot = inputAtRecordStart.current
+      setInput(snapshot ? `${snapshot} ${live}`.trim() : live)
+    }
+    recog.onerror = (e) => {
+      setVoiceError(e.error || 'recognition error')
+      setRecording(false)
+    }
+    recog.onend = () => setRecording(false)
+    try {
+      recog.start()
+      recognitionRef.current = recog
+      setRecording(true)
+    } catch (err) {
+      setVoiceError(err.message || 'could not start recording')
+      setRecording(false)
+    }
+  }
+
+  // Stop recognition if the user navigates away.
+  useEffect(() => () => {
+    try { recognitionRef.current?.stop() } catch (_) {}
+  }, [])
+
   // Load conversation list on mount, then auto-restore the last-active
   // conversation (or fall back to the most recent) so the user picks up
   // where they left off instead of starting fresh on every reload.
@@ -1063,6 +1126,7 @@ export default function AssistantPage() {
                 onKeyDown={handleKeyDown}
                 placeholder={devMode && isSuperAdmin
                   ? 'Describe a code change. The dev agent will edit the repo, commit, and open a PR...'
+                  : recording ? 'Listening… click 🎙️ again to stop'
                   : 'Ask anything about the business, get email drafts, analyse data...'}
                 rows={1}
                 style={{
@@ -1077,6 +1141,25 @@ export default function AssistantPage() {
                 }}
                 disabled={sending}
               />
+              {SpeechRecognitionClass && (
+                <button
+                  onClick={toggleRecording}
+                  disabled={sending}
+                  title={recording ? 'Stop recording' : 'Voice input'}
+                  style={{
+                    background: recording ? '#fee2e2' : '#fff',
+                    color: recording ? '#dc2626' : '#475569',
+                    border: `1px solid ${recording ? '#fecaca' : '#e2e8f0'}`,
+                    borderRadius: 8,
+                    width: 34, height: 34,
+                    cursor: sending ? 'default' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0, transition: 'all 0.15s',
+                  }}
+                >
+                  {recording ? <MicOff size={16} /> : <Mic size={16} />}
+                </button>
+              )}
               <button
                 onClick={handleSend}
                 disabled={!input.trim() || sending}
@@ -1095,6 +1178,19 @@ export default function AssistantPage() {
                 }
               </button>
             </div>
+            {voiceError && (
+              <div style={{
+                background: '#fef2f2', color: '#7f1d1d', border: '1px solid #fecaca',
+                borderRadius: 6, padding: '6px 10px', fontSize: 12, marginTop: 8,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+                <span>⚠️ {voiceError}</span>
+                <button
+                  onClick={() => setVoiceError(null)}
+                  style={{ background: 'none', border: 'none', color: '#7f1d1d', cursor: 'pointer', fontSize: 14 }}
+                >×</button>
+              </div>
+            )}
             <div style={{ fontSize: 11, color: devMode && isSuperAdmin ? '#0f172a' : '#94a3b8', marginTop: 6, textAlign: 'center' }}>
               {devMode && isSuperAdmin
                 ? <><Code size={11} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Dev Mode: next message spawns a sandboxed code-change AI. Up to 30 min, max 5/24h. PR opens for your review.</>
