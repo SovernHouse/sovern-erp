@@ -5,20 +5,28 @@
 ---
 
 ## Last Updated
-2026-05-09 (Taiwan time, ninth session — AI Web Access feature shipped end-to-end: Tier 1 web tools in chat + Tier 2 background sourcing with /new-clients & /new-suppliers slash commands. Fixed the original mobile-AI HTTP 502. Nginx swapped on VM to 270s read timeout. New `sovern-vm` MCP server registered for Mac-side VM ops.)
+2026-05-09 (Taiwan time, tenth session — AI UX wins (mobile nav swap, copy/paste fix, slash autocomplete, voice input, photo + document attachments) shipped + Expenses module backend partially shipped (models 4a, controllers/routes 4b). Items 4c-4f and mobile expense UI deferred. Spec at docs/features/2026-05-09-ai-ux-and-expenses-spec.md.)
 
 ---
 
 ## Where We Are
 
 ### CI Status
-- **Latest commit:** `e06a93d` (Tier 2 UI — slash commands + research tab on mobile + admin). All five commits in this session shipped CI green and deployed successfully:
-  - `5a96d3f` Tier 1: enable WebSearch+WebFetch in chat + raise timeouts
-  - `1ec6f01` Tier 2 backend skeleton (ResearchTask model + routes)
-  - `ad5a8c4` Tier 2 runner: subprocess + dedup + draft creation + notifier
-  - `0bab448` Tier 2 list_customers MCP + slash-command system prompt
-  - `e06a93d` Tier 2 UI: slash commands + research tab/page on mobile + admin
-- Each commit was independently CI-green; deploy workflow ran cleanly for the final push (build 19s, deploy 1m3s).
+- **Latest commit:** `cca01a7` (fix: inline auth gate per route — repairs the 4b regression that broke /api/health). All commits since the previous SESSION update have shipped CI green; the latest deploy was running at the time of this update — verify with `gh run list --limit 3`.
+- **Commits this session (newest first):**
+  - `cca01a7` fix(expenses): inline auth gate per route (don't break /api/health)
+  - `f02dd7c` feat(expenses): controllers + routes for all four resources (4b)
+  - `ded660e` feat(expenses): models — Expense, ReimbursementOffice, Trip, Submission (4a)
+  - `add0d37` fix(backend): pin pdf-parse to 1.1.1 (Node 18 compat) + sync lock file
+  - `348fd15` feat(ai-chat): photo + document attachments — mobile + admin (item 3 UI)
+  - `77f09b4` feat(ai-chat): attachment uploads + read_attachment MCP (item 3 backend)
+  - `826036b` feat(ai-chat): slash command autocomplete (item 1.5)
+  - `87d9793` feat(ai-chat): voice input — mobile press-and-hold + admin web (item 2)
+  - `2d0145b` docs(spec): resolve all 5 DECIDEs + office-list question
+  - `01bb7e4` fix(ai-chat): copy/paste — stable keys + memoised bubble + copy actions
+  - `b9e40c9` docs: spec — AI UX wins (copy/paste, voice, photos) + expenses module
+  - `5cf2f99` feat(mobile): swap Settings for AI Assistant in bottom nav (item 0)
+- Two CI failures + two fix-ups along the way: (1) `pdf-parse@2.4.5` required Node ≥20 but CI runs Node 18 → pinned to `1.1.1`; (2) expenseRoutes `router.use(requireAuth)` mounted at `/api` blocked `/api/health` → moved to inline middleware per route. Both fixed and shipped.
 
 ### VM Status
 - **ERP online and stable.** No crashes during the AI Web Access work. Backend health 200 throughout the swap.
@@ -39,7 +47,7 @@
 
 ---
 
-## Recently Shipped (this stretch — seven sessions, 34 commits)
+## Recently Shipped (this stretch — eight sessions, 46 commits)
 
 ### E-signature flow (latest) ✅
 - **`b23b7e7` feat(esign): factory-side PO confirmation + drawn-signature canvas** — supplier-facing PO approve page with name + drawn signature.
@@ -101,7 +109,39 @@
 
 All parity items from the 29-commit backlog are now shipped. ✅
 
-## This session (2026-05-09) — AI Web Access feature shipped end-to-end (5 commits)
+## This session (2026-05-09 tenth session — partial Item 4 + AI UX wins)
+
+**Trigger:** Alex's four-then-five-asks: better copy/paste, voice input, photo attachments, expenses module, mobile nav rearrangement (Settings → AI Assistant in bottom nav). Plus a slash-command autocomplete add during the build.
+
+**Spec:** `docs/features/2026-05-09-ai-ux-and-expenses-spec.md` — six items, five DECIDE blocks all resolved (voice langs EN+ZH-TW+ZH-CN, voice send=auto-fill manual-tap, file Read enabled with whitelist, P&L=revenue share + direct-cost ratio, no historical backfill). Office list = no seed; admin self-service.
+
+### Shipped this session
+
+- **Item 0 — mobile bottom nav swap** (commit `5cf2f99`): Settings off the bar, AI Assistant on. Settings still reachable via Home grid. ✅ live now.
+- **Item 1 — copy/paste fix** (commit `01bb7e4`): root cause was `keyExtractor={(_,i)=>String(i)}` on FlatList + un-memoised admin MessageBubble — both re-mounted bubbles on every append, killing in-progress text selection. Stable keys + React.memo + admin hover-copy button + mobile long-press Share sheet. ✅ live now.
+- **Item 1.5 — slash command autocomplete** (commit `826036b`): type `/` → filtered command list above input. ↑↓/Tab/Enter to insert (admin); tap to insert (mobile). ✅ live now.
+- **Item 2 — voice input** (commit `87d9793`): mobile press-and-hold 🎙️ via expo-speech-recognition; admin web `webkitSpeechRecognition` toggle. Auto-fills input, manual send. Multi-lang. ✅ admin live now; mobile pending EAS native rebuild.
+- **Item 3 backend — attachments + read_attachment MCP** (commits `77f09b4`, `add0d37`): POST /api/ai/attachments uploads to user's Google Drive (Sovern ERP/AI uploads/YYYY-MM/). aiChat accepts attachments[]. New `read_attachment(file_id)` MCP tool returns: images→MCP image content (vision), PDFs→pdf-parse text, DOCX→mammoth text, XLSX/XLS→exceljs per-sheet rows, Google Docs/Sheets→Drive export, text/CSV→direct read. Legacy `.doc` rejected with re-save instruction. New deps: pdf-parse@1.1.1 (Node 18 compat) + mammoth@1.12.0. MCP dispatcher gained `__mcpContent` escape hatch for non-text content. ✅ live now.
+- **Item 3 UI — pickers + chips + thumbnails** (commit `348fd15`): mobile 📎 button with Take photo / Choose photo / Choose file action sheet (expo-image-picker + expo-document-picker); admin file input + drag-drop. Pending attachment chips above composer with remove (×). Hard cap of 5 attachments per message. Inline thumbnails for images in chat history; file chips for non-images. ✅ admin live now; mobile pending EAS native rebuild.
+- **Item 4a — expense models** (commit `ded660e`): four new tables — Expense (26 fields), ReimbursementOffice, Trip, ExpenseSubmission. Multi-currency by design. All FKs in `.associate()` per L-034. JSON columns raw per L-023. ✅ live (tables created on next backend boot via belt-and-braces lateAdditions sync).
+- **Item 4b — expense controllers + routes** (commits `f02dd7c`, `cca01a7`): full CRUD for all four resources at /api/expense-offices, /api/expense-trips, /api/expenses, /api/expense-submissions. Auto-create "Personal" office on empty table per spec. FX conversion via existing ExchangeRate model. createSubmission groups + flips status + snapshots totalsByCurrency. updateSubmission with paidAt propagates to all rows in batch. ✅ live now (regression-fixed: auth gate moved from router-level to per-route inline middleware so /api/health 200 stays unauthenticated).
+
+### Items NOT yet shipped (next-session work)
+
+- **Item 4c** — receipt extraction runner. Mirrors researchRunner pattern: claude -p subprocess that reads receipt photos from Drive (via the new read_attachment MCP tool), returns structured fields (date, amount, currency, vendor, suggestedCategory, suggestedCustomerId, confidence), creates draft Expense rows for review.
+- **Item 4d** — slash commands `/expense`, `/expenses`, `/expense-report`. Plus the two Drive exporters: `expense_to_alex_v2` (single sheet, multi-currency, paid-batch markers, total row — matches Alex's existing template) and `inspector_travel_v2` (per-inspector tabs, monthly subtotals — matches the existing inspector sheet).
+- **Item 4e** — client P&L endpoint `GET /api/customers/:id/profitability` with revenue-share allocation + direct-cost / revenue ratio column (DECIDE 4B locked: option A).
+- **Item 4f** — admin UI: expenses table + submission flow + exporter UI.
+- **Mobile expense entry UI** — needs the EAS native rebuild first (camera + document picker), then expense entry screens for the on-the-road flow (camera→AI extract→draft form).
+
+### Known blockers / pending operational items
+
+- **EAS native rebuild required for mobile.** Items 2 (voice) and 3 (photos) added three native deps (`expo-speech-recognition`, `expo-image-picker`, `expo-document-picker`). They live in `mobile/sovern-ops-app/package.json` + `app.json` (microphone, camera, photo library, speech recognition permissions). Run `cd mobile/sovern-ops-app && eas build --platform ios --profile preview` (~15-20 min). EAS Update OTA will NOT pick these up — only `eas build` will.
+- **`docs/features/2026-05-09-ai-ux-and-expenses-spec.md`** is the source of truth for what's still TODO + the five locked DECIDEs. Read at session start before resuming Item 4.
+
+---
+
+## This session (2026-05-09 ninth session) — AI Web Access feature shipped end-to-end (5 commits)
 
 **Trigger:** Alex sent a mobile screenshot showing HTTP 502 on the AI Assistant when he asked it to "do deep research and search the internet and its resources for potential Canadian clients for us to send emails to". Diagnosis: `backend/controllers/aiController.js:65` had `WebFetch,WebSearch` in `--disallowed-tools`, AI couldn't fulfill the ask, looped past the 120s subprocess kill timer, backend returned 502.
 
@@ -241,18 +281,19 @@ The MCP loads on next Claude Code start in this directory. Today the nginx swap 
 
 ## Next Task
 
-**First real test of AI Web Access (highest priority):**
-- **Tier 1:** open the AI Assistant on web or mobile, ask something like "best ramen near my hotel in Shibuya" or "find Lê Minh Tuấn at Saigon Hardwood, what's his email" — should return a real web-sourced answer in <90s, no 502.
-- **Tier 2:** type `/new-clients canadian brake-pad importers, mid-size` in chat. Should immediately reply "🔎 Researching..." with a task ID. Open AI Assistant → Research (mobile tab or admin /ai/research) and watch the row tick from queued → running. After 5–15 min the result lands as an assistant message in the same conversation, and draft Lead rows appear in CRM.
-- **Slash lookups:** `/suppliers vietnam` → instant inline list of matching factories. `/clients` (no arg) → 20 most-recent customers.
+**Continue Item 4 (expenses) — pick up at 4c:**
+1. **4c — receipt extraction runner** (~1 commit): mirror the `researchRunner` pattern at `backend/services/researchRunner.js` to build `backend/services/expenseExtractionRunner.js`. AI subprocess gets a receipt photo's Drive file ID, calls `read_attachment` to view it, returns a structured JSON `{date, amount, currency, vendor, suggestedCategory, suggestedCustomerId, confidence}`. Runner creates a draft Expense row with `aiExtractedFromDriveFileId` + `aiExtractionConfidence`. Three-channel notifier on completion (reuse `researchNotifier` shape). Same boot recovery + background spawn pattern.
+2. **4d — slash commands + Drive exporters** (~1-2 commits): add `/expense <amount> <ccy> <description>`, `/expenses [filter]`, `/expense-report <office>` to mobile + admin slash command catalogs. Drive exporters: `expense_to_alex_v2` (single multi-currency sheet matching the existing template — see Alex's `Expense To Alex YYYY.xlsx` files in Downloads + Desktop/_Organized/Spreadsheets) and `inspector_travel_v2` (per-inspector tabs matching `Details of the inspector's travel expenses YYYY.xlsx`). Use `exceljs` (already a backend dep). Output XLSX, save to Drive at `Sovern ERP/Expense reports/<office>/YYYY-MM/`, stamp `ExpenseSubmission.exportFileDriveFileId`.
+3. **4e — client P&L endpoint** (~1 commit): `GET /api/customers/:id/profitability?from=&to=`. Sum revenue (Invoice/Quotation), COGS (PurchaseOrder), direct expenses (Expense.customerId = X), allocated overhead (sum of all unallocated Expense rows × this customer's revenue share of period). Add a `directCostRatio` column = direct expenses / revenue. Per DECIDE 4B: revenue share allocation, no composite math.
+4. **4f — admin UI** (~1-2 commits): expenses table + filter sidebar + create/edit drawer; submission flow; export button per office; client P&L page reachable from Customer detail.
+5. **Mobile expense entry UI** (~1 commit, ships AFTER EAS rebuild): camera flow → AI extract → draft form. Uses items 2+3 mobile pickers.
 
-**Deferred from Dev Mode work (still open, native build needed):** Mobile push notifications — add `expo-notifications`, `expo-device`, `expo-constants`, configure app.json, register Expo push token on login. Trigger a fresh EAS dev-client / production build (native deps don't ship via EAS Update OTA). Once shipped, both dev-mode AND research-task notifications will land as native pushes on the phone (the Expo push channel is wired in researchNotifier.js + devModeNotifier.js — silently no-ops until tokens register).
+**Operational (carryover from prior session):**
+- **EAS native rebuild required** for mobile to pick up voice + photo pickers. Run `cd mobile/sovern-ops-app && eas build --platform ios --profile preview`. ~15-20 min. EAS Update OTA does NOT pick up native deps. Already documented in CI Status above.
+- Restart Claude Code in this directory once to load the `sovern-vm` MCP server (registered in `~/.claude/settings.json` last session). Future infra ops can use `vm_exec` instead of raw Bash.
+- Schedule a VM reboot window for the kernel update (`*** System restart required ***` warning on login). Pre-existing.
 
-**Operational:**
-- Restart Claude Code in this directory once to load the new `sovern-vm` MCP server (registered in `~/.claude/settings.json`). After that, future infra ops use `vm_exec` instead of raw Bash.
-- Schedule a VM reboot window for the kernel update (`*** System restart required ***` warning on login). Pre-existing, not from this work.
-
-**Mobile parity status:** Full parity for Dev Mode + AI Web Access surfaces. Push notification UI is the only deferred item.
+**Mobile parity status:** AI chat surfaces (mobile + admin) at parity except mobile-only items pending EAS rebuild (voice mic button works in admin web today; mobile has the UI wired but the native module isn't installed yet). Expense module mobile entry UI is the next batch after rebuild.
 
 ---
 
