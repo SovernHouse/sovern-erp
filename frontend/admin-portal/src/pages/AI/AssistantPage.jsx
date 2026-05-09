@@ -13,7 +13,7 @@ import {
   Send, Plus, Trash2, MessageSquare, Bot, User,
   ChevronLeft, Loader2, Sparkles, X, Pencil, Check,
   Code, ExternalLink, AlertTriangle, CheckCircle2, XCircle, HelpCircle, GitPullRequest, StopCircle, Play,
-  Mic, MicOff,
+  Mic, MicOff, Paperclip, FileText, Image as ImageIcon,
 } from 'lucide-react'
 
 // Dev Mode (super_admin only) — toggle persisted across reloads
@@ -312,6 +312,51 @@ const MessageBubble = React.memo(function MessageBubble({ msg }) {
           ? <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
           : renderMarkdown(msg.content)
         }
+        {/* Attachments rendered below the message content. Image
+            attachments show inline thumbnails (Drive thumbnailLink works
+            without authentication for files the user has access to);
+            non-image attachments show a file chip with the name. */}
+        {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
+          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {msg.attachments.map(a => {
+              const isImg = a.mimeType?.startsWith('image/')
+              const link = a.webViewLink || (a.driveFileId ? `https://drive.google.com/file/d/${a.driveFileId}/view` : null)
+              return isImg && a.thumbnailUrl ? (
+                <a
+                  key={a.driveFileId}
+                  href={link || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={a.name}
+                  style={{ display: 'block', borderRadius: 6, overflow: 'hidden' }}
+                >
+                  <img
+                    src={a.thumbnailUrl}
+                    alt={a.name}
+                    style={{ maxWidth: 120, maxHeight: 120, display: 'block', border: '1px solid rgba(255,255,255,0.2)' }}
+                  />
+                </a>
+              ) : (
+                <a
+                  key={a.driveFileId}
+                  href={link || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    background: isUser ? 'rgba(255,255,255,0.18)' : '#f1f5f9',
+                    color: isUser ? '#fff' : '#475569',
+                    padding: '4px 10px', borderRadius: 6, fontSize: 12,
+                    textDecoration: 'none', maxWidth: 220,
+                  }}
+                >
+                  {isImg ? <ImageIcon size={12} /> : <FileText size={12} />}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                </a>
+              )
+            })}
+          </div>
+        )}
         {msg.createdAt && (
           <div style={{ fontSize: 10, opacity: 0.5, marginTop: 4, textAlign: isUser ? 'left' : 'right' }}>
             {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -762,6 +807,56 @@ export default function AssistantPage() {
     try { recognitionRef.current?.stop() } catch (_) {}
   }, [])
 
+  // ── Attachments (item 3) ─────────────────────────────────────────────────
+  // Files the user has picked but not yet sent. Each rendered as a chip
+  // above the textarea. On send the array is included in the chat call
+  // and cleared. Supports the file picker (click 📎) AND drag-and-drop
+  // anywhere in the input area.
+  const [pendingAttachments, setPendingAttachments] = useState([])
+  const [uploadingCount, setUploadingCount] = useState(0)
+  const [attachmentError, setAttachmentError] = useState(null)
+  const [dragOver, setDragOver] = useState(false)
+  const fileInputRef = useRef(null)
+
+  async function uploadFiles(files) {
+    if (!files || files.length === 0) return
+    if (pendingAttachments.length + files.length > 5) {
+      setAttachmentError('Max 5 attachments per message. Send these first.')
+      return
+    }
+    setAttachmentError(null)
+    for (const f of files) {
+      setUploadingCount(c => c + 1)
+      try {
+        const res = await aiAPI.uploadAttachment(f)
+        const att = res.data?.data
+        if (att) setPendingAttachments(prev => [...prev, att])
+      } catch (err) {
+        const msg = err.response?.data?.error || err.message || 'Upload failed'
+        setAttachmentError(`${f.name}: ${msg}`)
+      } finally {
+        setUploadingCount(c => Math.max(0, c - 1))
+      }
+    }
+  }
+
+  function onFileInputChange(e) {
+    const files = Array.from(e.target.files || [])
+    uploadFiles(files)
+    e.target.value = '' // reset so picking the same file again still triggers change
+  }
+
+  function onDrop(e) {
+    e.preventDefault()
+    setDragOver(false)
+    const files = Array.from(e.dataTransfer?.files || [])
+    uploadFiles(files)
+  }
+
+  function removePendingAttachment(driveFileId) {
+    setPendingAttachments(prev => prev.filter(a => a.driveFileId !== driveFileId))
+  }
+
   // Load conversation list on mount, then auto-restore the last-active
   // conversation (or fall back to the most recent) so the user picks up
   // where they left off instead of starting fresh on every reload.
@@ -900,12 +995,25 @@ export default function AssistantPage() {
     setInput('')
     setSending(true)
 
+    // Snapshot attachments for this send so the next message starts clean.
+    const attachmentsForSend = pendingAttachments
+    setPendingAttachments([])
+
     // Optimistically show user message
-    const optimisticUser = { role: 'user', content: text, createdAt: new Date().toISOString() }
+    const optimisticUser = {
+      role: 'user',
+      content: text,
+      createdAt: new Date().toISOString(),
+      ...(attachmentsForSend.length > 0 ? { attachments: attachmentsForSend } : {}),
+    }
     setMessages(prev => [...prev, optimisticUser])
 
     try {
-      const res = await aiAPI.chat({ message: text, conversationId: activeConvId })
+      const res = await aiAPI.chat({
+        message: text,
+        conversationId: activeConvId,
+        ...(attachmentsForSend.length > 0 ? { attachments: attachmentsForSend } : {}),
+      })
       const { conversationId, title, reply, isNew } = res.data
 
       // Update messages with real timestamps (server echoes back)
@@ -1166,11 +1274,71 @@ export default function AssistantPage() {
           </div>
 
           {/* Input area */}
-          <div style={{
-            flexShrink: 0, background: '#fff', borderTop: '1px solid #e2e8f0',
-            padding: '12px 16px',
-            position: 'relative',
-          }}>
+          <div
+            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+            style={{
+              flexShrink: 0, background: '#fff', borderTop: '1px solid #e2e8f0',
+              padding: '12px 16px',
+              position: 'relative',
+              outline: dragOver ? '2px dashed #2563eb' : 'none',
+              outlineOffset: -4,
+              transition: 'outline-color 0.15s',
+            }}
+          >
+            {/* Pending attachments — chips above the input. */}
+            {(pendingAttachments.length > 0 || uploadingCount > 0) && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {pendingAttachments.map(a => (
+                  <div key={a.driveFileId} style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: '#f1f5f9', border: '1px solid #cbd5e1',
+                    borderRadius: 999, padding: '4px 4px 4px 10px', fontSize: 12,
+                    maxWidth: 220,
+                  }}>
+                    {a.mimeType?.startsWith('image/') ? <ImageIcon size={12} /> : <FileText size={12} />}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                    <button
+                      onClick={() => removePendingAttachment(a.driveFileId)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 2 }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+                {uploadingCount > 0 && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: '#f1f5f9', borderRadius: 999, padding: '4px 10px', fontSize: 12, color: '#64748b',
+                  }}>
+                    <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                    uploading…
+                  </div>
+                )}
+              </div>
+            )}
+            {attachmentError && (
+              <div style={{
+                background: '#fef2f2', color: '#7f1d1d', border: '1px solid #fecaca',
+                borderRadius: 6, padding: '6px 10px', fontSize: 12, marginBottom: 8,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+                <span>⚠️ {attachmentError}</span>
+                <button
+                  onClick={() => setAttachmentError(null)}
+                  style={{ background: 'none', border: 'none', color: '#7f1d1d', cursor: 'pointer', fontSize: 14 }}
+                >×</button>
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv"
+              multiple
+              onChange={onFileInputChange}
+              style={{ display: 'none' }}
+            />
             {/* Slash command autocomplete — appears as a floating panel
                 anchored above the textarea when input starts with '/' and
                 hasn't yet been completed by a space. ArrowUp/Down navigates,
@@ -1243,6 +1411,23 @@ export default function AssistantPage() {
                 }}
                 disabled={sending}
               />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sending || uploadingCount > 0}
+                title="Attach file"
+                style={{
+                  background: '#fff',
+                  color: '#475569',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 8,
+                  width: 34, height: 34,
+                  cursor: sending ? 'default' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, transition: 'all 0.15s',
+                }}
+              >
+                <Paperclip size={16} />
+              </button>
               {SpeechRecognitionClass && (
                 <button
                   onClick={toggleRecording}

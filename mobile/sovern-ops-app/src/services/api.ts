@@ -1077,6 +1077,16 @@ export interface AIConversation {
   updatedAt: string
 }
 
+export interface AIAttachment {
+  driveFileId: string
+  name: string
+  mimeType: string
+  sizeBytes?: number | null
+  webViewLink?: string | null
+  thumbnailUrl?: string | null
+  createdTime?: string | null
+}
+
 export interface AIMessage {
   role: 'user' | 'assistant'
   content: string
@@ -1089,6 +1099,12 @@ export interface AIMessage {
   kind?: 'devRun'
   runId?: string
   devMode?: boolean
+  /**
+   * Files the user attached to this message. Backend persists these on the
+   * user message in the conversation messages JSON. The AI views them via
+   * the read_attachment MCP tool during the chat call.
+   */
+  attachments?: AIAttachment[]
 }
 
 export interface AIChatResponse {
@@ -1100,13 +1116,57 @@ export interface AIChatResponse {
 
 export async function aiChat(
   message: string,
-  conversationId?: string
+  conversationId?: string,
+  attachments?: AIAttachment[],
 ): Promise<AIChatResponse> {
   const res = await request<{ success: boolean; data: AIChatResponse }>(
     '/api/ai/chat',
-    { method: 'POST', body: JSON.stringify({ message, conversationId }) }
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        message,
+        conversationId,
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
+      }),
+    },
   )
   return res.data
+}
+
+// Upload a single file to the user's Drive (Sovern ERP/AI uploads/YYYY-MM/)
+// for use as a chat attachment. The returned AIAttachment is what gets
+// passed to aiChat({ attachments: [...] }).
+//
+// Uses raw fetch + FormData rather than `request()` because that helper
+// JSON-stringifies the body. SecureStore for the token because /api/auth
+// uses bearer-on-fetch like the rest of the app.
+export async function uploadAttachment(file: {
+  uri: string
+  name: string
+  mimeType: string
+}): Promise<AIAttachment> {
+  const token = await SecureStore.getItemAsync(CONFIG.TOKEN_KEY)
+  const form = new FormData()
+  // RN FormData accepts the {uri,name,type} shape on iOS/Android.
+  form.append('file', {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType,
+  } as any)
+  const res = await fetch(`${CONFIG.SERVER_URL}/api/ai/attachments`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // Don't set Content-Type — fetch fills in the multipart boundary itself.
+    },
+    body: form,
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body?.error ?? `Attachment upload failed (HTTP ${res.status})`)
+  }
+  const json = await res.json()
+  return json.data as AIAttachment
 }
 
 export async function aiListConversations(): Promise<AIConversation[]> {

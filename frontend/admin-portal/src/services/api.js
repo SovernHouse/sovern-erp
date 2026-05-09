@@ -555,6 +555,17 @@ export const aiAPI = {
   renameConversation:   (id, title)   => api.patch(`/ai/conversations/${id}`, { title }),
   deleteConversation:   (id)          => api.delete(`/ai/conversations/${id}`),
   clearConversation:    (id)          => api.post(`/ai/conversations/${id}/clear`),
+  // Upload one file (image / PDF / Word / Excel / text) to the user's Drive
+  // for use as a chat attachment. Returns { driveFileId, name, mimeType, ... }.
+  // 60s timeout (Drive upload + optional thumbnail generation).
+  uploadAttachment:     (file)        => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/ai/attachments', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
+    })
+  },
 }
 
 // Dev Mode (super_admin only) — sandboxed AI code-change runs.

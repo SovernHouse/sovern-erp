@@ -22,13 +22,15 @@ import {
 } from 'expo-speech-recognition';
 import {
   aiChat, aiListConversations, aiGetConversation, aiDeleteConversation,
-  aiRenameConversation,
+  aiRenameConversation, uploadAttachment,
   startDevModeRun, getDevModeRun, answerDevModeClarification,
   startResearchTask, getCustomers, getFactories, getProducts,
-  type AIConversation, type AIMessage,
+  type AIConversation, type AIMessage, type AIAttachment,
   type DevModeRun, type DevModeRunStatus,
   type ResearchTaskMode,
 } from '../../src/services/api';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { useAuthStore } from '../../src/store/authStore';
 import { COLORS } from '../../src/constants/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -259,6 +261,19 @@ function MsgBubble({ msg }: { msg: AIMessage }) {
         <Text selectable style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
           {displayText}
         </Text>
+        {/* Attachments (item 3) — rendered below the message text. Image
+            attachments could later show inline thumbnails; for now we list
+            name + type so chat history is honest about what was sent. */}
+        {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
+          <View>
+            {msg.attachments.map(a => (
+              <View key={a.driveFileId} style={styles.bubbleAttachment}>
+                <Text>{a.mimeType?.startsWith('image/') ? '🖼️' : '📄'}</Text>
+                <Text style={styles.bubbleAttachmentText} numberOfLines={1}>{a.name}</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </Pressable>
       <Text style={[styles.bubbleTime, isUser && styles.bubbleTimeUser]}>
         {formatAge(msg.timestamp)}
@@ -504,6 +519,15 @@ export default function AssistantScreen() {
   const draftAtRecordStart = useRef<string>('');
   const accumulatedTranscript = useRef<string>('');
 
+  // ── Attachment state (item 3) ──────────────────────────────────────────────
+  // Files the user has picked but not yet sent. Each shown as a chip above
+  // the composer; tap × to remove. On send, the array is passed to aiChat
+  // and then cleared. uploading[] tracks per-attachment in-flight uploads
+  // so the chip can show a spinner.
+  const [pendingAttachments, setPendingAttachments] = useState<AIAttachment[]>([]);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+
   // ── Rename modal state ─────────────────────────────────────────────────────
   const [renamingConv, setRenamingConv] = useState<AIConversation | null>(null);
   const [renameDraft, setRenameDraft]   = useState('');
@@ -632,6 +656,110 @@ export default function AssistantScreen() {
       ExpoSpeechRecognitionModule.stop();
     } catch (_) { /* idempotent */ }
     setRecording(false);
+  }
+
+  // ── Attachment handlers (item 3) ───────────────────────────────────────────
+
+  function showAttachmentOptions() {
+    if (pendingAttachments.length >= 5) {
+      setAttachmentError('Max 5 attachments per message. Send these first.');
+      return;
+    }
+    Alert.alert(
+      'Attach a file',
+      'What would you like to share with the AI?',
+      [
+        { text: 'Take photo',     onPress: () => pickFromCamera() },
+        { text: 'Choose photo',   onPress: () => pickFromLibrary() },
+        { text: 'Choose file',    onPress: () => pickDocument() },
+        { text: 'Cancel',         style: 'cancel' },
+      ],
+    );
+  }
+
+  async function pickFromCamera() {
+    try {
+      const perms = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perms.granted) {
+        setAttachmentError('Camera permission denied. Enable in Settings.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: 'images',
+        quality: 0.8,
+        exif: false,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      await uploadAndAdd(result.assets[0].uri,
+        result.assets[0].fileName || `photo-${Date.now()}.jpg`,
+        result.assets[0].mimeType || 'image/jpeg');
+    } catch (err: any) {
+      setAttachmentError(err?.message || 'Camera failed');
+    }
+  }
+
+  async function pickFromLibrary() {
+    try {
+      const perms = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perms.granted) {
+        setAttachmentError('Photo library permission denied. Enable in Settings.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: 'images',
+        quality: 0.8,
+        exif: false,
+        allowsMultipleSelection: false,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      await uploadAndAdd(result.assets[0].uri,
+        result.assets[0].fileName || `image-${Date.now()}.jpg`,
+        result.assets[0].mimeType || 'image/jpeg');
+    } catch (err: any) {
+      setAttachmentError(err?.message || 'Library access failed');
+    }
+  }
+
+  async function pickDocument() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        // Whitelist matches the backend's multer fileFilter.
+        type: [
+          'image/*',
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'text/plain',
+          'text/csv',
+        ],
+        multiple: false,
+        copyToCacheDirectory: true, // ensure we have a stable file:// URI to upload from
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const a = result.assets[0];
+      await uploadAndAdd(a.uri, a.name, a.mimeType || 'application/octet-stream');
+    } catch (err: any) {
+      setAttachmentError(err?.message || 'Document picker failed');
+    }
+  }
+
+  async function uploadAndAdd(uri: string, name: string, mimeType: string) {
+    setAttachmentError(null);
+    setUploadingCount(c => c + 1);
+    try {
+      const att = await uploadAttachment({ uri, name, mimeType });
+      setPendingAttachments(prev => [...prev, att]);
+    } catch (err: any) {
+      setAttachmentError(err?.message || 'Upload failed');
+    } finally {
+      setUploadingCount(c => Math.max(0, c - 1));
+    }
+  }
+
+  function removePendingAttachment(driveFileId: string) {
+    setPendingAttachments(prev => prev.filter(a => a.driveFileId !== driveFileId));
   }
 
   // ── Delete conversation ────────────────────────────────────────────────────
@@ -763,18 +891,24 @@ export default function AssistantScreen() {
       return;
     }
 
+    // Snapshot attachments for this send + clear pending so the next
+    // message starts empty even if the network call is slow.
+    const attachmentsForSend = pendingAttachments;
+    setPendingAttachments([]);
+
     // Optimistic user bubble
     const userMsg: AIMessage = {
       role: 'user',
       content: body,
       timestamp: new Date().toISOString(),
+      ...(attachmentsForSend.length > 0 ? { attachments: attachmentsForSend } : {}),
     };
     setMessages(prev => [...prev, userMsg]);
     setIsThinking(true);
 
     try {
       const convId = activeConvId === '__new__' ? undefined : (activeConvId ?? undefined);
-      const res = await aiChat(body, convId);
+      const res = await aiChat(body, convId, attachmentsForSend.length > 0 ? attachmentsForSend : undefined);
 
       if (activeConvId === '__new__' || !activeConvId) {
         setActiveConvId(res.conversationId);
@@ -792,6 +926,9 @@ export default function AssistantScreen() {
       Alert.alert('Error', err.message ?? 'Could not reach the AI assistant.');
       setMessages(prev => prev.filter(m => m !== userMsg));
       setDraft(body);
+      // Restore the attachments to pending so the user can retry without
+      // re-uploading.
+      setPendingAttachments(attachmentsForSend);
     } finally {
       setSending(false);
       setIsThinking(false);
@@ -1015,8 +1152,51 @@ export default function AssistantScreen() {
         );
       })()}
 
+      {/* Pending attachments — chips above the composer. Tap × to remove. */}
+      {(pendingAttachments.length > 0 || uploadingCount > 0) && (
+        <View style={styles.attachmentRow}>
+          {pendingAttachments.map(a => (
+            <View key={a.driveFileId} style={styles.attachmentChip}>
+              {a.mimeType?.startsWith('image/') && a.thumbnailUrl
+                ? <Text style={styles.attachmentChipIcon}>🖼️</Text>
+                : <Text style={styles.attachmentChipIcon}>📄</Text>}
+              <Text style={styles.attachmentChipText} numberOfLines={1}>{a.name}</Text>
+              <Pressable
+                onPress={() => removePendingAttachment(a.driveFileId)}
+                hitSlop={8}
+              >
+                <Text style={styles.attachmentChipRemove}>×</Text>
+              </Pressable>
+            </View>
+          ))}
+          {uploadingCount > 0 && (
+            <View style={styles.attachmentChip}>
+              <ActivityIndicator size="small" color={COLORS.forest} />
+              <Text style={styles.attachmentChipText}>uploading…</Text>
+            </View>
+          )}
+        </View>
+      )}
+      {attachmentError && (
+        <View style={styles.voiceErrorBar}>
+          <Text style={styles.voiceErrorText} numberOfLines={2}>⚠️ {attachmentError}</Text>
+          <Pressable onPress={() => setAttachmentError(null)}>
+            <Text style={styles.voiceErrorDismiss}>✕</Text>
+          </Pressable>
+        </View>
+      )}
+
       {/* Compose bar */}
       <View style={styles.compose}>
+        {/* 📎 attach a file (camera / library / document picker). */}
+        <Pressable
+          style={styles.micBtn}
+          onPress={showAttachmentOptions}
+          disabled={sending || uploadingCount > 0}
+          accessibilityLabel="Attach a file"
+        >
+          <Text style={styles.micBtnText}>📎</Text>
+        </Pressable>
         {/* 🎙️ press-and-hold to dictate. On release, transcript fills the
             input and Alex taps send manually. */}
         <Pressable
@@ -1272,6 +1452,49 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   slashDesc: { fontSize: 12, color: COLORS.ink, flex: 1 },
+
+  attachmentRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: COLORS.cream,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  attachmentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    paddingLeft: 10,
+    paddingRight: 8,
+    paddingVertical: 4,
+    maxWidth: 180,
+  },
+  attachmentChipIcon: { fontSize: 14 },
+  attachmentChipText: { fontSize: 12, color: COLORS.ink, flexShrink: 1 },
+  attachmentChipRemove: {
+    fontSize: 18,
+    color: COLORS.muted,
+    paddingHorizontal: 4,
+    lineHeight: 18,
+  },
+  bubbleAttachment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+  },
+  bubbleAttachmentText: { fontSize: 12, color: COLORS.ink, flex: 1 },
 
   // Rename modal
   renameBackdrop: {
