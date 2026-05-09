@@ -5,21 +5,28 @@
 ---
 
 ## Last Updated
-2026-05-08 (Taiwan time, eighth session — triage MCP tool gap closed + complete Dev Mode AI feature shipped: spec'd Phases 0-3, Sessions 1-4 built and deployed, plus boot-sync safety net + pre-existing TS error fixes)
+2026-05-09 (Taiwan time, ninth session — AI Web Access feature shipped end-to-end: Tier 1 web tools in chat + Tier 2 background sourcing with /new-clients & /new-suppliers slash commands. Fixed the original mobile-AI HTTP 502. Nginx swapped on VM to 270s read timeout. New `sovern-vm` MCP server registered for Mac-side VM ops.)
 
 ---
 
 ## Where We Are
 
 ### CI Status
-- **Latest commit:** `677d280` (Dev Mode Session 4 - mobile parity). All four Dev Mode session commits + the triage MCP commit have shipped CI green and deployed successfully. A small fix-up commit (boot-sync safety net + TS error fixes) follows this update.
-- CI status: verify with `github_list_runs` after the next push.
+- **Latest commit:** `e06a93d` (Tier 2 UI — slash commands + research tab on mobile + admin). All five commits in this session shipped CI green and deployed successfully:
+  - `5a96d3f` Tier 1: enable WebSearch+WebFetch in chat + raise timeouts
+  - `1ec6f01` Tier 2 backend skeleton (ResearchTask model + routes)
+  - `ad5a8c4` Tier 2 runner: subprocess + dedup + draft creation + notifier
+  - `0bab448` Tier 2 list_customers MCP + slash-command system prompt
+  - `e06a93d` Tier 2 UI: slash commands + research tab/page on mobile + admin
+- Each commit was independently CI-green; deploy workflow ran cleanly for the final push (build 19s, deploy 1m3s).
 
 ### VM Status
-- **ERP online and stable.** No crashes reported during the dashboard/AI/RBAC/e-sign work.
-- **vm_exec MCP tool: WORKING** (key in `~/.ssh/authorized_keys` on the VM).
+- **ERP online and stable.** No crashes during the AI Web Access work. Backend health 200 throughout the swap.
+- **NGINX UPDATED on VM (manual swap, this session):** `/etc/nginx/sites-enabled/sovern-erp` now has `proxy_read_timeout 270s` + `proxy_send_timeout 270s` on `/api/`. Old version had a special `/api/ai/` block with 150s; new config drops it because /api/ already covers it via prefix matching. Two `.bak` files moved out of `sites-enabled/` to `sites-available/` to silence "conflicting server name" warnings; nginx -t now warning-free. The repo's `infra/nginx/sovern-erp.conf` is the source of truth.
+- **vm_exec MCP tool: NOW WORKING ON MAC** (this Mac, not just Windows Cowork). New SSH key generated at `~/.ssh/id_ed25519` and pubkey installed on VM `~/.ssh/authorized_keys`. New `sovern-vm` MCP server at `~/.claude/mcp-servers/sovern-vm/server.js` exposes `vm_exec(command, timeout_ms?)` and `vm_status` tools. Registered in `~/.claude/settings.json`. Loads on next Claude Code restart in this directory.
+- **OS: kernel update pending.** VM is showing `*** System restart required ***` from accumulated apt updates. Not from our work. Schedule a reboot window when convenient; pm2 + the deploy workflow handle the restart cleanly.
 - **pm2 still running with `--exp-backoff-restart-delay 100 --max-restarts 15`.**
-- **Deploy:** Frontend builds on the GitHub Actions runner. VM only runs `npm install --omit=dev` (backend) + `pm2 restart`. Peak VM memory during deploy stays under 200MB. `~/deploy.sh` on the VM is **outdated** (still does `npm install` from root which can pull Vite). Do not use it. The GH Actions workflow is the canonical deploy path.
+- **Deploy:** Frontend builds on the GitHub Actions runner. VM only runs `git reset --hard origin/main` + `npm install --omit=dev` (backend) + `pm2 restart`. Peak VM memory during deploy stays under 200MB. `~/deploy.sh` on the VM is **outdated** (still does `npm install` from root which can pull Vite). Do not use it. The GH Actions workflow is the canonical deploy path. **Note:** the workflow does NOT auto-copy the nginx config to `/etc/nginx/sites-enabled/`. Future infra/nginx/ changes still require a manual VM-side swap (now trivially doable via `vm_exec`).
 
 ### Mobile Status — RECOVERED + PARITY ROUNDS 1+2 SHIPPED ✅
 - **"Won't open" turned out to be Expo Go's stale cached `exp://192.168.0.47:8081` URL pointing at a Metro server that wasn't running.** Not a code crash. Resolved by restarting Metro and switching to EAS Update for laptop-free operation (see Deploy Process below).
@@ -32,7 +39,7 @@
 
 ---
 
-## Recently Shipped (this stretch — six sessions, 29 commits)
+## Recently Shipped (this stretch — seven sessions, 34 commits)
 
 ### E-signature flow (latest) ✅
 - **`b23b7e7` feat(esign): factory-side PO confirmation + drawn-signature canvas** — supplier-facing PO approve page with name + drawn signature.
@@ -93,6 +100,67 @@
 - **Approvals AI-generated items** — `ScheduledActivity` rows of type='approve'. Mobile's Approvals tab now fetches both `/api/internal-approvals` AND `/api/scheduled-activities/my` (filtered to type='approve' + status='pending') and merges them with a "Manager" / "AI" badge on each row. Mark-done handler wired for AI rows. Round 4. ✅
 
 All parity items from the 29-commit backlog are now shipped. ✅
+
+## This session (2026-05-09) — AI Web Access feature shipped end-to-end (5 commits)
+
+**Trigger:** Alex sent a mobile screenshot showing HTTP 502 on the AI Assistant when he asked it to "do deep research and search the internet and its resources for potential Canadian clients for us to send emails to". Diagnosis: `backend/controllers/aiController.js:65` had `WebFetch,WebSearch` in `--disallowed-tools`, AI couldn't fulfill the ask, looped past the 120s subprocess kill timer, backend returned 502.
+
+**Spec'd inline (no skill files locally — fresh clone) following the Dev Mode Phase 0–3 pattern. Locked decisions:**
+- **Tier 1 (chat, synchronous):** enable WebSearch + WebFetch in the chat subprocess for travel/quick-lookup asks (hotels, restaurants, contacts, transit, news). Bump kill timer 120 → 240s, nginx 150 → 270s, admin axios 140 → 260s. AI may call existing MCP tools (create_calendar_event, create_contact, create_lead) to persist findings.
+- **Tier 2 (background, asynchronous):** Two slash commands `/new-clients` and `/new-suppliers` kick off background `claude -p` runs (20-min cap, 3 concurrent + 10/24h per user) that return draft Lead or Factory rows with source URL + evidence on each. Three-channel notifier (in-app message appended to chat + Expo push + Resend email). Mode is explicit (no NL ambiguity for entity type).
+- **Three lookup commands `/clients`, `/suppliers`, `/products`:** instant ERP queries via existing list endpoints, rendered inline. Client-side parsing.
+
+**Commits in this session (newest first):**
+- `e06a93d` Tier 2 UI — slash commands + research tab on mobile + admin
+- `0bab448` Tier 2 list_customers MCP tool + slash-command system prompt (also fixed an unescaped backtick in aiContextService.js template literal that I introduced in 5a96d3f — would have crashed `require()` on the VM, caught locally before deploy)
+- `ad5a8c4` Tier 2 runner: real subprocess + dedup + draft creation + notifier
+- `1ec6f01` Tier 2 backend skeleton — ResearchTask model + controller + routes + boot recovery
+- `5a96d3f` Tier 1: enable WebSearch+WebFetch in chat + raise timeouts
+
+### Track 1 — AI Web Access (Tier 1 + Tier 2)
+
+**Backend (Tier 1):**
+- `backend/controllers/aiController.js` — removed WebFetch/WebSearch from disallowed-tools; bumped kill timer 120 → 240s.
+- `backend/services/aiContextService.js` — new "Slash commands" + "Web access" + "When NOT to use Tier 1 web tools" sections in the system prompt. Reinforced no-fictional-data rule. Documented natural-language sourcing fallback (AI nudges toward /new-X rather than attempting in chat).
+- `infra/nginx/sovern-erp.conf` — added `proxy_read_timeout 270s` + `proxy_send_timeout 270s` to `/api/`. Manually swapped on VM (see VM Status above).
+- `frontend/admin-portal/src/services/api.js` — bumped `aiAPI.chat` axios timeout 140 → 260s. Mobile fetch path has no timeout (unchanged; the original 502 was the backend itself returning 502 from controller line 203).
+
+**Backend (Tier 2):**
+- `backend/models/ResearchTask.js` (NEW) — `tableName: 'ResearchTasks'`. Fields: mode (clients|suppliers), brief, conversationId (link back to AIConversation for result append), status (queued/running/completed/failed/cancelled), summary, findings (JSON array of {type, draftId|null, companyName, sourceUrl, evidence, dedupedAgainst|null, skipped?}), findingsCount, draftsCreated, duplicatesFound, tokenUsage, subprocessPid, timing. User + AIConversation FKs in `.associate()` per L-034.
+- `backend/controllers/researchController.js` (NEW) — startTask/getTask/listTasks/cancelTask. Per-user caps: 3 concurrent + 10 / rolling 24h.
+- `backend/routes/researchRoutes.js` (NEW) — `/api/research`, gated `requireAuth` + `requireRole('admin', 'super_admin')` (bare strings — L-031).
+- `backend/services/researchRunner.js` (NEW) — spawns `claude -p` subprocess with WebSearch/WebFetch + ERP MCP, 20-min hard timeout, JSON output parser. dedupAndCreateDrafts validates required fields (Lead.email + Factory.email + Factory.phone are all non-null), dedups against existing Lead/Customer/Factory by email and companyName, creates draft rows with source URL on each. Recovery for orphaned `running` rows on boot (same pattern as devModeRunner).
+- `backend/services/researchNotifier.js` (NEW) — in-app message appended to AIConversation (primary surface) + Notification row + Expo push + Resend email summary. All best-effort.
+- `backend/server.js` — mount `/api/research`, add 'ResearchTask' to lateAdditions sync list, wire boot-recovery hook.
+- `backend/mcp/erpToolServer.js` — new `list_customers` MCP tool (the missing lookup wrapper). Mirrors list_factories shape. Description tells the AI: do NOT use this for sourcing NEW prospects — use /new-clients.
+
+**Frontend (mobile):**
+- `mobile/sovern-ops-app/src/services/api.ts` — research helpers + types (ResearchTask, ResearchTaskMode, ResearchTaskStatus, ResearchFinding).
+- `mobile/sovern-ops-app/app/(tabs)/assistant.tsx` — parseSlashCommand + runSlashCommand helpers. Branch added at top of handleSend (before the dev-mode branch). Two /new-X push an immediate "Research started" assistant message; runner's notifier appends the result to the same conversation when done.
+- `mobile/sovern-ops-app/app/(tabs)/research.tsx` (NEW) — list + detail modal. Status pill, mode badge, brief preview. Detail shows summary + findings with status (created / deduped / skipped) and tap-through to created Lead/Factory rows. 15s polling while any task is in-flight. Cancel action on non-terminal rows.
+- `mobile/sovern-ops-app/app/(tabs)/_layout.tsx` — register `research` as hidden secondary tab with BackToHome header.
+- `mobile/sovern-ops-app/app/(tabs)/dashboard.tsx` — added 🔎 AI Research tile to module grid.
+
+**Frontend (admin):**
+- `frontend/admin-portal/src/services/api.js` — `researchAPI` = { startTask, listTasks, getTask, cancelTask }.
+- `frontend/admin-portal/src/pages/AI/AssistantPage.jsx` — same parseSlashCommand / runSlashCommand helpers in JSX form, branch at top of handleSend.
+- `frontend/admin-portal/src/pages/AI/ResearchPage.jsx` (NEW) — table + drawer detail. Status + mode filters, 15s polling while in-flight. Drawer shows summary + findings; clicking a finding with a draftId navigates to /crm/leads/:id or /factories/:id.
+- `frontend/admin-portal/src/App.jsx` — `/ai/research` route, gated to admin + super_admin.
+- `frontend/admin-portal/src/config/rbacConfig.js` — sidebar nav entry.
+
+### Track 2 — VM ops MCP (Mac side)
+
+**Why:** The original SESSION.md said `vm_exec` MCP tool was working, but that was on the Windows Cowork machine. This Mac had zero SSH keys; the AI couldn't run sudo commands on the VM autonomously. Alex wanted to fix this properly so future infra ops don't gate on him pasting commands.
+
+**What landed (NOT in git — these are local-machine + Mac-side files):**
+- `~/.ssh/id_ed25519` — generated this session, no passphrase (MCP must SSH non-interactively — same security posture as Alex on this Mac running the commands himself, since access is gated on the Mac being unlocked).
+- VM `~/.ssh/authorized_keys` — pubkey installed via GCP browser SSH paste (one-time bootstrap; comment is `alex-mac@sovern-erp`).
+- `~/.claude/mcp-servers/sovern-vm/server.js` (NEW) — hand-rolled JSON-RPC stdio MCP server, zero deps, models the in-repo erpToolServer.js pattern. Two tools: `vm_exec(command, timeout_ms?)` (free-form ssh, default 60s, max 600s) and `vm_status` (uptime + free + df + pm2 list + pm2 logs).
+- `~/.claude/settings.json` — added `mcpServers.sovern-vm` registration.
+
+The MCP loads on next Claude Code start in this directory. Today the nginx swap was done via raw Bash (since SSH already worked); subsequent VM ops in future sessions will use `vm_exec` directly.
+
+---
 
 ## This session (2026-05-08) — all four dev-mode sessions shipped + triage MCP tool
 
@@ -173,11 +241,18 @@ All parity items from the 29-commit backlog are now shipped. ✅
 
 ## Next Task
 
-**Session 5 (when ready, native build needed):** Mobile push notifications. Add `expo-notifications`, `expo-device`, `expo-constants`. Configure app.json (notification permissions, channel for Android). Add a hook that registers the device's Expo push token on login and calls `registerPushToken()`. Trigger a fresh EAS dev-client / production build (native deps don't ship via EAS Update OTA). Test end-to-end: dev-mode run → push lands on phone → tap → opens GitHub PR.
+**First real test of AI Web Access (highest priority):**
+- **Tier 1:** open the AI Assistant on web or mobile, ask something like "best ramen near my hotel in Shibuya" or "find Lê Minh Tuấn at Saigon Hardwood, what's his email" — should return a real web-sourced answer in <90s, no 502.
+- **Tier 2:** type `/new-clients canadian brake-pad importers, mid-size` in chat. Should immediately reply "🔎 Researching..." with a task ID. Open AI Assistant → Research (mobile tab or admin /ai/research) and watch the row tick from queued → running. After 5–15 min the result lands as an assistant message in the same conversation, and draft Lead rows appear in CRM.
+- **Slash lookups:** `/suppliers vietnam` → instant inline list of matching factories. `/clients` (no arg) → 20 most-recent customers.
 
-**First real test of the live system:** open the AI Assistant on web or mobile, switch on Dev Mode (super_admin toggle in chat header), say "add a comment to backend/server.js explaining the dev-mode boot recovery hook" or similar trivial change, watch the DevRunCard go through queued → running → opening_pr → completed, then merge the PR from your phone.
+**Deferred from Dev Mode work (still open, native build needed):** Mobile push notifications — add `expo-notifications`, `expo-device`, `expo-constants`, configure app.json, register Expo push token on login. Trigger a fresh EAS dev-client / production build (native deps don't ship via EAS Update OTA). Once shipped, both dev-mode AND research-task notifications will land as native pushes on the phone (the Expo push channel is wired in researchNotifier.js + devModeNotifier.js — silently no-ops until tokens register).
 
-**Mobile parity status:** Full parity for Dev Mode UI surfaces. Push notification UI is the only deferred item, scoped explicitly above.
+**Operational:**
+- Restart Claude Code in this directory once to load the new `sovern-vm` MCP server (registered in `~/.claude/settings.json`). After that, future infra ops use `vm_exec` instead of raw Bash.
+- Schedule a VM reboot window for the kernel update (`*** System restart required ***` warning on login). Pre-existing, not from this work.
+
+**Mobile parity status:** Full parity for Dev Mode + AI Web Access surfaces. Push notification UI is the only deferred item.
 
 ---
 
@@ -208,12 +283,18 @@ No regressions introduced. The TLS-inspection workaround (`NODE_TLS_REJECT_UNAUT
 
 ## Infrastructure Notes
 
-- **VM SSH (MCP):** `vm_exec` and `vm_status` fully working. Key is in `~/.ssh/authorized_keys` directly (not GCP metadata). If SSH auth fails again, run from the GCP browser SSH console:
-  `echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKaAg2Dq0Ca8SGbgzUV6maTW9t/AwPAGJpQca1dB5cJX sovern-mcp@claude' >> ~/.ssh/authorized_keys`
+- **VM SSH (MCP):** Two keys in VM's `~/.ssh/authorized_keys` (not GCP metadata):
+  - `sovern-mcp@claude` — the Windows Cowork machine's MCP key (original)
+  - `alex-mac@sovern-erp` — this Mac's MCP key (added 2026-05-09 this session)
+  If either Mac/Windows loses its private key, regenerate locally and re-paste the matching `echo 'ssh-ed25519 ... >> ~/.ssh/authorized_keys` via GCP browser SSH console (project `local-iterator-495008-e6`, zone us-central1-f, instance `sovern-erp`).
+- **VM ops MCP (Mac side):** `~/.claude/mcp-servers/sovern-vm/server.js` exposes `vm_exec(command, timeout_ms?)` + `vm_status`. Registered in `~/.claude/settings.json`. Loads on Claude Code start. Free-form shell over SSH; quotes the command properly so pipes/redirects/sudo work. Default timeout 60s, max 600s.
 - **When SSH times out under load:** GCP VM has 958MB RAM. With pm2 exponential backoff, crash loops alone can no longer saturate it. If a runaway process (Vite build, etc.) saturates CPU/RAM, SSH becomes unresponsive — use GCP browser SSH console to kill the offending process.
 - **GCP VM:** Disk expanded to 30 GB (pd-standard, free tier). Currently at ~29% usage.
 - **ERP DB:** SQLite at `/home/alex/sovern-erp/data/erp.db` on GCP VM `sovern-erp` (us-central1-f).
 - **Google auth:** `ConnectedGoogleAccount` model handles all Google OAuth. Use `getAuthClientForAccount()` from `googleAccountController` for Drive/Calendar/Gmail API calls.
-- **Mobile app:** Lives at `mobile/sovern-ops-app/` — any ERP feature must also be surfaced there (ERP Three-Surface Rule). Currently 29 commits behind admin portal.
+- **Mobile app:** Lives at `mobile/sovern-ops-app/` — any ERP feature must also be surfaced there (ERP Three-Surface Rule). At full parity with admin as of this session (AI Web Access shipped to both surfaces in the same commits).
 - **Public repo:** `SovernHouse/sovern-erp` is public — never commit IPs, keys, or credentials.
-- **Claude `-p` invocation:** Always use `--system-prompt`, `--strict-mcp-config`, `--permission-mode bypassPermissions`, `--disallowed-tools 'Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch'`, and write the user prompt to stdin (`--tools` is variadic; positional prompts get consumed as tool names). Pattern is in `backend/controllers/aiController.js` `runClaudeSubprocess`.
+- **Claude `-p` invocation:** Always use `--system-prompt`, `--strict-mcp-config`, `--permission-mode bypassPermissions`, and write the user prompt to stdin (`--tools` is variadic; positional prompts get consumed as tool names).
+  - **Chat subprocess** (`backend/controllers/aiController.js` `runClaudeSubprocess`): `--disallowed-tools 'Bash,Read,Write,Edit,Glob,Grep'` — WebFetch and WebSearch are intentionally allowed for travel/quick-lookup asks. 240s kill timer.
+  - **Research subprocess** (`backend/services/researchRunner.js` `runResearchSubprocess`): same disallowed list, plus `--output-format json` for token-usage telemetry. 20-min kill timer. Uses the same MCP server as chat (a separate tmpfile config: `sovern-erp-research-mcp-config.json`).
+  - **Dev-mode subprocess** (`backend/services/devModeSubprocess.js`): inverts the allowlist — `--allowedTools 'Bash,Read,Write,Edit,Glob,Grep'` ON, ERP MCP OFF (no `--mcp-config`). Sandboxed via `--add-dir` + cwd-pinned to a worktree. 30-min cap.
