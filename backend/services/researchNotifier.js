@@ -118,7 +118,7 @@ function formatChatReply(task, payload) {
       ``,
       task.errorMessage ? `> ${task.errorMessage}` : `> No further detail available.`,
       ``,
-      `[See full task](/ai/research/${task.id})`,
+      `Manage tasks: /ai/research/${task.id}`,
     ].join('\n');
   }
 
@@ -132,23 +132,54 @@ function formatChatReply(task, payload) {
     (task.duplicatesFound ? ` (skipped ${task.duplicatesFound} duplicates)` : '')
   );
 
-  // Show up to 5 finding names inline, then point at the detail page for the rest.
+  // Render every created finding inline — company info + draft email body.
   const findings = Array.isArray(task.findings) ? task.findings : [];
   const created = findings.filter(f => f && f.draftId);
   if (created.length > 0) {
     lines.push('');
-    lines.push('**Top findings:**');
-    for (const f of created.slice(0, 5)) {
+    lines.push('---');
+    created.forEach((f, idx) => {
+      const num = idx + 1;
       const country = f.country ? ` — ${f.country}` : '';
-      lines.push(`- ${f.companyName}${country}`);
-    }
-    if (created.length > 5) {
-      lines.push(`- (+${created.length - 5} more)`);
+      lines.push('');
+      lines.push(`### ${num}. ${f.companyName}${country}`);
+      if (f.contactName || f.contactPerson) lines.push(`**Contact:** ${f.contactName || f.contactPerson}`);
+      if (f.email) lines.push(`**Email:** ${f.email}`);
+      if (f.phone) lines.push(`**Phone:** ${f.phone}`);
+      if (f.sourceUrl) lines.push(`**Source:** ${f.sourceUrl}`);
+      if (f.evidence) lines.push(`**Why:** ${f.evidence}`);
+      if (f.draftEmail && f.draftEmail.subject && f.draftEmail.bodyText) {
+        lines.push('');
+        lines.push(`**Draft email — Subject:** ${f.draftEmail.subject}`);
+        lines.push('');
+        lines.push('```');
+        lines.push(f.draftEmail.bodyText);
+        lines.push('```');
+      } else {
+        lines.push('');
+        lines.push('_(No draft email generated for this lead — generate one manually before outreach.)_');
+      }
+    });
+  }
+
+  // Skipped findings (no draft created) — show as a short summary so Alex knows
+  // why the AI didn't promote them.
+  const skipped = findings.filter(f => f && !f.draftId);
+  if (skipped.length > 0) {
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+    lines.push(`**Skipped (${skipped.length}):**`);
+    for (const f of skipped) {
+      const reason = f.dedupedAgainst
+        ? `already in ERP (${f.dedupedAgainst.type})`
+        : f.skipped || 'no reason given';
+      lines.push(`- ${f.companyName || '(unnamed)'} — ${reason}`);
     }
   }
 
   lines.push('');
-  lines.push(`[Review all drafts](/ai/research/${task.id})`);
+  lines.push(`Manage drafts: /ai/research/${task.id}`);
   return lines.join('\n');
 }
 

@@ -196,7 +196,7 @@ function buildResearchSystemPrompt(mode) {
   const entity = isClients ? 'buyer / importer / distributor' : 'manufacturer / factory / supplier';
   const ourSide = isClients ? 'sell to' : 'buy from';
   const requiredFields = isClients
-    ? `companyName, contactName, email (required, must be a real verifiable address), country (required), website (optional), vertical (optional), productInterests (optional array of category slugs)`
+    ? `companyName, contactName, email (required, must be a real verifiable address), country (required), website (optional), vertical (optional), productInterests (optional array of category slugs), draftEmail (required, see "Cold-email drafting" section below)`
     : `companyName, contactPerson, email (required, must be a real verifiable address), phone (required), country (required), certifications (optional array), specializations (optional array), leadTimeDays (optional integer), notes (optional)`;
 
   return `You are the Sovern House ERP research assistant running in background mode. Your job: take Alex's research brief and return a structured list of real, verifiable ${entity} candidates that Sovern House could ${ourSide}.
@@ -226,7 +226,11 @@ Schema:
       "country": "string",
       "website": "string or null",
       "vertical": "string or null (e.g. 'flooring', 'auto-parts')",
-      "productInterests": ["array", "of", "category", "slugs"],`
+      "productInterests": ["array", "of", "category", "slugs"],
+      "draftEmail": {
+        "subject": "string (3-6 words, lowercase except proper nouns, looks human-written)",
+        "bodyText": "string (~80-120 words, plain text, follows the Sovern voice + structure described below; pick the right template by vertical)"
+      },`
         : `"contactPerson": "string or null",
       "email": "string (must validate as a real email)",
       "phone": "string (required, with country code)",
@@ -252,11 +256,78 @@ Read Alex's brief carefully. ${isClients
 
 Brief specs (e.g. "oak engineered 14/3 1900x190 click system") should be matched literally — only include factories whose published catalog or product pages show that exact spec or very close to it.
 
-## Required output fields recap
+${isClients ? `## Cold-email drafting (REQUIRED for every finding)
+
+Each finding must include a complete \`draftEmail\` object with subject + bodyText. These drafts are saved alongside the lead row and surfaced for Alex to review/edit before any send. Nothing goes out without his approval. Quality matters — these are real first impressions.
+
+### Sovern voice — non-negotiable
+
+- Direct, specific, no fluff. No "I hope this finds you well." No "I came across your company."
+- One ask per email. No "let me know" + "happy to share more" + "open to discussing." Pick one.
+- Lower-case subject lines unless proper nouns. Looks human, not corporate.
+- 80-120 words. If you can say it in 80, do.
+- No em dashes. Use periods, commas, colons, or parentheses.
+- Open with one sentence that proves you researched THEM (their import lane, their product line, a recent move). Not a generic greeting.
+
+### Pick the right template by vertical
+
+**For Malaysia LVT/SPC importers/distributors (US, Canada, EU, AU)** — speak as the factory, never as a middleman:
+- Say "we're shipping from our factory in Malaysia" — never "I have an agency agreement," "I work with a factory," or "there's a factory I know"
+- Lead with what they get: factory-direct pricing, Malaysia-origin certificates, zero Section 301 (vs 25%+ on Chinese-origin)
+- Offer FOB or DDP (DDP = lands at warehouse with duties + freight covered)
+- Never use "buying house" framing for this campaign — it implies a middleman that doesn't exist
+
+Template (adapt the opener to be specific to THEM):
+\`\`\`
+Subject: malaysia LVT/SPC for [Company]
+
+Hi [Name],
+
+[One specific sentence proving research — their import volume, current supplier country, product line, recent expansion, etc.]
+
+We're shipping LVT/SPC from our factory in Malaysia directly to [their region] distributors. Malaysia-origin certificates, zero Section 301 vs. 25%+ on Chinese-origin, specs built for the [their region] market. FOB or DDP — DDP means it lands at your warehouse with duties and freight covered.
+
+Worth 15 minutes to see if the pricing works for [Company]?
+
+Alex
+Sovern House
+\`\`\`
+
+**For general flooring (non-Malaysia / non-LVT/SPC) — Taiwan/China sourcing:**
+- Position as a buying house: "We're a buying house based in Taiwan, 30 years on the ground"
+- 5% flat fee on FOB, no hidden spread
+- Direct factory negotiation, QC, documents handled
+
+Template:
+\`\`\`
+Subject: taiwan flooring sourcing
+
+Hi [Name],
+
+Saw [Company] has been bringing in [product type] from [origin country] — looks like real volume.
+
+We're a buying house based in Taiwan, 30 years on the ground. We source flooring direct from factories in Taiwan and China, handle QC, handle documents, 5% flat on FOB. No hidden spread.
+
+Worth a 15-minute call on how we'd quote your next flooring order?
+
+Alex
+Sovern House
+\`\`\`
+
+**For non-flooring verticals (auto parts, garments, etc.):** general buying-house framing, 5% flat, 30-year founder Asia story, direct factory negotiation.
+
+### Common mistakes to AVOID in drafts
+
+- Don't fabricate the specific opener. If you can't find a real fact about the company from your web search, write "[your company's import lane / product line / recent move]" as a placeholder so Alex fills it in. Better to flag a gap than to invent.
+- Don't quote prices, lead times, or commission rates. Alex sets pricing — never assume.
+- Don't include phone numbers or company addresses in the signature. Just "Alex / Sovern House."
+- Don't mention Sovern's customers or factories by name (NDA risk).
+
+` : ''}## Required output fields recap
 
 ${requiredFields}
 
-Drop any finding that lacks the required fields. The runner will reject invalid emails, so don't waste a slot on a guess.
+Drop any finding that lacks the required fields (including draftEmail for clients mode). The runner will reject invalid emails, so don't waste a slot on a guess.
 
 Begin work now. Return only the JSON object when done.`;
 }
@@ -423,6 +494,7 @@ async function dedupAndCreateDrafts(task, rawFindings) {
     // Create the draft row
     try {
       if (task.mode === 'clients') {
+        const draftEmail = sanitizeDraftEmail(f.draftEmail);
         const lead = await db.Lead.create({
           companyName,
           contactName: String(f.contactName || 'Unknown contact').trim().slice(0, 200),
@@ -434,16 +506,19 @@ async function dedupAndCreateDrafts(task, rawFindings) {
           source: 'other',
           status: 'new',
           leadType: 'outbound_prospect',
-          description: buildLeadDescription(f, sourceUrl),
+          description: buildLeadDescription(f, sourceUrl, draftEmail),
         });
         draftsCreated += 1;
         out.push({
           type: 'lead',
           draftId: lead.id,
           companyName,
+          contactName: f.contactName || null,
+          email,
           country: f.country || null,
           sourceUrl: sourceUrl || null,
           evidence: f.evidence || null,
+          draftEmail: draftEmail || null,
         });
       } else {
         // suppliers — Factory.phone is allowNull: false, so reject if missing
@@ -478,6 +553,9 @@ async function dedupAndCreateDrafts(task, rawFindings) {
           type: 'factory',
           draftId: factory.id,
           companyName,
+          contactPerson: f.contactPerson || null,
+          email,
+          phone,
           country: f.country || null,
           sourceUrl: sourceUrl || null,
           evidence: f.evidence || null,
@@ -534,13 +612,31 @@ async function findExistingByEmail(mode, email, companyName) {
   return null;
 }
 
-function buildLeadDescription(f, sourceUrl) {
+function buildLeadDescription(f, sourceUrl, draftEmail) {
   const parts = [
     'Sourced via AI research (unverified — review before outreach).',
     f.evidence ? `Evidence: ${f.evidence}` : null,
     sourceUrl ? `Source: ${sourceUrl}` : null,
-  ].filter(Boolean);
-  return parts.join('\n');
+  ];
+  if (draftEmail && draftEmail.subject && draftEmail.bodyText) {
+    parts.push('');
+    parts.push('--- DRAFT EMAIL (review before sending) ---');
+    parts.push(`Subject: ${draftEmail.subject}`);
+    parts.push('');
+    parts.push(draftEmail.bodyText);
+  }
+  return parts.filter(p => p !== null).join('\n');
+}
+
+function sanitizeDraftEmail(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const subject = String(raw.subject || '').trim();
+  const bodyText = String(raw.bodyText || '').trim();
+  if (!subject || !bodyText) return null;
+  return {
+    subject: subject.slice(0, 200),
+    bodyText: bodyText.slice(0, 4000),
+  };
 }
 
 function buildFactoryNotes(f, sourceUrl) {
