@@ -555,12 +555,72 @@ async function callTool(name, args) {
       const allowed = ['status', 'stage', 'notes', 'productInterest',
         'estimatedValue', 'priority', 'nextFollowUp',
         'industry', 'address', 'city', 'state', 'country', 'website', 'vertical',
-        'draftEmailSubject', 'draftEmailBody'];
+        'draftEmailSubject', 'draftEmailBody',
+        'assignedToId', 'responsibleUserIds'];
       const updates = Object.fromEntries(
         Object.entries(args).filter(([k]) => allowed.includes(k))
       );
+      // Validate responsibleUserIds is an array of UUID strings if provided
+      if (updates.responsibleUserIds !== undefined) {
+        if (!Array.isArray(updates.responsibleUserIds)) {
+          return `responsibleUserIds must be an array of user IDs.`;
+        }
+        updates.responsibleUserIds = updates.responsibleUserIds
+          .filter(x => typeof x === 'string' && x.length > 0);
+      }
       await lead.update(updates);
       return { success: true, updated: Object.keys(updates), lead: lead.toJSON() };
+    }
+
+    case 'list_users': {
+      const { Op } = require('sequelize');
+      const where = { isActive: true };
+      if (args.search) {
+        const q = String(args.search);
+        where[Op.or] = [
+          { firstName: { [Op.like]: `%${q}%` } },
+          { lastName:  { [Op.like]: `%${q}%` } },
+          { email:     { [Op.like]: `%${q}%` } },
+        ];
+      }
+      if (args.role) where.role = args.role;
+      const users = await getDb().User.findAll({
+        where,
+        attributes: ['id', 'firstName', 'lastName', 'email', 'role'],
+        order: [['firstName', 'ASC'], ['lastName', 'ASC']],
+        limit: Math.min(args.limit || 50, 100),
+      });
+      return { success: true, users: users.map(u => u.toJSON()) };
+    }
+
+    case 'add_lead_activity': {
+      const lead = await getDb().Lead.findByPk(args.lead_id);
+      if (!lead) return `Lead ${args.lead_id} not found.`;
+      const type = args.type || 'note';
+      const subject = String(args.subject || '').trim();
+      if (!subject) return `subject is required for an activity.`;
+      const allowedTypes = ['call', 'email', 'meeting', 'note', 'task', 'follow_up'];
+      if (!allowedTypes.includes(type)) {
+        return `type must be one of: ${allowedTypes.join(', ')}.`;
+      }
+      // userId is required by the model. Default to the lead's createdById
+      // if the AI didn't pass an explicit user_id (the AI is acting on behalf
+      // of the user; the system prompt tells it the current user's ID).
+      const userId = args.user_id || lead.createdById || lead.assignedToId;
+      if (!userId) {
+        return `user_id is required (or the lead must have a createdById/assignedToId for default attribution).`;
+      }
+      const activity = await getDb().Activity.create({
+        type,
+        subject: subject.slice(0, 255),
+        description: args.description ? String(args.description).slice(0, 5000) : null,
+        leadId: args.lead_id,
+        userId,
+        priority: args.priority || 'medium',
+        isCompleted: type === 'note' ? true : !!args.is_completed,
+        completedAt: type === 'note' ? new Date() : (args.is_completed ? new Date() : null),
+      });
+      return { success: true, activity: activity.toJSON() };
     }
 
     // ── Contacts ────────────────────────────────────────────────────────────
@@ -2119,6 +2179,37 @@ const TOOL_DEFS = [
         vertical:          { type: 'string', description: 'Product vertical (e.g. "flooring")' },
         draftEmailSubject: { type: 'string', description: 'Cold-email draft subject (3-6 words, follow Sovern voice)' },
         draftEmailBody:    { type: 'string', description: 'Cold-email draft body (~80-120 words, follow Sovern voice + L-014 factory positioning for LVT/SPC campaign)' },
+        assignedToId:      { type: 'string', description: 'Reassign the primary responsible owner. Pass a User UUID (look up via list_users first).' },
+        responsibleUserIds:{ type: 'array', items: { type: 'string' }, description: 'Followers / additional responsible team members. Pass a complete array of User UUIDs (this REPLACES the existing list — to add one, get the current array first via get_lead and append). Look up users via list_users.' },
+      },
+    },
+  },
+  {
+    name: 'list_users',
+    description: 'List active Sovern House team members. Use this to resolve a name like "tag in Maria" or "assign to John" to a user UUID, which you then pass into update_lead (assignedToId or responsibleUserIds) or add_lead_activity (user_id).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        search: { type: 'string', description: 'Search firstName, lastName, or email. Partial match.' },
+        role:   { type: 'string', description: 'Filter by role (admin, manager, sales, sales_rep, project_manager, etc.)' },
+        limit:  { type: 'number', description: 'Max results (default: 50, max: 100)' },
+      },
+    },
+  },
+  {
+    name: 'add_lead_activity',
+    description: 'Add a chatter entry to a lead. Use for logging notes ("called Andre, left voicemail"), recording a call/meeting/email touchpoint, or queuing a follow-up task. Notes auto-mark complete; tasks/calls/meetings can be scheduled for later via scheduledAt or completed via is_completed.',
+    inputSchema: {
+      type: 'object',
+      required: ['lead_id', 'subject'],
+      properties: {
+        lead_id:      { type: 'string', description: 'Lead UUID this activity belongs to' },
+        type:         { type: 'string', enum: ['note', 'call', 'email', 'meeting', 'task', 'follow_up'], description: 'Activity type. Default: note.' },
+        subject:      { type: 'string', description: 'Short headline (e.g. "Left voicemail with Andre")' },
+        description:  { type: 'string', description: 'Longer body text. Optional.' },
+        user_id:      { type: 'string', description: 'User UUID who created this activity. If omitted, defaults to the lead\'s createdById/assignedToId. The system prompt should tell you the current chat user\'s UUID — pass that.' },
+        priority:     { type: 'string', enum: ['low', 'medium', 'high'], description: 'Default: medium' },
+        is_completed: { type: 'boolean', description: 'Mark complete on creation. Notes are always complete; for tasks/calls leave false to keep them as open follow-ups.' },
       },
     },
   },

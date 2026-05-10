@@ -186,11 +186,13 @@ export default function LeadDetailScreen() {
       `## What you can do for the user`,
       ``,
       `1. **Refine the draft email** — call update_lead with new draftEmailSubject and/or draftEmailBody. Sovern voice: 80-120 words, no em dashes, one ask, L-014 factory-direct positioning for Malaysia LVT/SPC ("we're shipping from our factory in Malaysia," never middleman framing).`,
-      `2. **Answer questions about the draft** — is the opener relevant? Is the tariff angle accurate? Be direct.`,
-      `3. **Answer questions about the lead** — what does this company sell? Likely to import direct? Use WebFetch / WebSearch to verify; don't fabricate.`,
-      `4. **Fill in missing lead fields** — fetch the company's site, populate empty fields via update_lead. Leave anything unverified empty and say so.`,
+      `2. **Answer questions about the draft or the lead** — be direct, use WebFetch / WebSearch to verify, never fabricate.`,
+      `3. **Fill in missing lead fields** — fetch the site, populate empty fields via update_lead. Leave anything unverified empty.`,
+      `4. **Tag team members** — "tag Maria" → list_users(search='Maria') to find UUID, then update_lead with responsibleUserIds set to the full new array.`,
+      `5. **Reassign primary owner** — "make John responsible" → list_users + update_lead with assignedToId.`,
+      `6. **Log activities (notes / calls / meetings / tasks)** — add_lead_activity with type, subject, description, lead_id, user_id (from system prompt).`,
       ``,
-      `Always summarise update_lead changes in your text reply too.`,
+      `Always summarise what you changed in your text reply. Name people not UUIDs.`,
       ``,
       `## User request`,
       ``,
@@ -645,7 +647,7 @@ export default function LeadDetailScreen() {
               style={styles.aiInput}
               value={aiInput}
               onChangeText={setAiInput}
-              placeholder="Ask anything about this lead…"
+              placeholder="Ask anything: refine, tag, log, fill fields…"
               placeholderTextColor={COLORS.muted}
               editable={!aiSending}
               multiline

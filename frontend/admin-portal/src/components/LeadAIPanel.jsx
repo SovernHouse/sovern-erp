@@ -59,9 +59,15 @@ export default function LeadAIPanel({ lead, onLeadChanged }) {
       ``,
       `4. **Fill in missing lead fields** — if industry/address/city/state/country/website is empty above, you can fetch the company's site and call update_lead to populate them. Do NOT fabricate — if a field can't be verified, leave it empty and tell the user.`,
       ``,
-      `5. **Suggest other CRM fields** — vertical, productInterests (slugs), priority, estimated value range. Save anything verifiable via update_lead.`,
+      `5. **Tag team members as followers** — if the user says "tag Maria" or "loop in John", call list_users with search='Maria' or 'John' to find the user UUID, then call update_lead with responsibleUserIds set to the FULL desired array (existing followers + new one). To find the existing followers list, the lead context above doesn't include it — fetch via get_lead first if you need to preserve existing followers.`,
       ``,
-      `When you call update_lead, always summarise what changed in your text reply so the user can spot it without scrolling.`,
+      `6. **Reassign the primary owner** — "make John the responsible person" → list_users to find John, then update_lead with assignedToId = John's UUID.`,
+      ``,
+      `7. **Add a chatter note / log activity** — "log that I called Andre and left a voicemail" → call add_lead_activity with type='call', subject='Left voicemail with Andre', description=any extra detail, lead_id=the lead UUID, user_id=current user UUID (provided in system prompt). For pure notes use type='note'.`,
+      ``,
+      `8. **Suggest other CRM fields** — vertical, productInterests (slugs), priority, estimated value range. Save anything verifiable via update_lead.`,
+      ``,
+      `When you call update_lead, always summarise what changed in your text reply so the user can spot it without scrolling. Same for add_lead_activity (echo the subject/description back). When you tag/assign, name the person (not just the UUID).`,
       ``,
       `## User request`,
       ``,
@@ -117,7 +123,7 @@ export default function LeadAIPanel({ lead, onLeadChanged }) {
       <div className="flex items-center gap-2 mb-4">
         <Sparkles className="w-5 h-5 text-blue-600" />
         <h2 className="text-xl font-semibold text-gray-900">AI Assistant</h2>
-        <span className="text-xs text-gray-500">— ask anything about this lead. Refine the draft, fill missing fields, verify the company, critique relevance.</span>
+        <span className="text-xs text-gray-500">— ask anything: refine draft, fill fields, tag team members, log activities, verify the company, etc.</span>
       </div>
 
       {error && (
@@ -182,7 +188,7 @@ export default function LeadAIPanel({ lead, onLeadChanged }) {
               send()
             }
           }}
-          placeholder="Ask anything about this lead… 'is the opener relevant?' / 'fill in the address' / 'find their LinkedIn'"
+          placeholder="Ask anything… 'tag Maria as follower' / 'log a call with Andre' / 'fill in the address' / 'is the opener relevant?'"
           disabled={sending}
           className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
         />
