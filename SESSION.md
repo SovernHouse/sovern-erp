@@ -5,7 +5,7 @@
 ---
 
 ## Last Updated
-2026-05-10 14:00 Taiwan time (thirteenth session — Identified the REAL root cause of the mobile OTA blocker: project on Expo SDK 54, App Store Expo Go auto-upgraded to SDK 55 ~2.5 months ago, all SDK 54 bundles were silently rejected. Upgraded project to SDK 55 (`npm install expo@^55 && npx expo install --fix`), removed runtimeVersion + newArchEnabled from app.json (mandatory in SDK 55), added expo-asset plugin (auto-required by expo-image-picker). Bundle builds clean (1130 modules, 3.1MB Hermes). OTA published to preview channel, group `c0f37916-2574-4802-82b0-3e6be9e526c9`, runtime 1.0.0, SDK 55. EAS CDN confirmed serving 200 OK to Expo Go's expected query format. Commit `8b329c1` pushed. L-039 added. Awaiting Alex to open Expo Go on iPhone — should pull cleanly on first launch since SDK now matches.)
+2026-05-10 14:35 Taiwan time (thirteenth session — TWO root causes fixed: (1) project SDK 54 vs Expo Go SDK 55 mismatch — upgraded to SDK 55 in commit `8b329c1`. (2) After upgrade, OTA still didn't load because `runtime: 1.0.0` (from the appVersion policy EAS auto-set) is NOT what Expo Go iOS actually queries. Read Expo's iOS source (`apps/expo-go/ios/Exponent/Kernel/AppLoader/EXAppLoaderExpoUpdates.m`) which hard-codes `[NSString stringWithFormat:@"exposdk:%@", sdkVersion]`. Set `"runtimeVersion": "exposdk:55.0.0"` literal in app.json, republished. Verified with curl: same headers Expo Go iOS sends now return HTTP 200 with the new update ID `019e1097-3a92-707d-81c9-b58ab93d0a7d` (group `64f84ec8-15da-4cbf-b432-25d5ebb9b7f1`). Commit `8820796` pushed. L-039 fully updated with the verified runtime format + self-verification curl. Open Expo Go on iPhone now — should pull on first launch.)
 
 ---
 
