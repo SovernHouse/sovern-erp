@@ -5,13 +5,39 @@
 ---
 
 ## Last Updated
-2026-05-10 00:47 Taiwan time (twelfth session — Diagnosed and fixed mobile OTA blocker: app.json was corrupted by Mac session with duplicate runtimeVersion, 8x repeated UIBackgroundModes, duplicated Android perms. Published corrected OTA, but phone won't pull any updates — Expo Go binary itself needs reset. Root cause: app.json malformation prevented Expo's update matching logic. Fix: user must uninstall/reinstall Expo Go or clear app data. L-038 added.)
+2026-05-10 14:00 Taiwan time (thirteenth session — Identified the REAL root cause of the mobile OTA blocker: project on Expo SDK 54, App Store Expo Go auto-upgraded to SDK 55 ~2.5 months ago, all SDK 54 bundles were silently rejected. Upgraded project to SDK 55 (`npm install expo@^55 && npx expo install --fix`), removed runtimeVersion + newArchEnabled from app.json (mandatory in SDK 55), added expo-asset plugin (auto-required by expo-image-picker). Bundle builds clean (1130 modules, 3.1MB Hermes). OTA published to preview channel, group `c0f37916-2574-4802-82b0-3e6be9e526c9`, runtime 1.0.0, SDK 55. EAS CDN confirmed serving 200 OK to Expo Go's expected query format. Commit `8b329c1` pushed. L-039 added. Awaiting Alex to open Expo Go on iPhone — should pull cleanly on first launch since SDK now matches.)
 
 ---
 
 ## Where We Are
 
-### 🚨 BLOCKER: Phone's Expo Go won't pull OTA updates — requires device reset
+### Mobile SDK 55 upgrade SHIPPED — awaiting iPhone verification
+
+**What was wrong:** App Store Expo Go binary auto-upgrades to whatever the latest Expo SDK is. SDK 55 dropped on 2026-02-25; ~2.5 months later, Alex's iPhone Expo Go was on SDK 55 while project was still on SDK 54. Each Expo Go binary supports exactly one SDK version. Bundles published for SDK 54 cannot load on Expo Go SDK 55, regardless of channel/runtime/cache state. All previous diagnoses (corrupted app.json, runtimeVersion field, phone needs reset) were symptoms or red herrings — the SDK gap was the real cause.
+
+**What was done (commit `8b329c1`):**
+- `npm install expo@^55.0.0` then `npx expo install --fix` — bumps RN 0.81.5 → 0.83.6 + all expo-* deps to SDK 55-compatible versions
+- Removed `runtimeVersion: { policy: "appVersion" }` from app.json (Expo Go matches via internal SDK runtime; explicit runtimeVersion adds confusion + EAS auto-sets it on publish anyway)
+- Removed `newArchEnabled: true` from app.json (mandatory in SDK 55; flag was removed from schema)
+- Added `expo-asset` plugin (auto-required by expo-image-picker for SDK 55)
+- TypeScript shows pre-existing strict-type errors in `expenses.tsx` (Picker import + missing SIZES export — has been latent broken since `197723f`, screen crashes on tap; predates this upgrade) and `assistant.tsx` (unknown-typed API responses — non-blocking strictness only). Both flagged for separate follow-up.
+
+**OTA published:** `eas update --branch preview --platform ios --environment preview` →  
+- Update group ID: `c0f37916-2574-4802-82b0-3e6be9e526c9`
+- iOS update ID: `019e1079-0470-7d8c-8b86-51b18a6c3217`
+- Runtime: `1.0.0` (auto-set by EAS via the appVersion policy it inferred)
+- SDK: `55.0.0` (in manifest extras)
+- Verified: `curl --ssl-no-revoke -i -H "expo-platform: ios" -H "expo-runtime-version: 1.0.0" -H "expo-channel-name: preview" -H "expo-protocol-version: 1" -H "expo-api-version: 1" -H "expo-expect-signature: false" -H "accept: multipart/mixed,application/expo+json,application/json" https://u.expo.dev/76a4e7a2-6585-4212-aa0c-1f8cfe7e001f` returns HTTP 200 with the manifest pointing at the just-published bundle.
+
+**Verification needed:** Alex opens Expo Go on iPhone (no need to reinstall — the previous "phone needs reset" diagnosis was wrong). New JS bundle should fetch on first launch. If it does, parity-shipped features finally appear: AI Assistant in bottom nav, slash autocomplete (`/`), 📎 attachment button on AI chat. **WARNING:** Expenses tile from home grid will crash on tap (pre-existing Picker import bug — unrelated to this upgrade, separate fix needed).
+
+**If iPhone still doesn't pull:** the Expo Go runtime-query format may differ from what we expect. Worst case: shake-to-reload menu in Expo Go → manually tap "Reload from URL" pointing at `https://u.expo.dev/76a4e7a2-6585-4212-aa0c-1f8cfe7e001f`. If still nothing, query the manifest endpoint above with different `expo-runtime-version` headers (e.g. `exposdk:55.0.0`, `55.0.0`, blank) until one returns 200 — that's the format Expo Go uses, then republish forcing that runtime via `runtimeVersion: "<value>"` literal in app.json.
+
+### OLD diagnosis (now superseded — L-038 was a symptom, not the root cause)
+
+The earlier sessions thought app.json corruption (duplicate runtimeVersion, 8x UIBackgroundModes) was the blocker. It WAS one layer of the problem — `eas update` auto-mangles app.json on publish when no runtimeVersion is set, leaving duplicates that compound across publishes. But even with a clean app.json + a clean bundle, Expo Go SDK 55 cannot load SDK 54 code. The SDK gap was the real wall.
+
+### Old "BLOCKER" content from session 12 (preserved for context — DO NOT act on this, the SDK upgrade superseded it)
 
 **Root Cause Found:** app.json was corrupted by Mac session with:
 - `runtimeVersion` defined TWICE (inside `ios` section AND top-level)
