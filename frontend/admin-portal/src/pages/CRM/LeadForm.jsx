@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
-import { ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
+import { ArrowLeft, AlertCircle, CheckCircle, Mail, Copy, Check } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Chatter from '../../components/Chatter';
 
@@ -30,7 +30,10 @@ const LeadForm = () => {
     city: '',
     country: '',
     tags: '',
+    draftEmailSubject: '',
+    draftEmailBody: '',
   });
+  const [copiedField, setCopiedField] = useState(null);
 
   useEffect(() => {
     fetchUsers();
@@ -71,6 +74,8 @@ const LeadForm = () => {
         city: lead.city || '',
         country: lead.country || '',
         tags: Array.isArray(lead.tags) ? lead.tags.join(', ') : '',
+        draftEmailSubject: lead.draftEmailSubject || '',
+        draftEmailBody: lead.draftEmailBody || '',
       });
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load lead');
@@ -382,6 +387,75 @@ const LeadForm = () => {
               </div>
             </div>
           </div>
+
+          {/* Draft Cold Email — populated by /new-clients research, editable, never sent automatically */}
+          {(formData.draftEmailSubject || formData.draftEmailBody || id) && (
+            <div className="border-2 border-emerald-200 bg-emerald-50/50 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <Mail className="w-5 h-5 text-emerald-700 mr-2" />
+                  <h2 className="text-xl font-semibold text-gray-900">Draft Cold Email</h2>
+                </div>
+                <span className="text-xs text-gray-500">Review and edit before sending. Nothing sends automatically.</span>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Subject</label>
+                    {formData.draftEmailSubject && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(formData.draftEmailSubject);
+                          setCopiedField('subject');
+                          setTimeout(() => setCopiedField(null), 1500);
+                        }}
+                        className="text-xs text-emerald-700 hover:text-emerald-900 flex items-center"
+                      >
+                        {copiedField === 'subject' ? <Check size={14} className="mr-1" /> : <Copy size={14} className="mr-1" />}
+                        {copiedField === 'subject' ? 'Copied' : 'Copy'}
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    name="draftEmailSubject"
+                    value={formData.draftEmailSubject}
+                    onChange={handleChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                    placeholder="(no draft subject — generate via /new-clients)"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Body</label>
+                    {formData.draftEmailBody && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(formData.draftEmailBody);
+                          setCopiedField('body');
+                          setTimeout(() => setCopiedField(null), 1500);
+                        }}
+                        className="text-xs text-emerald-700 hover:text-emerald-900 flex items-center"
+                      >
+                        {copiedField === 'body' ? <Check size={14} className="mr-1" /> : <Copy size={14} className="mr-1" />}
+                        {copiedField === 'body' ? 'Copied' : 'Copy'}
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    name="draftEmailBody"
+                    value={formData.draftEmailBody}
+                    onChange={handleChange}
+                    rows="10"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-mono text-sm"
+                    placeholder="(no draft body — generate via /new-clients)"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Description */}
           <div>

@@ -381,6 +381,9 @@ export interface Lead {
   industry?: string;
   source?: string;
   notes?: string;
+  description?: string;
+  draftEmailSubject?: string;
+  draftEmailBody?: string;
   lastActivityAt?: string;
   score?: number;
   activities?: Activity[];

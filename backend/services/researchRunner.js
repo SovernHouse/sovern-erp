@@ -506,7 +506,9 @@ async function dedupAndCreateDrafts(task, rawFindings) {
           source: 'other',
           status: 'new',
           leadType: 'outbound_prospect',
-          description: buildLeadDescription(f, sourceUrl, draftEmail),
+          description: buildLeadDescription(f, sourceUrl),
+          draftEmailSubject: draftEmail ? draftEmail.subject : null,
+          draftEmailBody: draftEmail ? draftEmail.bodyText : null,
         });
         draftsCreated += 1;
         out.push({
@@ -612,19 +614,12 @@ async function findExistingByEmail(mode, email, companyName) {
   return null;
 }
 
-function buildLeadDescription(f, sourceUrl, draftEmail) {
+function buildLeadDescription(f, sourceUrl) {
   const parts = [
     'Sourced via AI research (unverified — review before outreach).',
     f.evidence ? `Evidence: ${f.evidence}` : null,
     sourceUrl ? `Source: ${sourceUrl}` : null,
   ];
-  if (draftEmail && draftEmail.subject && draftEmail.bodyText) {
-    parts.push('');
-    parts.push('--- DRAFT EMAIL (review before sending) ---');
-    parts.push(`Subject: ${draftEmail.subject}`);
-    parts.push('');
-    parts.push(draftEmail.bodyText);
-  }
   return parts.filter(p => p !== null).join('\n');
 }
 

@@ -7,7 +7,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, Alert, TextInput, Modal, RefreshControl,
-  KeyboardAvoidingView, Platform, Linking,
+  KeyboardAvoidingView, Platform, Linking, Share,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import {
@@ -261,6 +261,52 @@ export default function LeadDetailScreen() {
           <InfoRow label="Industry" value={lead.industry} />
           <InfoRow label="Source" value={lead.source} />
         </View>
+
+        {/* ── Draft Cold Email — review/edit before sending; never sent automatically ─── */}
+        {(lead.draftEmailSubject || lead.draftEmailBody) ? (
+          <>
+            <SectionHeader title="Draft Cold Email" />
+            <View style={[styles.card, styles.draftCard]}>
+              {lead.draftEmailSubject ? (
+                <View style={styles.draftRow}>
+                  <Text style={styles.draftLabel}>Subject</Text>
+                  <Text style={styles.draftSubject}>{lead.draftEmailSubject}</Text>
+                </View>
+              ) : null}
+              {lead.draftEmailBody ? (
+                <View style={styles.draftRow}>
+                  <Text style={styles.draftLabel}>Body</Text>
+                  <Text style={styles.draftBody}>{lead.draftEmailBody}</Text>
+                </View>
+              ) : null}
+              <View style={styles.draftActions}>
+                <TouchableOpacity
+                  style={styles.draftActionBtn}
+                  onPress={() => {
+                    const subject = lead.draftEmailSubject || '';
+                    const body = lead.draftEmailBody || '';
+                    const mailto = `mailto:${encodeURIComponent(lead.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                    Linking.openURL(mailto).catch(() => Alert.alert('Cannot open mail app'));
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.draftActionText}>Open in Mail app</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.draftActionBtn, styles.draftActionBtnSecondary]}
+                  onPress={() => {
+                    const text = `Subject: ${lead.draftEmailSubject || ''}\n\n${lead.draftEmailBody || ''}`;
+                    Share.share({ message: text }).catch(() => {});
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.draftActionText, styles.draftActionTextSecondary]}>Share</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.draftHint}>Review the copy before sending. Nothing sends automatically.</Text>
+            </View>
+          </>
+        ) : null}
 
         {/* ── Product interest ─────────────────────────────────────────────── */}
         {lead.productInterests ? (
@@ -540,6 +586,29 @@ const styles = StyleSheet.create({
   infoValueLink: { color: COLORS.forest, textDecorationLine: 'underline' },
 
   notesBody: { padding: 16, fontSize: 14, color: COLORS.ink, lineHeight: 21 },
+
+  // Draft cold email card
+  draftCard: {
+    borderColor: COLORS.forest,
+    borderWidth: 1,
+    backgroundColor: '#F1F7F2',
+  },
+  draftRow: { padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  draftLabel: { fontSize: 12, fontWeight: '700', color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
+  draftSubject: { fontSize: 15, fontWeight: '600', color: COLORS.ink },
+  draftBody: { fontSize: 14, color: COLORS.ink, lineHeight: 21 },
+  draftActions: { flexDirection: 'row', padding: 12, gap: 10 },
+  draftActionBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    backgroundColor: COLORS.forest,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  draftActionBtnSecondary: { backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.forest },
+  draftActionText: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
+  draftActionTextSecondary: { color: COLORS.forest },
+  draftHint: { fontSize: 12, color: COLORS.muted, paddingHorizontal: 16, paddingBottom: 12, fontStyle: 'italic' },
 
   // Activities
   activitiesHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
