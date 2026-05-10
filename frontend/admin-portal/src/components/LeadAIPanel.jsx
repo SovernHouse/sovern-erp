@@ -29,12 +29,17 @@ export default function LeadAIPanel({ lead, onLeadChanged }) {
 
   const buildContextBlock = () => {
     const parts = [
-      `## Lead context (use the update_lead MCP tool to edit fields on this lead)`,
+      `## Lead context — you are helping the user with this specific lead. Be conversational and direct.`,
       ``,
       `Lead ID: ${lead.id}`,
       `Company: ${lead.companyName}${lead.country ? ` (${lead.country})` : ''}`,
-      lead.industry ? `Industry: ${lead.industry}` : null,
-      lead.contactName ? `Contact: ${lead.contactName} <${lead.email}>` : `Email: ${lead.email}`,
+      `Contact: ${lead.contactName || '(unknown)'} <${lead.email}>`,
+      `Industry: ${lead.industry || '(empty — fill in if you can verify it)'}`,
+      `Address: ${lead.address || '(empty — fill in if a street address is on the company\'s site)'}`,
+      `City: ${lead.city || '(empty)'}`,
+      `State / Province: ${lead.state || '(empty)'}`,
+      `Country: ${lead.country || '(empty)'}`,
+      lead.website ? `Website: ${lead.website}` : `Website: (not on file — see if you can find one)`,
       lead.vertical ? `Vertical: ${lead.vertical}` : null,
       ``,
       `Current draft email subject: ${lead.draftEmailSubject || '(empty)'}`,
@@ -44,7 +49,19 @@ export default function LeadAIPanel({ lead, onLeadChanged }) {
       lead.draftEmailBody || '(empty)',
       `"""`,
       ``,
-      `When the user asks you to change the draft, call update_lead with the lead ID above and the new draftEmailSubject and/or draftEmailBody. Always show the user the new draft text in your reply too. Follow Sovern's voice: 80-120 words, no em dashes, one ask, factory-direct positioning for Malaysia LVT/SPC (L-014: "we're shipping from our factory in Malaysia," never middleman framing).`,
+      `## What you can do for the user`,
+      ``,
+      `1. **Refine the draft email** — when the user asks you to change subject or body (shorter, more direct, mention X, etc.), call update_lead with the new draftEmailSubject and/or draftEmailBody. Always show the new draft text in your reply too. Follow Sovern's voice: 80-120 words, no em dashes, one ask, factory-direct positioning for Malaysia LVT/SPC (L-014: "we're shipping from our factory in Malaysia," never middleman framing). For non-flooring or non-Malaysia leads, use the buying-house voice (5% flat, 30-year founder Asia story, Taiwan-based).`,
+      ``,
+      `2. **Answer questions about the draft** — the user may ask "is this opener relevant?", "would this work in Quebec?", "is the tariff number accurate?", "should I lead with DDP or FOB?". Give a direct, opinionated answer; cite a source URL via WebFetch if you need to verify a fact.`,
+      ``,
+      `3. **Answer questions about the lead** — "what does this company actually sell?", "are they likely to import direct?", "who are their competitors?". Use WebFetch / WebSearch to look up the company's site or recent news. Be honest if you can't find solid info; never make up facts.`,
+      ``,
+      `4. **Fill in missing lead fields** — if industry/address/city/state/country/website is empty above, you can fetch the company's site and call update_lead to populate them. Do NOT fabricate — if a field can't be verified, leave it empty and tell the user.`,
+      ``,
+      `5. **Suggest other CRM fields** — vertical, productInterests (slugs), priority, estimated value range. Save anything verifiable via update_lead.`,
+      ``,
+      `When you call update_lead, always summarise what changed in your text reply so the user can spot it without scrolling.`,
       ``,
       `## User request`,
       ``,
@@ -87,10 +104,11 @@ export default function LeadAIPanel({ lead, onLeadChanged }) {
   }
 
   const QUICK_ACTIONS = [
+    { label: 'Fill missing fields', prompt: 'Fetch this company\'s website and use update_lead to fill any empty fields (industry, address, city, state, country, website). Do not fabricate — if a field can\'t be verified from the page, leave it empty and tell me which ones you couldn\'t fill.' },
+    { label: 'Is the draft relevant?', prompt: 'Critique the current draft email. Is the opener actually relevant to this company? Is the tariff angle accurate? Would the ask land? Be direct and specific — point to the lines that work and the ones that don\'t.' },
     { label: 'Shorter (60-80 words)', prompt: 'Tighten the draft email body to 60-80 words. Keep the specific opener about this company. Keep the factory-direct Malaysia positioning. Save with update_lead.' },
     { label: 'More direct tone', prompt: 'Rewrite the draft email body in a more direct tone. Cut hedges and softeners. One clear ask. Save with update_lead.' },
-    { label: 'Add tariff specifics', prompt: 'Add concrete tariff numbers to the draft email: zero Section 301 on Malaysia origin vs the current 25%+ on Chinese-origin LVT/SPC. Keep the email under 120 words. Save with update_lead.' },
-    { label: 'Reference their product line', prompt: `Rewrite the opener to reference this company's actual product line${lead.industry ? ' (' + lead.industry + ')' : ''} more specifically. Save with update_lead.` },
+    { label: 'Verify the company', prompt: 'Look up this company on their website and a couple of independent sources. Confirm they actually distribute LVT/SPC at scale, what region they cover, and any recent product/distribution news. Tell me what you found and link the sources.' },
     { label: 'New subject options', prompt: 'Propose 3 alternative subject lines for this draft, each 3-6 words, lowercase except proper nouns. Pick the best one and save it via update_lead.' },
   ]
 
@@ -99,7 +117,7 @@ export default function LeadAIPanel({ lead, onLeadChanged }) {
       <div className="flex items-center gap-2 mb-4">
         <Sparkles className="w-5 h-5 text-blue-600" />
         <h2 className="text-xl font-semibold text-gray-900">AI Assistant</h2>
-        <span className="text-xs text-gray-500">— ask to refine the draft, the AI edits it live via update_lead</span>
+        <span className="text-xs text-gray-500">— ask anything about this lead. Refine the draft, fill missing fields, verify the company, critique relevance.</span>
       </div>
 
       {error && (
@@ -164,7 +182,7 @@ export default function LeadAIPanel({ lead, onLeadChanged }) {
               send()
             }
           }}
-          placeholder="Ask the AI to refine this draft… e.g. 'mention their Toronto warehouse'"
+          placeholder="Ask anything about this lead… 'is the opener relevant?' / 'fill in the address' / 'find their LinkedIn'"
           disabled={sending}
           className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
         />

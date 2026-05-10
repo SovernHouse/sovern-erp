@@ -644,24 +644,6 @@ const LeadForm = () => {
             </div>
           )}
 
-          {/* AI Assistant — refine the draft email live; only visible on saved leads */}
-          {id && canEdit && (
-            <LeadAIPanel
-              lead={{
-                id,
-                companyName: formData.companyName,
-                contactName: formData.contactName,
-                email: formData.email,
-                country: formData.country,
-                industry: formData.industry,
-                vertical: formData.vertical,
-                draftEmailSubject: formData.draftEmailSubject,
-                draftEmailBody: formData.draftEmailBody,
-              }}
-              onLeadChanged={() => fetchLead(true)}
-            />
-          )}
-
           {/* Description */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
@@ -690,6 +672,30 @@ const LeadForm = () => {
 
             </div>
           </fieldset>
+
+          {/* AI Assistant — outside the fieldset so its input always accepts typing,
+              even when the rest of the form is read-only. Only visible on saved
+              leads with edit permission so read-only viewers can't bypass RBAC. */}
+          {id && canEdit && (
+            <LeadAIPanel
+              lead={{
+                id,
+                companyName: formData.companyName,
+                contactName: formData.contactName,
+                email: formData.email,
+                country: formData.country,
+                state: formData.state,
+                city: formData.city,
+                address: formData.address,
+                industry: formData.industry,
+                vertical: formData.vertical,
+                website: formData.website,
+                draftEmailSubject: formData.draftEmailSubject,
+                draftEmailBody: formData.draftEmailBody,
+              }}
+              onLeadChanged={() => fetchLead(true)}
+            />
+          )}
 
           {/* Submit Buttons */}
           <div className="flex gap-4 pt-6 border-t border-gray-200">

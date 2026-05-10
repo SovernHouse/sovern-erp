@@ -163,13 +163,18 @@ export default function LeadDetailScreen() {
   }
 
   function buildAiContext(l: Lead): string {
-    const parts = [
-      `## Lead context (use update_lead MCP tool to edit fields on this lead)`,
+    const parts: (string | null)[] = [
+      `## Lead context — you are helping the user with this specific lead. Be conversational and direct.`,
       ``,
       `Lead ID: ${l.id}`,
       `Company: ${l.companyName}${l.country ? ` (${l.country})` : ''}`,
-      l.industry ? `Industry: ${l.industry}` : null,
-      l.contactName ? `Contact: ${l.contactName} <${l.email}>` : `Email: ${l.email}`,
+      `Contact: ${l.contactName || '(unknown)'} <${l.email}>`,
+      `Industry: ${l.industry || '(empty — fill in if you can verify it)'}`,
+      `Address: ${l.address || '(empty — fill in if a street address is on the company\'s site)'}`,
+      `City: ${l.city || '(empty)'}`,
+      `State / Province: ${l.state || '(empty)'}`,
+      `Country: ${l.country || '(empty)'}`,
+      l.vertical ? `Vertical: ${l.vertical}` : null,
       ``,
       `Current draft email subject: ${l.draftEmailSubject || '(empty)'}`,
       ``,
@@ -178,7 +183,14 @@ export default function LeadDetailScreen() {
       l.draftEmailBody || '(empty)',
       `"""`,
       ``,
-      `When the user asks you to change the draft, call update_lead with the lead ID above and the new draftEmailSubject and/or draftEmailBody. Always show the user the new draft text in your reply too. Follow Sovern's voice: 80-120 words, no em dashes, one ask, factory-direct positioning for Malaysia LVT/SPC (L-014: "we're shipping from our factory in Malaysia," never middleman framing).`,
+      `## What you can do for the user`,
+      ``,
+      `1. **Refine the draft email** — call update_lead with new draftEmailSubject and/or draftEmailBody. Sovern voice: 80-120 words, no em dashes, one ask, L-014 factory-direct positioning for Malaysia LVT/SPC ("we're shipping from our factory in Malaysia," never middleman framing).`,
+      `2. **Answer questions about the draft** — is the opener relevant? Is the tariff angle accurate? Be direct.`,
+      `3. **Answer questions about the lead** — what does this company sell? Likely to import direct? Use WebFetch / WebSearch to verify; don't fabricate.`,
+      `4. **Fill in missing lead fields** — fetch the company's site, populate empty fields via update_lead. Leave anything unverified empty and say so.`,
+      ``,
+      `Always summarise update_lead changes in your text reply too.`,
       ``,
       `## User request`,
       ``,
@@ -609,10 +621,12 @@ export default function LeadDetailScreen() {
 
           <View style={styles.aiQuickRow}>
             {[
-              { label: 'Shorter', prompt: 'Tighten the draft to 60-80 words. Keep the specific opener and the factory-direct Malaysia positioning. Save with update_lead.' },
-              { label: 'More direct', prompt: 'Rewrite the draft in a more direct tone. Cut hedges and softeners. One clear ask. Save with update_lead.' },
-              { label: 'Tariff specifics', prompt: 'Add concrete tariff numbers: zero Section 301 on Malaysia origin vs 25%+ on Chinese-origin LVT/SPC. Keep under 120 words. Save with update_lead.' },
-              { label: 'New subject', prompt: 'Propose 3 alternative subject lines (3-6 words each, lowercase except proper nouns). Pick the best and save it via update_lead.' },
+              { label: 'Fill missing fields', prompt: 'Fetch this company\'s website and use update_lead to fill any empty fields (industry, address, city, state, country, website). Do not fabricate — leave anything unverifiable empty and tell me which.' },
+              { label: 'Is draft relevant?', prompt: 'Critique the current draft email. Is the opener relevant to this company? Tariff angle accurate? Be direct.' },
+              { label: 'Shorter', prompt: 'Tighten the draft to 60-80 words. Keep the specific opener and factory-direct positioning. Save with update_lead.' },
+              { label: 'More direct', prompt: 'Rewrite the draft in a more direct tone. Cut hedges. One clear ask. Save with update_lead.' },
+              { label: 'Verify company', prompt: 'Look up this company online and tell me if they actually distribute LVT/SPC at scale, what region, any recent news. Link your sources.' },
+              { label: 'New subject', prompt: 'Propose 3 alternative subject lines (3-6 words each, lowercase except proper nouns). Pick the best and save via update_lead.' },
             ].map((a) => (
               <TouchableOpacity
                 key={a.label}
@@ -631,7 +645,7 @@ export default function LeadDetailScreen() {
               style={styles.aiInput}
               value={aiInput}
               onChangeText={setAiInput}
-              placeholder="Ask the AI to refine this draft…"
+              placeholder="Ask anything about this lead…"
               placeholderTextColor={COLORS.muted}
               editable={!aiSending}
               multiline
