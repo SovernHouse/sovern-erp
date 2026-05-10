@@ -58,9 +58,9 @@
           "photosPermission": "Allow Sovern Ops to access your photos so you can attach images to the AI Assistant.",
           "cameraPermission": "Allow Sovern Ops to use the camera to capture receipts and documents."
         }
-      ]
+      ],
+      "expo-asset"
     ],
-    "newArchEnabled": true,
     "extra": {
       "router": {},
       "eas": {
@@ -69,9 +69,6 @@
     },
     "updates": {
       "url": "https://u.expo.dev/76a4e7a2-6585-4212-aa0c-1f8cfe7e001f"
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
     }
   }
 }
