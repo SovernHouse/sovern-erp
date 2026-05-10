@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../../services/api';
-import { ArrowLeft, AlertCircle, CheckCircle, Mail, Copy, Check } from 'lucide-react';
+import { ArrowLeft, AlertCircle, CheckCircle, Mail, Copy, Check, Edit2, Lock, X as XIcon } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Chatter from '../../components/Chatter';
+import { useAuth } from '../../hooks/useAuth';
 
 const LeadForm = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { user: currentUser } = useAuth();
   const [loading, setLoading] = useState(!!id);
+  // New leads start in edit mode; existing leads start read-only.
+  const [editMode, setEditMode] = useState(!id);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
@@ -36,8 +40,22 @@ const LeadForm = () => {
   });
   const [copiedField, setCopiedField] = useState(null);
   const [createdBy, setCreatedBy] = useState(null);
+  const [createdById, setCreatedById] = useState(null);
   const [createdAt, setCreatedAt] = useState(null);
   const [createdBySource, setCreatedBySource] = useState('manual');
+  const [originalFormData, setOriginalFormData] = useState(null);
+
+  // RBAC: super_admin + admin always edit. Creator + currently-assigned owner
+  // can edit. Everyone else gets read-only. New leads (no id) bypass — anyone
+  // with outreach permission can create.
+  const canEdit = useMemo(() => {
+    if (!id) return true;
+    if (!currentUser) return false;
+    if (currentUser.role === 'super_admin' || currentUser.role === 'admin') return true;
+    if (createdById && createdById === currentUser.id) return true;
+    if (formData.assignedToId && formData.assignedToId === currentUser.id) return true;
+    return false;
+  }, [id, currentUser, createdById, formData.assignedToId]);
 
   useEffect(() => {
     fetchUsers();
@@ -83,6 +101,7 @@ const LeadForm = () => {
         draftEmailBody: lead.draftEmailBody || '',
       });
       setCreatedBy(lead.createdBy || null);
+      setCreatedById(lead.createdById || null);
       setCreatedAt(lead.createdAt || null);
       setCreatedBySource(lead.createdBySource || 'manual');
     } catch (err) {
@@ -118,9 +137,16 @@ const LeadForm = () => {
 
       if (id) {
         await api.put(`/crm/leads/${id}`, submitData);
-      } else {
-        await api.post('/crm/leads', submitData);
+        // Stay on the same page after edit; just exit edit mode and refresh.
+        setEditMode(false);
+        setOriginalFormData(null);
+        setSuccess(true);
+        setTimeout(() => setSuccess(false), 1500);
+        await fetchLead();
+        setSubmitting(false);
+        return;
       }
+      await api.post('/crm/leads', submitData);
 
       setSuccess(true);
       setTimeout(() => {
@@ -158,9 +184,46 @@ const LeadForm = () => {
           </button>
         </div>
 
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">
-          {id ? 'Edit Lead' : 'New Lead'}
-        </h1>
+        <div className="flex items-start justify-between mb-8 gap-4">
+          <h1 className="text-3xl font-bold text-gray-900">
+            {id ? (formData.companyName || 'Lead') : 'New Lead'}
+          </h1>
+          {id && (
+            <div className="flex items-center gap-2">
+              {!canEdit ? (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gray-100 text-gray-600 text-sm">
+                  <Lock size={14} />
+                  Read-only
+                </span>
+              ) : !editMode ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOriginalFormData(formData);
+                    setEditMode(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700"
+                >
+                  <Edit2 size={16} />
+                  Edit
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (originalFormData) setFormData(originalFormData);
+                    setEditMode(false);
+                    setError(null);
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+                >
+                  <XIcon size={16} />
+                  Cancel
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-start">
@@ -177,6 +240,21 @@ const LeadForm = () => {
         )}
 
         <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-8 space-y-8">
+          {id && !editMode && canEdit && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800 flex items-center gap-2">
+              <Lock size={14} />
+              Read-only. Click <strong>Edit</strong> in the header to change anything.
+            </div>
+          )}
+          {id && !canEdit && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-center gap-2">
+              <Lock size={14} />
+              You don't have permission to edit this lead. Contact the assigned owner or a Super Admin to make changes.
+            </div>
+          )}
+
+          <fieldset disabled={!!(id && !editMode)} className={id && !editMode ? 'opacity-95' : ''}>
+            <div className="space-y-8">
           {/* Company Information */}
           <div>
             <h2 className="text-xl font-semibold text-gray-900 mb-6">Company Information</h2>
@@ -531,21 +609,24 @@ const LeadForm = () => {
             />
           </div>
 
+            </div>
+          </fieldset>
+
           {/* Submit Buttons */}
           <div className="flex gap-4 pt-6 border-t border-gray-200">
             <button
               type="submit"
-              disabled={submitting}
-              className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+              disabled={submitting || (id && !editMode) || !canEdit}
+              className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? 'Saving...' : id ? 'Update Lead' : 'Create Lead'}
+              {submitting ? 'Saving...' : id ? 'Save Changes' : 'Create Lead'}
             </button>
             <button
               type="button"
               onClick={() => navigate('/crm/leads')}
               className="flex-1 border border-gray-300 text-gray-700 px-6 py-2 rounded-lg font-medium hover:bg-gray-50"
             >
-              Cancel
+              Back to List
             </button>
           </div>
         </form>
