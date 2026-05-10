@@ -13,12 +13,12 @@ import {
   ActivityIndicator,
   ActionSheetIOS,
   Linking,
-  Picker,
 } from 'react-native'
+import { Picker } from '@react-native-picker/picker'
 import { useRouter } from 'expo-router'
 import * as ImagePicker from 'expo-image-picker'
 import * as DocumentPicker from 'expo-document-picker'
-import { COLORS, SIZES, FONTS } from '../../src/constants/config'
+import { COLORS } from '../../src/constants/config'
 import {
   listExpenses,
   createExpense,
