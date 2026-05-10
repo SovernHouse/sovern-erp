@@ -75,6 +75,10 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true,
     },
+    state: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     country: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -155,6 +159,19 @@ module.exports = (sequelize) => {
     createdById: {
       type: DataTypes.UUID,
       allowNull: true,
+    },
+    // What surface created this lead. 'ai_research' means the AI Assistant
+    // ran /new-clients on behalf of createdById. UI renders 'AI Assistant
+    // (on behalf of <name>)' for ai_research; otherwise just the user name.
+    createdBySource: {
+      type: DataTypes.ENUM('manual', 'ai_research', 'webhook', 'import'),
+      defaultValue: 'manual',
+    },
+    // Followers / additional responsible team members beyond assignedToId
+    // (the primary owner). Stored as JSON array of User UUIDs.
+    responsibleUserIds: {
+      type: DataTypes.JSON,
+      defaultValue: [],
     },
     createdAt: {
       type: DataTypes.DATE,

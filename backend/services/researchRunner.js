@@ -196,7 +196,7 @@ function buildResearchSystemPrompt(mode) {
   const entity = isClients ? 'buyer / importer / distributor' : 'manufacturer / factory / supplier';
   const ourSide = isClients ? 'sell to' : 'buy from';
   const requiredFields = isClients
-    ? `companyName, contactName, email (required, must be a real verifiable address), country (required), website (optional), vertical (optional), productInterests (optional array of category slugs), draftEmail (required, see "Cold-email drafting" section below)`
+    ? `companyName, contactName, email (required, must be a real verifiable address), country (required), website (optional), vertical (optional), productInterests (optional array of category slugs), industry (optional, e.g. "Flooring distribution"), address (optional, full street address), city (optional), state (optional, US state / Canadian province / region), draftEmail (required, see "Cold-email drafting" section below)`
     : `companyName, contactPerson, email (required, must be a real verifiable address), phone (required), country (required), certifications (optional array), specializations (optional array), leadTimeDays (optional integer), notes (optional)`;
 
   return `You are the Sovern House ERP research assistant running in background mode. Your job: take Alex's research brief and return a structured list of real, verifiable ${entity} candidates that Sovern House could ${ourSide}.
@@ -224,6 +224,10 @@ Schema:
         ? `"contactName": "string (best contact you could verify, e.g. 'Procurement Manager' if no name found)",
       "email": "string (must validate as a real email)",
       "country": "string",
+      "state": "string or null (US state / Canadian province / region; full name not abbreviation, e.g. 'British Columbia' not 'BC')",
+      "city": "string or null",
+      "address": "string or null (full street address if shown on the company's site; do NOT make this up — if you only see PO box / general region, leave null)",
+      "industry": "string or null (e.g. 'Flooring distribution', 'Hardwood importer', 'Building materials wholesaler' — the company's actual industry vertical, not the product they buy)",
       "website": "string or null",
       "vertical": "string or null (e.g. 'flooring', 'auto-parts')",
       "productInterests": ["array", "of", "category", "slugs"],
@@ -500,6 +504,10 @@ async function dedupAndCreateDrafts(task, rawFindings) {
           contactName: String(f.contactName || 'Unknown contact').trim().slice(0, 200),
           email,
           country: f.country || null,
+          state: f.state ? String(f.state).trim().slice(0, 200) : null,
+          city: f.city ? String(f.city).trim().slice(0, 200) : null,
+          address: f.address ? String(f.address).trim().slice(0, 500) : null,
+          industry: f.industry ? String(f.industry).trim().slice(0, 200) : null,
           website: f.website || null,
           vertical: f.vertical || null,
           productInterests: Array.isArray(f.productInterests) ? f.productInterests : [],
@@ -510,6 +518,7 @@ async function dedupAndCreateDrafts(task, rawFindings) {
           draftEmailSubject: draftEmail ? draftEmail.subject : null,
           draftEmailBody: draftEmail ? draftEmail.bodyText : null,
           createdById: task.userId || null,
+          createdBySource: 'ai_research',
         });
         draftsCreated += 1;
         out.push({

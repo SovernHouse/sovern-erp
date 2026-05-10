@@ -257,9 +257,23 @@ export default function LeadDetailScreen() {
             value={lead.phone}
             onPress={lead.phone ? () => Linking.openURL(`tel:${lead.phone}`) : undefined}
           />
+          <InfoRow label="City" value={lead.city} />
+          <InfoRow label="State / Province" value={lead.state} />
           <InfoRow label="Country" value={lead.country} />
           <InfoRow label="Industry" value={lead.industry} />
           <InfoRow label="Source" value={lead.source} />
+          {lead.createdBySource === 'ai_research' ? (
+            <View style={styles.aiCreditRow}>
+              <Text style={styles.aiCreditBadge}>🤖 AI Assistant</Text>
+              {lead.createdBy ? (
+                <Text style={styles.aiCreditText}>
+                  on behalf of {`${lead.createdBy.firstName || ''} ${lead.createdBy.lastName || ''}`.trim() || lead.createdBy.email}
+                </Text>
+              ) : null}
+            </View>
+          ) : lead.createdBy ? (
+            <InfoRow label="Created By" value={`${lead.createdBy.firstName || ''} ${lead.createdBy.lastName || ''}`.trim() || lead.createdBy.email} />
+          ) : null}
         </View>
 
         {/* ── Draft Cold Email — review/edit before sending; never sent automatically ─── */}
@@ -586,6 +600,11 @@ const styles = StyleSheet.create({
   infoValueLink: { color: COLORS.forest, textDecorationLine: 'underline' },
 
   notesBody: { padding: 16, fontSize: 14, color: COLORS.ink, lineHeight: 21 },
+
+  // AI attribution badge inside Contact card
+  aiCreditRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', padding: 16, gap: 8, borderTopWidth: 1, borderTopColor: COLORS.border },
+  aiCreditBadge: { backgroundColor: '#D1FAE5', color: '#065F46', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, fontSize: 12, fontWeight: '700', overflow: 'hidden' },
+  aiCreditText: { color: COLORS.muted, fontSize: 13 },
 
   // Draft cold email card
   draftCard: {

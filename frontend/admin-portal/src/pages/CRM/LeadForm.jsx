@@ -28,6 +28,7 @@ const LeadForm = () => {
     description: '',
     address: '',
     city: '',
+    state: '',
     country: '',
     tags: '',
     draftEmailSubject: '',
@@ -36,6 +37,7 @@ const LeadForm = () => {
   const [copiedField, setCopiedField] = useState(null);
   const [createdBy, setCreatedBy] = useState(null);
   const [createdAt, setCreatedAt] = useState(null);
+  const [createdBySource, setCreatedBySource] = useState('manual');
 
   useEffect(() => {
     fetchUsers();
@@ -74,6 +76,7 @@ const LeadForm = () => {
         description: lead.description || '',
         address: lead.address || '',
         city: lead.city || '',
+        state: lead.state || '',
         country: lead.country || '',
         tags: Array.isArray(lead.tags) ? lead.tags.join(', ') : '',
         draftEmailSubject: lead.draftEmailSubject || '',
@@ -81,6 +84,7 @@ const LeadForm = () => {
       });
       setCreatedBy(lead.createdBy || null);
       setCreatedAt(lead.createdAt || null);
+      setCreatedBySource(lead.createdBySource || 'manual');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load lead');
     } finally {
@@ -227,6 +231,18 @@ const LeadForm = () => {
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">State / Province</label>
+                <input
+                  type="text"
+                  name="state"
+                  value={formData.state}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="State or Province"
+                />
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
                 <input
                   type="text"
@@ -344,9 +360,20 @@ const LeadForm = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Created By</label>
                   <div className="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700">
-                    {createdBy
-                      ? `${createdBy.firstName || ''} ${createdBy.lastName || ''}`.trim() || createdBy.email || createdBy.id
-                      : <span className="text-gray-400">Unknown (legacy lead — not tracked)</span>}
+                    {createdBySource === 'ai_research' ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-xs font-semibold">🤖 AI Assistant</span>
+                        {createdBy ? (
+                          <span className="text-gray-600">
+                            on behalf of {`${createdBy.firstName || ''} ${createdBy.lastName || ''}`.trim() || createdBy.email}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : createdBy ? (
+                      `${createdBy.firstName || ''} ${createdBy.lastName || ''}`.trim() || createdBy.email || createdBy.id
+                    ) : (
+                      <span className="text-gray-400">Unknown (legacy lead — not tracked)</span>
+                    )}
                     {createdAt ? (
                       <span className="text-xs text-gray-500 ml-2">
                         on {new Date(createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
