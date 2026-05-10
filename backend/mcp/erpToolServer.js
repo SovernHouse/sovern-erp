@@ -553,7 +553,9 @@ async function callTool(name, args) {
       const lead = await getDb().Lead.findByPk(args.id);
       if (!lead) return `Lead ${args.id} not found.`;
       const allowed = ['status', 'stage', 'notes', 'productInterest',
-        'estimatedValue', 'priority', 'nextFollowUp'];
+        'estimatedValue', 'priority', 'nextFollowUp',
+        'industry', 'address', 'city', 'state', 'country', 'website', 'vertical',
+        'draftEmailSubject', 'draftEmailBody'];
       const updates = Object.fromEntries(
         Object.entries(args).filter(([k]) => allowed.includes(k))
       );
@@ -2095,19 +2097,28 @@ const TOOL_DEFS = [
   },
   {
     name: 'update_lead',
-    description: 'Update a lead\'s status, stage, notes, or follow-up date.',
+    description: 'Update a lead\'s status, location, industry, draft email, or any other editable field. Use this to backfill missing data on existing leads (e.g. industry/state/city/address from the company website) or to refine the AI-drafted cold email.',
     inputSchema: {
       type: 'object',
       required: ['id'],
       properties: {
-        id:              { type: 'string', description: 'Lead ID' },
-        status:          { type: 'string', description: 'New status' },
-        stage:           { type: 'string', description: 'Pipeline stage' },
-        notes:           { type: 'string', description: 'Notes to save' },
-        productInterest: { type: 'string', description: 'Products of interest' },
-        estimatedValue:  { type: 'number', description: 'Estimated deal value USD' },
-        priority:        { type: 'string', description: 'Priority: low, medium, high' },
-        nextFollowUp:    { type: 'string', description: 'Next follow-up date ISO format' },
+        id:                { type: 'string', description: 'Lead ID' },
+        status:            { type: 'string', description: 'New status' },
+        stage:             { type: 'string', description: 'Pipeline stage' },
+        notes:             { type: 'string', description: 'Notes to save' },
+        productInterest:   { type: 'string', description: 'Products of interest' },
+        estimatedValue:    { type: 'number', description: 'Estimated deal value USD' },
+        priority:          { type: 'string', description: 'Priority: low, medium, high' },
+        nextFollowUp:      { type: 'string', description: 'Next follow-up date ISO format' },
+        industry:          { type: 'string', description: 'Industry (e.g. "Flooring distribution")' },
+        address:           { type: 'string', description: 'Street address' },
+        city:              { type: 'string', description: 'City' },
+        state:             { type: 'string', description: 'State / Province (full name)' },
+        country:           { type: 'string', description: 'Country' },
+        website:           { type: 'string', description: 'Website URL' },
+        vertical:          { type: 'string', description: 'Product vertical (e.g. "flooring")' },
+        draftEmailSubject: { type: 'string', description: 'Cold-email draft subject (3-6 words, follow Sovern voice)' },
+        draftEmailBody:    { type: 'string', description: 'Cold-email draft body (~80-120 words, follow Sovern voice + L-014 factory positioning for LVT/SPC campaign)' },
       },
     },
   },

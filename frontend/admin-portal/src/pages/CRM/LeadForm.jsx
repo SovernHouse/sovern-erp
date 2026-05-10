@@ -44,6 +44,8 @@ const LeadForm = () => {
   const [createdAt, setCreatedAt] = useState(null);
   const [createdBySource, setCreatedBySource] = useState('manual');
   const [originalFormData, setOriginalFormData] = useState(null);
+  const [responsibleUserIds, setResponsibleUserIds] = useState([]);
+  const [originalResponsibleUserIds, setOriginalResponsibleUserIds] = useState([]);
 
   // RBAC: super_admin + admin always edit. Creator + currently-assigned owner
   // can edit. Everyone else gets read-only. New leads (no id) bypass — anyone
@@ -104,6 +106,9 @@ const LeadForm = () => {
       setCreatedById(lead.createdById || null);
       setCreatedAt(lead.createdAt || null);
       setCreatedBySource(lead.createdBySource || 'manual');
+      const respIds = Array.isArray(lead.responsibleUserIds) ? lead.responsibleUserIds : [];
+      setResponsibleUserIds(respIds);
+      setOriginalResponsibleUserIds(respIds);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load lead');
     } finally {
@@ -133,6 +138,7 @@ const LeadForm = () => {
         probability: parseInt(formData.probability),
         tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
         expectedCloseDate: formData.expectedCloseDate || null,
+        responsibleUserIds,
       };
 
       if (id) {
@@ -212,6 +218,7 @@ const LeadForm = () => {
                   type="button"
                   onClick={() => {
                     if (originalFormData) setFormData(originalFormData);
+                    setResponsibleUserIds(originalResponsibleUserIds);
                     setEditMode(false);
                     setError(null);
                   }}
@@ -460,6 +467,59 @@ const LeadForm = () => {
                   </div>
                 </div>
               )}
+
+              {/* Followers / additional responsible team members */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Team Followers (additional responsibility)</label>
+                <div className="px-3 py-3 border border-gray-200 rounded-lg bg-white">
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {responsibleUserIds.length === 0 ? (
+                      <span className="text-xs text-gray-400 italic">No additional followers. The Assigned To owner is the primary responsible person.</span>
+                    ) : (
+                      responsibleUserIds.map(uid => {
+                        const u = users.find(x => x.id === uid);
+                        const label = u
+                          ? (u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email || uid)
+                          : uid;
+                        return (
+                          <span key={uid} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-medium">
+                            {label}
+                            <button
+                              type="button"
+                              disabled={!editMode}
+                              onClick={() => setResponsibleUserIds(prev => prev.filter(x => x !== uid))}
+                              className="hover:text-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+                              title="Remove follower"
+                            >
+                              <XIcon size={12} />
+                            </button>
+                          </span>
+                        );
+                      })
+                    )}
+                  </div>
+                  <select
+                    value=""
+                    disabled={!editMode}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v && !responsibleUserIds.includes(v)) {
+                        setResponsibleUserIds(prev => [...prev, v]);
+                      }
+                      e.target.value = '';
+                    }}
+                    className="text-xs px-2 py-1 border border-gray-200 rounded disabled:bg-gray-50"
+                  >
+                    <option value="">+ Add team member…</option>
+                    {users
+                      .filter(u => !responsibleUserIds.includes(u.id) && u.id !== formData.assignedToId)
+                      .map(u => {
+                        const label = u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email;
+                        return <option key={u.id} value={u.id}>{label}</option>;
+                      })}
+                  </select>
+                </div>
+              </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Estimated Value</label>
