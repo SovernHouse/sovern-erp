@@ -101,6 +101,7 @@ exports.getLeadById = async (req, res) => {
     const lead = await db.Lead.findByPk(req.params.id, {
       include: [
         { model: db.User, as: 'assignedTo', attributes: ['id', 'firstName', 'lastName', 'email'] },
+        { model: db.User, as: 'createdBy', attributes: ['id', 'firstName', 'lastName', 'email'] },
         { model: db.Activity, as: 'activities' },
       ],
     });
@@ -120,7 +121,10 @@ exports.getLeadById = async (req, res) => {
 
 exports.createLead = async (req, res) => {
   try {
-    const lead = await db.Lead.create(req.body);
+    const payload = { ...req.body };
+    // Stamp the creator from the authenticated user; ignore any client-supplied value.
+    if (req.user && req.user.id) payload.createdById = req.user.id;
+    const lead = await db.Lead.create(payload);
     res.status(201).json({ success: true, data: lead });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });

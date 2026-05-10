@@ -509,6 +509,7 @@ async function dedupAndCreateDrafts(task, rawFindings) {
           description: buildLeadDescription(f, sourceUrl),
           draftEmailSubject: draftEmail ? draftEmail.subject : null,
           draftEmailBody: draftEmail ? draftEmail.bodyText : null,
+          createdById: task.userId || null,
         });
         draftsCreated += 1;
         out.push({

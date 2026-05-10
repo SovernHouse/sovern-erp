@@ -150,6 +150,12 @@ module.exports = (sequelize) => {
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    // Who created this lead. Distinct from assignedToId (the responsible owner).
+    // FK declared in .associate() per L-034.
+    createdById: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
     createdAt: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
@@ -165,6 +171,7 @@ module.exports = (sequelize) => {
 
   Lead.associate = (models) => {
     Lead.belongsTo(models.User, { foreignKey: 'assignedToId', as: 'assignedTo' });
+    Lead.belongsTo(models.User, { foreignKey: 'createdById', as: 'createdBy' });
     Lead.belongsTo(models.Customer, { foreignKey: 'convertedCustomerId', as: 'convertedCustomer' });
     // Inverse of Activity.belongsTo(Lead). Required for getLeadById's
     // include: [{ model: Activity, as: 'activities' }] to resolve.

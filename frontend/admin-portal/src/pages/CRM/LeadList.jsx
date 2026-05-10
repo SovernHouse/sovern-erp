@@ -229,7 +229,7 @@ const LeadList = () => {
             cards={filteredLeads}
             statusField="status"
             onMove={handleUpdateStatus}
-            onCardClick={(lead) => navigate(`/crm/leads/${lead.id}/edit`)}
+            onCardClick={(lead) => navigate(`/crm/leads/${lead.id}`)}
             groupValueFn={(lead) => parseFloat(lead.estimatedValue || 0)}
           />
         ) : (
@@ -250,14 +250,18 @@ const LeadList = () => {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredLeads.map(lead => (
-                  <tr key={lead.id} className="hover:bg-gray-50 transition">
+                  <tr
+                    key={lead.id}
+                    className="hover:bg-gray-50 transition cursor-pointer"
+                    onClick={() => navigate(`/crm/leads/${lead.id}`)}
+                  >
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{lead.companyName}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{lead.contactName}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{lead.email}</td>
                     <td className="px-6 py-4 text-sm font-semibold text-blue-600">
                       ${parseFloat(lead.estimatedValue || 0).toLocaleString()}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                       <select
                         value={lead.status}
                         onChange={(e) => handleUpdateStatus(lead.id, e.target.value)}
@@ -274,13 +278,18 @@ const LeadList = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm font-semibold text-gray-900">{lead.score}%</td>
-                    <td className="px-6 py-4 text-sm flex gap-2">
-                      <button className="text-blue-600 hover:text-blue-800">
+                    <td className="px-6 py-4 text-sm flex gap-2" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => navigate(`/crm/leads/${lead.id}`)}
+                        className="text-blue-600 hover:text-blue-800"
+                        title="Open lead"
+                      >
                         <Edit2 size={16} />
                       </button>
                       <button
                         onClick={() => handleDeleteClick(lead)}
                         className="text-red-600 hover:text-red-800"
+                        title="Delete lead"
                       >
                         <Trash2 size={16} />
                       </button>

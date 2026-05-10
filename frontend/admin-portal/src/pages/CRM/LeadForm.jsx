@@ -34,6 +34,8 @@ const LeadForm = () => {
     draftEmailBody: '',
   });
   const [copiedField, setCopiedField] = useState(null);
+  const [createdBy, setCreatedBy] = useState(null);
+  const [createdAt, setCreatedAt] = useState(null);
 
   useEffect(() => {
     fetchUsers();
@@ -77,6 +79,8 @@ const LeadForm = () => {
         draftEmailSubject: lead.draftEmailSubject || '',
         draftEmailBody: lead.draftEmailBody || '',
       });
+      setCreatedBy(lead.createdBy || null);
+      setCreatedAt(lead.createdAt || null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load lead');
     } finally {
@@ -321,7 +325,7 @@ const LeadForm = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Assigned To</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Assigned To (Responsible)</label>
                 <select
                   name="assignedToId"
                   value={formData.assignedToId}
@@ -329,11 +333,28 @@ const LeadForm = () => {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Unassigned</option>
-                  {users.map(user => (
-                    <option key={user.id} value={user.id}>{user.name}</option>
-                  ))}
+                  {users.map(user => {
+                    const label = user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
+                    return <option key={user.id} value={user.id}>{label}</option>;
+                  })}
                 </select>
               </div>
+
+              {id && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Created By</label>
+                  <div className="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700">
+                    {createdBy
+                      ? `${createdBy.firstName || ''} ${createdBy.lastName || ''}`.trim() || createdBy.email || createdBy.id
+                      : <span className="text-gray-400">Unknown (legacy lead — not tracked)</span>}
+                    {createdAt ? (
+                      <span className="text-xs text-gray-500 ml-2">
+                        on {new Date(createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Estimated Value</label>
