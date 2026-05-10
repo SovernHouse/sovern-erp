@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import {
-  getLead, addActivity, updateLeadStatus,
+  getLead, addActivity, updateLeadStatus, aiChat,
   type Lead, type Activity,
 } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
@@ -122,6 +122,13 @@ export default function LeadDetailScreen() {
   const [noteType, setNoteType] = useState<'note' | 'call' | 'email' | 'meeting'>('note');
   const [addingNote, setAddingNote] = useState(false);
 
+  // AI refine modal
+  const [aiModal, setAiModal] = useState(false);
+  const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'assistant'; content: string; error?: boolean }[]>([]);
+  const [aiInput, setAiInput] = useState('');
+  const [aiConvId, setAiConvId] = useState<string | null>(null);
+  const [aiSending, setAiSending] = useState(false);
+
   const noteInputRef = useRef<TextInput>(null);
 
   const load = useCallback(async (isRefresh = false) => {
@@ -152,6 +159,54 @@ export default function LeadDetailScreen() {
       Alert.alert('Error', err.message);
     } finally {
       setUpdatingStatus(false);
+    }
+  }
+
+  function buildAiContext(l: Lead): string {
+    const parts = [
+      `## Lead context (use update_lead MCP tool to edit fields on this lead)`,
+      ``,
+      `Lead ID: ${l.id}`,
+      `Company: ${l.companyName}${l.country ? ` (${l.country})` : ''}`,
+      l.industry ? `Industry: ${l.industry}` : null,
+      l.contactName ? `Contact: ${l.contactName} <${l.email}>` : `Email: ${l.email}`,
+      ``,
+      `Current draft email subject: ${l.draftEmailSubject || '(empty)'}`,
+      ``,
+      `Current draft email body:`,
+      `"""`,
+      l.draftEmailBody || '(empty)',
+      `"""`,
+      ``,
+      `When the user asks you to change the draft, call update_lead with the lead ID above and the new draftEmailSubject and/or draftEmailBody. Always show the user the new draft text in your reply too. Follow Sovern's voice: 80-120 words, no em dashes, one ask, factory-direct positioning for Malaysia LVT/SPC (L-014: "we're shipping from our factory in Malaysia," never middleman framing).`,
+      ``,
+      `## User request`,
+      ``,
+    ];
+    return parts.filter(p => p !== null).join('\n');
+  }
+
+  async function handleAiSend(text?: string) {
+    if (!lead) return;
+    const trimmed = (text || aiInput).trim();
+    if (!trimmed || aiSending) return;
+    setAiInput('');
+    setAiMessages(m => [...m, { role: 'user', content: trimmed }]);
+    setAiSending(true);
+    try {
+      const messageToSend = aiConvId ? trimmed : (buildAiContext(lead) + trimmed);
+      const res = await aiChat(messageToSend, aiConvId || undefined);
+      if (res.conversationId && !aiConvId) setAiConvId(res.conversationId);
+      setAiMessages(m => [...m, { role: 'assistant', content: res.reply || '(no reply)' }]);
+      // Refetch lead silently so the draft email updates if the AI edited it
+      try {
+        const fresh = await getLead(lead.id);
+        setLead(fresh);
+      } catch (_) { /* non-fatal */ }
+    } catch (err: any) {
+      setAiMessages(m => [...m, { role: 'assistant', content: err.message || 'AI request failed', error: true }]);
+    } finally {
+      setAiSending(false);
     }
   }
 
@@ -317,6 +372,13 @@ export default function LeadDetailScreen() {
                   <Text style={[styles.draftActionText, styles.draftActionTextSecondary]}>Share</Text>
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                style={[styles.draftActionBtn, styles.aiRefineBtn]}
+                onPress={() => setAiModal(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.draftActionText}>✨ Refine with AI</Text>
+              </TouchableOpacity>
               <Text style={styles.draftHint}>Review the copy before sending. Nothing sends automatically.</Text>
             </View>
           </>
@@ -493,6 +555,98 @@ export default function LeadDetailScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* AI Refine modal */}
+      <Modal
+        visible={aiModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setAiModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1, backgroundColor: COLORS.cream }}
+        >
+          <View style={styles.aiHeader}>
+            <Text style={styles.aiHeaderTitle}>✨ Refine Draft with AI</Text>
+            <TouchableOpacity onPress={() => setAiModal(false)} activeOpacity={0.7}>
+              <Text style={styles.aiHeaderClose}>Close</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 16 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            {aiMessages.length === 0 && !aiSending ? (
+              <Text style={styles.aiEmpty}>
+                Ask the AI to refine the draft. It will edit the lead live and the Draft Email card will update when you close this.
+              </Text>
+            ) : (
+              aiMessages.map((m, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.aiBubble,
+                    m.role === 'user' ? styles.aiBubbleUser : styles.aiBubbleAi,
+                    m.error ? styles.aiBubbleError : null,
+                  ]}
+                >
+                  <Text style={[styles.aiBubbleText, m.role === 'user' ? styles.aiBubbleTextUser : null]}>
+                    {m.content}
+                  </Text>
+                </View>
+              ))
+            )}
+            {aiSending && (
+              <View style={styles.aiBubbleAi}>
+                <ActivityIndicator size="small" color={COLORS.forest} />
+                <Text style={styles.aiThinking}>Thinking… may take 30–60s</Text>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.aiQuickRow}>
+            {[
+              { label: 'Shorter', prompt: 'Tighten the draft to 60-80 words. Keep the specific opener and the factory-direct Malaysia positioning. Save with update_lead.' },
+              { label: 'More direct', prompt: 'Rewrite the draft in a more direct tone. Cut hedges and softeners. One clear ask. Save with update_lead.' },
+              { label: 'Tariff specifics', prompt: 'Add concrete tariff numbers: zero Section 301 on Malaysia origin vs 25%+ on Chinese-origin LVT/SPC. Keep under 120 words. Save with update_lead.' },
+              { label: 'New subject', prompt: 'Propose 3 alternative subject lines (3-6 words each, lowercase except proper nouns). Pick the best and save it via update_lead.' },
+            ].map((a) => (
+              <TouchableOpacity
+                key={a.label}
+                style={styles.aiQuickChip}
+                onPress={() => handleAiSend(a.prompt)}
+                disabled={aiSending}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.aiQuickChipText}>{a.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.aiInputRow}>
+            <TextInput
+              style={styles.aiInput}
+              value={aiInput}
+              onChangeText={setAiInput}
+              placeholder="Ask the AI to refine this draft…"
+              placeholderTextColor={COLORS.muted}
+              editable={!aiSending}
+              multiline
+            />
+            <TouchableOpacity
+              style={[styles.aiSendBtn, (aiSending || !aiInput.trim()) ? { opacity: 0.5 } : null]}
+              onPress={() => handleAiSend()}
+              disabled={aiSending || !aiInput.trim()}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.aiSendBtnText}>Send</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </>
   );
 }
@@ -625,9 +779,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   draftActionBtnSecondary: { backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.forest },
+  aiRefineBtn: { backgroundColor: '#2563EB', marginHorizontal: 12, marginBottom: 8 },
   draftActionText: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
   draftActionTextSecondary: { color: COLORS.forest },
   draftHint: { fontSize: 12, color: COLORS.muted, paddingHorizontal: 16, paddingBottom: 12, fontStyle: 'italic' },
+
+  // AI refine modal
+  aiHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.white },
+  aiHeaderTitle: { fontSize: 17, fontWeight: '700', color: COLORS.ink },
+  aiHeaderClose: { fontSize: 15, color: COLORS.forest, fontWeight: '600' },
+  aiEmpty: { color: COLORS.muted, fontStyle: 'italic', textAlign: 'center', paddingVertical: 24, fontSize: 14 },
+  aiBubble: { padding: 12, borderRadius: 12, marginBottom: 10, maxWidth: '88%' },
+  aiBubbleUser: { backgroundColor: '#2563EB', alignSelf: 'flex-end' },
+  aiBubbleAi: { backgroundColor: COLORS.white, alignSelf: 'flex-start', borderWidth: 1, borderColor: COLORS.border },
+  aiBubbleError: { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
+  aiBubbleText: { color: COLORS.ink, fontSize: 14, lineHeight: 20 },
+  aiBubbleTextUser: { color: COLORS.white },
+  aiThinking: { color: COLORS.muted, fontSize: 13, marginTop: 4 },
+  aiQuickRow: { flexDirection: 'row', flexWrap: 'wrap', padding: 8, gap: 6, backgroundColor: COLORS.cream, borderTopWidth: 1, borderTopColor: COLORS.border },
+  aiQuickChip: { backgroundColor: COLORS.white, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#93C5FD' },
+  aiQuickChipText: { fontSize: 12, color: '#1D4ED8', fontWeight: '600' },
+  aiInputRow: { flexDirection: 'row', padding: 12, gap: 8, alignItems: 'flex-end', backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.border },
+  aiInput: { flex: 1, backgroundColor: COLORS.cream, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: COLORS.ink, maxHeight: 100, minHeight: 40 },
+  aiSendBtn: { backgroundColor: '#2563EB', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8 },
+  aiSendBtnText: { color: COLORS.white, fontWeight: '600', fontSize: 14 },
 
   // Activities
   activitiesHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

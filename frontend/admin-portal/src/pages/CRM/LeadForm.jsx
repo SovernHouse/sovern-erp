@@ -3,6 +3,7 @@ import api from '../../services/api';
 import { ArrowLeft, AlertCircle, CheckCircle, Mail, Copy, Check, Edit2, Lock, X as XIcon } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Chatter from '../../components/Chatter';
+import LeadAIPanel from '../../components/LeadAIPanel';
 import { useAuth } from '../../hooks/useAuth';
 
 const LeadForm = () => {
@@ -75,9 +76,9 @@ const LeadForm = () => {
     }
   };
 
-  const fetchLead = async () => {
+  const fetchLead = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const response = await api.get(`/crm/leads/${id}`);
       const lead = response.data;
       setFormData({
@@ -112,7 +113,7 @@ const LeadForm = () => {
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load lead');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -641,6 +642,24 @@ const LeadForm = () => {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* AI Assistant — refine the draft email live; only visible on saved leads */}
+          {id && canEdit && (
+            <LeadAIPanel
+              lead={{
+                id,
+                companyName: formData.companyName,
+                contactName: formData.contactName,
+                email: formData.email,
+                country: formData.country,
+                industry: formData.industry,
+                vertical: formData.vertical,
+                draftEmailSubject: formData.draftEmailSubject,
+                draftEmailBody: formData.draftEmailBody,
+              }}
+              onLeadChanged={() => fetchLead(true)}
+            />
           )}
 
           {/* Description */}
