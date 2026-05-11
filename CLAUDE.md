@@ -84,13 +84,22 @@ Read the relevant skill file BEFORE starting any task in that domain. Skill file
 ## System Architecture
 
 ### Stack
-- **Backend:** Node.js + Express, `backend/server.js`
-- **Database:** SQLite via Sequelize ORM, `backend/database.sqlite`
+- **Backend:** Node.js + Express, `backend/server.js` (live: `erp.sovernhouse.co/api`)
+- **Database:** SQLite via Sequelize ORM on GCP VM, `/home/alex/sovern-erp/data/erp.db`
 - **Auth:** JWT tokens, 24h expiry, `backend/middleware/auth.js`
-- **Portals:** Three separate React/Vite apps
-  - `frontend/admin-portal` — Sovern House staff
-  - `frontend/customer-portal` — buyers and clients
-  - `frontend/factory-portal` — supplier/factory partners
+
+### User-Facing Apps (Must Mirror Each Other — Three-Surface Rule)
+- **Desktop:** Web admin portal (`frontend/admin-portal`) launched in **Brave Browser** via shortcut `C:\Users\Alex\Desktop\Sovern House Operations.lnk`
+- **Mobile:** React Native/Expo app (`mobile/sovern-ops-app`) — must have feature parity with desktop every commit
+- **Customer Portal:** Web portal (`frontend/customer-portal`) — buyers and clients
+- **Factory Portal:** Web portal (`frontend/factory-portal`) — supplier/factory partners
+
+### Both Desktop + Mobile Connect To
+- Live backend: `https://erp.sovernhouse.co/api`
+- Same database on GCP VM
+- Same JWT auth
+- Shared business logic
+
 - **Shared components:** `frontend/shared/`
 - **Email:** Resend (transactional)
 - **Git:** github.com/SovernHouse/sovern-erp (main branch)
