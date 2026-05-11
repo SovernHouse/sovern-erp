@@ -4,9 +4,151 @@ import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Linking, Alert,
+  Platform,
 } from 'react-native';
-import { getCustomers, getCustomer, deleteCustomer, type Customer } from '../../src/services/api';
+import {
+  getCustomers, getCustomer, deleteCustomer, getCustomerProfitability,
+  type Customer, type CustomerProfitability,
+} from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
+
+// ─── Profitability helpers ───────────────────────────────────────────────
+
+const USD_FMT = new Intl.NumberFormat('en-US', {
+  style: 'currency', currency: 'USD', maximumFractionDigits: 0,
+});
+
+function isoDay(d: Date) { return d.toISOString().slice(0, 10); }
+function monthsAgo(months: number) { const d = new Date(); d.setMonth(d.getMonth() - months); return isoDay(d); }
+function todayIso() { return isoDay(new Date()); }
+function yearStartIso() { return `${new Date().getFullYear()}-01-01`; }
+
+type Preset = '3mo' | '6mo' | '12mo' | 'YTD';
+
+function presetRange(p: Preset): { from: string; to: string } {
+  const to = todayIso();
+  if (p === 'YTD') return { from: yearStartIso(), to };
+  const months = p === '3mo' ? 3 : p === '6mo' ? 6 : 12;
+  return { from: monthsAgo(months), to };
+}
+
+function ProfitabilitySection({ customerId }: { customerId: string }) {
+  const [preset, setPreset] = useState<Preset>('12mo');
+  const [data, setData] = useState<CustomerProfitability | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    const range = presetRange(preset);
+    getCustomerProfitability(customerId, range)
+      .then(setData)
+      .catch((err) => console.warn('Profitability load failed:', err.message))
+      .finally(() => setLoading(false));
+  }, [customerId, preset]);
+
+  const presets: Preset[] = ['3mo', '6mo', '12mo', 'YTD'];
+
+  return (
+    <View style={profitStyles.container}>
+      <Text style={profitStyles.header}>Profitability</Text>
+
+      <View style={profitStyles.presetRow}>
+        {presets.map((p) => (
+          <TouchableOpacity
+            key={p}
+            onPress={() => setPreset(p)}
+            style={[profitStyles.presetChip, preset === p && profitStyles.presetChipActive]}
+          >
+            <Text style={[profitStyles.presetText, preset === p && profitStyles.presetTextActive]}>{p}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {loading ? (
+        <ActivityIndicator color={COLORS.forest} style={{ marginVertical: 16 }} />
+      ) : !data ? (
+        <Text style={profitStyles.emptyText}>No profitability data.</Text>
+      ) : (
+        <>
+          <View style={profitStyles.grid}>
+            <View style={profitStyles.metric}>
+              <Text style={profitStyles.metricLabel}>Revenue</Text>
+              <Text style={profitStyles.metricValue}>{USD_FMT.format(data.revenue?.invoiced || 0)}</Text>
+              <Text style={profitStyles.metricSub}>{USD_FMT.format(data.revenue?.paid || 0)} paid</Text>
+            </View>
+            <View style={profitStyles.metric}>
+              <Text style={profitStyles.metricLabel}>Gross Profit</Text>
+              <Text style={[profitStyles.metricValue, (data.grossProfit || 0) < 0 && { color: COLORS.error }]}>
+                {USD_FMT.format(data.grossProfit || 0)}
+              </Text>
+              <Text style={profitStyles.metricSub}>Revenue − COGS</Text>
+            </View>
+            <View style={profitStyles.metric}>
+              <Text style={profitStyles.metricLabel}>Net Profit</Text>
+              <Text style={[profitStyles.metricValue, (data.netProfit || 0) < 0 && { color: COLORS.error }]}>
+                {USD_FMT.format(data.netProfit || 0)}
+              </Text>
+              <Text style={profitStyles.metricSub}>After overhead</Text>
+            </View>
+            <View style={profitStyles.metric}>
+              <Text style={profitStyles.metricLabel}>Direct Cost Ratio</Text>
+              <Text style={profitStyles.metricValue}>
+                {data.directCostRatio != null ? `${(data.directCostRatio * 100).toFixed(1)}%` : '—'}
+              </Text>
+              <Text style={profitStyles.metricSub}>Direct exp ÷ revenue</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity onPress={() => setExpanded((v) => !v)} style={profitStyles.expandBtn}>
+            <Text style={profitStyles.expandText}>{expanded ? 'Hide breakdown ▲' : 'Show breakdown ▼'}</Text>
+          </TouchableOpacity>
+
+          {expanded ? (
+            <View style={profitStyles.breakdown}>
+              <BreakdownLine label="Revenue (invoiced)" value={USD_FMT.format(data.revenue?.invoiced || 0)} />
+              <BreakdownLine label="COGS" value={USD_FMT.format(data.cogs || 0)} sign="−" />
+              <BreakdownLine label="Gross Profit" value={USD_FMT.format(data.grossProfit || 0)} emphasis />
+              <BreakdownLine
+                label={`Direct Expenses (${data.directExpenses?.count || 0})`}
+                value={USD_FMT.format(data.directExpenses?.total || 0)}
+                sign="−"
+              />
+              <BreakdownLine
+                label="Allocated Overhead"
+                sub={data.allocatedOverhead?.revenueShare != null
+                  ? `${(data.allocatedOverhead.revenueShare * 100).toFixed(2)}% of pool`
+                  : undefined}
+                value={USD_FMT.format(data.allocatedOverhead?.total || 0)}
+                sign="−"
+              />
+              <BreakdownLine label="Net Profit" value={USD_FMT.format(data.netProfit || 0)} emphasis />
+              <Text style={profitStyles.footnote}>
+                Period {data.period?.from} to {data.period?.to}. USD basis. Overhead allocated by revenue share.
+              </Text>
+            </View>
+          ) : null}
+        </>
+      )}
+    </View>
+  );
+}
+
+function BreakdownLine({
+  label, value, sign = '', emphasis = false, sub,
+}: { label: string; value: string; sign?: string; emphasis?: boolean; sub?: string }) {
+  return (
+    <View style={[profitStyles.breakdownRow, emphasis && profitStyles.breakdownRowEmphasis]}>
+      <View style={{ flex: 1 }}>
+        <Text style={[profitStyles.breakdownLabel, emphasis && profitStyles.breakdownLabelEmphasis]}>{label}</Text>
+        {sub ? <Text style={profitStyles.breakdownSub}>{sub}</Text> : null}
+      </View>
+      <Text style={[profitStyles.breakdownValue, emphasis && profitStyles.breakdownLabelEmphasis]}>
+        {sign ? `${sign} ` : ''}{value}
+      </Text>
+    </View>
+  );
+}
 
 // ─── Customer Row ─────────────────────────────────────────────────────────
 
@@ -172,6 +314,8 @@ function CustomerDetailModal({
                 <Text style={styles.notesText}>{customer.notes}</Text>
               </View>
             ) : null}
+
+            <ProfitabilitySection customerId={customer.id} />
 
           </ScrollView>
         ) : (
@@ -356,4 +500,49 @@ const styles = StyleSheet.create({
   link:        { color: COLORS.forest, textDecorationLine: 'underline' },
   notesBox:    { paddingVertical: 10 },
   notesText:   { fontSize: 13, color: COLORS.ink, marginTop: 4, lineHeight: 20 },
+});
+
+const profitStyles = StyleSheet.create({
+  container: { marginTop: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.border },
+  header: { fontSize: 15, fontWeight: '700', color: COLORS.ink, marginBottom: 12 },
+  presetRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  presetChip: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: COLORS.white,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  presetChipActive: { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
+  presetText: { fontSize: 12, color: COLORS.ink, fontWeight: '600' },
+  presetTextActive: { color: COLORS.white },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  metric: {
+    width: '48.5%',
+    backgroundColor: COLORS.white,
+    borderRadius: 8,
+    borderWidth: 1, borderColor: COLORS.border,
+    padding: 12,
+  },
+  metricLabel: { fontSize: 11, color: COLORS.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  metricValue: { fontSize: 17, color: COLORS.ink, fontWeight: '700', marginTop: 4 },
+  metricSub: { fontSize: 10, color: COLORS.muted, marginTop: 2 },
+  emptyText: { color: COLORS.muted, fontSize: 13, textAlign: 'center', marginVertical: 16 },
+  expandBtn: { paddingVertical: 12, alignItems: 'center' },
+  expandText: { fontSize: 13, color: COLORS.forest, fontWeight: '600' },
+  breakdown: {
+    backgroundColor: COLORS.white,
+    borderRadius: 8,
+    borderWidth: 1, borderColor: COLORS.border,
+    padding: 12,
+  },
+  breakdownRow: {
+    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  breakdownRowEmphasis: { borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: 4 },
+  breakdownLabel: { fontSize: 13, color: COLORS.ink },
+  breakdownSub: { fontSize: 11, color: COLORS.muted, marginTop: 2 },
+  breakdownValue: { fontSize: 13, color: COLORS.ink, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  breakdownLabelEmphasis: { fontWeight: '700' },
+  footnote: { fontSize: 10, color: COLORS.muted, marginTop: 8, lineHeight: 14 },
 });

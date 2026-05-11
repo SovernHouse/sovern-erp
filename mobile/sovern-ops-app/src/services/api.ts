@@ -177,6 +177,32 @@ export async function deleteCustomer(id: string): Promise<void> {
   await request(`/api/customers/${id}`, { method: 'DELETE' });
 }
 
+export interface CustomerProfitability {
+  customer: { id: string; companyName: string; country?: string };
+  period: { from: string; to: string };
+  currency: string;
+  revenue: { invoiced: number; paid: number };
+  cogs: number;
+  directExpenses: { total: number; count: number };
+  allocatedOverhead: { total: number; basis: string; revenueShare: number; overheadPool: number };
+  grossProfit: number;
+  netProfit: number;
+  directCostRatio: number | null;
+}
+
+export async function getCustomerProfitability(
+  id: string,
+  params?: { from?: string; to?: string },
+): Promise<CustomerProfitability> {
+  const qs = new URLSearchParams(
+    Object.entries(params ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]),
+  ).toString();
+  const res = await request<{ success: boolean; data: CustomerProfitability }>(
+    `/api/customers/${id}/profitability${qs ? `?${qs}` : ''}`,
+  );
+  return res.data;
+}
+
 // ─── Factories ────────────────────────────────────────────────────────────
 
 export async function getFactories(params?: { search?: string; status?: string; page?: number; limit?: number }) {

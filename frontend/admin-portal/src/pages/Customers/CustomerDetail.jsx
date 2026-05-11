@@ -6,6 +6,7 @@ import ChatterPanel from '../../components/ChatterPanel'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import DataTable from '../../components/DataTable'
 import StatusBadge from '../../components/StatusBadge'
+import ProfitabilityPanel from './ProfitabilityPanel'
 import { customersAPI } from '../../services/api'
 import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
@@ -63,6 +64,7 @@ export default function CustomerDetail() {
     { id: 'orders', label: 'Orders' },
     { id: 'quotations', label: 'Quotations' },
     { id: 'invoices', label: 'Invoices' },
+    { id: 'profitability', label: 'Profitability' },
     { id: 'claims', label: 'Claims' },
     { id: 'documents', label: 'Documents' },
     { id: 'chatter', label: 'Chatter' },
@@ -264,6 +266,10 @@ export default function CustomerDetail() {
               onEdit={(invoice) => navigate(`/invoices/${invoice.id}`)}
               paginated={false}
             />
+          )}
+
+          {activeTab === 'profitability' && (
+            <ProfitabilityPanel customerId={id} />
           )}
 
           {activeTab === 'claims' && (

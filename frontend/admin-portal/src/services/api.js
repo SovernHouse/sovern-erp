@@ -76,6 +76,7 @@ export const customersAPI = {
   getQuotations: (id) => api.get(`/customers/${id}/quotations`),
   getInvoices: (id) => api.get(`/customers/${id}/invoices`),
   getClaims: (id) => api.get(`/customers/${id}/claims`),
+  getProfitability: (id, params) => api.get(`/customers/${id}/profitability`, { params }),
 }
 
 // Factories endpoints
