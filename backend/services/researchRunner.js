@@ -427,21 +427,50 @@ function parseFindings(output) {
   if (!output || typeof output !== 'string') {
     return { ok: false, error: 'empty subprocess output' };
   }
-  // The AI is instructed to return raw JSON. Accept either bare JSON or
-  // JSON wrapped in a fenced code block (graceful fallback).
-  let text = output.trim();
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (fence) text = fence[1].trim();
+  // The AI is instructed to return raw JSON, but in practice it sometimes
+  // emits prose preamble ("Based on my research...", "I have enough
+  // candidates...") before the JSON, or wraps the JSON in a fenced code
+  // block, or both. Try a sequence of extraction strategies before giving
+  // up. The aim is to never lose a 5-15 minute web research run to a
+  // formatting slip.
+  const trimmed = output.trim();
+  const candidates = [trimmed];
 
-  let obj;
-  try {
-    obj = JSON.parse(text);
-  } catch (e) {
-    return { ok: false, error: e.message };
+  // Strategy 1: fenced ```json ... ``` (or plain ``` ... ```) block
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (fence) candidates.push(fence[1].trim());
+
+  // Strategy 2: substring from first `{` to last `}` — handles leading
+  // prose + trailing remarks around an otherwise-valid JSON object.
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    candidates.push(trimmed.slice(firstBrace, lastBrace + 1));
   }
-  if (!obj || typeof obj !== 'object') {
-    return { ok: false, error: 'parsed value is not an object' };
+
+  let obj = null;
+  let usedStrategy = -1;
+  let lastError = '';
+  for (let i = 0; i < candidates.length; i++) {
+    try {
+      const v = JSON.parse(candidates[i]);
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        obj = v;
+        usedStrategy = i;
+        break;
+      }
+    } catch (e) {
+      lastError = e.message;
+    }
   }
+
+  if (!obj) {
+    return { ok: false, error: lastError || 'could not extract a JSON object from subprocess output' };
+  }
+  if (usedStrategy > 0) {
+    logger.warn(`[research] parseFindings recovered JSON via fallback (candidate index ${usedStrategy}/${candidates.length - 1}). AI emitted prose around the JSON; output started: "${trimmed.slice(0, 80).replace(/\n/g, ' ')}". Run salvaged.`);
+  }
+
   const summary = typeof obj.summary === 'string' ? obj.summary : '';
   const findings = Array.isArray(obj.findings) ? obj.findings : [];
   return { ok: true, summary, findings };
