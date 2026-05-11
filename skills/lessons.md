@@ -71,6 +71,22 @@ Different locales use different decimal separators, thousands separators, and cu
 **L-022 — Test forms with international input patterns**
 International users have different name formats (no first/last split in some cultures), phone formats (+country code), and address structures (no ZIP code in some countries). Test with real international data, not just US-format inputs.
 
+**L-041 — Never transplant tariff framing between markets without re-running the duty stack from scratch**
+
+In May 2026, drafted two cross-market cold-email batches that copied tariff language across borders without recomputing the actual duty picture. First, Section 301 framing leaked into Canada emails (Section 301 is a US statute, irrelevant to Canadian importers). Second, "China still wins on price for the right volume" leaked into US emails (China-origin SPC/LVT into the US faces MFN 6.5% + Section 301 7.5% + IEEPA 20% + reciprocal 10% under May 2025 truce = roughly 44% combined, vs Malaysia duty-free, so China is not a viable US origin at any volume today).
+
+- **Root cause:** Cross-market template reuse without per-pair duty-stack recomputation. Treated "tariff context" as transferable text, not as a fact set bound to a specific (origin, destination, HS code) triple.
+- **Fix:** Before any cross-market sourcing run, build the duty stack from scratch per (origin × destination × HS code) pair. Confirm: MFN base, FTA preferences, Section 301 / 232, IEEPA, reciprocal, AD/CVD, and any active investigations. Do not reuse copy across markets.
+- **Rule:** When reframing email templates between markets, treat each (origin, destination) pair as a new compliance problem. Verify with a web search of the current tariff stack on the day before locking the template into a brief.
+
+**L-042 — All user-facing timestamps are Asia/Taipei (UTC+8). Never display UTC anywhere.**
+
+Every timestamp surfaced to Alex (or to any user of any Sovern surface) must be rendered in Asia/Taipei. This applies to the desktop ERP, customer portal, factory portal, mobile app, AI chat output, transactional emails, XLSX/PDF exports, audit logs, push notification bodies, and any future surface. The database can store UTC freely; the display layer is the one responsible for converting.
+
+- **Root cause:** Multiple surfaces have rendered raw UTC ISO strings (`...Z`) or appended "UTC" to timestamps because the formatter at the leaf component used `toISOString()` or `toString()` instead of a localised formatter. The mismatch creates daily friction (Alex sees an 8-hour-off timestamp, has to mentally convert) and looks unprofessional to clients on shared documents.
+- **Fix:** Default formatter for any user-facing timestamp is `date.toLocaleString('en-GB', { timeZone: 'Asia/Taipei' })`, or an equivalent that explicitly passes `timeZone: 'Asia/Taipei'`. Never call `.toISOString()` for display. Never concatenate `'UTC'` as a suffix. The AI chat assistant's system prompt now carries a global timezone rule covering every field returned by ERP tools.
+- **Rule:** No raw UTC, no `Z` ISO suffix, no `UTC` label in any user-visible string. Audit before merging: search the diff for `toISOString()`, `'UTC'`, and naked `Date.toString()` calls in render paths. If you find one in code you are touching, fix it.
+
 ---
 
 ## Verification Checklist (Before Marking Any Task Done)

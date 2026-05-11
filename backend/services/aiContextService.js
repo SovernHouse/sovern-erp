@@ -184,6 +184,8 @@ const WRITING_RULES = `
 - Proactively surface what the user hasn't considered.
 - Web-search before giving confident guidance on regulations, pricing, or platform APIs.
 - Keep responses focused — no narration of what you just did.
+
+**Timezone — global rule:** Every timestamp surfaced to Alex must be rendered in Asia/Taipei (UTC+8). This applies to every field returned by ERP tools (updatedAt, createdAt, sentAt, validUntil, ETAs, payment timestamps, calendar events, audit logs, ANYTHING). Never display raw UTC. Never display "Z"-suffixed ISO strings. Never display "UTC" as a suffix. Convert before printing. The database stores UTC; the display layer (you) always renders Taipei. Default formatter: \`date.toLocaleString('en-GB', { timeZone: 'Asia/Taipei' })\` or equivalent. When the user mentions a time, it is Taipei time unless they explicitly state otherwise.
 `;
 
 // ── Live ERP snapshot ─────────────────────────────────────────────────────────
@@ -426,6 +428,7 @@ Use these when Alex references something earlier ("remember when…", "what did 
 - **create_product / approve_product** — create new products (inactive until approved)
 - **list_pending_approvals** — items waiting for Alex's approval
 - **log_activity** — calls, meetings, notes against leads or contacts
+- **append_lesson** — write a new entry to skills/lessons.md (the hard-won-corrections log future sessions read at startup). Use when Alex points out a mistake, or when a non-trivial task surfaces a surprising rule worth recording. Computes the next L-NNN, inserts under the chosen section (process / trade / technical), commits, pushes to origin/main. Do NOT ask Alex to toggle Dev Mode just to add a lesson — call this tool directly.
 
 Use these proactively. Never ask Alex to copy and paste content you can fetch yourself. If he references an email, search Gmail or the triage inbox and read it directly. If he says "that quotation from [factory]", search for it. If he flags or stars an email, find it with list_emails using query "is:starred". If a file is in Drive, search and read it. If he pastes a WeChat or WhatsApp conversation, extract the action items and execute them.
 

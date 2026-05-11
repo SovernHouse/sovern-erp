@@ -1969,6 +1969,104 @@ async function callTool(name, args) {
       return customers.length ? customers.map(c => c.toJSON()) : 'No customers found.';
     }
 
+    // ── Lessons log ─────────────────────────────────────────────────────────
+    // Sanctioned exception to L-001: Alex enabled the AI Assistant to append
+    // entries to skills/lessons.md without Dev Mode. Tool writes the file,
+    // commits with a Sovern AI identity, and pushes to origin/main so the
+    // VM doesn't lose the change on next `git reset --hard` deploy.
+
+    case 'append_lesson': {
+      const fs = require('fs').promises;
+      const path = require('path');
+      const cp = require('child_process');
+
+      const { title, summary, root_cause, fix, rule } = args;
+      const section = args.section || 'technical';
+      if (!title || !root_cause || !fix || !rule) {
+        return 'Error: title, root_cause, fix, and rule are required.';
+      }
+
+      const repoRoot = path.resolve(__dirname, '..', '..');
+      const lessonsPath = path.join(repoRoot, 'skills', 'lessons.md');
+
+      let content;
+      try {
+        content = await fs.readFile(lessonsPath, 'utf-8');
+      } catch (e) {
+        return `Error reading lessons.md at ${lessonsPath}: ${e.message}`;
+      }
+
+      const sectionMap = {
+        process: '## Process & Workflow',
+        trade: '## International Trade — Domain Lessons',
+        technical: '## Website & Technical Lessons',
+      };
+      const sectionHeader = sectionMap[section];
+      if (!sectionHeader) {
+        return `Error: section must be one of: process, trade, technical (got "${section}")`;
+      }
+
+      const matches = [...content.matchAll(/\*\*L-(\d+)/g)];
+      const nums = matches.map(m => parseInt(m[1], 10)).filter(n => !isNaN(n));
+      const next = (nums.length ? Math.max(...nums) : 0) + 1;
+      const id = `L-${String(next).padStart(3, '0')}`;
+
+      const summaryBlock = summary ? `\n${summary.trim()}\n` : '';
+      const entry = `\n**${id} — ${title.trim()}**\n${summaryBlock}\n- **Root cause:** ${root_cause.trim()}\n- **Fix:** ${fix.trim()}\n- **Rule:** ${rule.trim()}\n`;
+
+      const sectionStart = content.indexOf(sectionHeader);
+      if (sectionStart === -1) {
+        return `Error: section header "${sectionHeader}" not found in lessons.md.`;
+      }
+      const nextSeparator = content.indexOf('\n---\n', sectionStart);
+      if (nextSeparator === -1) {
+        return 'Error: could not find end of section (no `---` after header).';
+      }
+
+      const newContent = content.slice(0, nextSeparator) + entry + content.slice(nextSeparator);
+      try {
+        await fs.writeFile(lessonsPath, newContent, 'utf-8');
+      } catch (e) {
+        return `Error writing lessons.md: ${e.message}`;
+      }
+
+      const safeTitle = title.replace(/["`$\\]/g, ' ').trim().slice(0, 70);
+      const commitMsg = `docs(lessons): ${id} - ${safeTitle} [via AI Assistant]`;
+      let committed = false;
+      let pushed = false;
+      let gitError = null;
+      const gitEnv = { ...process.env, GIT_AUTHOR_NAME: 'Sovern AI', GIT_AUTHOR_EMAIL: 'ai@sovernhouse.co', GIT_COMMITTER_NAME: 'Sovern AI', GIT_COMMITTER_EMAIL: 'ai@sovernhouse.co' };
+      try {
+        cp.execSync(`git -C "${repoRoot}" add skills/lessons.md`, { stdio: 'pipe', env: gitEnv });
+        cp.execSync(`git -C "${repoRoot}" commit -m "${commitMsg}"`, { stdio: 'pipe', env: gitEnv });
+        committed = true;
+        try {
+          cp.execSync(`git -C "${repoRoot}" push origin main`, { stdio: 'pipe', env: gitEnv });
+          pushed = true;
+        } catch (e) {
+          gitError = `push failed: ${(e.stderr ? e.stderr.toString() : '') || e.message}`;
+        }
+      } catch (e) {
+        gitError = `commit failed: ${(e.stderr ? e.stderr.toString() : '') || e.message}`;
+      }
+
+      return {
+        lessonId: id,
+        section,
+        written: true,
+        committed,
+        pushed,
+        gitError,
+        commitMessage: commitMsg,
+        path: 'skills/lessons.md',
+        note: pushed
+          ? `${id} appended, committed, and pushed. The lesson is now in main on origin and will survive the next VM deploy.`
+          : committed
+            ? `${id} appended and committed locally on the VM but NOT pushed. The lesson will be wiped on the next \`git reset --hard\` deploy unless pushed manually. Error: ${gitError}`
+            : `${id} appended to the file on disk but NOT committed. The lesson will be wiped on the next \`git reset --hard\` deploy. Error: ${gitError}`,
+      };
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}. Available tools: ${TOOL_DEFS.map(t => t.name).join(', ')}`);
   }
@@ -2742,6 +2840,22 @@ const TOOL_DEFS = [
       required: ['file_id'],
       properties: {
         file_id: { type: 'string', description: 'Drive file ID (provided in the user prompt under "## Attached files", or any Drive ID the user references)' },
+      },
+    },
+  },
+  {
+    name: 'append_lesson',
+    description: 'Append a new entry to skills/lessons.md, the hard-won corrections log future sessions read at startup. Use this when Alex points out a mistake worth recording, or when a non-trivial task surfaces a surprising rule. Computes the next L-NNN automatically, inserts the entry under the chosen section, commits with a "Sovern AI" git identity, and pushes to origin/main so the lesson survives the next VM deploy. Sections: "process" (workflow / commit / verification rules), "trade" (Incoterms, sanctions, tariffs, compliance, outreach copy lessons), "technical" (default — website, ERP backend, frontend, mobile, OTA, deployment). This is a sanctioned exception to the "never push from the VM" rule, enabled by Alex specifically for lessons.',
+    inputSchema: {
+      type: 'object',
+      required: ['title', 'root_cause', 'fix', 'rule'],
+      properties: {
+        title:      { type: 'string', description: 'Imperative short title for the lesson, used after "L-NNN — ". Example: "Never push from the Linux VM".' },
+        summary:    { type: 'string', description: 'Optional one-paragraph intro describing the incident or context. Skip for short / well-titled lessons.' },
+        root_cause: { type: 'string', description: 'What actually went wrong, traced to source. Include file:line or specific commit when relevant.' },
+        fix:        { type: 'string', description: 'What was done to resolve the immediate occurrence.' },
+        rule:       { type: 'string', description: 'The going-forward rule. This is the bit future-AI reads at session start, so phrase it as an actionable directive.' },
+        section:    { type: 'string', enum: ['process', 'trade', 'technical'], description: 'Which section to append under. Defaults to "technical".' },
       },
     },
   },
