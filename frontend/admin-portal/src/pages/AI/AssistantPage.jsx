@@ -67,7 +67,7 @@ function parseExpenseArgs(arg) {
   return { amount: null, currency: 'USD', description: arg }
 }
 
-async function runSlashCommand(slash, conversationId) {
+async function runSlashCommand(slash, conversationId, { onResearchStarted } = {}) {
   switch (slash.kind) {
     case 'new-clients':
     case 'new-suppliers': {
@@ -76,9 +76,15 @@ async function runSlashCommand(slash, conversationId) {
       }
       const mode = slash.kind === 'new-clients' ? 'clients' : 'suppliers'
       const res = await researchAPI.startTask(mode, slash.arg, conversationId || undefined)
-      const task = res.data?.data
+      // The admin-portal axios interceptor already unwraps {success, data} → data,
+      // so res.data IS the task object. Reading res.data.data here was a
+      // double-unwrap bug that surfaced the "Task ID: —" placeholder.
+      const task = res.data
+      if (task?.id && typeof onResearchStarted === 'function') {
+        onResearchStarted(task.id)
+      }
       const what = mode === 'clients' ? 'client prospects' : 'suppliers'
-      return `🔎 Researching new ${what}.\n\nBrief: "${slash.arg.slice(0, 200)}"\n\nThis runs in the background (5-15 min). I'll drop the results back here when done — push notification + email summary too. Track progress at **AI Assistant → Research** or cancel from the same screen.\n\nTask ID: \`${task ? task.id.slice(0, 8) : '—'}\``
+      return `🔎 Researching new ${what}.\n\nBrief: "${slash.arg.slice(0, 200)}"\n\nThis runs in the background (5-15 min). I'll drop the results back here when done — push notification + email summary too. Track progress at **AI Assistant → Research** or cancel from the same screen.\n\nTask ID: \`${task?.id ? task.id.slice(0, 8) : '—'}\``
     }
     case 'clients': {
       const arg = slash.arg.trim()
@@ -800,6 +806,15 @@ export default function AssistantPage() {
   const [loadingConv, setLoadingConv] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
+  // Background-research task IDs that should trigger conversation polling.
+  // When the runner finishes, it appends a completion message to the linked
+  // AIConversation. The chat UI doesn't know about that out-of-band write,
+  // so we poll the conversation every 8s while any task here is non-terminal
+  // and merge new messages into local state.
+  const [pendingResearch, setPendingResearch] = useState([])
+  const activeConvIdRef = useRef(null)
+  useEffect(() => { activeConvIdRef.current = activeConvId }, [activeConvId])
+
   // Dev Mode: super_admin-only toggle. When ON, the input spawns a
   // sandboxed dev-mode AI run instead of the regular chat reply.
   const [devMode, setDevMode] = useState(() => {
@@ -952,6 +967,55 @@ export default function AssistantPage() {
     else localStorage.removeItem(ACTIVE_CONV_KEY)
   }, [activeConvId])
 
+  // While any background research task is non-terminal, poll the active
+  // conversation every 8s for new messages appended by the runner's
+  // notifier. Stop polling for each task once it reaches a terminal state.
+  // This is what surfaces "✅ New client research finished." inline in the
+  // chat without a manual refresh.
+  useEffect(() => {
+    if (pendingResearch.length === 0) return
+
+    const tick = async () => {
+      // 1. Refresh the active conversation if one is open. Only replace
+      //    messages if the server has MORE than we do locally so we never
+      //    clobber a just-typed optimistic append.
+      const convId = activeConvIdRef.current
+      if (convId) {
+        try {
+          const res = await aiAPI.getConversation(convId)
+          const serverMessages = res.data?.messages || res.data?.conversation?.messages || []
+          setMessages(prev => (serverMessages.length > prev.length ? serverMessages : prev))
+        } catch (_) {
+          // non-fatal — try again next tick
+        }
+      }
+      // 2. Check each pending task. Drop any that have reached terminal state.
+      const stillPending = []
+      for (const taskId of pendingResearch) {
+        try {
+          const r = await researchAPI.getTask(taskId)
+          const status = r.data?.status
+          if (status && !['completed', 'failed', 'cancelled'].includes(status)) {
+            stillPending.push(taskId)
+          }
+        } catch (_) {
+          // Treat fetch errors as still-pending — better to keep polling
+          // than to silently drop a task we can't read right now.
+          stillPending.push(taskId)
+        }
+      }
+      if (stillPending.length !== pendingResearch.length) {
+        setPendingResearch(stillPending)
+      }
+    }
+
+    // Fire one immediately so the user sees results land quickly after
+    // completion, then poll on a steady cadence.
+    tick()
+    const interval = setInterval(tick, 8000)
+    return () => clearInterval(interval)
+  }, [pendingResearch])
+
   async function loadConversations() {
     try {
       const res = await aiAPI.listConversations()
@@ -1012,7 +1076,11 @@ export default function AssistantPage() {
       setSending(true)
       setMessages(prev => [...prev, { role: 'user', content: text, createdAt: new Date().toISOString() }])
       try {
-        const reply = await runSlashCommand(slash, activeConvId)
+        const reply = await runSlashCommand(slash, activeConvId, {
+          onResearchStarted: (taskId) => {
+            setPendingResearch(prev => (prev.includes(taskId) ? prev : [...prev, taskId]))
+          },
+        })
         setMessages(prev => [...prev, { role: 'assistant', content: reply, createdAt: new Date().toISOString() }])
       } catch (err) {
         const msg = err.response?.data?.error || err.message || 'Slash command failed.'

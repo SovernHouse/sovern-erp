@@ -26,7 +26,7 @@ import {
   aiChat, aiListConversations, aiGetConversation, aiDeleteConversation,
   aiRenameConversation, uploadAttachment,
   startDevModeRun, getDevModeRun, answerDevModeClarification,
-  startResearchTask, getCustomers, getFactories, getProducts,
+  startResearchTask, getResearchTask, getCustomers, getFactories, getProducts,
   listExpenses, createExpense, listExpenseOffices,
   createExpenseSubmission, generateSubmissionReport,
   type AIConversation, type AIMessage, type AIAttachment,
@@ -135,7 +135,11 @@ function parseExpenseArgs(arg: string): { amount: number | null; currency: strin
   return { amount: Number(m[1]), currency: m[2].toUpperCase().slice(0, 3), description: m[3].trim() };
 }
 
-async function runSlashCommand(slash: ParsedSlash, conversationId: string | null): Promise<string> {
+async function runSlashCommand(
+  slash: ParsedSlash,
+  conversationId: string | null,
+  opts: { onResearchStarted?: (taskId: string) => void } = {},
+): Promise<string> {
   switch (slash.kind) {
     case 'new-clients':
     case 'new-suppliers': {
@@ -145,8 +149,9 @@ async function runSlashCommand(slash: ParsedSlash, conversationId: string | null
       const mode: ResearchTaskMode = slash.kind === 'new-clients' ? 'clients' : 'suppliers';
       const res = await startResearchTask(mode, slash.arg, conversationId ?? undefined);
       const task = res.data;
+      if (task?.id && opts.onResearchStarted) opts.onResearchStarted(task.id);
       const what = mode === 'clients' ? 'client prospects' : 'suppliers';
-      return `🔎 Researching new ${what}.\n\nBrief: "${slash.arg.slice(0, 200)}"\n\nThis runs in the background (5-15 min). I'll drop the results back here when done — push notification + email summary too. You can check progress in **AI Assistant → Research** or cancel from the same screen.\n\nTask ID: \`${task.id.slice(0, 8)}\``;
+      return `🔎 Researching new ${what}.\n\nBrief: "${slash.arg.slice(0, 200)}"\n\nThis runs in the background (5-15 min). I'll drop the results back here when done — push notification + email summary too. You can check progress in **AI Assistant → Research** or cancel from the same screen.\n\nTask ID: \`${task?.id ? task.id.slice(0, 8) : '—'}\``;
     }
     case 'clients': {
       const arg = slash.arg.trim();
@@ -587,6 +592,48 @@ export default function AssistantScreen() {
   const [loadingThread, setLoadingThread] = useState(false);
   const [isThinking, setIsThinking]       = useState(false);
 
+  // Background-research task IDs awaiting completion. While non-empty,
+  // the active conversation is polled every 8s so the runner's
+  // "✅ research finished" message appears inline without manual refresh.
+  const [pendingResearch, setPendingResearch] = useState<string[]>([]);
+  const activeConvIdRef = useRef<string | null>(null);
+  useEffect(() => { activeConvIdRef.current = activeConvId; }, [activeConvId]);
+  useEffect(() => {
+    if (pendingResearch.length === 0) return;
+    let cancelled = false;
+
+    const tick = async () => {
+      const convId = activeConvIdRef.current;
+      if (convId && convId !== '__new__') {
+        try {
+          const data = await aiGetConversation(convId);
+          if (!cancelled) {
+            setMessages(prev => (data.messages.length > prev.length ? data.messages : prev));
+          }
+        } catch (_) { /* non-fatal */ }
+      }
+      const stillPending: string[] = [];
+      for (const taskId of pendingResearch) {
+        try {
+          const r = await getResearchTask(taskId);
+          const status = (r as any)?.data?.status;
+          if (status && !['completed', 'failed', 'cancelled'].includes(status)) {
+            stillPending.push(taskId);
+          }
+        } catch (_) {
+          stillPending.push(taskId);
+        }
+      }
+      if (!cancelled && stillPending.length !== pendingResearch.length) {
+        setPendingResearch(stillPending);
+      }
+    };
+
+    tick();
+    const interval = setInterval(tick, 8000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [pendingResearch]);
+
   // ── Compose state ──────────────────────────────────────────────────────────
   const [draft, setDraft]   = useState('');
   const [sending, setSending] = useState(false);
@@ -833,7 +880,11 @@ export default function AssistantScreen() {
       };
       setMessages(prev => [...prev, userMsg]);
       try {
-        const reply = await runSlashCommand(slash, activeConvId);
+        const reply = await runSlashCommand(slash, activeConvId, {
+          onResearchStarted: (taskId: string) => {
+            setPendingResearch(prev => (prev.includes(taskId) ? prev : [...prev, taskId]));
+          },
+        });
         // /new-X starts a background task; the runner's notifier will append
         // the result back to this conversation when it lands. /X commands
         // return the result immediately.
