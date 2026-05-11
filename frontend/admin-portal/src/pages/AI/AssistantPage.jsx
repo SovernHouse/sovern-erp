@@ -178,6 +178,7 @@ async function runSlashCommand(slash, conversationId, { onResearchStarted } = {}
 // resumes their previous chat after closing/reopening the ERP instead
 // of being dropped into an empty new-conversation state.
 const ACTIVE_CONV_KEY = 'sovern.ai.activeConvId'
+const PENDING_RESEARCH_KEY = 'sovern.ai.pendingResearch'
 
 // ── Markdown-lite renderer ────────────────────────────────────────────────────
 // Handles bold, code blocks, inline code, bullets, numbered lists, headers.
@@ -810,8 +811,28 @@ export default function AssistantPage() {
   // When the runner finishes, it appends a completion message to the linked
   // AIConversation. The chat UI doesn't know about that out-of-band write,
   // so we poll the conversation every 8s while any task here is non-terminal
-  // and merge new messages into local state.
-  const [pendingResearch, setPendingResearch] = useState([])
+  // and merge new messages into local state. Persisted to localStorage so
+  // polling resumes after a browser refresh while a task is still mid-flight.
+  const [pendingResearch, setPendingResearch] = useState(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const raw = localStorage.getItem(PENDING_RESEARCH_KEY)
+      if (raw) {
+        const ids = JSON.parse(raw)
+        if (Array.isArray(ids)) return ids.filter((x) => typeof x === 'string')
+      }
+    } catch (_) { /* ignored */ }
+    return []
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (pendingResearch.length > 0) {
+      localStorage.setItem(PENDING_RESEARCH_KEY, JSON.stringify(pendingResearch))
+    } else {
+      localStorage.removeItem(PENDING_RESEARCH_KEY)
+    }
+  }, [pendingResearch])
+
   const activeConvIdRef = useRef(null)
   useEffect(() => { activeConvIdRef.current = activeConvId }, [activeConvId])
 

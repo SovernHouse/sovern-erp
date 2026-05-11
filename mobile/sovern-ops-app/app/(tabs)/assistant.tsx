@@ -41,6 +41,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 
 const DEV_MODE_KEY = 'sovern.ai.devModeOn';
+const PENDING_RESEARCH_KEY = 'sovern.ai.pendingResearch';
 const NON_TERMINAL_RUN: DevModeRunStatus[] = ['queued', 'running', 'opening_pr', 'awaiting_clarification'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -595,7 +596,35 @@ export default function AssistantScreen() {
   // Background-research task IDs awaiting completion. While non-empty,
   // the active conversation is polled every 8s so the runner's
   // "✅ research finished" message appears inline without manual refresh.
+  // Persisted to AsyncStorage so polling resumes after app reload while
+  // a task is still mid-flight.
   const [pendingResearch, setPendingResearch] = useState<string[]>([]);
+  const pendingResearchHydratedRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(PENDING_RESEARCH_KEY).then((raw) => {
+      if (cancelled) return;
+      if (raw) {
+        try {
+          const ids = JSON.parse(raw);
+          if (Array.isArray(ids) && ids.length > 0) {
+            setPendingResearch(ids.filter((x) => typeof x === 'string'));
+          }
+        } catch (_) { /* ignored */ }
+      }
+      pendingResearchHydratedRef.current = true;
+    });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    if (!pendingResearchHydratedRef.current) return;
+    if (pendingResearch.length > 0) {
+      AsyncStorage.setItem(PENDING_RESEARCH_KEY, JSON.stringify(pendingResearch));
+    } else {
+      AsyncStorage.removeItem(PENDING_RESEARCH_KEY);
+    }
+  }, [pendingResearch]);
+
   const activeConvIdRef = useRef<string | null>(null);
   useEffect(() => { activeConvIdRef.current = activeConvId; }, [activeConvId]);
   useEffect(() => {
