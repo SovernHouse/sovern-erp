@@ -1376,15 +1376,6 @@ export interface ReceiptExtractionResult {
   receiptDriveFileIds: string[]
 }
 
-export interface AttachmentUploadResult {
-  driveFileId: string
-  name: string
-  mimeType: string
-  sizeBytes?: number | null
-  webViewLink?: string | null
-  thumbnailUrl?: string | null
-}
-
 export interface ReimbursementOfficeRow {
   id: string
   code: string
@@ -1441,36 +1432,9 @@ export function generateSubmissionReport(submissionId: string) {
   )
 }
 
-// Upload a receipt image / PDF to the user's Drive ("Sovern ERP/AI uploads/")
-// and return the driveFileId, which `extractFromReceipt` then reads via the
-// read_attachment MCP tool. multipart/form-data — we can't use the JSON-only
-// `request` helper here, so this fetches directly.
-export async function uploadAttachment(file: {
-  uri: string
-  name: string
-  type: string
-}): Promise<{ success: boolean; data: AttachmentUploadResult }> {
-  const token = await getToken()
-  const form = new FormData()
-  // React Native FormData understands this triple shape natively.
-  form.append('file', { uri: file.uri, name: file.name, type: file.type } as any)
-  const res = await fetch(`${CONFIG.SERVER_URL}/api/ai/attachments`, {
-    method: 'POST',
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      // Do NOT set Content-Type — RN sets the multipart boundary itself.
-    },
-    body: form as any,
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body?.error || `HTTP ${res.status}`)
-  }
-  return res.json()
-}
-
-// Given a driveFileId, run the AI receipt extractor and return suggested
-// Expense fields. Caller renders these as a pre-filled draft for review.
+// Given a driveFileId (from the existing uploadAttachment helper), run the
+// AI receipt extractor and return suggested Expense fields. The caller
+// renders these as a pre-filled draft for review.
 export function extractFromReceipt(driveFileId: string) {
   return request<{ success: boolean; data: ReceiptExtractionResult }>(
     '/api/expenses/extract-from-receipt',

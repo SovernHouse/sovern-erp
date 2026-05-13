@@ -487,8 +487,8 @@ export default function ExpensesScreen() {
         (asset.uri.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg')
       const name = asset.fileName || `receipt-${Date.now()}.${guessedType.includes('pdf') ? 'pdf' : 'jpg'}`
 
-      const up = await uploadAttachment({ uri: asset.uri, name, type: guessedType })
-      const driveFileId = up.data?.driveFileId
+      const up = await uploadAttachment({ uri: asset.uri, name, mimeType: guessedType })
+      const driveFileId = up?.driveFileId
       if (!driveFileId) throw new Error('Upload returned no driveFileId')
 
       const ex = await extractFromReceipt(driveFileId)
