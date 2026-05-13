@@ -599,6 +599,12 @@ if (db.Lead && db.CalendarEvent) {
 // ─── Multi-Brand associations (Phase 1, D-1 / L-034) ───────────────────────
 // Every transactional model belongs to a Brand via brandCode → Brand.code.
 // Declared here (not inline `references:` in the model files) per L-034.
+// `constraints: false` keeps the relationship at the ORM/JS level only and
+// skips the SQL-level FK — same pattern the rest of the codebase uses (see
+// the comment on Lead.convertedCustomerId). Otherwise sync({ force: true })
+// in test setup recreates these tables with FK constraints to a Brand table
+// that the test seed hasn't populated yet, breaking every integration test
+// that calls db.User.create() before seedBrands has run.
 // Customer's brandRelationships is a JSON array, not an FK — no association
 // to declare there. User has defaultBrand single-string + accessibleBrands
 // JSON; both read by brandScope middleware (Commit 3).
@@ -615,6 +621,7 @@ if (db.Brand) {
       foreignKey: 'brandCode',
       targetKey: 'code',
       as: 'brand',
+      constraints: false,
     });
   }
   // User.defaultBrand convenience FK (read-only join). Alias differs from
@@ -625,6 +632,7 @@ if (db.Brand) {
       foreignKey: 'defaultBrand',
       targetKey: 'code',
       as: 'brand',
+      constraints: false,
     });
   }
 }
