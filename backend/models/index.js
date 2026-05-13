@@ -613,6 +613,8 @@ const BRAND_TX_MODELS = [
   'Invoice', 'ProformaInvoice',
   'Activity', 'OutreachEmail', 'TriageItem', 'ScheduledActivity',
   'Document', 'DocumentApproval',
+  // Expense module (Phase 1 Commit 3b-A).
+  'Expense', 'ReimbursementOffice', 'Trip', 'ExpenseSubmission',
 ];
 if (db.Brand) {
   for (const name of BRAND_TX_MODELS) {

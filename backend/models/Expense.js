@@ -128,6 +128,14 @@ module.exports = (sequelize) => {
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    // Multi-brand (Phase 1 Commit 3b-A). FW expenses route to FW
+    // reimbursement offices; SH to SH. Brand inherited from the active
+    // ReimbursementOffice + user defaultBrand at create time.
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: false,
+      defaultValue: 'SH',
+    },
   }, {
     tableName: 'Expenses',
     timestamps: true,

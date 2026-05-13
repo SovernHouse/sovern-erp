@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const c = require('../controllers/expensesController');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 
 // Expenses module — admin + super_admin only (bare strings — L-031).
 //
@@ -23,8 +24,10 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 // CRITICAL: Super Admin supercedes all other roles and must have access to EVERYTHING.
 // authGate: all authenticated users can perform expense operations (user-scoped in controller).
 // adminGate: only super_admin can perform (admin configuration, submissions, etc.).
-const authGate = [requireAuth];
-const adminGate = [requireAuth, requireRole('super_admin')];
+// brandScope (P1 C3b-A) is added to both so every list query auto-filters
+// by req.brandScope.where and creates default to req.brandScope.defaultBrand.
+const authGate = [requireAuth, brandScope];
+const adminGate = [requireAuth, brandScope, requireRole('super_admin')];
 
 // ── Reimbursement offices ────────────────────────────────────────────────────
 // Admin-only; employees don't manage office configurations.

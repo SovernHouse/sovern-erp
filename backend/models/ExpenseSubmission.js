@@ -50,6 +50,13 @@ module.exports = (sequelize) => {
       type: DataTypes.UUID,
       allowNull: false,
     },
+    // Multi-brand (Phase 1 Commit 3b-A). Submission inherits brand from
+    // the office it routes to — keeps the XLSX report cleanly per-brand.
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: false,
+      defaultValue: 'SH',
+    },
   }, {
     tableName: 'ExpenseSubmissions',
     timestamps: true,

@@ -39,6 +39,13 @@ module.exports = (sequelize) => {
       type: DataTypes.UUID,
       allowNull: true,
     },
+    // Multi-brand (Phase 1 Commit 3b-A). A trip is scoped to one brand —
+    // an FW factory visit's expenses get tagged FW, not mixed with SH trips.
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: false,
+      defaultValue: 'SH',
+    },
   }, {
     tableName: 'Trips',
     timestamps: true,

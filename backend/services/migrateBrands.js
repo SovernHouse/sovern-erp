@@ -31,6 +31,10 @@ const TX_MODELS = [
   'Invoice', 'ProformaInvoice',
   'Activity', 'OutreachEmail', 'TriageItem', 'ScheduledActivity',
   'Document', 'DocumentApproval',
+  // Phase 1 Commit 3b-A — Expenses module is per-brand (SH offices
+  // reimburse SH expenses, FW offices reimburse FW expenses; mixing
+  // across the two legal entities is not allowed).
+  'Expense', 'ReimbursementOffice', 'Trip', 'ExpenseSubmission',
 ];
 
 // Users who should default to multi-brand access. Read from env so it's

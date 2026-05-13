@@ -45,6 +45,15 @@ module.exports = (sequelize) => {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    // Multi-brand (Phase 1 Commit 3b-A). Each reimbursement office belongs
+    // to ONE brand — SH offices reimburse SH expenses, FW offices reimburse
+    // FW expenses. Mixing across the two distinct legal entities is not
+    // allowed.
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: false,
+      defaultValue: 'SH',
+    },
   }, {
     tableName: 'ReimbursementOffices',
     timestamps: true,

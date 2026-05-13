@@ -25,6 +25,7 @@ const logger = require('../utils/logger.js');
 const { extractFromReceipt } = require('../services/expenseExtractionService');
 const { generateReport } = require('../services/expenseExporters');
 const { getAuthClientForAccount } = require('./googleAccountController');
+const { assertSingleBrandMode, assertBrandWritable } = require('../middleware/brandScope');
 
 const DRIVE_ROOT_FOLDER     = 'Sovern ERP';
 const DRIVE_REPORTS_SUBFOLDER = 'Expense reports';
@@ -113,7 +114,7 @@ async function convertToUsd(originalAmount, originalCurrency) {
 
 exports.listOffices = async (req, res) => {
   try {
-    const where = {};
+    const where = { ...(req.brandScope?.where || {}) };
     if (req.query.activeOnly !== 'false') where.isActive = true;
     let offices = await db.ReimbursementOffice.findAll({
       where,
@@ -121,16 +122,19 @@ exports.listOffices = async (req, res) => {
     });
     // Empty-table guard per spec: if Alex has no offices yet AND he's the
     // active user, auto-create a "Personal" placeholder so first-expense
-    // flows don't block on setup.
+    // flows don't block on setup. Personal office is brand-scoped — one per
+    // brand the user has access to.
     if (offices.length === 0) {
+      const brandCode = req.brandScope?.defaultBrand || 'SH';
       const personal = await db.ReimbursementOffice.create({
-        code: 'PERSONAL',
-        displayName: 'Personal',
+        code: brandCode === 'SH' ? 'PERSONAL' : `PERSONAL_${brandCode}`,
+        displayName: brandCode === 'SH' ? 'Personal' : `Personal (${brandCode})`,
         defaultCurrency: 'USD',
         claimsFrequency: 'ad_hoc',
         acceptedCategories: [],
         exportTemplateKey: null,
         notes: 'Auto-created on first expense entry. Edit or delete in Settings if you don\'t need it.',
+        brandCode,
       });
       offices = [personal];
     }
@@ -154,12 +158,15 @@ exports.getOffice = async (req, res) => {
 
 exports.createOffice = async (req, res) => {
   try {
+    if (!assertSingleBrandMode(req, res)) return;
     const { code, displayName, defaultCurrency, claimsFrequency, acceptedCategories, exportTemplateKey, notes } = req.body;
     if (!code || !code.trim()) return badRequest(res, 'code is required');
     if (!displayName || !displayName.trim()) return badRequest(res, 'displayName is required');
     if (claimsFrequency && !VALID_FREQUENCIES.includes(claimsFrequency)) {
       return badRequest(res, `claimsFrequency must be one of: ${VALID_FREQUENCIES.join(', ')}`);
     }
+    const brandCode = req.body.brandCode || req.brandScope?.defaultBrand || 'SH';
+    if (!assertBrandWritable(req, res, brandCode)) return;
     const office = await db.ReimbursementOffice.create({
       code: code.trim().toUpperCase(),
       displayName: displayName.trim(),
@@ -168,6 +175,7 @@ exports.createOffice = async (req, res) => {
       acceptedCategories: Array.isArray(acceptedCategories) ? acceptedCategories : [],
       exportTemplateKey: exportTemplateKey || null,
       notes: notes || null,
+      brandCode,
     });
     res.status(201).json({ success: true, data: office });
   } catch (err) {
@@ -222,7 +230,11 @@ exports.deleteOffice = async (req, res) => {
 
 exports.listTrips = async (req, res) => {
   try {
-    const trips = await db.Trip.findAll({ order: [['startDate', 'DESC'], ['createdAt', 'DESC']] });
+    const where = { ...(req.brandScope?.where || {}) };
+    const trips = await db.Trip.findAll({
+      where,
+      order: [['startDate', 'DESC'], ['createdAt', 'DESC']],
+    });
     res.json({ success: true, data: trips });
   } catch (err) {
     logger.error('[expenses] listTrips error:', err.message);
@@ -243,8 +255,11 @@ exports.getTrip = async (req, res) => {
 
 exports.createTrip = async (req, res) => {
   try {
+    if (!assertSingleBrandMode(req, res)) return;
     const { name, startDate, endDate, purpose, primaryCustomerId, inspectorId } = req.body;
     if (!name || !name.trim()) return badRequest(res, 'name is required');
+    const brandCode = req.body.brandCode || req.brandScope?.defaultBrand || 'SH';
+    if (!assertBrandWritable(req, res, brandCode)) return;
     const trip = await db.Trip.create({
       name: name.trim(),
       startDate: startDate || null,
@@ -252,6 +267,7 @@ exports.createTrip = async (req, res) => {
       purpose: purpose || null,
       primaryCustomerId: primaryCustomerId || null,
       inspectorId: inspectorId || null,
+      brandCode,
     });
     res.status(201).json({ success: true, data: trip });
   } catch (err) {
@@ -294,7 +310,8 @@ exports.deleteTrip = async (req, res) => {
 exports.listExpenses = async (req, res) => {
   try {
     const { status, customerId, factoryId, tripId, officeId, paid, search, limit, offset } = req.query;
-    const where = {};
+    // Phase 1 Commit 3b-A: brand-scope filter first, then user-scope on top.
+    const where = { ...(req.brandScope?.where || {}) };
 
     // User-scoping: non-super_admin users see only their own expenses.
     const isAdmin = req.user.role === 'super_admin';
@@ -347,6 +364,7 @@ exports.getExpense = async (req, res) => {
 
 exports.createExpense = async (req, res) => {
   try {
+    if (!assertSingleBrandMode(req, res)) return;
     const {
       entryDate, category, description,
       originalCurrency, originalAmount, usdAmount, fxRateUsed,
@@ -374,6 +392,15 @@ exports.createExpense = async (req, res) => {
       if (rate == null) rate = conv.rate;
     }
 
+    // Brand inheritance: if a submittingOfficeId was provided, inherit the
+    // office's brand. Otherwise fall back to req.body.brandCode → user default.
+    let brandCode = req.body.brandCode || req.brandScope?.defaultBrand || 'SH';
+    if (submittingOfficeId) {
+      const office = await db.ReimbursementOffice.findByPk(submittingOfficeId);
+      if (office?.brandCode) brandCode = office.brandCode;
+    }
+    if (!assertBrandWritable(req, res, brandCode)) return;
+
     const expense = await db.Expense.create({
       userId: req.user.id,
       entryDate: entryDate || new Date().toISOString().slice(0, 10),
@@ -397,6 +424,7 @@ exports.createExpense = async (req, res) => {
       aiExtractedFromDriveFileId: aiExtractedFromDriveFileId || null,
       aiExtractionConfidence: aiExtractionConfidence != null ? Number(aiExtractionConfidence) : null,
       notes: notes || null,
+      brandCode,
     });
     res.status(201).json({ success: true, data: expense });
   } catch (err) {
@@ -473,7 +501,7 @@ exports.deleteExpense = async (req, res) => {
 
 exports.listSubmissions = async (req, res) => {
   try {
-    const where = {};
+    const where = { ...(req.brandScope?.where || {}) };
     if (req.query.officeId) where.officeId = req.query.officeId;
     const subs = await db.ExpenseSubmission.findAll({
       where,
@@ -504,10 +532,13 @@ exports.getSubmission = async (req, res) => {
 // time so the report stays stable.
 exports.createSubmission = async (req, res) => {
   try {
+    if (!assertSingleBrandMode(req, res)) return;
     const { officeId, periodStart, periodEnd, expenseIds, notes } = req.body;
     if (!officeId) return badRequest(res, 'officeId is required');
     const office = await db.ReimbursementOffice.findByPk(officeId);
     if (!office) return notFound(res, 'Office');
+    // Brand inherited from the office. Caller must have access to that brand.
+    if (!assertBrandWritable(req, res, office.brandCode)) return;
 
     let expenseRows;
     if (Array.isArray(expenseIds) && expenseIds.length > 0) {
@@ -542,6 +573,7 @@ exports.createSubmission = async (req, res) => {
       exportFileDriveFileId: null,
       totalsByCurrency,
       notes: notes || null,
+      brandCode: office.brandCode || 'SH',
     });
 
     // Stamp each expense with the batch ID + flip to submitted.
