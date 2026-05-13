@@ -5,13 +5,38 @@
 ---
 
 ## Last Updated
-2026-05-10 17:30 Taiwan time (thirteenth session, CONFIRMED WORKING — Alex's iPhone Expo Go finally pulled the new bundle. Final root cause was runtime version: app.json had `{ "policy": "appVersion" }` which publishes runtime `1.0.0`, but Expo Go iOS SDK 54 hard-codes its query as `exposdk:54.0.0` (verified in `apps/expo-go/ios/Exponent/Kernel/AppLoader/EXAppLoaderExpoUpdates.m`). All my prior 200-OK curl tests with `runtime=1.0.0` were a coincidence — the EAS server matched the published value, but Expo Go was never querying with that. Set `"runtimeVersion": "exposdk:54.0.0"` literal, republished, verified curl with `exposdk:54.0.0` returns HTTP 200, Alex confirmed the iPhone loaded the bundle. Final state: commit `75ce90f` on main, project on SDK 54 + RN 0.81.5 + `@react-native-picker/picker@2.11.1`, expenses.tsx Picker fix preserved, runtime `exposdk:54.0.0` literal in app.json. Latest OTA: group `8a5b78d6-c812-4c93-9781-ff52c67f5683`, iOS update ID `019e1122-f5b5-74b0-bb4d-f28a8855fe62`. L-039 rewritten with full four-layer framework + correct runtime format + the working Sovern config. Future SDK upgrades only need to bump the `exposdk:X.0.0` value in app.json to match.)
+2026-05-13 Taiwan time. Scan-Receipt flow added on both desktop ERP `/expenses` and mobile expenses tab — completes the three-surface coverage for the Expenses module. Working tree has changes not yet committed: `backend/routes/aiRoutes.js`, `frontend/admin-portal/src/pages/Expenses/ExpensesPage.jsx`, `mobile/sovern-ops-app/src/services/api.ts`, `mobile/sovern-ops-app/app/(tabs)/expenses.tsx`. Last shipped commit on `main` is `deb2444` (AI pendingResearch persistence). SESSION.md was previously stale by 13 commits — this update brings it current.
 
 ---
 
 ## Where We Are
 
-### Mobile SDK 55 upgrade SHIPPED — awaiting iPhone verification
+### Scan-Receipt flow added on both surfaces — staged, not yet committed
+
+This session: built the receipt → AI extract → pre-filled expense draft flow on both desktop ERP `/expenses` and mobile expenses tab. Backend extraction endpoint (`POST /api/expenses/extract-from-receipt`) was already shipped in `8a5e97c`; the UI to drive it was the missing piece. Open to any authenticated user (the expense module is user-scoped, not super_admin-only, per `0750603`).
+
+**Backend change:**
+- `backend/routes/aiRoutes.js` — lifted `POST /api/ai/attachments` out of the `requireRole('super_admin')` gate. The handler already writes to the caller's own Drive folder via `getDriveClientForUser(req.user.id)`, so it is already user-scoped — the gate was preventing non-super-admin users (anyone logging expenses) from uploading receipt photos. Chat + conversation routes remain super_admin-only.
+
+**Desktop ERP change (`frontend/admin-portal/src/pages/Expenses/ExpensesPage.jsx`):**
+- New top-level "Scan receipt" button next to "+ New expense". Opens file picker (image or PDF).
+- New "Scan & fill from receipt" button inside the create drawer (only when `!isEdit`). Lets a user open the drawer first, then scan.
+- Both paths call `aiAPI.uploadAttachment(file)` → `expensesAPI.extractFromReceipt(driveFileId)` → pre-fill the drawer with the returned fields (`entryDate`, `suggestedCategory`, `suggestedDescription`, `originalCurrency`, `originalAmount`, `notes`) + a green "AI pre-filled" banner with confidence percentage + link back to the receipt in Drive.
+- Provenance fields (`receiptDriveFileIds`, `aiExtractedFromDriveFileId`, `aiExtractionConfidence`) ride through the create payload so the audit trail is preserved on the Expense row.
+
+**Mobile change (`mobile/sovern-ops-app/app/(tabs)/expenses.tsx` + `src/services/api.ts`):**
+- New `uploadAttachment` + `extractFromReceipt` helpers on the mobile API service (multipart fetch direct for upload since the JSON `request` helper can't handle FormData).
+- New `📸 Scan` button in the expenses header next to `+ New`. ActionSheet on iOS / native Alert on Android with three sources: Take Photo / Library / File (PDF).
+- Camera path requires `requestCameraPermissionsAsync`; library path requires `requestMediaLibraryPermissionsAsync`. Both permissions already declared in `app.json` (`NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`) from a prior session — no native rebuild needed; expo-image-picker and expo-document-picker ship bundled with Expo Go SDK 54.
+- After picking, uploads to Drive → calls extract → opens `ExpenseCreateModal` with the draft pre-filled + a green AI-extracted banner showing confidence.
+- `ExpenseCreateModal` now persists provenance fields through `createExpense` so the audit trail matches the desktop side. The `editingExpense?.id != null` check correctly distinguishes "scanned draft" (no id → create) from "edit existing row" (id → update).
+- Uses `mediaTypes: 'images'` (non-deprecated string form for expo-image-picker 17.x), not `MediaTypeOptions.Images`.
+
+**TS check on mobile:** the file still has 41 pre-existing strict-style errors from `useStyles()` returning a raw object instead of `StyleSheet.create()` — runtime-safe, structurally unchanged from baseline. The whole-file refactor to wrap in `StyleSheet.create()` is a separate cleanup, out of scope for this work.
+
+**End-to-end test still owed by Alex** (cannot be done from this machine — needs a real receipt photo on the iPhone). Once tested OK, this set of files needs commit + push.
+
+### Previous: Mobile OTA confirmed working on iPhone (commit 75ce90f, 2026-05-10)
 
 **What was wrong:** App Store Expo Go binary auto-upgrades to whatever the latest Expo SDK is. SDK 55 dropped on 2026-02-25; ~2.5 months later, Alex's iPhone Expo Go was on SDK 55 while project was still on SDK 54. Each Expo Go binary supports exactly one SDK version. Bundles published for SDK 54 cannot load on Expo Go SDK 55, regardless of channel/runtime/cache state. All previous diagnoses (corrupted app.json, runtimeVersion field, phone needs reset) were symptoms or red herrings — the SDK gap was the real cause.
 
@@ -375,7 +400,15 @@ The MCP loads on next Claude Code start in this directory. Today the nginx swap 
 
 ## Next Task
 
-**Pickup point from Desktop:**
+**Immediate (this stretch of work):**
+
+1. **Test the Scan-Receipt flow end-to-end on both surfaces.** Real receipt photo, ideally one with non-English text and a non-USD currency to exercise the disambiguation rules in `expenseExtractionService.js` (NT$ → TWD, ¥ → CNY, ₫ → VND, ฿ → THB).
+   - **Desktop:** open `https://erp.sovernhouse.co/expenses` in Brave → click "Scan receipt" in the header → pick a receipt image or PDF → confirm AI banner appears with confidence % and Drive link → confirm draft is pre-filled correctly → save → confirm new row has receiptDriveFileIds + aiExtractedFromDriveFileId + aiExtractionConfidence stored.
+   - **Mobile:** open Sovern Ops on iPhone → Expenses tab → tap "📸 Scan" → Take Photo → confirm banner + pre-fill → save → confirm row appears with provenance.
+2. **Commit + push the staged changes.** `backend/routes/aiRoutes.js`, `frontend/admin-portal/src/pages/Expenses/ExpensesPage.jsx`, `mobile/sovern-ops-app/src/services/api.ts`, `mobile/sovern-ops-app/app/(tabs)/expenses.tsx`. After push: CI green check via `github_list_runs` on `sovern-erp`, deploy auto-runs.
+3. **Republish Expo OTA** so mobile picks up the new bundle: `cd mobile/sovern-ops-app && eas update --branch main --platform ios --environment production`.
+
+**Previous pickup point from 2026-05-10:**
 
 1. **Resolve the Expo Go OTA blocker.** Read the "🚨 OPEN" section at the top of "Where We Are". Five specific hypotheses to test, with the exact commands to run. Most likely culprit (my guess): possibility 3 — bundle was built/published from stale code before the revert commit landed. Re-running `eas update --branch preview --platform ios` from current HEAD on Desktop (where the working flow already exists) is the cheapest test.
 2. **Rotate the leaked PAT** at https://expo.dev/settings/access-tokens — `mMjHu8RC...` is in this session's chat transcript.

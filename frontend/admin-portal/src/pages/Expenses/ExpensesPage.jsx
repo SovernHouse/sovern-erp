@@ -10,12 +10,12 @@
  * the AI Assistant — those don't require this UI to be open.
  */
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
-import { expensesAPI, customersAPI } from '../../services/api'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { expensesAPI, customersAPI, aiAPI } from '../../services/api'
 import toast from 'react-hot-toast'
 import {
   Loader2, Plus, X, FileText, Filter, Receipt, Download, Trash2, Pencil, Check,
-  AlertCircle,
+  AlertCircle, Camera, Sparkles,
 } from 'lucide-react'
 
 const STATUS_FILTERS = [
@@ -74,6 +74,8 @@ export default function ExpensesPage() {
   const [drawerExpense, setDrawerExpense] = useState(null) // null = closed; {} = new; {id} = edit
   const [reportOfficeOpen, setReportOfficeOpen] = useState(false)
   const [officesModalOpen, setOfficesModalOpen] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const scanInputRef = useRef(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -132,6 +134,51 @@ export default function ExpensesPage() {
     }
   }
 
+  // Scan a receipt photo / PDF → upload to Drive → AI extracts fields →
+  // open the drawer pre-filled. Same flow whether triggered from the page
+  // header or the drawer's "Scan & Fill" button — both feed the file into
+  // this handler, which sets `drawerExpense` with the extracted shape.
+  async function handleScanReceipt(file) {
+    if (!file) return
+    setScanning(true)
+    const toastId = toast.loading('Uploading receipt to Drive…')
+    try {
+      const up = await aiAPI.uploadAttachment(file)
+      const driveFileId = up.data?.data?.driveFileId
+      if (!driveFileId) throw new Error('Upload returned no driveFileId')
+
+      toast.loading('Reading receipt with AI…', { id: toastId })
+      const ex = await expensesAPI.extractFromReceipt(driveFileId)
+      const fields = ex.data?.data || {}
+
+      const draft = {
+        entryDate:          fields.entryDate          || new Date().toISOString().slice(0, 10),
+        category:           fields.suggestedCategory  || 'Other',
+        description:        fields.suggestedDescription || (fields.vendor ? `${fields.vendor}${fields.country ? ` (${fields.country})` : ''}` : ''),
+        originalCurrency:   fields.originalCurrency   || 'USD',
+        originalAmount:     fields.originalAmount     != null ? fields.originalAmount : '',
+        notes:              fields.notes              || '',
+        receiptDriveFileIds:         fields.receiptDriveFileIds || [driveFileId],
+        aiExtractedFromDriveFileId:  fields.aiExtractedFromDriveFileId || driveFileId,
+        aiExtractionConfidence:      fields.aiExtractionConfidence != null ? fields.aiExtractionConfidence : (fields.confidence ?? null),
+        _receiptWebViewLink:         up.data?.data?.webViewLink || null,
+      }
+
+      setDrawerExpense(draft)
+      toast.success(
+        fields.aiExtractionConfidence != null || fields.confidence != null
+          ? `Extracted (confidence ${Math.round(((fields.aiExtractionConfidence ?? fields.confidence) * 100))}%)`
+          : 'Extracted — review before saving',
+        { id: toastId },
+      )
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.message || 'Receipt scan failed', { id: toastId })
+    } finally {
+      setScanning(false)
+      if (scanInputRef.current) scanInputRef.current.value = '' // allow re-picking same file
+    }
+  }
+
   async function handleGenerateReport(officeId) {
     setReportOfficeOpen(false)
     try {
@@ -165,10 +212,29 @@ export default function ExpensesPage() {
           <button onClick={() => setReportOfficeOpen(true)} style={btnGhost}>
             <Download size={14} /> Generate report
           </button>
+          <button
+            onClick={() => scanInputRef.current?.click()}
+            disabled={scanning}
+            style={btnGhost}
+            title="Upload a receipt photo or PDF; AI fills the form"
+          >
+            {scanning ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}{' '}
+            Scan receipt
+          </button>
           <button onClick={() => setDrawerExpense({})} style={btnPrimary}>
             <Plus size={14} /> New expense
           </button>
         </div>
+        <input
+          ref={scanInputRef}
+          type="file"
+          accept="image/*,application/pdf"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) handleScanReceipt(f)
+          }}
+        />
       </header>
 
       {/* Filters + totals strip */}
@@ -308,10 +374,52 @@ function ExpenseDrawer({ expense, customers, offices, onClose, onSaved }) {
     paidAt:             expense.paidAt             || '',
     submissionStatus:   expense.submissionStatus   || 'draft',
     notes:              expense.notes              || '',
+    // AI provenance — carried into payload on save so the audit trail sticks.
+    receiptDriveFileIds:         Array.isArray(expense.receiptDriveFileIds) ? expense.receiptDriveFileIds : [],
+    aiExtractedFromDriveFileId:  expense.aiExtractedFromDriveFileId || null,
+    aiExtractionConfidence:      expense.aiExtractionConfidence != null ? expense.aiExtractionConfidence : null,
   })
   const [saving, setSaving] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const drawerScanRef = useRef(null)
+  const receiptLink = expense._receiptWebViewLink || null
 
   function field(k, v) { setForm(prev => ({ ...prev, [k]: v })) }
+
+  async function handleDrawerScan(file) {
+    if (!file) return
+    setScanning(true)
+    const toastId = toast.loading('Uploading receipt to Drive…')
+    try {
+      const up = await aiAPI.uploadAttachment(file)
+      const driveFileId = up.data?.data?.driveFileId
+      if (!driveFileId) throw new Error('Upload returned no driveFileId')
+
+      toast.loading('Reading receipt with AI…', { id: toastId })
+      const ex = await expensesAPI.extractFromReceipt(driveFileId)
+      const f = ex.data?.data || {}
+
+      setForm(prev => ({
+        ...prev,
+        entryDate:          f.entryDate          || prev.entryDate,
+        category:           f.suggestedCategory  || prev.category,
+        description:        f.suggestedDescription || prev.description,
+        originalCurrency:   f.originalCurrency   || prev.originalCurrency,
+        originalAmount:     f.originalAmount     != null ? f.originalAmount : prev.originalAmount,
+        notes:              f.notes              || prev.notes,
+        receiptDriveFileIds:        f.receiptDriveFileIds || [driveFileId],
+        aiExtractedFromDriveFileId: f.aiExtractedFromDriveFileId || driveFileId,
+        aiExtractionConfidence:     f.aiExtractionConfidence != null ? f.aiExtractionConfidence : (f.confidence ?? null),
+      }))
+      const conf = f.aiExtractionConfidence ?? f.confidence
+      toast.success(conf != null ? `Extracted (confidence ${Math.round(conf * 100)}%)` : 'Extracted', { id: toastId })
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.message || 'Receipt scan failed', { id: toastId })
+    } finally {
+      setScanning(false)
+      if (drawerScanRef.current) drawerScanRef.current.value = ''
+    }
+  }
 
   async function handleSave() {
     setSaving(true)
@@ -338,10 +446,54 @@ function ExpenseDrawer({ expense, customers, offices, onClose, onSaved }) {
   return (
     <div onClick={onClose} style={drawerOverlay}>
       <div onClick={e => e.stopPropagation()} style={drawerStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>{isEdit ? 'Edit expense' : 'New expense'}</h2>
           <button onClick={onClose} style={iconBtn}><X size={18} /></button>
         </div>
+
+        {!isEdit && (
+          <div style={{ marginBottom: 16 }}>
+            <button
+              onClick={() => drawerScanRef.current?.click()}
+              disabled={scanning}
+              style={{ ...btnGhost, width: '100%', justifyContent: 'center', borderStyle: 'dashed', borderColor: '#94a3b8' }}
+              title="Upload a receipt — AI fills the form below"
+            >
+              {scanning ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}{' '}
+              Scan &amp; fill from receipt
+            </button>
+            <input
+              ref={drawerScanRef}
+              type="file"
+              accept="image/*,application/pdf"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) handleDrawerScan(f)
+              }}
+            />
+          </div>
+        )}
+
+        {form.aiExtractedFromDriveFileId && (
+          <div style={{
+            background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 6,
+            padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#065f46',
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <Sparkles size={14} />
+            <span style={{ flex: 1 }}>
+              AI pre-filled from receipt
+              {form.aiExtractionConfidence != null && ` · confidence ${Math.round(form.aiExtractionConfidence * 100)}%`}
+              . Review and edit before saving.
+            </span>
+            {receiptLink && (
+              <a href={receiptLink} target="_blank" rel="noopener noreferrer" style={{ color: '#065f46', textDecoration: 'underline' }}>
+                View receipt
+              </a>
+            )}
+          </div>
+        )}
 
         <Field label="Date">
           <input type="date" value={form.entryDate} onChange={e => field('entryDate', e.target.value)} style={inputStyle} />

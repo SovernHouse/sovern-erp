@@ -49,6 +49,13 @@ const attachmentUpload = multer({
 });
 
 router.use(requireAuth);
+
+// Attachment upload is open to any authenticated user: it writes to the
+// caller's OWN Drive folder (getDriveClientForUser(req.user.id)) and is used
+// by the expense module's "Scan Receipt" flow, which is open to all users.
+router.post('/attachments', attachmentUpload.single('file'), ai.uploadAttachment);
+
+// Chat + conversation management is super_admin only.
 router.use(requireRole('super_admin'));
 
 router.post('/chat',                        ai.chat);
@@ -57,6 +64,5 @@ router.get('/conversations/:id',            ai.getConversation);
 router.patch('/conversations/:id',          ai.renameConversation);
 router.delete('/conversations/:id',         ai.deleteConversation);
 router.post('/conversations/:id/clear',     ai.clearConversation);
-router.post('/attachments', attachmentUpload.single('file'), ai.uploadAttachment);
 
 module.exports = router;

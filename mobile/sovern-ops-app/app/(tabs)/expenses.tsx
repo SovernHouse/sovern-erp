@@ -27,6 +27,8 @@ import {
   listExpenseOffices,
   createExpenseSubmission,
   generateSubmissionReport,
+  uploadAttachment,
+  extractFromReceipt,
   ExpenseRow,
   ReimbursementOfficeRow,
 } from '../../src/services/api'
@@ -211,9 +213,14 @@ function ExpenseCreateModal({
   const [description, setDescription] = useState(editingExpense?.description || '')
   const [currency, setCurrency] = useState(editingExpense?.originalCurrency || 'USD')
   const [amount, setAmount] = useState(
-    editingExpense ? String(editingExpense.originalAmount) : '',
+    editingExpense?.originalAmount != null ? String(editingExpense.originalAmount) : '',
   )
   const [notes, setNotes] = useState(editingExpense?.notes || '')
+
+  // AI provenance — preserved across save so the audit trail is kept.
+  const receiptDriveFileIds = editingExpense?.receiptDriveFileIds || null
+  const aiExtractedFromDriveFileId = editingExpense?.aiExtractedFromDriveFileId || null
+  const aiExtractionConfidence = editingExpense?.aiExtractionConfidence ?? null
 
   function handleSave() {
     if (!amount || parseFloat(amount) <= 0) {
@@ -230,9 +237,13 @@ function ExpenseCreateModal({
       originalAmount: parseFloat(amount),
       submissionStatus: 'draft',
       notes,
+      ...(receiptDriveFileIds ? { receiptDriveFileIds } : {}),
+      ...(aiExtractedFromDriveFileId ? { aiExtractedFromDriveFileId } : {}),
+      ...(aiExtractionConfidence != null ? { aiExtractionConfidence } : {}),
     }
 
-    const promise = editingExpense ? updateExpense(editingExpense.id, body) : createExpense(body)
+    const isExistingRow = editingExpense?.id != null
+    const promise = isExistingRow ? updateExpense(editingExpense!.id, body) : createExpense(body)
 
     promise
       .then((res) => {
@@ -258,7 +269,7 @@ function ExpenseCreateModal({
       >
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>
-            {editingExpense ? 'Edit Expense' : 'New Expense'}
+            {editingExpense?.id ? 'Edit Expense' : 'New Expense'}
           </Text>
           <TouchableOpacity onPress={onClose}>
             <Text style={styles.closeButton}>✕</Text>
@@ -266,6 +277,18 @@ function ExpenseCreateModal({
         </View>
 
         <ScrollView contentContainerStyle={styles.createFormScroll}>
+          {aiExtractedFromDriveFileId ? (
+            <View style={styles.aiBanner}>
+              <Text style={styles.aiBannerIcon}>✨</Text>
+              <Text style={styles.aiBannerText}>
+                AI pre-filled from receipt
+                {aiExtractionConfidence != null
+                  ? ` · confidence ${Math.round(aiExtractionConfidence * 100)}%`
+                  : ''}
+                . Review and edit before saving.
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.formSection}>
             <Text style={styles.formLabel}>Date</Text>
             <TextInput
@@ -371,6 +394,7 @@ export default function ExpensesScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [editingExpense, setEditingExpense] = useState<ExpenseRow | undefined>()
+  const [scanning, setScanning] = useState(false)
 
   // Load expenses
   async function load(isRefresh = false) {
@@ -455,6 +479,133 @@ export default function ExpensesScreen() {
     setExpenses((prev) => prev.filter((e) => e.id !== id))
   }
 
+  async function processReceiptAsset(asset: { uri: string; fileName?: string | null; mimeType?: string | null }) {
+    try {
+      setScanning(true)
+      const guessedType =
+        asset.mimeType ||
+        (asset.uri.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg')
+      const name = asset.fileName || `receipt-${Date.now()}.${guessedType.includes('pdf') ? 'pdf' : 'jpg'}`
+
+      const up = await uploadAttachment({ uri: asset.uri, name, type: guessedType })
+      const driveFileId = up.data?.driveFileId
+      if (!driveFileId) throw new Error('Upload returned no driveFileId')
+
+      const ex = await extractFromReceipt(driveFileId)
+      const f = ex.data || ({} as any)
+
+      // Synthesise an "editingExpense"-shaped draft (no id → createExpense
+      // on save). Provenance fields ride along into handleSave.
+      const draft: Partial<ExpenseRow> & {
+        receiptDriveFileIds?: string[]
+        aiExtractedFromDriveFileId?: string
+        aiExtractionConfidence?: number | null
+      } = {
+        entryDate:           f.entryDate           || todayString(),
+        category:            (f.suggestedCategory as string) || 'Other',
+        description:         (f.suggestedDescription as string) || (f.vendor ? String(f.vendor) : ''),
+        originalCurrency:    f.originalCurrency    || 'USD',
+        originalAmount:      f.originalAmount != null ? Number(f.originalAmount) : 0,
+        notes:               f.notes               || '',
+        receiptDriveFileIds: f.receiptDriveFileIds || [driveFileId],
+        aiExtractedFromDriveFileId: f.aiExtractedFromDriveFileId || driveFileId,
+        aiExtractionConfidence: f.aiExtractionConfidence ?? (f.confidence ?? null),
+      }
+      setEditingExpense(draft as ExpenseRow)
+      setShowCreate(true)
+    } catch (err: any) {
+      console.error('scan receipt error:', err)
+      alert(err?.message || 'Receipt scan failed')
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  async function pickReceiptFromCamera() {
+    const perm = await ImagePicker.requestCameraPermissionsAsync()
+    if (!perm.granted) {
+      alert('Camera permission needed to scan receipts')
+      return
+    }
+    const res = await ImagePicker.launchCameraAsync({
+      mediaTypes: 'images',
+      quality: 0.8,
+      base64: false,
+    })
+    if (!res.canceled && res.assets?.[0]) {
+      const a = res.assets[0]
+      await processReceiptAsset({
+        uri: a.uri,
+        fileName: a.fileName ?? null,
+        mimeType: a.mimeType ?? null,
+      })
+    }
+  }
+
+  async function pickReceiptFromLibrary() {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!perm.granted) {
+      alert('Photo library permission needed to scan receipts')
+      return
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      quality: 0.8,
+      base64: false,
+    })
+    if (!res.canceled && res.assets?.[0]) {
+      const a = res.assets[0]
+      await processReceiptAsset({
+        uri: a.uri,
+        fileName: a.fileName ?? null,
+        mimeType: a.mimeType ?? null,
+      })
+    }
+  }
+
+  async function pickReceiptFromFiles() {
+    const res = await DocumentPicker.getDocumentAsync({
+      type: ['image/*', 'application/pdf'],
+      copyToCacheDirectory: true,
+    })
+    if (!res.canceled && res.assets?.[0]) {
+      const a = res.assets[0]
+      await processReceiptAsset({
+        uri: a.uri,
+        fileName: a.name ?? null,
+        mimeType: a.mimeType ?? null,
+      })
+    }
+  }
+
+  function handleScanReceipt() {
+    if (scanning) return
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Take Photo', 'Choose from Library', 'Choose File (PDF)', 'Cancel'],
+          cancelButtonIndex: 3,
+        },
+        (idx) => {
+          if (idx === 0) pickReceiptFromCamera()
+          else if (idx === 1) pickReceiptFromLibrary()
+          else if (idx === 2) pickReceiptFromFiles()
+        },
+      )
+    } else {
+      // Android — show all three buttons inline via a simple modal.
+      // expo's Alert is limited to 3 buttons; we use Alert here.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { Alert } = require('react-native')
+      Alert.alert('Scan Receipt', 'Pick a source', [
+        { text: 'Take Photo', onPress: pickReceiptFromCamera },
+        { text: 'Library', onPress: pickReceiptFromLibrary },
+        { text: 'File (PDF)', onPress: pickReceiptFromFiles },
+        { text: 'Cancel', style: 'cancel' },
+      ])
+    }
+  }
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -468,16 +619,36 @@ export default function ExpensesScreen() {
       {/* Header */}
       <View style={styles.headerBar}>
         <Text style={styles.headerTitle}>Expenses</Text>
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => {
-            setEditingExpense(undefined)
-            setShowCreate(true)
-          }}
-        >
-          <Text style={styles.primaryButtonText}>+ New</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.scanButton, scanning && { opacity: 0.5 }]}
+            onPress={handleScanReceipt}
+            disabled={scanning}
+          >
+            {scanning ? (
+              <ActivityIndicator color={COLORS.cream} size="small" />
+            ) : (
+              <Text style={styles.scanButtonText}>📸 Scan</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => {
+              setEditingExpense(undefined)
+              setShowCreate(true)
+            }}
+          >
+            <Text style={styles.primaryButtonText}>+ New</Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {scanning ? (
+        <View style={styles.scanningBanner}>
+          <ActivityIndicator color={COLORS.cream} size="small" />
+          <Text style={styles.scanningBannerText}>Uploading + extracting receipt…</Text>
+        </View>
+      ) : null}
 
       {/* Filter strip */}
       <View style={styles.filterStrip}>
@@ -608,6 +779,56 @@ function useStyles() {
       color: COLORS.cream,
       fontSize: 14,
       fontWeight: '600',
+    },
+    headerActions: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    scanButton: {
+      backgroundColor: COLORS.ink,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 0,
+      minWidth: 84,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    scanButtonText: {
+      color: COLORS.cream,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    scanningBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: COLORS.ink,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+    },
+    scanningBannerText: {
+      color: COLORS.cream,
+      fontSize: 13,
+    },
+    aiBanner: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      backgroundColor: '#ecfdf5',
+      borderWidth: 1,
+      borderColor: '#a7f3d0',
+      padding: 10,
+      marginBottom: 16,
+      borderRadius: 4,
+    },
+    aiBannerIcon: {
+      fontSize: 14,
+    },
+    aiBannerText: {
+      flex: 1,
+      color: '#065f46',
+      fontSize: 12,
+      lineHeight: 16,
     },
     filterStrip: {
       backgroundColor: COLORS.cream,
