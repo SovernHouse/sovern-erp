@@ -12,7 +12,11 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const ctrl = require('../controllers/scheduledActivityController');
+
+// Phase 1 Commit 3b-B: brand-scope every scheduled-activity request.
+router.use(requireAuth, brandScope);
 
 router.get('/my',                              requireAuth, ctrl.getMyActivities);
 router.get('/entity/:entityType/:entityId',    requireAuth, ctrl.getEntityActivities);

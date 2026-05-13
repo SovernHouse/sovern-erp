@@ -13,8 +13,12 @@ const express = require('express');
 const router = express.Router();
 const inquiryController = require('../controllers/inquiryController');
 const { requireAuth, requireAny } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const { body, handleValidationErrors } = require('../middleware/validation');
 const { validate, inquirySchemas } = require('../middleware/zodValidation');
+
+// Phase 1 Commit 3b-B: brand-scope every inquiry request.
+router.use(requireAuth, brandScope);
 
 /**
  * Create a new inquiry

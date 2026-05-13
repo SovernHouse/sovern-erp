@@ -13,8 +13,12 @@ const express = require('express');
 const router = express.Router();
 const quotationController = require('../controllers/quotationController');
 const { requireAuth, requireAny } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const { body, handleValidationErrors } = require('../middleware/validation');
 const { validate, quotationSchemas } = require('../middleware/zodValidation');
+
+// Phase 1 Commit 3b-B: brand-scope every quotation request.
+router.use(requireAuth, brandScope);
 
 /**
  * Create a new quotation

@@ -13,8 +13,14 @@ const express = require('express');
 const router = express.Router();
 const customerController = require('../controllers/customerController');
 const { requireAuth, requireAny } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const { body, handleValidationErrors } = require('../middleware/validation');
 const { validate, customerSchemas } = require('../middleware/zodValidation');
+
+// Phase 1 Commit 3b-B: router-level requireAuth + brandScope so every
+// customer endpoint has req.brandScope. Per-route requireAuth below is
+// redundant-but-harmless (idempotent).
+router.use(requireAuth, brandScope);
 
 /**
  * Create a new customer

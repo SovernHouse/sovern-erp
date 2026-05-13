@@ -8,7 +8,7 @@ exports.getActivities = async (req, res) => {
     const { page = 1, limit = 10, type, assignedToId, status } = req.query;
     const offset = (page - 1) * limit;
 
-    const where = {};
+    const where = { ...(req.brandScope?.where || {}) };
     if (type) where.type = type;
     if (assignedToId) where.userId = assignedToId;
     if (status === 'upcoming') where.isCompleted = false;

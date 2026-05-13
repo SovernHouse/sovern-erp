@@ -14,7 +14,8 @@ exports.listTriageItems = async (req, res) => {
   const { status = 'pending', page = 1, limit = 50, intentScore } = req.query;
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
-  const where = {};
+  // Phase 1 Commit 3b-B: brand-scope filter from middleware.
+  const where = { ...(req.brandScope?.where || {}) };
 
   if (status === 'pending') {
     // Exclude auto-expired items from the pending view

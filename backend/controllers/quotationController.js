@@ -103,7 +103,7 @@ const getAll = async (req, res, next) => {
     const { page = 1, limit = 10, search, status, customerId } = req.query;
     const { offset } = getPagination(page, limit);
 
-    const where = { deletedAt: null };
+    const where = { ...(req.brandScope?.where || {}), deletedAt: null };
     if (status) where.status = status;
     if (customerId) where.customerId = customerId;
     if (req.query.factoryId) where.factoryId = req.query.factoryId;

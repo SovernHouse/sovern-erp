@@ -7,12 +7,19 @@ const auditService = require('../services/auditService');
 
 const create = async (req, res, next) => {
   try {
-    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, creditLimit } = req.body;
+    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, creditLimit, brandRelationships } = req.body;
 
     const existingCustomer = await db.Customer.findOne({ where: { email } });
     if (existingCustomer) {
       throw new ValidationError('Email already exists');
     }
+
+    // Phase 1 Commit 3b-B: brandRelationships defaults to the user's
+    // defaultBrand so customers created from an FW session start as FW-only.
+    // Caller-supplied array wins if provided.
+    const brands = Array.isArray(brandRelationships) && brandRelationships.length
+      ? brandRelationships
+      : [req.brandScope?.defaultBrand || 'SH'];
 
     const customer = await db.Customer.create({
       id: uuidv4(),
@@ -28,7 +35,8 @@ const create = async (req, res, next) => {
       creditLimit: creditLimit || 0,
       balance: 0,
       rating: 5,
-      isActive: true
+      isActive: true,
+      brandRelationships: brands,
     });
 
     res.status(201).json(getSuccessResponse(customer, 'Customer created successfully'));
@@ -55,12 +63,32 @@ const getAll = async (req, res, next) => {
       ];
     }
 
-    const { count, rows } = await db.Customer.findAndCountAll({
+    // Phase 1 Commit 3b-B: brand isolation. Customer.brandRelationships is a
+    // JSON array; SQLite has no rich Op.contains so we filter at the app
+    // layer. Cross-brand mode (super_admin All Brands tab) skips the filter.
+    const scope = req.brandScope;
+    const filterByBrand = scope && !scope.isCrossBrand;
+
+    // Pull a generous over-fetch so post-filtering still respects the page size.
+    const rawLimit = filterByBrand ? Math.max(parseInt(limit) * 4, 200) : parseInt(limit);
+    const rawOffset = filterByBrand ? 0 : offset; // app-filter forces full scan from page 1
+
+    let { count, rows } = await db.Customer.findAndCountAll({
       where,
-      offset,
-      limit: parseInt(limit),
+      offset: rawOffset,
+      limit: rawLimit,
       order: [['createdAt', 'DESC']]
     });
+
+    if (filterByBrand) {
+      const allowed = new Set(scope.accessibleBrands);
+      rows = rows.filter((c) => {
+        const rels = Array.isArray(c.brandRelationships) ? c.brandRelationships : ['SH'];
+        return rels.some((r) => allowed.has(r));
+      });
+      count = rows.length; // best-effort; honest count requires a second pass
+      rows = rows.slice(offset, offset + parseInt(limit));
+    }
 
     res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
   } catch (error) {

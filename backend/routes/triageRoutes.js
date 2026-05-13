@@ -2,10 +2,11 @@ const express = require('express');
 const router = express.Router();
 const triageController = require('../controllers/triageController');
 const { requireAuth } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const asyncHandler = require('../middleware/asyncHandler');
 
-// All triage routes require authentication
-router.use(requireAuth);
+// All triage routes require authentication + brand scope (P1 C3b-B).
+router.use(requireAuth, brandScope);
 
 // ─── List & read ─────────────────────────────────────────────────────────────
 router.get('/', asyncHandler(triageController.listTriageItems));

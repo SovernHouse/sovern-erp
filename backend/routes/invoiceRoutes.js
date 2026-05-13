@@ -14,6 +14,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../models');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const { getPagination, getPaginatedResponse, getSuccessResponse, generateDocumentNumber } = require('../utils/helpers');
 const { v4: uuidv4 } = require('uuid');
 const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
@@ -31,6 +32,9 @@ const webhookService = require('../services/webhookService');
 const { validateFinancials } = require('../utils/validateFinancials');
 const logger = require('../utils/logger.js');
 
+// Phase 1 Commit 3b-B: brand-scope every invoice request.
+router.use(requireAuth, brandScope);
+
 /**
  * List all invoices with pagination and filtering
  * @route GET /api/invoices
@@ -40,11 +44,11 @@ const logger = require('../utils/logger.js');
  * @param {string} customerId - Filter by customer ID
  * @returns {Object} Paginated list of invoices
  */
-router.get('/', requireAuth, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const { page = 1, limit = 10, status, customerId } = req.query;
     const { offset } = getPagination(page, limit);
-    const where = { deletedAt: null };
+    const where = { ...(req.brandScope?.where || {}), deletedAt: null };
     if (status) where.status = status;
     if (customerId) where.customerId = customerId;
 

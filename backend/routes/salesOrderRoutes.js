@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../models');
 const { requireAuth, requireAny } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const { getPagination, getPaginatedResponse, getSuccessResponse, generateDocumentNumber } = require('../utils/helpers');
 const { v4: uuidv4 } = require('uuid');
 const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
@@ -16,11 +17,14 @@ const { validateFinancials } = require('../utils/validateFinancials');
 const { validateTradeFields } = require('../utils/validateTradeFields');
 const logger = require('../utils/logger.js');
 
-router.get('/', requireAuth, async (req, res, next) => {
+// Phase 1 Commit 3b-B: brand-scope every sales-order request.
+router.use(requireAuth, brandScope);
+
+router.get('/', async (req, res, next) => {
   try {
     const { page = 1, limit = 10, status, customerId } = req.query;
     const { offset } = getPagination(page, limit);
-    const where = {};
+    const where = { ...(req.brandScope?.where || {}) };
     if (status) where.status = status;
     if (customerId) where.customerId = customerId;
 

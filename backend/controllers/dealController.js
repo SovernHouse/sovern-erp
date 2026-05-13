@@ -17,7 +17,7 @@ exports.getDeals = async (req, res) => {
     const { page = 1, limit = 10, search, stage, assignedToId } = req.query;
     const offset = (page - 1) * limit;
 
-    const where = {};
+    const where = { ...(req.brandScope?.where || {}) };
     if (search) {
       where[Op.or] = [
         { title: { [Op.like]: `%${search}%` } },

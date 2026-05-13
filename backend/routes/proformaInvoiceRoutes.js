@@ -2,17 +2,22 @@ const express = require('express');
 const router = express.Router();
 const db = require('../models');
 const { requireAuth, requireAny } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const { getPagination, getPaginatedResponse, getSuccessResponse, generateDocumentNumber } = require('../utils/helpers');
 const { v4: uuidv4 } = require('uuid');
 const { NotFoundError } = require('../middleware/errorHandler');
 const documentGenerator = require('../services/documentGenerator');
 const emailService = require('../services/emailService');
 
-router.get('/', requireAuth, async (req, res, next) => {
+// Phase 1 Commit 3b-B: brand-scope every proforma-invoice request.
+router.use(requireAuth, brandScope);
+
+router.get('/', async (req, res, next) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
     const { offset } = getPagination(page, limit);
-    const where = status ? { status } : {};
+    const where = { ...(req.brandScope?.where || {}) };
+    if (status) where.status = status;
 
     const { count, rows } = await db.ProformaInvoice.findAndCountAll({
       where,

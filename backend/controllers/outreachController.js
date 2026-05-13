@@ -227,8 +227,10 @@ const getFollowups = async (req, res) => {
     const now = dayjs();
     const sevenDaysFromNow = now.add(7, 'day').toDate();
 
+    // Phase 1 Commit 3b-B: brand-scope filter from middleware.
     const followups = await db.OutreachEmail.findAll({
       where: {
+        ...(req.brandScope?.where || {}),
         followUpCompleted: false,
         followUpDueAt: {
           [Op.lte]: sevenDaysFromNow,

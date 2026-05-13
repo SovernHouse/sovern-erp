@@ -35,8 +35,14 @@ const userAttrs = ['id', 'firstName', 'lastName', 'email', 'role'];
  */
 exports.getMyActivities = async (req, res, next) => {
   try {
+    // Phase 1 Commit 3b-B: brand-scope filter from middleware.
+    const where = {
+      ...(req.brandScope?.where || {}),
+      assignedToId: req.user.id,
+      status: 'pending',
+    };
     const activities = await ScheduledActivity.findAll({
-      where: { assignedToId: req.user.id, status: 'pending' },
+      where,
       include: [
         { model: User, as: 'assignedBy', attributes: userAttrs },
       ],

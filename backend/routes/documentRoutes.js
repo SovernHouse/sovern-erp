@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../models');
 const { requireAuth } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const { getPagination, getPaginatedResponse, getSuccessResponse } = require('../utils/helpers');
 const { v4: uuidv4 } = require('uuid');
 const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
@@ -58,13 +59,16 @@ const upload = multer({
   }
 });
 
+// Phase 1 Commit 3b-B: brand-scope every document request.
+router.use(requireAuth, brandScope);
+
 // GET / - List documents with filtering
-router.get('/', requireAuth, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const { page = 1, limit = 10, type, category, entityType, entityId, search } = req.query;
     const { offset } = getPagination(page, limit);
 
-    const where = { isActive: true };
+    const where = { ...(req.brandScope?.where || {}), isActive: true };
     if (type) where.type = type;
     if (category) where.category = category;
     if (entityType) where.entityType = entityType;
