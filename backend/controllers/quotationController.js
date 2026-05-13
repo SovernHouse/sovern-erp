@@ -235,6 +235,127 @@ const update = async (req, res, next) => {
   }
 };
 
+function buildQuotationEmailHtml(quotation, brand) {
+  const primaryColor = brand?.primaryColor || '#1D5A32';
+  const displayName = brand?.displayName || 'Sovern House';
+  const currency = quotation.currency || 'USD';
+
+  const fmt = (value) => {
+    if (value == null) return '—';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 2 }).format(Number(value));
+  };
+
+  const items = quotation.items || [];
+  const itemRows = items.map(item => `
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid #F0EDE8;font-size:13px;color:#0E0D0C;">${item.description || item.product?.name || '—'}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #F0EDE8;font-size:13px;color:#0E0D0C;text-align:right;">${Number(item.quantity || 0).toFixed(2)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #F0EDE8;font-size:13px;color:#0E0D0C;">${item.unit || 'unit'}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #F0EDE8;font-size:13px;color:#0E0D0C;text-align:right;">${fmt(item.unitPrice)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #F0EDE8;font-size:13px;color:#0E0D0C;text-align:right;font-weight:600;">${fmt(item.total)}</td>
+    </tr>
+  `).join('');
+
+  const signatureHtml = brand?.signatureHtml || `
+    <div style="margin-top:36px;font-family:Arial,sans-serif;color:#0E0D0C;line-height:1.5;">
+      <div style="height:2px;background-color:#1D5A32;margin-bottom:24px;"></div>
+      <div style="font-size:15px;font-weight:700;letter-spacing:0.02em;margin-bottom:3px;">Alexander McConnell</div>
+      <div style="font-size:12px;color:#5A5855;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:14px;">Founder</div>
+      <div style="font-size:13px;margin-bottom:24px;">
+        <a href="https://sovernhouse.co" style="color:#1D5A32;text-decoration:none;font-weight:600;">sovernhouse.co</a>
+        <span style="color:#C8C4BC;margin:0 8px;">&middot;</span>
+        <span style="color:#5A5855;">+886 970 781 818</span>
+      </div>
+      <div style="font-size:10px;color:#B0ABA4;border-top:1px solid #EBEBEB;padding-top:10px;">Sovern House is a brand of New Route International Exchange Co., Ltd. — Taiwan.</div>
+    </div>
+  `;
+
+  const validUntilLine = quotation.validUntil
+    ? `<p style="font-size:13px;color:#5A5855;">This quotation is valid until <strong>${new Date(quotation.validUntil).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</strong>.</p>`
+    : '';
+
+  const discountRow = quotation.discount
+    ? `<tr><td style="padding:6px 12px;font-size:13px;color:#5A5855;">Discount${quotation.discountType === 'percentage' ? ` (${quotation.discount}%)` : ''}</td><td style="padding:6px 12px;font-size:13px;color:#C0392B;text-align:right;">−${fmt(quotation.discountAmount || quotation.discount)}</td></tr>`
+    : '';
+  const taxRow = quotation.tax
+    ? `<tr><td style="padding:6px 12px;font-size:13px;color:#5A5855;">Tax${quotation.taxRate ? ` (${quotation.taxRate}%)` : ''}</td><td style="padding:6px 12px;font-size:13px;color:#0E0D0C;text-align:right;">${fmt(quotation.tax)}</td></tr>`
+    : '';
+  const subtotalRow = quotation.subtotal != null
+    ? `<tr><td style="padding:6px 12px;font-size:13px;color:#5A5855;">Subtotal</td><td style="padding:6px 12px;font-size:13px;color:#0E0D0C;text-align:right;">${fmt(quotation.subtotal)}</td></tr>`
+    : '';
+  const termsSection = quotation.terms
+    ? `<div style="margin-top:24px;padding:16px;background-color:#F7F5F2;border-radius:6px;"><div style="font-size:11px;font-weight:700;color:#5A5855;text-transform:uppercase;margin-bottom:8px;">Terms &amp; Conditions</div><p style="font-size:12px;color:#3A3835;white-space:pre-wrap;">${quotation.terms}</p></div>`
+    : '';
+
+  return `
+<div style="font-family:Arial,sans-serif;font-size:14px;color:#0E0D0C;line-height:1.7;max-width:640px;">
+  <div style="background-color:${primaryColor};padding:20px 28px;border-radius:8px 8px 0 0;">
+    <div style="font-size:20px;font-weight:700;color:#FFFFFF;">${displayName}</div>
+    <div style="font-size:13px;color:rgba(255,255,255,0.75);margin-top:2px;">Quotation</div>
+  </div>
+  <div style="background-color:#FFFFFF;padding:28px;border:1px solid #EBEBEB;border-top:none;">
+    <p style="font-size:15px;font-weight:600;color:#0E0D0C;">Dear ${quotation.customer?.companyName || 'Valued Customer'},</p>
+    <p style="font-size:14px;color:#3A3835;">Please find below our quotation <strong>${quotation.quotationNumber}</strong> for your review.</p>
+    ${validUntilLine}
+    <table style="width:100%;border-collapse:collapse;margin:24px 0;">
+      <thead>
+        <tr style="background-color:#F7F5F2;">
+          <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#5A5855;text-transform:uppercase;border-bottom:2px solid #E0DDD9;">Description</th>
+          <th style="padding:10px 12px;text-align:right;font-size:11px;font-weight:700;color:#5A5855;text-transform:uppercase;border-bottom:2px solid #E0DDD9;">Qty</th>
+          <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#5A5855;text-transform:uppercase;border-bottom:2px solid #E0DDD9;">Unit</th>
+          <th style="padding:10px 12px;text-align:right;font-size:11px;font-weight:700;color:#5A5855;text-transform:uppercase;border-bottom:2px solid #E0DDD9;">Unit Price</th>
+          <th style="padding:10px 12px;text-align:right;font-size:11px;font-weight:700;color:#5A5855;text-transform:uppercase;border-bottom:2px solid #E0DDD9;">Total</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows || '<tr><td colspan="5" style="padding:10px 12px;color:#B0ABA4;font-size:13px;">No items</td></tr>'}</tbody>
+    </table>
+    <table style="width:100%;border-collapse:collapse;">
+      ${subtotalRow}${discountRow}${taxRow}
+      <tr style="border-top:2px solid #E0DDD9;">
+        <td style="padding:10px 12px;font-size:15px;font-weight:700;color:#0E0D0C;">Total</td>
+        <td style="padding:10px 12px;font-size:15px;font-weight:700;color:${primaryColor};text-align:right;">${fmt(quotation.total)}</td>
+      </tr>
+    </table>
+    ${termsSection}
+    ${signatureHtml}
+  </div>
+</div>`;
+}
+
+function buildQuotationEmailText(quotation, brand) {
+  const currency = quotation.currency || 'USD';
+  const fmt = (v) => v != null ? new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(v)) : '—';
+
+  const items = (quotation.items || [])
+    .map(item => `  ${item.description || item.product?.name || '—'}  x${item.quantity} ${item.unit || 'unit'}  ${fmt(item.unitPrice)} = ${fmt(item.total)}`)
+    .join('\n');
+
+  const validLine = quotation.validUntil
+    ? `Valid until: ${new Date(quotation.validUntil).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+    : '';
+
+  const signatureText = brand?.signatureText || '--\nAlexander McConnell\nFounder . Sovern House\nsovernhouse.co . +886 970 781 818\n\nSovern House is a brand of New Route International Exchange Co., Ltd. - Taiwan.';
+
+  return [
+    `Dear ${quotation.customer?.companyName || 'Valued Customer'},`,
+    '',
+    `Please find below our quotation ${quotation.quotationNumber} for your review.`,
+    validLine,
+    '',
+    '--- LINE ITEMS ---',
+    items || '  No items',
+    '',
+    '--- TOTALS ---',
+    quotation.subtotal != null ? `  Subtotal: ${fmt(quotation.subtotal)}` : '',
+    quotation.discount ? `  Discount: -${fmt(quotation.discountAmount || quotation.discount)}` : '',
+    quotation.tax ? `  Tax: ${fmt(quotation.tax)}` : '',
+    `  Total: ${fmt(quotation.total)}`,
+    '',
+    quotation.terms ? `--- TERMS ---\n${quotation.terms}\n` : '',
+    signatureText,
+  ].filter(line => line !== null && line !== undefined).join('\n');
+}
+
 const send = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -250,6 +371,17 @@ const send = async (req, res, next) => {
       throw new NotFoundError('Quotation not found');
     }
 
+    const toAddress = quotation.customer?.email;
+    if (!toAddress) {
+      throw new Error('Customer email is required to send quotation');
+    }
+
+    const brand = quotation.brandCode
+      ? await db.Brand.findOne({ where: { code: quotation.brandCode, active: true } })
+      : null;
+    const fromAddress = brand?.senderEmail || 'alex@sovernhouse.co';
+    const fromDisplayName = brand ? `${brand.displayName} | Alex` : 'Sovern House | Alex';
+
     const pdfFile = await documentGenerator.generateQuotationPDF(
       quotation,
       quotation.items,
@@ -257,7 +389,19 @@ const send = async (req, res, next) => {
       quotation.salesPerson
     );
 
-    await emailService.sendQuotationEmail(quotation.customer, quotation);
+    const subject = `Quotation ${quotation.quotationNumber} from ${brand?.displayName || 'Sovern House'}`;
+    const htmlContent = buildQuotationEmailHtml(quotation, brand);
+    const textContent = buildQuotationEmailText(quotation, brand);
+
+    await emailService.sendTransactionalEmailWithFallback({
+      fromAddress,
+      fromDisplayName,
+      toAddress,
+      toName: quotation.customer?.companyName,
+      subject,
+      htmlContent,
+      textContent,
+    });
 
     const beforeStatus = quotation.status;
     await quotation.update({ status: 'sent' });

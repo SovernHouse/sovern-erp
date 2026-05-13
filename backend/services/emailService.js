@@ -778,6 +778,132 @@ const sendOutreachEmail = async ({ fromAddress, toAddress, toName, subject, body
   }
 };
 
+/**
+ * Send a transactional email (quotation, PI, invoice, etc.) via Gmail API.
+ * Unlike sendOutreachEmail, this accepts pre-built htmlContent + textContent
+ * so the caller controls the full layout (tables, brand colors, etc.).
+ *
+ * Reuses the same connected-account lookup as outreach so all sends come
+ * from the correct brand Gmail account.
+ */
+const sendTransactionalEmail = async ({ fromAddress, fromDisplayName, toAddress, toName, subject, htmlContent, textContent, replyTo, cc, bcc }) => {
+  const db = require('../models');
+  const { google } = require('googleapis');
+  const { getAuthClientForAccount } = require('../controllers/googleAccountController');
+
+  let account = null;
+  if (fromAddress) {
+    account = await db.ConnectedGoogleAccount.findOne({
+      where: { email: fromAddress, isActive: true },
+    });
+  }
+  if (!account) {
+    account = await db.ConnectedGoogleAccount.findOne({ where: { isActive: true } });
+  }
+  if (!account) {
+    throw new Error('No active connected Google account. Connect one in /settings/connected-accounts.');
+  }
+
+  const auth = await getAuthClientForAccount(account);
+  const gmail = google.gmail({ version: 'v1', auth });
+
+  const senderDisplayName = fromDisplayName || 'Sovern House | Alex';
+  const fromHeader = `${senderDisplayName} <${account.email}>`;
+  const toHeader = toName ? `${encodeHeader(toName)} <${toAddress}>` : toAddress;
+  const boundary = '----=_Part_' + Math.random().toString(36).slice(2, 12) + '_' + Date.now();
+
+  const headers = [
+    `From: ${fromHeader}`,
+    `To: ${toHeader}`,
+    `Subject: ${encodeHeader(subject)}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+  ];
+  if (replyTo) headers.push(`Reply-To: ${replyTo}`);
+  if (cc) headers.push(`Cc: ${cc}`);
+  if (bcc) headers.push(`Bcc: ${bcc}`);
+
+  const rfc2822 = [
+    headers.join('\r\n'),
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: 7bit',
+    '',
+    textContent,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: 7bit',
+    '',
+    htmlContent,
+    '',
+    `--${boundary}--`,
+  ].join('\r\n');
+
+  const raw = Buffer.from(rfc2822, 'utf8').toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  const result = await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: { raw },
+  });
+
+  logger.info(`[TRANSACTIONAL] Sent via Gmail API to ${toAddress}, Subject: ${subject}, gmailId=${result.data.id}, account=${account.email}`);
+
+  return {
+    messageId: result.data.id,
+    threadId: result.data.threadId,
+    via: 'gmail-api',
+    accountEmail: account.email,
+  };
+};
+
+/**
+ * sendTransactionalEmail with SMTP fallback. Same pattern as sendOutreachEmail.
+ */
+const sendTransactionalEmailWithFallback = async (params) => {
+  if (process.env.OUTREACH_FORCE_SMTP !== '1') {
+    try {
+      return await sendTransactionalEmail(params);
+    } catch (gmailErr) {
+      logger.warn(`[TRANSACTIONAL] Gmail API send failed (${gmailErr.message}); falling back to SMTP if configured.`);
+    }
+  }
+
+  const { fromAddress, fromDisplayName, toAddress, toName, subject, htmlContent, textContent, replyTo, cc, bcc } = params;
+
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    throw new Error('Transactional send failed: Gmail API path unavailable AND SMTP not configured.');
+  }
+
+  const transporterInstance = await getTransporter();
+
+  const mailOptions = {
+    from: `${fromDisplayName || 'Sovern House | Alex'} <${fromAddress || process.env.SMTP_USER}>`,
+    to: toName ? `${toName} <${toAddress}>` : toAddress,
+    subject,
+    text: textContent,
+    html: htmlContent,
+  };
+
+  if (replyTo) mailOptions.replyTo = replyTo;
+  if (cc) mailOptions.cc = cc;
+  if (bcc) mailOptions.bcc = bcc;
+
+  const result = await transporterInstance.sendMail(mailOptions);
+  logger.info(`[TRANSACTIONAL] Sent via SMTP to ${toAddress}, Subject: ${subject}, MessageId: ${result.messageId}`);
+
+  return {
+    messageId: result.messageId,
+    accepted: result.accepted,
+    rejected: result.rejected,
+    via: 'smtp',
+  };
+};
+
 module.exports = {
   sendEmail,
   sendOutreachEmailViaGmailAPI,
@@ -794,5 +920,7 @@ module.exports = {
   sendPurchaseOrderEmail,
   sendShipmentUpdateEmail,
   sendInspectionScheduledEmail,
-  sendOutreachEmail
+  sendOutreachEmail,
+  sendTransactionalEmail,
+  sendTransactionalEmailWithFallback,
 };

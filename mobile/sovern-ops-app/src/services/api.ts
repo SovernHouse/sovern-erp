@@ -1035,6 +1035,11 @@ export async function getQuotation(id: string) {
   return res.data
 }
 
+export async function sendQuotation(id: string) {
+  const res = await request<{ success: boolean; data: { quotation: Quotation } }>(`/api/quotations/${id}/send`, { method: 'POST' })
+  return (res as any).data ?? res
+}
+
 export interface QuotationItem {
   id: string
   productId?: string
@@ -1051,6 +1056,7 @@ export interface QuotationItem {
 export interface Quotation {
   id: string
   quotationNumber: string
+  brandCode?: string
   customerId?: string
   inquiryId?: string
   salesPersonId?: string

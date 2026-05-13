@@ -9,8 +9,10 @@ import {
   Alert, RefreshControl, TouchableOpacity, Linking, Share,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { getQuotation, generateApprovalLink, type Quotation, type QuotationItem } from '../../src/services/api';
+import { getQuotation, generateApprovalLink, sendQuotation, type Quotation, type QuotationItem } from '../../src/services/api';
 import ChatterSection from '../../src/components/ChatterSection';
+import { BrandBadge } from '../../src/components/BrandBadge';
+import { useBrands } from '../../src/hooks/useBrands';
 import { COLORS } from '../../src/constants/config';
 
 // ─── Constants ────────────────────────────────────────────────────────────
@@ -111,11 +113,13 @@ export default function QuotationDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
   const router = useRouter();
+  const { getBrand } = useBrands();
 
   const [quotation, setQuotation] = useState<Quotation | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [generatingLink, setGeneratingLink] = useState(false);
+  const [sendingViaERP, setSendingViaERP] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
     try {
@@ -168,6 +172,36 @@ export default function QuotationDetailScreen() {
     }
   }
 
+  async function handleSendViaERP() {
+    if (!quotation || sendingViaERP) return;
+    const brand = getBrand(quotation.brandCode || 'SH');
+    const fromAddress = brand?.senderEmail || 'alex@sovernhouse.co';
+    const brandName = brand?.displayName || 'Sovern House';
+    const toAddress = quotation.customer?.email || '(no email on file)';
+    Alert.alert(
+      'Send Quotation via ERP',
+      `Send ${quotation.quotationNumber} from ${fromAddress} (${brandName}) to ${quotation.customer?.companyName || 'customer'} at ${toAddress}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send',
+          onPress: async () => {
+            setSendingViaERP(true);
+            try {
+              await sendQuotation(quotation.id);
+              setQuotation({ ...quotation, status: 'sent' });
+              Alert.alert('Sent', 'Quotation sent successfully.');
+            } catch (err: any) {
+              Alert.alert('Send failed', err.message ?? 'Server error');
+            } finally {
+              setSendingViaERP(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -203,7 +237,10 @@ export default function QuotationDetailScreen() {
             <Text style={styles.docIconText}>📄</Text>
           </View>
           <View style={styles.headerMeta}>
-            <Text style={styles.quotationNumber}>{quotation.quotationNumber}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Text style={styles.quotationNumber}>{quotation.quotationNumber}</Text>
+              <BrandBadge code={quotation.brandCode || 'SH'} size="sm" showLabel={false} />
+            </View>
             {quotation.customer?.companyName
               ? <Text style={styles.customerName}>{quotation.customer.companyName}</Text>
               : null}
@@ -339,6 +376,27 @@ export default function QuotationDetailScreen() {
           </Text>
         </View>
       </View>
+
+      {/* ── Send via ERP (draft only) ────────────────────────────────── */}
+      {quotation.status === 'draft' ? (
+        <TouchableOpacity
+          style={[styles.signActionBtn, { borderColor: COLORS.forest }, sendingViaERP && styles.signActionBtnDisabled]}
+          onPress={handleSendViaERP}
+          disabled={sendingViaERP}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.signActionIcon}>📤</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.signActionLabel}>
+              {sendingViaERP ? 'Sending…' : 'Send via ERP'}
+            </Text>
+            <Text style={styles.signActionMeta}>
+              Emails this quotation to the customer from your brand address
+            </Text>
+          </View>
+          <Text style={styles.signActionChevron}>›</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {/* ── Send for signature (hidden once already signed/terminal) ─── */}
       {!quotation.signedAt

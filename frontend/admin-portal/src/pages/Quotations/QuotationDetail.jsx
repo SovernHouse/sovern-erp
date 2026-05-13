@@ -14,6 +14,8 @@ import {
 } from 'lucide-react'
 import { quotationsAPI } from '../../services/api'
 import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
+import { useBrands } from '../../contexts/BrandsContext'
+import BrandBadge from '../../components/BrandBadge'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import Chatter from '../../components/Chatter'
 import WorkflowStatusBar, { QUOTATION_STAGES } from '../../components/WorkflowStatusBar'
@@ -28,6 +30,7 @@ import { QUOTATION_STATUS } from '../../utils/constants'
 export default function QuotationDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { getBrand } = useBrands()
 
   const [quotation, setQuotation] = useState(null)
   useBreadcrumbs(quotation?.quotationNumber)
@@ -179,6 +182,8 @@ export default function QuotationDetail() {
 
   const canSend = quotation.status === 'draft'
   const canConvert = ['approved', 'sent'].includes(quotation.status)
+  const brand = getBrand(quotation.brandCode || 'SH')
+  const brandEmail = brand?.senderEmail || 'alex@sovernhouse.co'
 
   return (
     <div className="space-y-6">
@@ -194,6 +199,7 @@ export default function QuotationDetail() {
           <div>
             <h1 className="text-3xl font-bold text-slate-900">{quotation.quotationNumber || 'Quotation'}</h1>
             <div className="flex items-center space-x-2 mt-2">
+              <BrandBadge code={quotation.brandCode || 'SH'} size="sm" />
               <StatusBadge status={quotation.status} />
               <span className="text-sm text-slate-500">•</span>
               <span className="text-sm text-slate-600">v{quotation.version || 1}</span>
@@ -496,7 +502,7 @@ export default function QuotationDetail() {
         onClose={() => setShowSendConfirm(false)}
         onConfirm={handleSend}
         title="Send Quotation"
-        message="Are you sure you want to send this quotation to the customer?"
+        message={`Send ${quotation.quotationNumber} to ${quotation.customer?.companyName || 'customer'} via ${brandEmail}?`}
         confirmText="Send"
         cancelText="Cancel"
         isLoading={isSending}
