@@ -590,6 +590,15 @@ export const researchAPI = {
   cancelTask: (id)                          => api.post(`/research/tasks/${id}/cancel`),
 }
 
+// Multi-brand (Phase 1 Commit 4) — list brands and the caller's brand scope.
+// BrandsContext consumes these on app boot. brandOverride is super_admin-only;
+// frontend hides the UI but backend re-checks.
+export const brandsAPI = {
+  list:           ()                => api.get('/brands'),
+  me:             ()                => api.get('/brands/me'),
+  override:       (body)            => api.patch('/admin/brand-override', body), // { entityType, entityId, newBrandCode, reason }
+}
+
 // Expenses module (item 4) — used by the /expense, /expenses, /expense-report
 // slash commands plus the admin expenses page. Mounted at /api so paths are
 // /api/expenses, /api/expense-offices, /api/expense-trips, /api/expense-submissions.

@@ -525,8 +525,41 @@ export interface Customer {
   status?: string;
   industry?: string;
   notes?: string;
+  // Multi-brand (Phase 1)
+  brandRelationships?: string[] | null;
+  productBrandingMode?: 'ironlite' | 'generic' | 'private_label' | null;
+  privateLabelProductName?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── Multi-brand (Phase 1 Commit 5) ──────────────────────────────────────
+export interface Brand {
+  id: string;
+  code: string;
+  displayName: string;
+  senderEmail: string;
+  primaryColor: string;
+  accentColor: string;
+  footerLegalText?: string | null;
+  logoUrl?: string | null;
+  active: boolean;
+  acceptedProductCategories?: string[] | null;
+}
+
+export interface BrandScope {
+  accessibleBrands: string[];
+  defaultBrand: string;
+  viewMode: 'single' | 'cross-brand';
+  isCrossBrand: boolean;
+}
+
+export function listBrands() {
+  return request<{ success: boolean; data: Brand[] }>('/api/brands');
+}
+
+export function getMyBrandScope() {
+  return request<{ success: boolean; data: BrandScope }>('/api/brands/me');
 }
 
 // ─── Triage Inbox ────────────────────────────────────────────────────────

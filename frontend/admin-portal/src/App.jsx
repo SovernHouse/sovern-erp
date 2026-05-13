@@ -2,6 +2,7 @@ import React, { Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './hooks/useAuth'
+import { BrandsProvider } from './contexts/BrandsContext'
 import Layout from './components/Layout'
 import ErrorBoundary from './components/ErrorBoundary'
 import RoleGuard from './components/RoleGuard'
@@ -396,8 +397,10 @@ export default function App() {
   return (
     <Router>
       <AuthProvider>
-        <AppRoutes />
-        <Toaster position="top-right" />
+        <BrandsProvider>
+          <AppRoutes />
+          <Toaster position="top-right" />
+        </BrandsProvider>
       </AuthProvider>
     </Router>
   )

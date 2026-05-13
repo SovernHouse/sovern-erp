@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { ArrowLeft, Edit2, MessageSquare, Download, CalendarClock } from 'lucide-react'
@@ -6,6 +6,8 @@ import ChatterPanel from '../../components/ChatterPanel'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import DataTable from '../../components/DataTable'
 import StatusBadge from '../../components/StatusBadge'
+import { BrandBadgeGroup } from '../../components/BrandBadge'
+import { useBrands } from '../../contexts/BrandsContext'
 import ProfitabilityPanel from './ProfitabilityPanel'
 import { customersAPI } from '../../services/api'
 import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
@@ -15,10 +17,16 @@ import { formatCurrency, formatDate } from '../../utils/formatters'
 export default function CustomerDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { accessibleBrands, isCrossBrand, getBrand } = useBrands()
   const [customer, setCustomer] = useState(null)
   useBreadcrumbs(customer?.name)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  // Phase 1 Commit 4: brand-context tab — which brand's activity am I
+  // looking at? Defaults to the customer's first brand (their oldest
+  // relationship). Super-admin can switch to 'all-brands' for the
+  // read-only aggregate view (D-3).
+  const [activeBrand, setActiveBrand] = useState(null)
   const [showActivityModal, setShowActivityModal] = useState(false)
   const [orders, setOrders] = useState([])
   const [quotations, setQuotations] = useState([])
@@ -59,6 +67,23 @@ export default function CustomerDetail() {
 
   if (!customer) return null
 
+  // Brand-context tab strip (Phase 1 Commit 4). If the customer relates to
+  // only one brand AND the user only has access to one brand, skip the
+  // strip entirely (no value, just clutter). Otherwise show one tab per
+  // relationship brand + an "All Brands" read-only tab for super_admin.
+  const customerBrands = Array.isArray(customer.brandRelationships) && customer.brandRelationships.length
+    ? customer.brandRelationships
+    : ['SH']
+  const visibleBrands = customerBrands.filter(b => accessibleBrands.includes(b))
+  const canSeeAllBrands = isCrossBrand || accessibleBrands.length > 1
+  const showBrandTabs = visibleBrands.length > 1 || canSeeAllBrands
+  // Default the active brand to the first one this user can see, or 'all-brands'
+  // if they're already in cross-brand mode.
+  if (activeBrand === null) {
+    setActiveBrand(isCrossBrand ? 'all-brands' : (visibleBrands[0] || customerBrands[0]))
+  }
+  const isAllBrandsView = activeBrand === 'all-brands'
+
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'orders', label: 'Orders' },
@@ -82,25 +107,32 @@ export default function CustomerDetail() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">{customer.name}</h1>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-3xl font-bold text-slate-900">{customer.name || customer.companyName}</h1>
+              <BrandBadgeGroup codes={customerBrands} size="md" />
+            </div>
             <p className="text-slate-600 text-sm mt-1">{customer.country}</p>
           </div>
         </div>
         <div className="flex items-center space-x-2">
-          <button
-            onClick={() => setShowActivityModal(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            <CalendarClock className="w-4 h-4" />
-            <span>Schedule Activity</span>
-          </button>
-          <button
-            onClick={() => navigate(`/customers/${id}/edit`)}
-            className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-          >
-            <Edit2 className="w-4 h-4" />
-            <span>Edit</span>
-          </button>
+          {!isAllBrandsView && (
+            <>
+              <button
+                onClick={() => setShowActivityModal(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                <CalendarClock className="w-4 h-4" />
+                <span>Schedule Activity</span>
+              </button>
+              <button
+                onClick={() => navigate(`/customers/${id}/edit`)}
+                className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                <Edit2 className="w-4 h-4" />
+                <span>Edit</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -127,6 +159,56 @@ export default function CustomerDetail() {
           </div>
         </div>
       </div>
+
+      {/* Brand-context tab strip — Phase 1 Commit 4 (D-3 / spec) */}
+      {showBrandTabs && (
+        <div className={`rounded-lg shadow ${isAllBrandsView
+          ? 'bg-amber-50 border-2 border-dashed border-amber-600/70'
+          : 'bg-white'}`}>
+          <div className="flex items-center px-4 py-2 gap-3 flex-wrap">
+            <span className="text-xs uppercase tracking-wider font-semibold text-slate-500">
+              Viewing
+            </span>
+            {visibleBrands.map((bc) => {
+              const b = getBrand(bc)
+              const isActive = activeBrand === bc
+              return (
+                <button
+                  key={bc}
+                  onClick={() => setActiveBrand(bc)}
+                  className="px-3 py-1.5 font-medium text-sm transition-colors rounded"
+                  style={{
+                    background: isActive ? (b?.primaryColor || '#1D5A32') : 'transparent',
+                    color: isActive ? (b?.accentColor || '#fff') : '#475569',
+                    border: isActive ? 'none' : '1px solid #cbd5e1',
+                  }}
+                >
+                  {bc} activity {isActive ? '' : '·'} {b?.displayName || bc}
+                </button>
+              )
+            })}
+            {canSeeAllBrands && (
+              <button
+                onClick={() => setActiveBrand('all-brands')}
+                className="px-3 py-1.5 font-medium text-sm rounded"
+                style={{
+                  background: isAllBrandsView ? '#92400e' : 'transparent',
+                  color: isAllBrandsView ? '#fef3c7' : '#92400e',
+                  border: isAllBrandsView ? 'none' : '1px dashed #92400e',
+                }}
+                title="Cross-brand aggregate, read-only. Every access is audited."
+              >
+                All Brands (read-only)
+              </button>
+            )}
+            <span className="ml-auto text-xs text-slate-500">
+              {isAllBrandsView
+                ? 'Cross-brand view. Compose/send/generate disabled. Access logged.'
+                : 'Switch brand to see only that brand’s deals, quotes, emails, and docs.'}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="bg-white rounded-lg shadow">

@@ -11,6 +11,8 @@ import {
   type Customer, type CustomerProfitability,
 } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
+import { BrandBadge, BrandBadgeGroup } from '../../src/components/BrandBadge';
+import { useBrands } from '../../src/hooks/useBrands';
 
 // ─── Profitability helpers ───────────────────────────────────────────────
 
@@ -205,6 +207,13 @@ function CustomerDetailModal({
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [activeBrand, setActiveBrand] = useState<string | null>(null);
+
+  const {
+    accessibleBrands,
+    isCrossBrand: isCrossBrandUser,
+    getBrand,
+  } = useBrands();
 
   useEffect(() => {
     getCustomer(customerId)
@@ -267,6 +276,17 @@ function CustomerDetailModal({
     .map((w) => w[0]?.toUpperCase() ?? '')
     .join('') || '?';
 
+  // Phase 1 Commit 5: brand-context tab strip. If the customer relates to
+  // more than one brand the user can see (or the user is super_admin),
+  // surface the SH activity / FW activity / All Brands switcher to match
+  // the desktop ERP layout.
+  const customerBrands = (Array.isArray(customer?.brandRelationships) && customer.brandRelationships.length
+    ? customer.brandRelationships
+    : ['SH']);
+  const visibleBrands = customerBrands.filter((b) => accessibleBrands.includes(b));
+  const canSeeAllBrands = isCrossBrandUser || accessibleBrands.length > 1;
+  const showBrandTabs = visibleBrands.length > 1 || canSeeAllBrands;
+
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalContainer}>
@@ -298,6 +318,78 @@ function CustomerDetailModal({
             <View style={styles.avatarLarge}>
               <Text style={styles.avatarLargeText}>{initials}</Text>
             </View>
+
+            {/* Brand badges — Phase 1 Commit 5 */}
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+              <BrandBadgeGroup codes={customerBrands} size="md" />
+            </View>
+
+            {/* Brand-context tab strip */}
+            {showBrandTabs ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: 6,
+                  marginBottom: 12,
+                  padding: 8,
+                  backgroundColor: activeBrand === 'all-brands' ? '#fef3c7' : '#f8fafc',
+                  borderWidth: activeBrand === 'all-brands' ? 2 : 1,
+                  borderStyle: activeBrand === 'all-brands' ? 'dashed' : 'solid',
+                  borderColor: activeBrand === 'all-brands' ? '#92400e' : '#e2e8f0',
+                  borderRadius: 4,
+                }}
+              >
+                {visibleBrands.map((bc) => {
+                  const b = getBrand(bc);
+                  const isActive = (activeBrand ?? visibleBrands[0]) === bc;
+                  return (
+                    <TouchableOpacity
+                      key={bc}
+                      onPress={() => setActiveBrand(bc)}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 4,
+                        backgroundColor: isActive ? (b?.primaryColor ?? '#1D5A32') : 'transparent',
+                        borderWidth: isActive ? 0 : 1,
+                        borderColor: '#cbd5e1',
+                      }}
+                    >
+                      <Text style={{
+                        color: isActive ? (b?.accentColor ?? '#fff') : '#475569',
+                        fontWeight: '600',
+                        fontSize: 12,
+                      }}>
+                        {bc} activity
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+                {canSeeAllBrands ? (
+                  <TouchableOpacity
+                    onPress={() => setActiveBrand('all-brands')}
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 4,
+                      backgroundColor: activeBrand === 'all-brands' ? '#92400e' : 'transparent',
+                      borderWidth: activeBrand === 'all-brands' ? 0 : 1,
+                      borderStyle: 'dashed',
+                      borderColor: '#92400e',
+                    }}
+                  >
+                    <Text style={{
+                      color: activeBrand === 'all-brands' ? '#fef3c7' : '#92400e',
+                      fontWeight: '600',
+                      fontSize: 12,
+                    }}>
+                      All Brands (read-only)
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
 
             {row('Contact', customer.contactPerson)}
             {row('Email', customer.email, 'email')}
