@@ -617,8 +617,12 @@ function encodeHeader(value) {
  * Returns { messageId, threadId, via: 'gmail-api', accountEmail }.
  * Throws if no active connected account exists; the caller (sendOutreachEmail)
  * decides whether to fall through to SMTP.
+ *
+ * fromDisplayName: optional override for the From header display name.
+ *   Defaults to 'Sovern House | Alex'. Pass the brand's displayName + ' | Alex'
+ *   for FW and future brands (e.g. 'FlorWay | Alex').
  */
-const sendOutreachEmailViaGmailAPI = async ({ fromAddress, toAddress, toName, subject, bodyText, replyTo, cc, bcc, signatureHtml: customSignatureHtml, signatureText: customSignatureText }) => {
+const sendOutreachEmailViaGmailAPI = async ({ fromAddress, toAddress, toName, subject, bodyText, replyTo, cc, bcc, signatureHtml: customSignatureHtml, signatureText: customSignatureText, fromDisplayName }) => {
   const db = require('../models');
   const { google } = require('googleapis');
   const { getAuthClientForAccount } = require('../controllers/googleAccountController');
@@ -645,7 +649,9 @@ const sendOutreachEmailViaGmailAPI = async ({ fromAddress, toAddress, toName, su
   const { htmlContent, textContent } = buildOutreachContent({ bodyText, customSignatureHtml, customSignatureText });
 
   // Build RFC 2822 multipart/alternative message
-  const fromHeader = `Sovern House | Alex <${account.email}>`;
+  // Use the provided display name (brand-aware) or fall back to SH default.
+  const senderDisplayName = fromDisplayName || 'Sovern House | Alex';
+  const fromHeader = `${senderDisplayName} <${account.email}>`;
   const toHeader = toName ? `${encodeHeader(toName)} <${toAddress}>` : toAddress;
   const boundary = '----=_Part_' + Math.random().toString(36).slice(2, 12) + '_' + Date.now();
 
@@ -711,13 +717,14 @@ const sendOutreachEmailViaGmailAPI = async ({ fromAddress, toAddress, toName, su
  *
  * Set OUTREACH_FORCE_SMTP=1 to disable Gmail API entirely (debugging only).
  */
-const sendOutreachEmail = async ({ fromAddress, toAddress, toName, subject, bodyText, replyTo, cc, bcc, signatureHtml: customSignatureHtml, signatureText: customSignatureText }) => {
+const sendOutreachEmail = async ({ fromAddress, toAddress, toName, subject, bodyText, replyTo, cc, bcc, signatureHtml: customSignatureHtml, signatureText: customSignatureText, fromDisplayName }) => {
   // Try Gmail API first unless explicitly disabled
   if (process.env.OUTREACH_FORCE_SMTP !== '1') {
     try {
       return await sendOutreachEmailViaGmailAPI({
         fromAddress, toAddress, toName, subject, bodyText, replyTo, cc, bcc,
         signatureHtml: customSignatureHtml, signatureText: customSignatureText,
+        fromDisplayName,
       });
     } catch (gmailErr) {
       logger.warn(`[OUTREACH] Gmail API send failed (${gmailErr.message}); falling back to SMTP if configured.`);
@@ -736,7 +743,7 @@ const sendOutreachEmail = async ({ fromAddress, toAddress, toName, subject, body
     const { htmlContent, textContent } = buildOutreachContent({ bodyText, customSignatureHtml, customSignatureText });
 
     const mailOptions = {
-      from: `Sovern House | Alex <${fromAddress || process.env.SMTP_USER}>`,
+      from: `${fromDisplayName || 'Sovern House | Alex'} <${fromAddress || process.env.SMTP_USER}>`,
       to: toName ? `${toName} <${toAddress}>` : toAddress,
       subject: subject,
       text: textContent,

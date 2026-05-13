@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import KanbanBoard, { LEAD_KANBAN_COLUMNS } from '../../components/KanbanBoard';
+import BrandBadge from '../../components/BrandBadge';
 import {
   Search,
   Plus,
@@ -239,6 +240,7 @@ const LeadList = () => {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Company</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Brand</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Contact</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Email</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Value</th>
@@ -256,6 +258,7 @@ const LeadList = () => {
                     onClick={() => navigate(`/crm/leads/${lead.id}`)}
                   >
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{lead.companyName}</td>
+                    <td className="px-6 py-4"><BrandBadge code={lead.brandCode || 'SH'} size="sm" /></td>
                     <td className="px-6 py-4 text-sm text-gray-600">{lead.contactName}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{lead.email}</td>
                     <td className="px-6 py-4 text-sm font-semibold text-blue-600">

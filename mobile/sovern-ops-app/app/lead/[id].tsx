@@ -11,11 +11,13 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import {
-  getLead, addActivity, updateLeadStatus, aiChat,
+  getLead, addActivity, updateLeadStatus, aiChat, sendOutreachEmail,
   type Lead, type Activity,
 } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
 import ChatterSection from '../../src/components/ChatterSection';
+import { BrandBadge } from '../../src/components/BrandBadge';
+import { useBrands } from '../../src/hooks/useBrands';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -112,9 +114,15 @@ export default function LeadDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Brand info
+  const { getBrand } = useBrands();
+
   // Status change
   const [statusModal, setStatusModal] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  // Outreach via ERP
+  const [sendingOutreach, setSendingOutreach] = useState(false);
 
   // Add note modal
   const [noteModal, setNoteModal] = useState(false);
@@ -244,6 +252,47 @@ export default function LeadDetailScreen() {
     }
   }
 
+  async function handleSendViaERP() {
+    if (!lead) return;
+    if (!lead.draftEmailSubject && !lead.draftEmailBody) {
+      Alert.alert('No draft', 'Use "Refine with AI" to generate a draft email first.');
+      return;
+    }
+    const brand = getBrand(lead.brandCode || 'SH');
+    const fromAddress = brand?.senderEmail || 'alex@sovernhouse.co';
+    const brandName = brand?.displayName || 'Sovern House';
+    Alert.alert(
+      'Send via ERP',
+      `Send this draft from ${fromAddress} (${brandName}) to ${lead.email}?\n\nReview the copy before confirming.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send',
+          style: 'default',
+          onPress: async () => {
+            setSendingOutreach(true);
+            try {
+              await sendOutreachEmail(lead.id, {
+                fromAddress,
+                toAddress: lead.email,
+                toName: lead.contactName,
+                subject: lead.draftEmailSubject || '(No subject)',
+                bodyText: lead.draftEmailBody || '',
+                touchNumber: 1,
+              });
+              Alert.alert('Sent', `Email sent from ${fromAddress} to ${lead.email}.`);
+              await load();
+            } catch (err: any) {
+              Alert.alert('Send failed', err.message || 'Unknown error');
+            } finally {
+              setSendingOutreach(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -283,7 +332,10 @@ export default function LeadDetailScreen() {
               </Text>
             </View>
             <View style={styles.headerMeta}>
-              <Text style={styles.companyName}>{lead.companyName}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                <Text style={styles.companyName}>{lead.companyName}</Text>
+                <BrandBadge code={lead.brandCode || 'SH'} size="sm" showLabel={false} />
+              </View>
               <Text style={styles.contactName}>{lead.contactName}</Text>
               {lead.country ? <Text style={styles.country}>{lead.country}</Text> : null}
             </View>
@@ -365,6 +417,16 @@ export default function LeadDetailScreen() {
               <View style={styles.draftActions}>
                 <TouchableOpacity
                   style={styles.draftActionBtn}
+                  onPress={handleSendViaERP}
+                  disabled={sendingOutreach}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.draftActionText}>
+                    {sendingOutreach ? 'Sending…' : 'Send via ERP'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.draftActionBtn, styles.draftActionBtnSecondary]}
                   onPress={() => {
                     const subject = lead.draftEmailSubject || '';
                     const body = lead.draftEmailBody || '';
@@ -373,7 +435,7 @@ export default function LeadDetailScreen() {
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.draftActionText}>Open in Mail app</Text>
+                  <Text style={[styles.draftActionText, styles.draftActionTextSecondary]}>Open in Mail app</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.draftActionBtn, styles.draftActionBtnSecondary]}

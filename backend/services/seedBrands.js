@@ -38,7 +38,8 @@ const SEEDS = [
     accentColor:  '#F1EEE7', // cream (Q1)
     footerLegalText:
       'FlorWay is a trading division of FLORWAY SDN. BHD., 5 3/4 Miles Matang Jambu, 34750 Matang, Taiping, Perak, Malaysia.',
-    signatureHtml: null,
+    signatureHtml: `<div style="margin-top:36px;font-family:Arial,sans-serif;color:#0E0D0C;line-height:1.5;"><div style="height:2px;background-color:#1F2933;margin-bottom:24px;"></div><div style="font-size:15px;font-weight:700;color:#0E0D0C;margin-bottom:3px;">Alexander McConnell</div><div style="font-size:12px;color:#5A5855;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:14px;">Founder</div><div style="font-size:13px;margin-bottom:24px;"><span style="font-weight:600;color:#1F2933;">FlorWay</span><span style="color:#C8C4BC;margin:0 8px;">&middot;</span><a href="mailto:alexflorway@gmail.com" style="color:#1F2933;text-decoration:none;">alexflorway@gmail.com</a></div><div style="font-size:10px;color:#B0ABA4;border-top:1px solid #EBEBEB;padding-top:10px;">FlorWay is a trading division of FLORWAY SDN. BHD., 5 3/4 Miles Matang Jambu, 34750 Matang, Taiping, Perak, Malaysia.</div></div>`,
+    signatureText: '--\nAlexander McConnell\nFounder | FlorWay\nalexflorway@gmail.com\n\nFlorWay is a trading division of FLORWAY SDN. BHD., 5 3/4 Miles Matang Jambu, 34750 Matang, Taiping, Perak, Malaysia.',
     logoUrl: null,
     quotationTemplateId: null,
     documentTemplateIds: null,

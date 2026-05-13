@@ -400,6 +400,7 @@ export interface Lead {
   email: string;
   phone?: string;
   status: string;
+  brandCode?: string;
   estimatedValue?: number;
   currency?: string;
   productInterests?: string;
@@ -423,6 +424,24 @@ export interface Lead {
   lastActivityAt?: string;
   score?: number;
   activities?: Activity[];
+}
+
+export interface OutreachEmailPayload {
+  fromAddress?: string;
+  toAddress: string;
+  toName?: string;
+  subject: string;
+  bodyText: string;
+  touchNumber?: number;
+  followUpDays?: number;
+  cc?: string;
+  bcc?: string;
+  signatureId?: string;
+}
+
+export async function sendOutreachEmail(leadId: string, payload: OutreachEmailPayload) {
+  const res = await api.post(`/crm/leads/${leadId}/outreach-emails`, payload);
+  return res.data;
 }
 
 export interface Activity {

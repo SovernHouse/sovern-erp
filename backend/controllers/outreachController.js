@@ -2,7 +2,6 @@ const { Op } = require('sequelize');
 const db = require('../models');
 const { sendOutreachEmail } = require('../services/emailService');
 const dayjs = require('dayjs');
-const tenant = require('../config/tenant');
 const logger = require('../utils/logger.js');
 
 /**
@@ -71,13 +70,13 @@ const getLeadOutreachEmails = async (req, res) => {
 const sendOutreachEmailToLead = async (req, res) => {
   try {
     const { id } = req.params;
-    const { fromAddress, toAddress, toName, subject, bodyText, touchNumber = 1, followUpDays, cc, bcc, signatureId } = req.body;
+    let { fromAddress, toAddress, toName, subject, bodyText, touchNumber = 1, followUpDays, cc, bcc, signatureId } = req.body;
 
-    // Validate required fields
-    if (!fromAddress || !toAddress || !subject || !bodyText) {
+    // Validate required fields (fromAddress may be omitted — derived from brand below)
+    if (!toAddress || !subject || !bodyText) {
       return res.status(400).json({
         success: false,
-        message: 'Required fields: fromAddress, toAddress, subject, bodyText',
+        message: 'Required fields: toAddress, subject, bodyText',
       });
     }
 
@@ -86,7 +85,21 @@ const sendOutreachEmailToLead = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Lead not found' });
     }
 
-    // Resolve signature HTML/text if a signatureId was provided
+    // Look up brand for this lead — derives fromAddress, signature, and display name.
+    const brand = lead.brandCode
+      ? await db.Brand.findOne({ where: { code: lead.brandCode, active: true } })
+      : null;
+
+    // Default fromAddress to the brand's sender email when not explicitly provided.
+    if (!fromAddress) {
+      fromAddress = brand?.senderEmail || 'alex@sovernhouse.co';
+    }
+
+    // Build the From display name: "<Brand displayName> | Alex"
+    const fromDisplayName = brand ? `${brand.displayName} | Alex` : 'Sovern House | Alex';
+
+    // Resolve signature HTML/text: explicit signatureId wins; otherwise fall
+    // back to the brand's default signature (injected into buildOutreachContent).
     let resolvedSignatureHtml = null;
     let resolvedSignatureText = null;
     if (signatureId) {
@@ -96,15 +109,13 @@ const sendOutreachEmailToLead = async (req, res) => {
         resolvedSignatureHtml = generateSignatureHtml(sig);
         resolvedSignatureText = generateSignatureText(sig);
       }
+    } else if (brand?.signatureHtml) {
+      resolvedSignatureHtml = brand.signatureHtml;
+      resolvedSignatureText = brand.signatureText || null;
     }
 
     // Build final BCC — Egypt rule: always include Mohannad Fanzey for SH-brand
     // Egypt leads only. FW does not BCC Fanzey, ever.
-    //
-    // PHASE 2 TODO (multi-brand): once Lead.brandCode is exposed end-to-end on
-    // the outbound composer, gate this on `lead.brandCode === 'SH'`. Until then,
-    // every Lead is brand='SH' by Phase 1 backfill so the existing behaviour
-    // is correct.
     let finalBcc = bcc ? (Array.isArray(bcc) ? [...bcc] : [bcc]) : [];
     if (
       lead.brandCode === 'SH' &&
@@ -115,7 +126,7 @@ const sendOutreachEmailToLead = async (req, res) => {
       finalBcc.push('mohanadfanzey@gmail.com');
     }
 
-    // Send email via SMTP
+    // Send email via Gmail API (preferred) or SMTP fallback
     let messageId;
     let accepted;
     let rejected;
@@ -131,6 +142,7 @@ const sendOutreachEmailToLead = async (req, res) => {
         bcc: finalBcc.length > 0 ? finalBcc : null,
         signatureHtml: resolvedSignatureHtml,
         signatureText: resolvedSignatureText,
+        fromDisplayName,
       });
       messageId = result.messageId;
       accepted = result.accepted;
@@ -332,15 +344,21 @@ const sendCampaign = async (req, res) => {
       });
     }
 
-    // Validate FROM address is an authorised sending domain
-    const allowedDomains = tenant.allowedSendingDomains;
-    const fromDomain = (fromAddress || '').split('@')[1];
-    if (!allowedDomains.includes(fromDomain)) {
+    // Validate FROM address is one of the configured brand sender emails.
+    // This replaces the old static domain list check and naturally includes
+    // gmail.com senders (e.g. alexflorway@gmail.com for FW brand).
+    const activeBrands = await db.Brand.findAll({ where: { active: true }, attributes: ['code', 'senderEmail', 'displayName', 'signatureHtml', 'signatureText'] });
+    const brandSenderEmails = activeBrands.map(b => b.senderEmail.toLowerCase());
+    if (!brandSenderEmails.includes((fromAddress || '').toLowerCase())) {
       return res.status(400).json({
         success: false,
-        message: `fromAddress must use one of: ${allowedDomains.join(', ')}`,
+        message: `fromAddress must be one of the configured brand sender emails: ${brandSenderEmails.join(', ')}`,
       });
     }
+
+    // Resolve the brand for this campaign's fromAddress (for From header + signature).
+    const campaignBrand = activeBrands.find(b => b.senderEmail.toLowerCase() === fromAddress.toLowerCase()) || null;
+    const campaignFromDisplayName = campaignBrand ? `${campaignBrand.displayName} | Alex` : 'Sovern House | Alex';
 
     // Fetch leads (only those that actually exist)
     const leads = await db.Lead.findAll({ where: { id: leadIds } });
@@ -382,7 +400,8 @@ const sendCampaign = async (req, res) => {
       let sentCount = 0;
       let failedCount = 0;
 
-      // Resolve signature once for the entire campaign
+      // Resolve signature once for the entire campaign.
+      // Priority: explicit signatureId > brand's default signatureHtml.
       let campaignSignatureHtml = null;
       let campaignSignatureText = null;
       if (signatureId) {
@@ -392,6 +411,9 @@ const sendCampaign = async (req, res) => {
           campaignSignatureHtml = generateSignatureHtml(sig);
           campaignSignatureText = generateSignatureText(sig);
         }
+      } else if (campaignBrand?.signatureHtml) {
+        campaignSignatureHtml = campaignBrand.signatureHtml;
+        campaignSignatureText = campaignBrand.signatureText || null;
       }
 
       for (let i = 0; i < leads.length; i++) {
@@ -410,7 +432,6 @@ const sendCampaign = async (req, res) => {
 
         // Build final BCC — Egypt rule: always include Mohannad Fanzey for
         // SH-brand Egypt leads only. FW does not BCC Fanzey, ever.
-        // PHASE 2 TODO: see the matching note in sendOutreachEmailToLead.
         let finalCampaignBcc = bcc ? (Array.isArray(bcc) ? [...bcc] : [bcc]) : [];
         if (
           lead.brandCode === 'SH' &&
@@ -437,6 +458,7 @@ const sendCampaign = async (req, res) => {
             bcc: finalCampaignBcc.length > 0 ? finalCampaignBcc : null,
             signatureHtml: campaignSignatureHtml,
             signatureText: campaignSignatureText,
+            fromDisplayName: campaignFromDisplayName,
           });
           messageId = result.messageId;
           status = 'sent';

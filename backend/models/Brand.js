@@ -45,6 +45,10 @@ module.exports = (sequelize) => {
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    signatureText: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
     footerLegalText: {
       type: DataTypes.TEXT,
       allowNull: true,

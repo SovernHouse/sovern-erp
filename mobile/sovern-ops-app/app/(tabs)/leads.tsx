@@ -7,6 +7,7 @@ import {
 import { useRouter } from 'expo-router';
 import { getLeads, type Lead } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
+import { BrandBadge } from '../../src/components/BrandBadge';
 
 const STATUS_COLORS: Record<string, string> = {
   new:         COLORS.statusNew,
@@ -23,7 +24,10 @@ function LeadRow({ lead, onPress }: { lead: Lead; onPress: () => void }) {
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
       <View style={[styles.statusDot, { backgroundColor: color }]} />
       <View style={styles.rowBody}>
-        <Text style={styles.company}>{lead.companyName}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <Text style={styles.company}>{lead.companyName}</Text>
+          <BrandBadge code={lead.brandCode || 'SH'} size="sm" showLabel={false} />
+        </View>
         <Text style={styles.contact}>{lead.contactName}</Text>
         {lead.productInterests
           ? <Text style={styles.product}>{lead.productInterests}</Text>

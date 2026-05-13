@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../../services/api';
+import { useBrands } from '../../contexts/BrandsContext';
+import BrandBadge from '../../components/BrandBadge';
 import {
   Search, Plus, Mail, Globe, Phone, MapPin, ExternalLink,
   ChevronDown, ChevronRight, Send, Clock, CheckCircle2,
@@ -165,17 +167,21 @@ const TOUCH_LABELS = {
   5: 'Breakup',
 };
 
-const DEFAULT_FROM = 'alex@sovern-house.com';
 const DEFAULT_BCC = '"Mohannad Fanzey" <mohanadfanzey@gmail.com>';
 
 // ─── Email Compose Panel ───────────────────────────────────────────────────
 function ComposePanel({ prospect, onClose, onSent }) {
+  const { getBrand, defaultBrand } = useBrands();
+  const prospectBrandCode = prospect.brandCode || defaultBrand || 'SH';
+  const brand = getBrand(prospectBrandCode);
+  const isSHBrand = prospectBrandCode === 'SH';
+
   const [form, setForm] = useState({
-    fromAddress: DEFAULT_FROM,
+    fromAddress: brand?.senderEmail || 'alex@sovernhouse.co',
     toAddress: prospect.email || '',
     toName: prospect.contactName || '',
     cc: '',
-    bcc: prospect.country === 'Egypt' ? DEFAULT_BCC : '',
+    bcc: (prospect.country === 'Egypt' && isSHBrand) ? DEFAULT_BCC : '',
     subject: '',
     bodyText: '',
     touchNumber: 1,
@@ -305,7 +311,10 @@ function ComposePanel({ prospect, onClose, onSent }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">From</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-2">
+                From
+                <BrandBadge code={prospectBrandCode} size="sm" />
+              </label>
               <input
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
                 value={form.fromAddress}
@@ -358,8 +367,8 @@ function ComposePanel({ prospect, onClose, onSent }) {
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">
                 BCC
-                {prospect.country === 'Egypt' && (
-                  <span className="ml-1.5 text-[10px] text-amber-600 font-normal">🇪🇬 Egypt — Mohannad auto-added</span>
+                {prospect.country === 'Egypt' && isSHBrand && (
+                  <span className="ml-1.5 text-[10px] text-amber-600 font-normal">🇪🇬 Egypt (SH) — Mohannad auto-added</span>
                 )}
               </label>
               <input
@@ -476,8 +485,9 @@ function ComposePanel({ prospect, onClose, onSent }) {
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
-          <p className="text-xs text-slate-400">
-            Sends from <strong>{form.fromAddress}</strong> via SMTP
+          <p className="text-xs text-slate-400 flex items-center gap-1.5">
+            Sends from <strong>{form.fromAddress}</strong>
+            <BrandBadge code={prospectBrandCode} size="sm" />
           </p>
           <div className="flex gap-3">
             <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100">
@@ -1343,11 +1353,6 @@ function AddProspectModal({ onClose, onCreated }) {
 }
 
 // ─── Bulk Send Modal ───────────────────────────────────────────────────────
-const FROM_OPTIONS = [
-  { value: 'alex@sovern-house.com', label: 'alex@sovern-house.com  (cold outreach)' },
-  { value: 'alex@sovernhouse.co',   label: 'alex@sovernhouse.co  (primary domain)' },
-];
-
 const MERGE_HINTS = ['{{firstName}}', '{{companyName}}', '{{country}}', '{{vertical}}'];
 
 function resolveMerge(template, lead) {
@@ -1362,14 +1367,34 @@ function resolveMerge(template, lead) {
 }
 
 function BulkSendModal({ selectedLeads, onClose, onComplete }) {
-  // BCC defaults to empty for bulk — could be mixed countries. User sets it manually.
-  // Egypt-only BCC rule: if all selected leads are Egypt, auto-fill Mohannad.
-  const allEgypt = selectedLeads.length > 0 && selectedLeads.every(l => l.country === 'Egypt');
+  const { getBrand, accessibleBrands, defaultBrand } = useBrands();
+
+  // Build FROM_OPTIONS from accessible brands (ordered by defaultBrand first).
+  const fromOptions = [...accessibleBrands]
+    .sort((a, b) => (a === defaultBrand ? -1 : b === defaultBrand ? 1 : 0))
+    .map(code => {
+      const b = getBrand(code);
+      return b ? { value: b.senderEmail, label: `${b.senderEmail}  (${b.displayName})`, code } : null;
+    })
+    .filter(Boolean);
+  if (fromOptions.length === 0) {
+    fromOptions.push({ value: 'alex@sovernhouse.co', label: 'alex@sovernhouse.co  (Sovern House)', code: 'SH' });
+  }
+  const defaultFromAddress = fromOptions[0].value;
+
+  // Egypt BCC rule: only when ALL selected leads are SH-brand Egyptian leads.
+  const allEgyptSH = selectedLeads.length > 0 &&
+    selectedLeads.every(l => l.country === 'Egypt' && (l.brandCode || 'SH') === 'SH');
+
+  // Detect mixed-brand selection for the warning banner.
+  const selectedBrandCodes = [...new Set(selectedLeads.map(l => l.brandCode || 'SH'))];
+  const isMixedBrand = selectedBrandCodes.length > 1;
+
   const [form, setForm] = useState({
     name: `Outreach ${new Date().toISOString().slice(0, 10)}`,
-    fromAddress: FROM_OPTIONS[0].value,
+    fromAddress: defaultFromAddress,
     cc: '',
-    bcc: allEgypt ? DEFAULT_BCC : '',
+    bcc: allEgyptSH ? DEFAULT_BCC : '',
     touchNumber: 1,
     followUpDays: 4,
     subjectTemplate: '',
@@ -1513,6 +1538,15 @@ function BulkSendModal({ selectedLeads, onClose, onComplete }) {
               </div>
             )}
 
+            {isMixedBrand && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+                <AlertCircle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+                <p className="text-sm text-amber-700">
+                  Mixed brands selected: {selectedBrandCodes.join(' + ')}. Choose "Send from" carefully — the Egypt BCC rule applies per-lead based on each lead's brand.
+                </p>
+              </div>
+            )}
+
             {/* ── Template bar ── */}
             <div className="flex items-center gap-2 flex-wrap pb-1 border-b border-slate-100">
               <select
@@ -1564,7 +1598,9 @@ function BulkSendModal({ selectedLeads, onClose, onComplete }) {
                   value={form.fromAddress}
                   onChange={e => setForm(f => ({ ...f, fromAddress: e.target.value }))}
                 >
-                  {FROM_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {fromOptions.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -1583,8 +1619,8 @@ function BulkSendModal({ selectedLeads, onClose, onComplete }) {
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">
                   BCC
-                  {allEgypt && (
-                    <span className="ml-1.5 text-[10px] text-amber-600 font-normal">🇪🇬 Egypt — Mohannad auto-added</span>
+                  {allEgyptSH && (
+                    <span className="ml-1.5 text-[10px] text-amber-600 font-normal">🇪🇬 Egypt (SH) — Mohannad auto-added</span>
                   )}
                 </label>
                 <input
@@ -1787,8 +1823,11 @@ function BulkSendModal({ selectedLeads, onClose, onComplete }) {
         <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
           {tab === 'compose' ? (
             <>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400 flex items-center gap-1.5">
                 {selectedLeads.length} email{selectedLeads.length !== 1 ? 's' : ''} · from <strong>{form.fromAddress}</strong>
+                {fromOptions.find(o => o.value === form.fromAddress) && (
+                  <BrandBadge code={fromOptions.find(o => o.value === form.fromAddress).code} size="sm" />
+                )}
               </p>
               <div className="flex gap-3">
                 <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100">
