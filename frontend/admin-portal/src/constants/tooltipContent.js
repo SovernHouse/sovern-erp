@@ -15,17 +15,18 @@
 
 export const CRM = {
   lead: {
-    source:        'Where this lead came from — e.g. LinkedIn, trade show, referral, or cold email.',
+    source:        'Where this lead came from, e.g. LinkedIn, trade show, referral, or cold email.',
     stage:         'Current position in the sales pipeline. Move the lead forward as you qualify and engage.',
-    score:         'Lead quality score (0–100). Higher = more likely to convert. Update after each interaction.',
+    score:         'Lead quality score (0 to 100). Higher means more likely to convert. Update after each interaction.',
     assignedTo:    'The sales rep responsible for this lead. They will receive follow-up reminders.',
-    company:       'The lead\'s company name. Used for deduplication — check existing contacts before creating.',
+    company:       'The lead\'s company name. Used for deduplication, check existing contacts before creating.',
     email:         'Primary contact email. Must be verified before sending outreach.',
     phone:         'Direct phone number including country code (e.g. +1 555 123 4567).',
     industry:      'Industry vertical. Used for campaign targeting and segment reporting.',
     estimatedValue:'Estimated deal value in USD. Used for pipeline forecasting.',
     nextFollowUp:  'Date to follow up with this lead. The scheduler sends reminders at 08:00 on this date.',
-    notes:         'Internal notes — not visible to the lead. Record key facts from calls or emails.',
+    notes:         'Internal notes, not visible to the lead. Record key facts from calls or emails.',
+    brand:         'Which brand this lead belongs to. Locked at creation. Changes require super-admin override.',
   },
   contact: {
     role:          'Job title at their company (e.g. Procurement Manager, Head of Buying).',
@@ -55,6 +56,7 @@ export const INQUIRY = {
   paymentTerms:  'Agreed payment structure — e.g. 30% TT deposit, 70% before shipment.',
   requiredBy:    'The buyer\'s deadline. Work backwards from here when negotiating factory lead times.',
   certifications:'Required certifications (CE, RoHS, ASTM, etc.). Confirm with the factory before quoting.',
+  brand:         'Which brand this inquiry belongs to. Locked at creation.',
 }
 
 export const QUOTATION = {
@@ -68,7 +70,8 @@ export const QUOTATION = {
   lineItem_unitPrice: 'Price per unit in the quotation currency. This is your sell price — not the factory cost.',
   lineItem_unit:     'Unit of measure — pcs, sets, m\u00b2, kg, cartons, etc.',
   factoryId:     'The factory supplying the goods for this quotation. Links the buyer price to the source factory for full sourcing traceability.',
-  leadId:        'The CRM lead this quotation originated from. Preserved for pipeline attribution — tracks which prospect became a deal.',
+  leadId:        'The CRM lead this quotation originated from. Preserved for pipeline attribution: tracks which prospect became a deal.',
+  brand:         'Which brand issues this quotation. Determines sender email, signature, footer legal text, and template. Locked at creation.',
 }
 
 export const PROFORMA_INVOICE = {
@@ -81,6 +84,7 @@ export const PROFORMA_INVOICE = {
   status_sent:    'Sent to the buyer. Waiting for confirmation.',
   status_confirmed:'Buyer confirmed. You can now convert to a Sales Order.',
   status_cancelled:'PI cancelled. Generate a new PI if needed.',
+  brand:          'Which brand issues this proforma. Inherited from the parent quotation.',
 }
 
 export const SALES_ORDER = {
@@ -91,6 +95,7 @@ export const SALES_ORDER = {
   trackingNumber:   'Bill of lading number or AWB. Update once the shipment is booked.',
   paymentStatus:    'Unpaid = no payment received. Partial = deposit paid. Paid = fully settled.',
   createPackingList:'Generates a draft packing list from the line items of this order. Fill in weights and dimensions before sending to the warehouse.',
+  brand:            'Which brand issues this sales order. Inherited from the parent quotation.',
 }
 
 // ─── Procurement ──────────────────────────────────────────────────────────────
@@ -120,6 +125,7 @@ export const PURCHASE_ORDER = {
   status_shipped:  'Goods shipped from the factory.',
   status_received: 'Goods received at our warehouse or forwarding agent.',
   status_completed:'PO fully closed.',
+  brand:           'Which brand issues this purchase order. Inherited from the parent sales order.',
 }
 
 // ─── Document Approvals ───────────────────────────────────────────────────────
@@ -166,6 +172,7 @@ export const INVOICE = {
   paidAmount:     'Total payments received so far. Updated automatically when payments are recorded.',
   balance:        'Outstanding amount = Total - Paid Amount.',
   type:           'Sales invoice = receivable from buyer. Purchase invoice = payable to factory. Credit/debit notes adjust balances.',
+  brand:          'Which brand issues this invoice. Inherited from the parent sales order.',
 }
 
 export const PAYMENT = {
@@ -213,7 +220,34 @@ export const SETTINGS = {
   bulkImport:     'Upload a CSV or Excel file to import leads, contacts, or products in bulk. Preview before confirming.',
   priceList:      'Customer or factory price lists. Link to a customer or factory to apply tiered pricing automatically.',
   productAttribute:'Custom specification attributes that appear on product spec sheets (e.g. Wear Layer, Surface Finish).',
-  taxon:          'Product taxonomy node — categories and sub-categories used for filtering and reporting.',
+  taxon:          'Product taxonomy node, categories and sub-categories used for filtering and reporting.',
+}
+
+// ─── Brand (multi-brand data model, Phase 1) ──────────────────────────────────
+
+export const BRAND = {
+  code:               'Short identifier for the brand (e.g. SH, FW). Used as the foreign-key handle on every transactional row.',
+  displayName:        'Full brand name shown to staff. Used in headers, dropdowns, and report titles.',
+  senderEmail:        'The Gmail address outbound emails for this brand are sent from. Must be a connected Google account.',
+  signatureHtml:      'HTML email signature appended to every outbound message sent from this brand.',
+  footerLegalText:    'One-line legal footer placed at the bottom of quotations, invoices, and PDF exports for this brand.',
+  primaryColor:       'Background color of the brand badge. Pick a hex value that reads well against the accent color.',
+  accentColor:        'Text color of the brand badge. Use a high-contrast hex value (cream against ink, etc.).',
+  acceptedProductCategories: 'Optional category whitelist. When set, only products in these categories can appear on this brand\'s quotations. Leave blank for no constraint.',
+  active:             'Inactive brands are hidden from new-entity pickers but existing transactions stay visible. Use to retire a brand without losing history.',
+  relationships:      'Which brands have ever transacted with this customer. Adding a brand happens automatically when a new lead or quote is opened against the customer under that brand. Removal is a super-admin action.',
+  defaultBrand:       'Pre-fills the brand picker on every new lead, quotation, and deal form. You can still override per record.',
+  accessibleBrands:   'The brands this user can see and act on. Set per user. Super admin can read across brands via the All Brands view.',
+  brandOverride:      'Force-change an entity\'s brand. Super-admin only, requires a written reason, writes a permanent audit log entry.',
+  scanReceiptBrand:   'Receipts logged from your phone inherit the brand of the office you route them to. Pick an FW office for FW expenses, an SH office for SH.',
+  productBrandingMode: 'How FlorWay-brand products appear on this customer\'s docs. Generic = no sub-brand. IronLite = FW\'s flagship badge. Private label = the customer\'s own brand name on packaging.',
+  privateLabelProductName: 'Used only when product branding mode is Private label. The exact name printed on packaging and quoted in docs.',
+}
+
+// ─── Entity-level brand field (referenced from many sections) ─────────────────
+
+export const ENTITY_BRAND = {
+  brand:              'Which brand this record belongs to. Locked at creation. Changes require super-admin override with a written reason and are audited.',
 }
 
 // ─── Outreach ─────────────────────────────────────────────────────────────────

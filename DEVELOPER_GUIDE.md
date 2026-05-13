@@ -1708,3 +1708,104 @@ $pem -join "" | Set-Content -Encoding ascii -Path $out
 Do NOT use `NODE_TLS_REJECT_UNAUTHORIZED=0` — it disables cert validation across the whole Node process and exposes you to actual MITM attacks. The earlier rounds in this session used it as a temporary workaround; that's now retired.
 
 The web platform fails to bundle because `react-dom` is not installed (we don't need web). Always pass `--platform ios` (or `ios,android`) explicitly to skip web.
+
+---
+
+# Multi-Brand Data Model (Phase 1)
+
+The ERP runs more than one trading brand from a single deployment. Sovern House (SH) and FlorWay (FW) ship by default. Every transactional row is locked to one brand at creation. Adding a third brand is config-only: insert a Brand row, restart, done.
+
+## Architecture decisions (D-1 to D-10)
+
+- **D-1.** Brand identity = `brandCode STRING(8)` FK referencing `Brand.code` (`UNIQUE`). Grep-friendly, matches user mental model.
+- **D-2.** Brand isolation is enforced server-side. `brandScope` middleware filters every list query; the frontend hiding the All-Brands tab is necessary but not sufficient.
+- **D-3.** All-Brands view (super_admin + `?viewMode=cross-brand`) is read-only at the backend. Mutation routes refuse it with 403 even if the frontend tries.
+- **D-4.** `User.accessibleBrands` (JSON array) gates what the user can see. `User.defaultBrand` pre-fills the BrandPicker on new-entity forms.
+- **D-5.** Brand is locked at creation. The standard update path silently strips `brandCode` from payloads. Changes flow only through `PATCH /api/admin/brand-override` (super_admin, requires written reason, audited).
+- **D-6.** `Customer.brandRelationships` is a JSON array of brand codes. Adding is automatic; removal is super_admin with audit log.
+- **D-7.** AuditLog is the system of record for cross-brand reads + brand overrides + relationship removals. Phase 4 dashboard reads the same table.
+- **D-8.** Brand-aware theming reads colors from the Brand row. `BrandsContext` (desktop) and `useBrands()` (mobile) cache the brand list at boot. Whitelabel-ready.
+- **D-9.** Migration strategy: nullable column added by `autoMigrateSchema`, backfilled to `'SH'` at boot, application-level `allowNull: false` enforced on new inserts.
+- **D-10.** Egypt BCC rule (`mohanadfanzey@gmail.com`) is gated to `brand === 'SH'`. FW Egypt leads do not BCC Fanzey, ever.
+
+## Files of interest
+
+| File | Purpose |
+|---|---|
+| `backend/models/Brand.js` | Brand configuration table. Color hex validation, sender email validation, accepted-category JSON whitelist. |
+| `backend/services/seedBrands.js` | Idempotent boot-time seed for SH + FW rows. Edit color/footer/etc. here to retheme a brand. |
+| `backend/services/migrateBrands.js` | Boot-time backfill of `brandCode` on every transactional table + super-admin promotion. Warn-and-continue on residual NULLs. |
+| `backend/middleware/brandScope.js` | Attaches `req.brandScope` after `requireAuth`. Exports `assertSingleBrandMode` + `assertBrandWritable` helpers. |
+| `backend/routes/brandRoutes.js` | `GET /api/brands`, `GET /api/brands/me`, `PATCH /api/admin/brand-override`. |
+| `frontend/admin-portal/src/contexts/BrandsContext.jsx` | App-wide brand cache. Provides `useBrands()` hook. |
+| `frontend/admin-portal/src/components/BrandBadge.jsx` | Colored pill component. Reads colors from BrandsContext. |
+| `frontend/admin-portal/src/components/BrandPicker.jsx` | Dropdown for new-entity forms. Auto-pre-fills `defaultBrand`. |
+| `mobile/sovern-ops-app/src/hooks/useBrands.ts` | Mobile equivalent of BrandsContext. Same shape. |
+| `mobile/sovern-ops-app/src/components/BrandBadge.tsx` | RN-native badge + group. |
+
+## The brandScope middleware contract
+
+After `requireAuth` runs, mount `brandScope` on every brand-tagged route. It attaches:
+
+```js
+req.brandScope = {
+  accessibleBrands: ['SH', 'FW'],   // string[] — user's permitted brands
+  defaultBrand:     'SH',           // string — pre-fill for new entities
+  viewMode:         'single' | 'cross-brand',
+  isCrossBrand:     boolean,        // only true when super_admin + ?viewMode=cross-brand
+  where:            { brandCode: { [Op.in]: [...] } } | {},
+}
+```
+
+Controllers consume `req.brandScope.where`:
+
+```js
+const where = { ...(req.brandScope?.where || {}), /* other filters */ };
+const rows = await db.Lead.findAll({ where, ... });
+```
+
+For mutations:
+
+```js
+if (!assertSingleBrandMode(req, res)) return; // 403 in cross-brand mode
+const brandCode = req.body.brandCode || req.brandScope?.defaultBrand || 'SH';
+if (!assertBrandWritable(req, res, brandCode)) return; // 403 if brand not in accessibleBrands
+```
+
+For `Customer` (whose `brandRelationships` is a JSON array, not a single FK), the SQLite-portable approach is to fetch + filter at the application layer. See `customerController.getAll` for the canonical pattern.
+
+## Adding a new brand
+
+1. Edit `backend/services/seedBrands.js` and add a row to the `SEEDS` array.
+2. Restart the backend. The idempotent seed inserts the new row at boot. Existing rows are preserved unchanged.
+3. Grant access to the relevant users (set `User.accessibleBrands`).
+4. The frontend picks up the new row on next page load via `BrandsContext` / `useBrands()`. BrandBadge auto-uses the new colors.
+
+No code changes are needed in transactional models, controllers, or UI. That is the whole point of the abstraction.
+
+## Brand override workflow
+
+```http
+PATCH /api/admin/brand-override
+{
+  "entityType":   "Lead",
+  "entityId":     "<uuid>",
+  "newBrandCode": "FW",
+  "reason":       "Migrated to FW after factory relationship change"
+}
+```
+
+Rules:
+- Super_admin only. `requireRole('super_admin')` bare-string per L-031.
+- `reason` is required, minimum 3 characters.
+- Target brand must exist and be active.
+- Writes an `AuditLog` row with `{ action: 'brand_override', entity, entityId, changes: { field: 'brandCode', oldValue, newValue, reason } }`.
+- Returns the `auditLogId` so the caller can link back to the audit entry in dashboards.
+
+## Gotchas
+
+- **L-043** — `belongsTo(Brand)` associations pass `constraints: false` to avoid SQLite FK constraint failures in test setups where `sync({ force: true })` runs before Brand is seeded. Validation happens at the application layer via `brandScope`.
+- **JSON array filtering on SQLite** — `Customer.brandRelationships` and `User.accessibleBrands` are JSON arrays. SQLite has no rich `Op.contains`; we filter at the application layer. Fine for the current data volumes; revisit if performance bites.
+- **Test setup doesn't run boot backfill** — `__tests__/setup.js` calls `sequelize.sync({ force: true })` directly, bypassing the `server.js` boot chain. brandScope falls back to `['SH']` defaults so existing tests continue to pass without per-test brand seeding.
+- **Egypt BCC** — the Mohannad Fanzey BCC rule in `outreachController.js` is now gated on `lead.brandCode === 'SH'`. The FW outbound composer (Phase 2) must not inadvertently re-introduce a blanket country check.
+

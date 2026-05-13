@@ -64,7 +64,7 @@ export const HELP_CONTENT = {
   // ── Customers ──────────────────────────────────────────────────────────────
   '/customers': {
     title: 'Customers',
-    summary: 'Buyers and trading partners. A customer can be linked to inquiries, quotations, orders, and invoices.',
+    summary: 'Buyers and trading partners. A customer can be linked to inquiries, quotations, orders, and invoices, and may relate to more than one brand.',
     sections: [
       {
         heading: 'Creating a customer',
@@ -72,7 +72,7 @@ export const HELP_CONTENT = {
           'Click New Customer.',
           'Enter company name, email, phone, and country. These are required.',
           'Set payment terms (default Net 30) and credit limit.',
-          'Save — the customer is now available to link to new documents.',
+          'Save. The customer is now available to link to new documents.',
         ],
       },
       {
@@ -81,13 +81,23 @@ export const HELP_CONTENT = {
           'Credit Limit: maximum outstanding balance allowed.',
           'Credit Used: sum of unpaid invoices linked to this customer.',
           'Credit Hold: blocks new orders when the balance exceeds the limit.',
-          'Rating: internal score (0–5). Use it to prioritise follow-ups.',
+          'Rating: internal score (0 to 5). Use it to prioritise follow-ups.',
+        ],
+      },
+      {
+        heading: 'Brand context (cross-brand customers)',
+        items: [
+          'A customer may transact under more than one brand. The badge group next to the name shows every brand they have a relationship with.',
+          'On the detail page, switch between "SH activity" and "FW activity" tabs to see only that brand\'s deals, quotes, emails, and docs.',
+          'Compose, send, and generate buttons act on the active brand tab only. There is no shared timeline.',
+          'Super admin sees an extra "All Brands (read-only)" tab. Every visit is audited. Compose/send/generate are disabled in this view.',
         ],
       },
     ],
     tips: [
-      'Search by company name or email. The list is paginated — use filters for large datasets.',
+      'Search by company name or email. The list is paginated, use filters for large datasets.',
       'A customer on Credit Hold cannot have new PIs or SOs created for them.',
+      'New leads or quotes against an existing customer under a brand not yet in their relationships array will auto-add that brand. Removal requires super admin.',
     ],
   },
 
@@ -593,12 +603,54 @@ export const HELP_CONTENT = {
           'Price Lists: customer or factory tiered pricing.',
           'Product Taxonomy: categories and attributes for product spec sheets.',
           'Bulk Import: upload leads, contacts, or products via CSV/Excel.',
+          'Brands: configure each brand\'s sender email, signature, colors, and product category gates.',
         ],
       },
     ],
     warnings: [
       'Changing a user\'s role takes effect immediately on their next page load.',
-      'Deleting a user is a soft delete — their records remain linked but they cannot log in.',
+      'Deleting a user is a soft delete, their records remain linked but they cannot log in.',
+    ],
+  },
+
+  // ── Brands ────────────────────────────────────────────────────────────────
+  '/settings/brands': {
+    title: 'Brands',
+    summary: 'Multi-brand configuration. Each brand is a self-contained operating identity: sender email, signature, footer legal text, color palette, and (optional) product category gate. Adding a third brand is config-only.',
+    sections: [
+      {
+        heading: 'Two brands, one operating system',
+        body: 'The ERP supports more than one trading brand from a single deployment. Sovern House (SH) and FlorWay (FW) ship by default. Each transactional row (lead, quotation, sales order, invoice, expense, etc.) is locked to one brand at creation. Customers can relate to more than one brand and surface separate activity tabs.',
+      },
+      {
+        heading: 'Fields on a brand',
+        items: [
+          'Code: short identifier (SH, FW). Used as the FK on every transactional row.',
+          'Display name: full brand name shown in UI.',
+          'Sender email: outbound emails for this brand are sent from this address. Must be a connected Google account.',
+          'Signature HTML + Footer legal text: appended to outbound mail and PDF exports.',
+          'Primary + Accent colors: drive the brand badge that appears everywhere.',
+          'Accepted product categories: optional whitelist that constrains which products can appear on this brand\'s quotations.',
+          'Active flag: hide retired brands from new-entity pickers while keeping history visible.',
+        ],
+      },
+      {
+        heading: 'Per-user access',
+        body: 'Each user has an accessibleBrands array (which brands they can see and act on) and a defaultBrand (pre-fills new-entity forms). Super admin can read across brands via the All Brands view, which is read-only and writes an audit log row per request.',
+      },
+      {
+        heading: 'Brand-locked-at-creation rule',
+        body: 'Once a brand is set on a transactional record, it cannot be changed on the standard update path. The frontend strips brandCode from update payloads silently. Changes flow only through PATCH /api/admin/brand-override (super admin), which requires a written reason and is permanently audited.',
+      },
+    ],
+    tips: [
+      'FW: alexflorway@gmail.com, iron-deep + cream palette, accepted categories LVT/SPC/WPC/IronLite.',
+      'SH: alex@sovernhouse.co, forest + cream palette, no category constraint.',
+      'When implementing brand-aware email logic in Phase 2, remember the Egypt BCC rule applies to SH only. FW Egypt leads do not BCC Fanzey.',
+    ],
+    warnings: [
+      'Deactivating a brand stops it appearing in new-entity pickers but does not migrate existing records. Use brand-override for record-level moves.',
+      'Cross-brand visibility (All Brands view) is super-admin only and is audit-logged. Treat the audit log as part of the compliance trail.',
     ],
   },
 
