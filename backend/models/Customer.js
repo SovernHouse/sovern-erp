@@ -83,6 +83,34 @@ module.exports = (sequelize) => {
     creditHoldReason: {
       type: DataTypes.TEXT,
       allowNull: true
+    },
+    // Multi-brand (Phase 1, D-6). Customer is a company-level identity that
+    // may transact under multiple brands. Stored as JSON array of brand codes,
+    // raw per L-023 (no JSON.stringify). Examples: ['SH'], ['SH','FW'].
+    // Adding a code happens automatically when a new Lead/Quote is opened
+    // against the customer under a brand not yet in the list. Removing is a
+    // super_admin operation that writes to AuditLog.
+    brandRelationships: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: ['SH'],
+    },
+    // FW-specific product-branding mode. Captured on the Customer record so
+    // it's portable across all FW deals/quotes for that buyer. P1 schema only;
+    // P3 wires composer + quotation template logic.
+    //   'ironlite'       — sell as IronLite-branded (FW's flagship)
+    //   'generic'        — sell as generic FlorWay (no sub-brand badge)
+    //   'private_label'  — buyer's own brand name on packaging + docs
+    productBrandingMode: {
+      type: DataTypes.ENUM('ironlite', 'generic', 'private_label'),
+      allowNull: true,
+      defaultValue: null,
+    },
+    // Free-text brand name for private_label mode (e.g. "OakCove Flooring").
+    // Only consulted when productBrandingMode = 'private_label'.
+    privateLabelProductName: {
+      type: DataTypes.STRING,
+      allowNull: true,
     }
   }, {
     paranoid: true, // soft deletes — sets deletedAt instead of hard-deleting

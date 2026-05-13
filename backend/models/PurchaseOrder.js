@@ -64,6 +64,13 @@ module.exports = (sequelize) => {
     signedBySupplier: {
       type: DataTypes.STRING,
       allowNull: true
+    },
+    // Multi-brand (Phase 1, D-1). Inherited from parent SalesOrder at create.
+    // FK to Brand.code in models/index.js.
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: false,
+      defaultValue: 'SH',
     }
   }, {
     paranoid: true, // soft deletes — sets deletedAt instead of hard-deleting

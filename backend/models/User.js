@@ -78,6 +78,22 @@ module.exports = (sequelize) => {
     companyId: {
       type: DataTypes.UUID,
       allowNull: true
+    },
+    // Multi-brand (Phase 1, D-4). Which brands this user can see + act on.
+    // brandScope middleware (Commit 3) filters every list/get/mutate by this
+    // array. super_admin role bypasses the filter for cross-brand reads.
+    // Stored as JSON array of brand codes, raw per L-023.
+    accessibleBrands: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: ['SH'],
+    },
+    // Pre-fills the BrandPicker on new-entity forms. User can still override
+    // per-entity. Phase 1 wires the schema; Phase 2 reads it in UI.
+    defaultBrand: {
+      type: DataTypes.STRING(8),
+      allowNull: true,
+      defaultValue: 'SH',
     }
   }, {
     hooks: {

@@ -596,4 +596,37 @@ if (db.Lead && db.CalendarEvent) {
   });
 }
 
+// ─── Multi-Brand associations (Phase 1, D-1 / L-034) ───────────────────────
+// Every transactional model belongs to a Brand via brandCode → Brand.code.
+// Declared here (not inline `references:` in the model files) per L-034.
+// Customer's brandRelationships is a JSON array, not an FK — no association
+// to declare there. User has defaultBrand single-string + accessibleBrands
+// JSON; both read by brandScope middleware (Commit 3).
+const BRAND_TX_MODELS = [
+  'Lead', 'Deal', 'Quotation', 'Inquiry', 'SalesOrder', 'PurchaseOrder',
+  'Invoice', 'ProformaInvoice',
+  'Activity', 'OutreachEmail', 'TriageItem', 'ScheduledActivity',
+  'Document', 'DocumentApproval',
+];
+if (db.Brand) {
+  for (const name of BRAND_TX_MODELS) {
+    if (!db[name]) continue;
+    db[name].belongsTo(db.Brand, {
+      foreignKey: 'brandCode',
+      targetKey: 'code',
+      as: 'brand',
+    });
+  }
+  // User.defaultBrand convenience FK (read-only join). Alias differs from
+  // the field name so `user.defaultBrand` (the string) and `user.brand`
+  // (the row) don't collide.
+  if (db.User) {
+    db.User.belongsTo(db.Brand, {
+      foreignKey: 'defaultBrand',
+      targetKey: 'code',
+      as: 'brand',
+    });
+  }
+}
+
 module.exports = db; 

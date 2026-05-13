@@ -544,6 +544,18 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] brand seed skipped:', e.message);
     }
+
+    // Phase 1 multi-brand (Commit 2): backfill brandCode='SH' on every
+    // transactional row that's NULL after autoMigrateSchema added the column.
+    // Customer.brandRelationships, User.accessibleBrands/defaultBrand are
+    // backfilled here too. Super-admin user(s) are upgraded to ['SH','FW'].
+    // Warn-and-continue: failures are logged but never crash boot.
+    try {
+      const { backfillBrandsIfNeeded } = require('./services/migrateBrands');
+      await backfillBrandsIfNeeded(db);
+    } catch (e) {
+      logger.warn('[boot] brand backfill skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {

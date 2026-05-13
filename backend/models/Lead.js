@@ -181,6 +181,14 @@ module.exports = (sequelize) => {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
     },
+    // Multi-brand (Phase 1, D-1). Locked at creation; super_admin override
+    // requires audit log entry (Commit 3). FK to Brand.code declared in
+    // models/index.js per L-034.
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: false,
+      defaultValue: 'SH',
+    },
   }, {
     tableName: 'Leads',
     timestamps: true,

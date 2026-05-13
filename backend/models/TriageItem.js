@@ -107,6 +107,13 @@ module.exports = (sequelize) => {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
     },
+    // Multi-brand (Phase 1, D-1). Inbound emails — at triage time the user
+    // tags the brand the message relates to. FK to Brand.code in index.js.
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: false,
+      defaultValue: 'SH',
+    },
   }, {
     tableName: 'TriageItems',
     timestamps: true,

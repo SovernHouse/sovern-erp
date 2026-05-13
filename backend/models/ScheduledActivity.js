@@ -99,6 +99,12 @@ module.exports = (sequelize) => {
       allowNull: true,
       comment: 'Optional feedback when marking done',
     },
+    // Multi-brand (Phase 1, D-1). FK to Brand.code in models/index.js.
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: false,
+      defaultValue: 'SH',
+    },
 
   }, {
     tableName: 'ScheduledActivities',

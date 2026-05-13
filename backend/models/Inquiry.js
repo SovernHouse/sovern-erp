@@ -47,6 +47,12 @@ module.exports = (sequelize) => {
     estimatedValue: {
       type: DataTypes.DECIMAL(15, 2),
       allowNull: true
+    },
+    // Multi-brand (Phase 1, D-1). FK to Brand.code in models/index.js.
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: false,
+      defaultValue: 'SH',
     }
   }, {
     indexes: [

@@ -68,6 +68,13 @@ module.exports = (sequelize) => {
     validUntil: {
       type: DataTypes.DATE,
       allowNull: true
+    },
+    // Multi-brand (Phase 1, D-1). Inherited from parent Quotation at create.
+    // FK to Brand.code in models/index.js.
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: false,
+      defaultValue: 'SH',
     }
   });
 

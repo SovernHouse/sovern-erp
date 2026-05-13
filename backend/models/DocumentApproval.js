@@ -88,6 +88,13 @@ module.exports = (sequelize) => {
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    // Multi-brand (Phase 1, D-1). Inherited from the parent doc's brand at
+    // creation. FK to Brand.code declared in models/index.js per L-034.
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: false,
+      defaultValue: 'SH',
+    },
   }, {
     tableName: 'DocumentApprovals',
     timestamps: true,
