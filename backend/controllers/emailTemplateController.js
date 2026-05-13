@@ -2,10 +2,14 @@ const db = require('../models');
 
 /**
  * GET /api/crm/email-templates
+ * Optional ?brandCode=FW — returns only templates for that brand.
  */
 const getEmailTemplates = async (req, res) => {
   try {
+    const { brandCode } = req.query;
+    const where = brandCode ? { brandCode } : {};
     const templates = await db.EmailTemplate.findAll({
+      where,
       order: [['name', 'ASC']],
     });
     res.json({ success: true, data: templates });
@@ -16,11 +20,11 @@ const getEmailTemplates = async (req, res) => {
 
 /**
  * POST /api/crm/email-templates
- * Body: { name, subject, bodyText, category }
+ * Body: { name, subject, bodyText, category, brandCode }
  */
 const createEmailTemplate = async (req, res) => {
   try {
-    const { name, subject, bodyText, category } = req.body;
+    const { name, subject, bodyText, category, brandCode } = req.body;
     if (!name || !subject || !bodyText) {
       return res.status(400).json({ success: false, message: 'name, subject, and bodyText are required' });
     }
@@ -29,6 +33,7 @@ const createEmailTemplate = async (req, res) => {
       subject,
       bodyText,
       category: category || null,
+      brandCode: brandCode || null,
       createdByUserId: req.user?.id || null,
     });
     res.status(201).json({ success: true, data: template });
@@ -43,10 +48,10 @@ const createEmailTemplate = async (req, res) => {
 const updateEmailTemplate = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, subject, bodyText, category } = req.body;
+    const { name, subject, bodyText, category, brandCode } = req.body;
     const template = await db.EmailTemplate.findByPk(id);
     if (!template) return res.status(404).json({ success: false, message: 'Template not found' });
-    await template.update({ name, subject, bodyText, category });
+    await template.update({ name, subject, bodyText, category, brandCode });
     res.json({ success: true, data: template });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

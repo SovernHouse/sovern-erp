@@ -547,6 +547,14 @@ db.sequelize.authenticate()
       logger.warn('[boot] brand seed skipped:', e.message);
     }
 
+    // Phase 2: seed FW outreach templates + backfill existing templates to brandCode='SH'.
+    try {
+      const { seedFWEmailTemplatesIfEmpty } = require('./services/seedEmailTemplates');
+      await seedFWEmailTemplatesIfEmpty(db);
+    } catch (e) {
+      logger.warn('[boot] email template seed skipped:', e.message);
+    }
+
     // Phase 1 multi-brand (Commit 2): backfill brandCode='SH' on every
     // transactional row that's NULL after autoMigrateSchema added the column.
     // Customer.brandRelationships, User.accessibleBrands/defaultBrand are

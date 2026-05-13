@@ -23,6 +23,10 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true, // e.g. 'auto_parts', 'flooring', 'accessories'
     },
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: true, // null = legacy; backfilled to 'SH' on boot
+    },
     createdByUserId: {
       type: DataTypes.UUID,
       allowNull: true,

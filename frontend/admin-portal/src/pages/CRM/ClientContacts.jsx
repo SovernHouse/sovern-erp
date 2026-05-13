@@ -197,7 +197,7 @@ function ComposePanel({ prospect, onClose, onSent }) {
   const [selectedSigId, setSelectedSigId] = useState('');
 
   useEffect(() => {
-    api.get('/crm/email-templates').then(r => setTemplates(r.data?.data || [])).catch(() => {});
+    api.get(`/crm/email-templates?brandCode=${prospectBrandCode}`).then(r => setTemplates(r.data?.data || [])).catch(() => {});
     api.get('/crm/email-signatures').then(r => {
       const sigs = r.data?.data || [];
       setSignatures(sigs);
@@ -215,7 +215,7 @@ function ComposePanel({ prospect, onClose, onSent }) {
     if (!saveName.trim() || !form.subject || !form.bodyText) return;
     setSavingTpl(true);
     try {
-      const res = await api.post('/crm/email-templates', { name: saveName.trim(), subject: form.subject, bodyText: form.bodyText });
+      const res = await api.post('/crm/email-templates', { name: saveName.trim(), subject: form.subject, bodyText: form.bodyText, brandCode: prospectBrandCode });
       setTemplates(ts => [...ts, res.data.data]);
       setSaveName(''); setShowSave(false);
     } catch {}
@@ -1414,8 +1414,13 @@ function BulkSendModal({ selectedLeads, onClose, onComplete }) {
   const [selectedSigId, setSelectedSigId] = useState('');
   const pollRef = useRef(null);
 
+  // Re-fetch templates when the from-address brand changes.
   useEffect(() => {
-    api.get('/crm/email-templates').then(r => setTemplates(r.data?.data || [])).catch(() => {});
+    const brandCode = fromOptions.find(o => o.value === form.fromAddress)?.code || 'SH';
+    api.get(`/crm/email-templates?brandCode=${brandCode}`).then(r => setTemplates(r.data?.data || [])).catch(() => {});
+  }, [form.fromAddress]);
+
+  useEffect(() => {
     api.get('/crm/email-signatures').then(r => {
       const sigs = r.data?.data || [];
       setSignatures(sigs);
@@ -1432,8 +1437,9 @@ function BulkSendModal({ selectedLeads, onClose, onComplete }) {
   const saveTemplate = async () => {
     if (!saveName.trim() || !form.subjectTemplate || !form.bodyTemplate) return;
     setSavingTpl(true);
+    const currentBrandCode = fromOptions.find(o => o.value === form.fromAddress)?.code || 'SH';
     try {
-      const res = await api.post('/crm/email-templates', { name: saveName.trim(), subject: form.subjectTemplate, bodyText: form.bodyTemplate });
+      const res = await api.post('/crm/email-templates', { name: saveName.trim(), subject: form.subjectTemplate, bodyText: form.bodyTemplate, brandCode: currentBrandCode });
       setTemplates(ts => [...ts, res.data.data]);
       setSaveName(''); setShowSave(false);
     } catch {}
