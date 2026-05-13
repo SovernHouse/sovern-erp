@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const db = require('../models');
 const sequelize = db.sequelize;
 const { v4: uuidv4 } = require('uuid');
+const { assertSingleBrandMode, assertBrandWritable } = require('../middleware/brandScope');
 // Helper function to calculate lead score
 const calculateLeadScore = (lead) => {
   let score = 0;
@@ -37,7 +38,10 @@ exports.getLeads = async (req, res) => {
     const { page = 1, limit = 10, search, status, source, assignedToId, leadType } = req.query;
     const offset = (page - 1) * limit;
 
-    const where = {};
+    // Phase 1 Commit 3: brand-scope filter. Single-brand callers see only
+    // their accessibleBrands; super_admin with viewMode=cross-brand sees all.
+    // brandScope middleware (mounted on /api/crm) attaches req.brandScope.
+    const where = { ...(req.brandScope?.where || {}) };
     if (search) {
       where[Op.or] = [
         { companyName: { [Op.like]: `%${search}%` } },
@@ -110,6 +114,15 @@ exports.getLeadById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Lead not found' });
     }
 
+    // Phase 1 Commit 3: brand-scope check. If the caller isn't in cross-brand
+    // mode and this lead is on a brand they can't see, return 404 (don't leak
+    // the row's existence by returning 403).
+    if (req.brandScope
+        && !req.brandScope.isCrossBrand
+        && !req.brandScope.accessibleBrands.includes(lead.brandCode)) {
+      return res.status(404).json({ success: false, message: 'Lead not found' });
+    }
+
     const leadData = lead.toJSON();
     leadData.score = calculateLeadScore(lead);
 
@@ -121,9 +134,21 @@ exports.getLeadById = async (req, res) => {
 
 exports.createLead = async (req, res) => {
   try {
+    // Phase 1 Commit 3: brand-scope enforcement on creation.
+    // Reject in cross-brand mode (D-3: All Brands view is read-only).
+    if (!assertSingleBrandMode(req, res)) return;
+
     const payload = { ...req.body };
     // Stamp the creator from the authenticated user; ignore any client-supplied value.
     if (req.user && req.user.id) payload.createdById = req.user.id;
+
+    // Default brand to the user's defaultBrand if the client didn't send one.
+    // Then assert the user has write access to whatever brand we ended up with.
+    if (!payload.brandCode && req.brandScope) {
+      payload.brandCode = req.brandScope.defaultBrand;
+    }
+    if (!assertBrandWritable(req, res, payload.brandCode)) return;
+
     const lead = await db.Lead.create(payload);
     res.status(201).json({ success: true, data: lead });
   } catch (error) {
@@ -133,12 +158,26 @@ exports.createLead = async (req, res) => {
 
 exports.updateLead = async (req, res) => {
   try {
+    if (!assertSingleBrandMode(req, res)) return;
+
     const lead = await db.Lead.findByPk(req.params.id);
     if (!lead) {
       return res.status(404).json({ success: false, message: 'Lead not found' });
     }
 
-    await lead.update(req.body);
+    // Caller must have access to the lead's current brand.
+    if (req.brandScope
+        && !req.brandScope.accessibleBrands.includes(lead.brandCode)) {
+      return res.status(404).json({ success: false, message: 'Lead not found' });
+    }
+
+    // brandCode is immutable on the standard update path. Changes flow only
+    // through PATCH /api/admin/brand-override (super_admin, audited). Strip
+    // it from req.body silently rather than 400 — the field will arrive
+    // attached whenever the frontend submits the whole form back.
+    const { brandCode: _ignored, ...allowed } = req.body || {};
+
+    await lead.update(allowed);
     const updated = lead.toJSON();
     updated.score = calculateLeadScore(lead);
 
@@ -174,10 +213,18 @@ exports.updateLeadStatus = async (req, res) => {
 
 exports.deleteLead = async (req, res) => {
   try {
+    if (!assertSingleBrandMode(req, res)) return;
+
     const lead = await db.Lead.findByPk(req.params.id);
     if (!lead) {
       return res.status(404).json({ success: false, message: 'Lead not found' });
     }
+
+    if (req.brandScope
+        && !req.brandScope.accessibleBrands.includes(lead.brandCode)) {
+      return res.status(404).json({ success: false, message: 'Lead not found' });
+    }
+
     // Cascade delete related outreach emails before removing the lead
     if (db.OutreachEmail) {
       await db.OutreachEmail.destroy({ where: { leadId: lead.id } });

@@ -186,8 +186,10 @@ const devModeRoutes = require('./routes/devModeRoutes');
 const pushTokenRoutes = require('./routes/pushTokenRoutes');
 const researchRoutes = require('./routes/researchRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
+const brandRoutes = require('./routes/brandRoutes');
 
 app.use('/api/auth', authRoutes);
+app.use('/api', brandRoutes); // mounts /api/brands, /api/brands/me, /api/admin/brand-override
 app.use('/api/auth/sso', ssoRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/factories', factoryRoutes);

@@ -5,6 +5,7 @@ const outreachController = require('../controllers/outreachController');
 const emailTemplateController = require('../controllers/emailTemplateController');
 const emailSignatureController = require('../controllers/emailSignatureController');
 const { requireAuth } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -24,6 +25,10 @@ const importUpload = multer({
 
 // Apply authentication middleware to all routes
 router.use(requireAuth);
+// Attach req.brandScope (Phase 1 Commit 3). Controllers consume
+// req.brandScope.where for list filtering and the assert helpers for
+// mutation gating.
+router.use(brandScope);
 
 // CONTACT ROUTES
 router.get('/contacts', crmController.getContacts);

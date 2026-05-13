@@ -98,9 +98,16 @@ const sendOutreachEmailToLead = async (req, res) => {
       }
     }
 
-    // Build final BCC — Egypt rule: always include Mohannad Fanzey
+    // Build final BCC — Egypt rule: always include Mohannad Fanzey for SH-brand
+    // Egypt leads only. FW does not BCC Fanzey, ever.
+    //
+    // PHASE 2 TODO (multi-brand): once Lead.brandCode is exposed end-to-end on
+    // the outbound composer, gate this on `lead.brandCode === 'SH'`. Until then,
+    // every Lead is brand='SH' by Phase 1 backfill so the existing behaviour
+    // is correct.
     let finalBcc = bcc ? (Array.isArray(bcc) ? [...bcc] : [bcc]) : [];
     if (
+      lead.brandCode === 'SH' &&
       lead.country &&
       lead.country.toLowerCase() === 'egypt' &&
       !finalBcc.map(e => e.toLowerCase()).includes('mohanadfanzey@gmail.com')
@@ -399,9 +406,12 @@ const sendCampaign = async (req, res) => {
         const now = dayjs();
         const followUpDueAt = daysToAdd ? now.add(daysToAdd, 'day').toDate() : null;
 
-        // Build final BCC — Egypt rule: always include Mohannad Fanzey
+        // Build final BCC — Egypt rule: always include Mohannad Fanzey for
+        // SH-brand Egypt leads only. FW does not BCC Fanzey, ever.
+        // PHASE 2 TODO: see the matching note in sendOutreachEmailToLead.
         let finalCampaignBcc = bcc ? (Array.isArray(bcc) ? [...bcc] : [bcc]) : [];
         if (
+          lead.brandCode === 'SH' &&
           lead.country &&
           lead.country.toLowerCase() === 'egypt' &&
           !finalCampaignBcc.map(e => e.toLowerCase()).includes('mohanadfanzey@gmail.com')
