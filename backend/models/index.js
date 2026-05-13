@@ -59,6 +59,7 @@ db.InvoiceItem = require('./InvoiceItem')(sequelize);
 db.Payment = require('./Payment')(sequelize);
 db.Notification = require('./Notification')(sequelize);
 db.AuditLog = require('./AuditLog')(sequelize);
+db.Brand = require('./Brand')(sequelize);
 db.FrontendError = require('./FrontendError')(sequelize);
 db.InventoryItem = require('./InventoryItem')(sequelize);
 db.InventoryTransaction = require('./InventoryTransaction')(sequelize);

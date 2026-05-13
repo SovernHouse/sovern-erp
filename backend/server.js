@@ -523,7 +523,7 @@ db.sequelize.authenticate()
     // and aborts the table create on the same iteration). model.sync() is
     // idempotent on existing tables.
     const lateAdditions = ['DevModeRun', 'ExpoPushToken', 'ResearchTask',
-      'ReimbursementOffice', 'Trip', 'ExpenseSubmission', 'Expense'];
+      'ReimbursementOffice', 'Trip', 'ExpenseSubmission', 'Expense', 'Brand'];
     for (const modelName of lateAdditions) {
       if (!db[modelName]) continue;
       try {
@@ -534,6 +534,15 @@ db.sequelize.authenticate()
           logger.warn(`[boot] late sync for ${modelName} failed:`, msg);
         }
       }
+    }
+
+    // Phase 1 multi-brand: seed SH + FW rows idempotently. Safe re-entry —
+    // existing rows are preserved unchanged.
+    try {
+      const { seedBrandsIfEmpty } = require('./services/seedBrands');
+      await seedBrandsIfEmpty(db);
+    } catch (e) {
+      logger.warn('[boot] brand seed skipped:', e.message);
     }
   })
   .then(() => optimizeDatabase(db.sequelize))
