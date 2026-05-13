@@ -31,6 +31,47 @@ const OVERRIDABLE_ENTITY_TYPES = [
   'Document', 'DocumentApproval',
 ];
 
+// GET /api/brands/:code — single brand (used by brand admin editor).
+router.get('/brands/:code', requireAuth, async (req, res) => {
+  try {
+    const brand = await db.Brand.findOne({ where: { code: req.params.code } });
+    if (!brand) return res.status(404).json({ error: 'Brand not found' });
+    res.json({ success: true, data: brand });
+  } catch (err) {
+    logger.error('[brandRoutes] get single failed:', err.message);
+    res.status(500).json({ error: 'Failed to load brand' });
+  }
+});
+
+// PUT /api/brands/:code — super_admin only. Update editable brand fields.
+// code and active are not updatable here to prevent accidental breaks.
+router.put('/brands/:code',
+  requireAuth,
+  requireRole('super_admin'),
+  async (req, res) => {
+    try {
+      const brand = await db.Brand.findOne({ where: { code: req.params.code } });
+      if (!brand) return res.status(404).json({ error: 'Brand not found' });
+
+      const ALLOWED = ['displayName', 'senderEmail', 'primaryColor', 'accentColor', 'logoUrl', 'signatureHtml', 'signatureText', 'footerLegalText'];
+      const updates = {};
+      for (const field of ALLOWED) {
+        if (req.body[field] !== undefined) updates[field] = req.body[field];
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: 'No updatable fields provided' });
+      }
+
+      await brand.update(updates);
+      res.json({ success: true, data: brand });
+    } catch (err) {
+      logger.error('[brandRoutes] update failed:', err.message);
+      res.status(500).json({ error: 'Failed to update brand' });
+    }
+  },
+);
+
 // GET /api/brands — list all active brands. No brand-scope filter (the
 // brands list itself is org-wide config, not a transactional entity).
 router.get('/brands', requireAuth, async (req, res) => {

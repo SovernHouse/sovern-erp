@@ -14,6 +14,15 @@ function SettingRow({ label, value }: { label: string; value?: string }) {
   );
 }
 
+function NavRow({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowChevron}>›</Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function SettingsScreen() {
   const { user, clearUser } = useAuthStore();
   const router = useRouter();
@@ -61,6 +70,11 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>App</Text>
         <SettingRow label="Server" value={CONFIG.SERVER_URL} />
         <SettingRow label="Version" value="1.0.0" />
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>System</Text>
+        <NavRow label="Brands" onPress={() => router.push('/brands')} />
       </View>
 
       {/* Sign out */}
@@ -136,6 +150,7 @@ const styles = StyleSheet.create({
   },
   rowLabel: { fontSize: 14, color: COLORS.ink },
   rowValue: { fontSize: 14, color: COLORS.muted, maxWidth: '60%', textAlign: 'right' },
+  rowChevron: { fontSize: 18, color: COLORS.muted },
   logoutBtn: {
     backgroundColor: COLORS.white,
     borderRadius: 12,

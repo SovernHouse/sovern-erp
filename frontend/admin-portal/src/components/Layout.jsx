@@ -29,6 +29,7 @@ import {
   Sparkles,
   HardDrive,
   Code,
+  Tag,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useNotifications } from '../hooks/useNotifications'
@@ -571,6 +572,19 @@ export default function Layout({ children }) {
                   >
                     <Settings size={14} style={{ color: c(INK, 0.50) }} /> Settings
                   </Link>
+
+                  {/* Brands — super_admin only */}
+                  {user?.role === 'super_admin' && (
+                    <Link
+                      to="/settings/brands"
+                      onClick={() => setShowUserMenu(false)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', fontSize: 13, color: INK, textDecoration: 'none' }}
+                      onMouseEnter={e => e.currentTarget.style.background = c(INK, 0.04)}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Tag size={14} style={{ color: c(INK, 0.50) }} /> Brands
+                    </Link>
+                  )}
 
                   {/* Modules — admin only */}
                   {user?.role === 'admin' && (

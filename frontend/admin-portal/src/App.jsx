@@ -116,6 +116,7 @@ const PriceListManager  = React.lazy(() => import('./pages/Settings/PriceListMan
 const ModulesManager    = React.lazy(() => import('./pages/Settings/ModulesManager'))
 const MobileApp         = React.lazy(() => import('./pages/Settings/MobileApp'))
 const ConnectedAccounts = React.lazy(() => import('./pages/Settings/ConnectedAccounts'))
+const BrandAdmin        = React.lazy(() => import('./pages/Settings/BrandAdmin'))
 
 // AI Assistant
 const AssistantPage = React.lazy(() => import('./pages/AI/AssistantPage'))
@@ -359,6 +360,7 @@ function AppRoutes() {
       <Route path="/settings/modules"              element={<P roles={['admin']}><ModulesManager /></P>} />
       <Route path="/settings/mobile-app"           element={<P permission="settings"><MobileApp /></P>} />
       <Route path="/settings/connected-accounts"  element={<P roles={['admin']}><ConnectedAccounts /></P>} />
+      <Route path="/settings/brands"             element={<P roles={['super_admin']}><BrandAdmin /></P>} />
 
       {/* ── AI Assistant ── */}
       <Route path="/ai/assistant"  element={<P roles={['super_admin','admin','coo','sales_rep','finance','operations','viewer']}><AssistantPage /></P>} />

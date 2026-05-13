@@ -596,6 +596,8 @@ export const researchAPI = {
 export const brandsAPI = {
   list:           ()                => api.get('/brands'),
   me:             ()                => api.get('/brands/me'),
+  get:            (code)            => api.get(`/brands/${code}`),
+  update:         (code, data)      => api.put(`/brands/${code}`, data),
   override:       (body)            => api.patch('/admin/brand-override', body), // { entityType, entityId, newBrandCode, reason }
 }
 
