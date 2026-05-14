@@ -38,14 +38,14 @@ function formatCurrency(value?: number, currency = 'USD') {
 
 function formatDate(iso?: string) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Taipei' });
 }
 
 function formatDateTime(iso?: string) {
   if (!iso) return '—';
   const d = new Date(iso);
-  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Taipei' });
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Taipei' });
   return `${date} at ${time}`;
 }
 
@@ -149,7 +149,7 @@ export default function QuotationDetailScreen() {
       const link = await generateApprovalLink('Quotation', quotation.id);
       Alert.alert(
         'Signature link ready',
-        `${link.documentLabel}\n\nThe link expires on ${new Date(link.expiresAt).toLocaleDateString()}. Tap Share to send it to the customer.`,
+        `${link.documentLabel}\n\nThe link expires on ${new Date(link.expiresAt).toLocaleDateString('en-US', { timeZone: 'Asia/Taipei' })}. Tap Share to send it to the customer.`,
         [
           { text: 'Done', style: 'cancel' },
           {

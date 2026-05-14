@@ -167,7 +167,7 @@ export default function HomeScreen() {
 
       {data?.lastUpdated ? (
         <Text style={styles.updated}>
-          Updated {new Date(data.lastUpdated).toLocaleTimeString()}
+          Updated {new Date(data.lastUpdated).toLocaleTimeString('en-US', { timeZone: 'Asia/Taipei' })}
         </Text>
       ) : null}
 

@@ -27,7 +27,7 @@ const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
 
 function fmtDate(iso?: string) {
   if (!iso) return null
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Taipei' })
 }
 
 function fmtMoney(amount?: number, currency: string = 'USD') {

@@ -35,14 +35,14 @@ const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
 
 function fmtDate(iso?: string) {
   if (!iso) return null
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Taipei' })
 }
 
 function fmtDateTime(iso?: string) {
   if (!iso) return null
   const d = new Date(iso)
-  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Taipei' })
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Taipei' })
   return `${date} at ${time}`
 }
 
@@ -103,7 +103,7 @@ function PODetailModal({ id, onClose }: { id: string; onClose: () => void }) {
       const link = await generateApprovalLink('PurchaseOrder', item.id)
       Alert.alert(
         'Signature link ready',
-        `${link.documentLabel}\n\nThe link expires on ${new Date(link.expiresAt).toLocaleDateString()}. Tap Share to send it to the supplier.`,
+        `${link.documentLabel}\n\nThe link expires on ${new Date(link.expiresAt).toLocaleDateString('en-US', { timeZone: 'Asia/Taipei' })}. Tap Share to send it to the supplier.`,
         [
           { text: 'Done', style: 'cancel' },
           { text: 'Open', onPress: () => Linking.openURL(link.approvalUrl) },

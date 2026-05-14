@@ -78,7 +78,7 @@ function InternalApprovalCard({
 
       <Text style={styles.docDate}>
         Received {new Date(item.createdAt).toLocaleDateString('en-US', {
-          month: 'short', day: 'numeric', year: 'numeric',
+          month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Taipei',
         })}
       </Text>
 
@@ -112,7 +112,7 @@ function ActivityApprovalCard({
   const meta = (item.entityType && ENTITY_META[item.entityType]) || { label: '', icon: '✦' };
   const due = item.dueDate
     ? new Date(item.dueDate).toLocaleDateString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric',
+        month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Taipei',
       })
     : null;
 
@@ -142,7 +142,7 @@ function ActivityApprovalCard({
       ) : null}
 
       <Text style={styles.docDate}>
-        {due ? `Due ${due}` : `Created ${new Date(item.createdAt).toLocaleDateString()}`}
+        {due ? `Due ${due}` : `Created ${new Date(item.createdAt).toLocaleDateString('en-US', { timeZone: 'Asia/Taipei' })}`}
       </Text>
 
       <View style={styles.actions}>

@@ -289,9 +289,9 @@ function DetailModal({ run: initial, onClose, onChanged }: {
               value={`${(run.tokenUsage.input as number) || 0} in / ${(run.tokenUsage.output as number) || 0} out`}
             />
           )}
-          <Field label="Started" value={run.startedAt ? new Date(run.startedAt).toLocaleString() : '—'} />
+          <Field label="Started" value={run.startedAt ? new Date(run.startedAt).toLocaleString('en-US', { timeZone: 'Asia/Taipei' }) : '—'} />
           {run.completedAt && (
-            <Field label="Completed" value={new Date(run.completedAt).toLocaleString()} />
+            <Field label="Completed" value={new Date(run.completedAt).toLocaleString('en-US', { timeZone: 'Asia/Taipei' })} />
           )}
 
           <Section title="Prompt">

@@ -74,7 +74,7 @@ function TriageCard({
       <View style={styles.metaRow}>
         <Text style={styles.metaText}>
           {new Date(item.createdAt).toLocaleDateString('en-US', {
-            month: 'short', day: 'numeric',
+            month: 'short', day: 'numeric', timeZone: 'Asia/Taipei',
           })}
         </Text>
         {item.productInterest ? (
@@ -137,7 +137,7 @@ function TriageCard({
         <View style={styles.statusBadge}>
           <Text style={styles.statusBadgeText}>
             {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-            {item.decidedAt ? ` · ${new Date(item.decidedAt).toLocaleDateString()}` : ''}
+            {item.decidedAt ? ` · ${new Date(item.decidedAt).toLocaleDateString('en-US', { timeZone: 'Asia/Taipei' })}` : ''}
           </Text>
         </View>
       )}

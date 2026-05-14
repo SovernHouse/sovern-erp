@@ -59,7 +59,7 @@ function formatAge(iso?: string): string {
   const diffDays = Math.floor(diffHrs / 24);
   if (diffDays === 1) return 'yesterday';
   if (diffDays < 7)   return `${diffDays}d ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Taipei' });
 }
 
 // Very light markdown → plain text cleanup for mobile display.

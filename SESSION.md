@@ -5,15 +5,15 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 3 COMPLETE + mechanical follow-ups (C14) staged. C9-C13 shipped and live.
+2026-05-14 Taiwan time. Phase 3 + first mechanical follow-up shipped. Mobile L-042 follow-up staged.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `14cd45b` (feat(phase-3): Phase 1 polish bundle - C13)
-- **Working tree:** Phase 3 mechanical follow-ups staged
-- **CI/CD Pipeline (14cd45b):** green
-- **Deploy (14cd45b):** green
+- **Latest commit on main:** `ddf80a1` (chore(phase-3): mechanical follow-ups — 404 + analytics + L-042 desktop)
+- **Working tree:** mobile L-042 timezone migration staged
+- **CI/CD Pipeline (ddf80a1):** green
+- **Deploy (ddf80a1):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
 
 ---
@@ -22,7 +22,33 @@
 
 Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
 
-### Phase 3 mechanical follow-ups (READY FOR COMMIT)
+### Mobile L-042 follow-up (READY FOR COMMIT)
+
+Every per-screen mobile date formatter now passes `timeZone: 'Asia/Taipei'`. 14 files touched, ~28 call sites updated.
+
+**Files:**
+- `app/quotation/[id].tsx` (4 sites)
+- `app/lead/[id].tsx` (1)
+- `src/components/ChatterSection.tsx` (1)
+- `app/dev-runs.tsx` (2)
+- `app/(tabs)/assistant.tsx` (1 date formatter; currency `toLocaleString` calls left alone)
+- `app/(tabs)/approvals.tsx` (3)
+- `app/(tabs)/activities.tsx` (1)
+- `app/(tabs)/dashboard.tsx` (1)
+- `app/(tabs)/chat.tsx` (3)
+- `app/(tabs)/inquiries.tsx` (1 date; currency left alone)
+- `app/(tabs)/invoices.tsx` (1 date)
+- `app/(tabs)/purchase-orders.tsx` (4 incl. share-link expiry)
+- `app/(tabs)/research.tsx` (1)
+- `app/(tabs)/sales-orders.tsx` (4 incl. share-link expiry)
+- `app/(tabs)/triage.tsx` (2)
+- `app/(tabs)/shipments.tsx` (1)
+
+Currency `Number.toLocaleString` calls intentionally left as-is — they're number formatting, not date formatting, and don't need a timezone.
+
+L-042 desktop migration (in commit `ddf80a1`) plus this mobile migration close the timezone loop for every user-facing surface in the ERP.
+
+### Phase 3 mechanical follow-ups (SHIPPED, commit `ddf80a1`, live)
 
 **404-on-wrong-brand extended:**
 - `inquiryController.getById` — `isAccessibleByBrandCode` check after the findByPk.

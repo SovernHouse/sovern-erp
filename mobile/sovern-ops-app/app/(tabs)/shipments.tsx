@@ -28,7 +28,7 @@ const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
 function fmtDate(iso?: string) {
   if (!iso) return null
   const d = new Date(iso)
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Taipei' })
 }
 
 function StatusBadge({ status }: { status?: string }) {
