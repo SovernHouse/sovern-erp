@@ -5,16 +5,18 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 4 in progress. C14 + C15 + C16 + C17 shipped + live. C18 (sanctions screening) staged.
+2026-05-14 Taiwan time. Phase 4 complete. C14 + C15 + C16 + C17 + C18 shipped + live.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `4db4dd8` (chore(phase-4): mark C17 shipped + live in SESSION.md)
-- **Working tree:** C18 staged, awaiting commit
-- **CI/CD Pipeline (ac4ff75):** green
-- **Deploy (ac4ff75):** green
+- **Latest commit on main:** `4744e8d` (fix(phase-4): sanctions migration uses model.getTableName() (C18 hotfix))
+- **Working tree:** clean
+- **CI/CD Pipeline (4744e8d):** green
+- **Deploy (4744e8d):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
+- **C18 migration verified:** 5 Customers + 112 Leads at screening_status='pending'; sentinel `phase4_sanctions_backfilled` in AuditLog.
+- **C18 hotfix:** Customer.getTableName() returns 'Customer' (singular); migration UPDATE now uses model.getTableName() so the bug can't recur on a cold install.
 
 ---
 
@@ -22,7 +24,7 @@
 
 Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
 
-### C18 — Sanctions screening (READY FOR COMMIT)
+### C18 — Sanctions screening (SHIPPED, commit `9f33db7` + hotfix `4744e8d`, live)
 
 **Schema:**
 - `Customer` — added `screeningStatus` (enum), `lastScreenedAt`, `sanctionsScreenDetails` (JSON), `sanctionBlockReason`, `sanctionOverrideReason / At / By`, `registeredBuyerSince`, `registeredBuyer`. Indexes on `screening_status`, `last_screened_at`.
