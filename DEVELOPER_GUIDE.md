@@ -2197,6 +2197,109 @@ Effect: clears `productBrandingModeLockedAt`, sets the new mode + private label 
 
 ---
 
+# Inbox / email UX brand awareness (Phase 4, C17)
+
+Pulls the brand-aware multi-brand model all the way through the inbox: every Gmail polling account is tagged with a brand, every TriageItem inherits the polling account's brand, the reply composer enforces sender-account = thread brand, and the Egypt-Fanzey BCC rule lives in one helper shared by all three send paths.
+
+## Schema delta
+
+**`backend/models/ConnectedGoogleAccount.js`** — adds:
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `brandCode` | STRING(8) | `null` | FK Brand.code (constraints:false, L-043). Populated by migration; required for new OAuth connects. |
+
+The column itself is added at boot by `autoMigrateSchema()`; no manual ALTER TABLE.
+
+## Migration — `backend/services/migrateConnectedAccounts.js` (new)
+
+Idempotent backfill matching `account.email` to `Brand.senderEmail` (case-insensitive). For each existing `ConnectedGoogleAccount` where `brandCode IS NULL`, set `brandCode` to the matching `Brand.code`. Orphans (no matching brand) are left NULL and logged as warnings.
+
+Sentinel-guarded via `AuditLog` action `phase4_connected_accounts_brand_backfilled`. Re-runs are no-ops.
+
+Wired into `server.js` boot after `backfillBrandsIfNeeded`.
+
+## OAuth connect enforcement
+
+`backend/controllers/googleAccountController.js` — the OAuth callback now:
+
+1. Looks up a `Brand` whose `senderEmail` matches the Google profile email (LOWER() comparison).
+2. For new connects: rejects with `?google=no_brand_match` redirect if no matching brand exists. We can't route polling output to a brand we don't have a row for.
+3. Sets `brandCode` on the `ConnectedGoogleAccount` record from the matched brand.
+
+`listAccounts` + `listAvailableAccounts` now include `brandCode` in the returned attributes so the brand-aware reply picker can filter without a second query.
+
+## Gmail sync brand propagation
+
+`backend/services/gmailSyncService.js` — `processMessage` now accepts `accountBrandCode` and stamps every new `TriageItem` with `brandCode = accountBrandCode || 'SH'`. The 'SH' fallback covers orphan accounts that predate the C17 backfill; in steady state every account is brand-tagged.
+
+`rawEmailData.fromAccount` also stores `accountEmail` for forensic traceability.
+
+## Reply composer brand enforcement
+
+`backend/controllers/triageController.js` `sendEmail` handler rewrites:
+
+```
+resolvedBrandCode = triageItem?.brandCode || req.brandScope?.defaultBrand || 'SH'
+
+if fromAccountId:
+  if account.brandCode !== resolvedBrandCode:
+    audit brand_account_mismatch_block
+    throw 400 "Cannot send: thread is X, selected account is Y"
+
+fromAddress = fromAccount.email
+              || Brand.findOne({code: resolvedBrandCode}).senderEmail
+              || env.SMTP_FROM
+```
+
+After send, writes a `reply_sent` audit row with `brandCode`, `fromAddress`, `toAddress`, `subject`, `bccCount`, `country`, `sentAt`.
+
+## Egypt BCC — single source of truth
+
+`backend/services/emailService.js` exports `applyEgyptBccIfNeeded(brandCode, country, bccList)`:
+
+- SH + `country === 'egypt'` + Fanzey not already in list → appends `mohanadfanzey@gmail.com`.
+- FW (or any other brand) → returns the list unchanged.
+- Always returns a new array; never mutates the input.
+
+Three send paths now call this helper instead of inline checks:
+
+1. `outreachController.js` outreach send (per-lead).
+2. `outreachController.js` campaign send.
+3. `triageController.js` reply send (new in C17).
+
+This collapses three near-duplicates into one helper. Adding a future brand or country rule is a one-line edit.
+
+## Frontend
+
+`frontend/admin-portal/src/pages/CRM/TriageInbox.jsx`:
+
+- `BrandBadge` on every triage card next to the sender + intent badges.
+- ComposeModal: header brand chip; new sender-account picker (`/api/google/accounts`) filtered to active accounts; mismatched accounts visible but disabled.
+- Cross-brand banner shown to super-admin users with `brandScope.isCrossBrand && accessibleBrands.length > 1`; list endpoint already merges via `req.brandScope.where = {}` for cross-brand.
+- Reply state now includes `triageItemId` + `threadBrandCode`; both flow through to `POST /api/triage/send-email`.
+
+## Mobile parity (`mobile/sovern-ops-app/app/(tabs)/triage.tsx`)
+
+- `BrandBadge` on every triage card (`src/components/BrandBadge.tsx` with `size="sm" showLabel={false}`).
+- New Reply button next to Spam/Dismiss/Archive opens a modal with brand-locked sender picker (touchable list — selected = brand match; disabled = brand mismatch, dimmed).
+- `listConnectedGoogleAccounts` + `sendTriageReply` added to `src/services/api.ts`.
+- Server mismatch errors surface in a native Alert.
+
+## AuditLog actions added
+
+- `reply_sent` — every successful triage reply.
+- `brand_account_mismatch_block` — every blocked cross-brand send attempt.
+- `phase4_connected_accounts_brand_backfilled` — migration sentinel (one-time).
+
+## Risks + open questions
+
+- Existing TriageItems created before C17 default to `brandCode='SH'`. Re-tagging would require joining on `rawEmailData.fromAccount` and remains a future cleanup; cross-brand triage filtering today treats them as SH which is correct for the existing single-account install.
+- Cross-brand list pagination: defaults to LIMIT 100 via the list endpoint; perf is fine at current volume but watch the index `(brand_code, status, autoArchiveAt)` if scale changes.
+- Future: triage decisions (markSpam/dismiss/archive) inherit brand from the item, but the controller does not yet re-assert `assertSingleBrandMode` for super-admin in cross-brand mode. Leaving the item brand intact is the right default; flagging here so a follow-up can revisit if Alex wants stricter behavior.
+
+---
+
 # Quote-to-SalesOrder + brand-aware SO/PI/Invoice (Phase 4, C16)
 
 Builds the Sovern→FlorWay commercial workflow on top of the C15 commission ledger. Quotations convert to confirmed Sales Orders; the SO status machine drives FW commission accrual; SO / PI / Invoice PDFs and detail pages reflect FW's "factory sends to buyer" model.

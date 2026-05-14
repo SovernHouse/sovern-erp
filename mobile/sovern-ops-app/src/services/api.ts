@@ -695,6 +695,47 @@ export interface TriageItem {
   decidedBy?: string | null;
   createdAt: string;
   updatedAt: string;
+  // Phase 4, C17: the polling-account brand. Set on TriageItem creation by
+  // gmailSyncService; required for the reply composer's sender enforcement.
+  brandCode?: string | null;
+}
+
+// Phase 4, C17: minimal shape of a connected Google account used by the
+// triage reply sender picker.
+export interface ConnectedGoogleAccount {
+  id: string;
+  email: string;
+  displayName?: string | null;
+  isActive?: boolean;
+  brandCode?: string | null;
+}
+
+export async function listConnectedGoogleAccounts(): Promise<ConnectedGoogleAccount[]> {
+  const res = await request<{ success?: boolean; data?: ConnectedGoogleAccount[] }>(`/api/google/accounts`);
+  const body: any = res as any;
+  return body.data ?? body ?? [];
+}
+
+/**
+ * Phase 4, C17: send a triage reply via the brand-aware backend route.
+ * Backend resolves the thread brand from triageItemId, enforces
+ * fromAccountId.brandCode === thread brand (400 on mismatch), applies the
+ * Egypt-Fanzey BCC rule, and audits as reply_sent.
+ */
+export async function sendTriageReply(payload: {
+  to: string;
+  subject: string;
+  body: string;
+  cc?: string;
+  bcc?: string;
+  triageItemId?: string;
+  fromAccountId?: string;
+  signatureId?: string;
+}): Promise<void> {
+  await request(`/api/triage/send-email`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 // ─── Dev Mode (super_admin only) ─────────────────────────────────────────────

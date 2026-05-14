@@ -904,6 +904,35 @@ const sendTransactionalEmailWithFallback = async (params) => {
   };
 };
 
+/**
+ * Phase 4, C17: single source of truth for the Egypt-Fanzey BCC rule.
+ *
+ * SH-brand Egypt customers/leads BCC mohanadfanzey@gmail.com on every
+ * outgoing email (outreach, campaign, triage reply). FW-brand never does,
+ * regardless of country. All other (brand, country) combinations leave
+ * the BCC list untouched.
+ *
+ * Returns a new array (does not mutate the input). Tolerates missing
+ * arguments — a missing brandCode, country, or list just means no Egypt
+ * BCC is added.
+ *
+ * @param {string} brandCode  Resolved brand code on the entity being emailed.
+ * @param {string} country    Country on the customer/lead.
+ * @param {string[]} bccList  Existing BCC recipients (may be empty/undefined).
+ * @returns {string[]}        New BCC list with Fanzey appended if eligible.
+ */
+function applyEgyptBccIfNeeded(brandCode, country, bccList) {
+  const list = Array.isArray(bccList) ? [...bccList] : (bccList ? [bccList] : []);
+  const FANZEY = 'mohanadfanzey@gmail.com';
+  if (brandCode === 'SH'
+      && country
+      && country.toLowerCase() === 'egypt'
+      && !list.map((e) => (e || '').toLowerCase()).includes(FANZEY)) {
+    list.push(FANZEY);
+  }
+  return list;
+}
+
 module.exports = {
   sendEmail,
   sendOutreachEmailViaGmailAPI,
@@ -923,4 +952,5 @@ module.exports = {
   sendOutreachEmail,
   sendTransactionalEmail,
   sendTransactionalEmailWithFallback,
+  applyEgyptBccIfNeeded,
 };

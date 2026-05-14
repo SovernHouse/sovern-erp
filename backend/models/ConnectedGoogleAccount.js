@@ -71,6 +71,14 @@ module.exports = (sequelize) => {
       type: DataTypes.UUID,
       allowNull: true,
     },
+    // Phase 4, C17: which brand this account represents (FK Brand.code,
+    // constraints:false per L-043). Populated by migrateConnectedAccounts.js
+    // by matching account.email to Brand.senderEmail. New connects require a
+    // matching Brand row.
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: true,
+    },
   }, {
     tableName: 'ConnectedGoogleAccounts',
     underscored: true,

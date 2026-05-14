@@ -7,14 +7,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, Alert,
+  RefreshControl, ActivityIndicator, Alert, Modal, TextInput, ScrollView,
 } from 'react-native';
 import {
   getTriageItems, promoteTriageToLead, forwardTriageToFanzey,
   markTriageSpam, dismissTriage, archiveTriage, requestTriageSync,
-  type TriageItem,
+  listConnectedGoogleAccounts, sendTriageReply,
+  type TriageItem, type ConnectedGoogleAccount,
 } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
+import { BrandBadge } from '../../src/components/BrandBadge';
 
 type TabKey = 'pending' | 'forwarded' | 'archived' | 'all';
 
@@ -40,10 +42,11 @@ function senderDisplay(item: TriageItem) {
 }
 
 function TriageCard({
-  item, onAction, busyId,
+  item, onAction, onReply, busyId,
 }: {
   item: TriageItem;
   onAction: (id: string, action: 'promote' | 'forward' | 'spam' | 'dismiss' | 'archive') => void;
+  onReply: (item: TriageItem) => void;
   busyId: string | null;
 }) {
   const intent = INTENT_META[item.intentScore ?? 'low'] ?? INTENT_META.low;
@@ -52,10 +55,14 @@ function TriageCard({
 
   return (
     <View style={styles.card}>
-      {/* Intent + country */}
+      {/* Intent + brand + country */}
       <View style={styles.cardTopRow}>
-        <View style={[styles.intentBadge, { backgroundColor: intent.bg }]}>
-          <Text style={[styles.intentBadgeText, { color: intent.fg }]}>{intent.label}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={[styles.intentBadge, { backgroundColor: intent.bg }]}>
+            <Text style={[styles.intentBadgeText, { color: intent.fg }]}>{intent.label}</Text>
+          </View>
+          {/* Phase 4, C17: brand context on every card. */}
+          <BrandBadge code={item.brandCode || 'SH'} size="sm" showLabel={false} />
         </View>
         {item.country ? <Text style={styles.countryText}>{item.country}</Text> : null}
       </View>
@@ -107,6 +114,14 @@ function TriageCard({
             </TouchableOpacity>
           </View>
           <View style={styles.actionsRowSecondary}>
+            {/* Phase 4, C17: brand-aware reply launcher */}
+            <TouchableOpacity
+              style={[styles.secondaryBtn, isBusy && styles.btnDisabled]}
+              onPress={() => onReply(item)}
+              disabled={isBusy}
+            >
+              <Text style={styles.secondaryBtnText}>↩ Reply</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.secondaryBtn, isBusy && styles.btnDisabled]}
               onPress={() => onAction(item.id, 'spam')}
@@ -154,6 +169,70 @@ export default function TriageScreen() {
   const [busyId, setBusyId]         = useState<string | null>(null);
   const [syncing, setSyncing]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
+
+  // Phase 4, C17: brand-aware reply modal state.
+  const [replyItem, setReplyItem]           = useState<TriageItem | null>(null);
+  const [replySubject, setReplySubject]     = useState('');
+  const [replyBody, setReplyBody]           = useState('');
+  const [accounts, setAccounts]             = useState<ConnectedGoogleAccount[]>([]);
+  const [fromAccountId, setFromAccountId]   = useState<string>('');
+  const [replySending, setReplySending]     = useState(false);
+
+  function openReply(item: TriageItem) {
+    setReplyItem(item);
+    setReplySubject(`Re: ${item.subject || ''}`);
+    const quotedDate = new Date(item.createdAt).toLocaleString();
+    const quotedFrom = item.senderName ? `${item.senderName} <${item.senderEmail}>` : item.senderEmail;
+    setReplyBody(
+      item.bodySnippet
+        ? `\n\n\n--- Original Message ---\nFrom: ${quotedFrom}\nDate: ${quotedDate}\nSubject: ${item.subject || ''}\n\n${item.bodySnippet}`
+        : '',
+    );
+    setFromAccountId('');
+  }
+
+  function closeReply() {
+    setReplyItem(null);
+    setReplySubject('');
+    setReplyBody('');
+    setFromAccountId('');
+  }
+
+  // Load connected accounts once the user opens a reply, and auto-select
+  // the one matching the item's brand.
+  useEffect(() => {
+    if (!replyItem) return;
+    listConnectedGoogleAccounts().then((list) => {
+      setAccounts(list || []);
+      const threadBrand = replyItem.brandCode || 'SH';
+      const match = (list || []).find((a) => a.isActive !== false && (a.brandCode || null) === threadBrand);
+      if (match) setFromAccountId(match.id);
+    }).catch(() => setAccounts([]));
+  }, [replyItem]);
+
+  async function handleSendReply() {
+    if (!replyItem) return;
+    if (!replyBody.trim()) {
+      Alert.alert('Body required', 'Write a reply before sending.');
+      return;
+    }
+    setReplySending(true);
+    try {
+      await sendTriageReply({
+        to: replyItem.senderEmail,
+        subject: replySubject.trim() || `Re: ${replyItem.subject || ''}`,
+        body: replyBody.trim(),
+        triageItemId: replyItem.id,
+        fromAccountId: fromAccountId || undefined,
+      });
+      Alert.alert('Sent', 'Reply sent.');
+      closeReply();
+    } catch (err: any) {
+      Alert.alert('Send failed', err.message || 'Server error');
+    } finally {
+      setReplySending(false);
+    }
+  }
 
   const load = useCallback(async (isRefresh = false) => {
     try {
@@ -303,7 +382,7 @@ export default function TriageScreen() {
         data={items}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <TriageCard item={item} onAction={handleAction} busyId={busyId} />
+          <TriageCard item={item} onAction={handleAction} onReply={openReply} busyId={busyId} />
         )}
         contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }}
         refreshControl={
@@ -327,6 +406,114 @@ export default function TriageScreen() {
           </View>
         )}
       />
+
+      {/* Phase 4, C17: brand-aware reply modal */}
+      <Modal
+        visible={!!replyItem}
+        animationType="slide"
+        transparent
+        onRequestClose={closeReply}
+      >
+        <View style={styles.replyOverlay}>
+          <View style={styles.replyCard}>
+            <View style={styles.replyHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={styles.replyTitle}>Reply</Text>
+                {replyItem ? <BrandBadge code={replyItem.brandCode || 'SH'} size="sm" showLabel={false} /> : null}
+              </View>
+              <TouchableOpacity onPress={closeReply}>
+                <Text style={styles.replyClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 12 }}>
+              <View>
+                <Text style={styles.replyLabel}>To</Text>
+                <Text style={styles.replyReadonly}>{replyItem?.senderEmail}</Text>
+              </View>
+
+              <View>
+                <Text style={styles.replyLabel}>From (brand-matched accounts only)</Text>
+                {accounts.length === 0 ? (
+                  <Text style={styles.replyHint}>
+                    No connected accounts. Add one via the desktop ERP → Settings → Connected Accounts.
+                  </Text>
+                ) : (
+                  <View style={styles.accountPicker}>
+                    {accounts.map((a) => {
+                      const threadBrand = replyItem?.brandCode || 'SH';
+                      const accBrand = a.brandCode || null;
+                      const enabled = accBrand === threadBrand;
+                      const selected = a.id === fromAccountId;
+                      return (
+                        <TouchableOpacity
+                          key={a.id}
+                          style={[
+                            styles.accountOption,
+                            selected && styles.accountOptionSelected,
+                            !enabled && styles.accountOptionDisabled,
+                          ]}
+                          onPress={() => enabled && setFromAccountId(a.id)}
+                          disabled={!enabled}
+                        >
+                          <Text style={[
+                            styles.accountOptionText,
+                            selected && styles.accountOptionTextSelected,
+                            !enabled && styles.accountOptionTextDisabled,
+                          ]}>
+                            {a.email} {accBrand ? `[${accBrand}]` : '[no brand]'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+                <Text style={styles.replyHint}>
+                  Thread brand is {replyItem?.brandCode || 'SH'}. Replies must come from a {replyItem?.brandCode || 'SH'} account.
+                </Text>
+              </View>
+
+              <View>
+                <Text style={styles.replyLabel}>Subject</Text>
+                <TextInput
+                  style={styles.replyInput}
+                  value={replySubject}
+                  onChangeText={setReplySubject}
+                />
+              </View>
+
+              <View>
+                <Text style={styles.replyLabel}>Message</Text>
+                <TextInput
+                  style={[styles.replyInput, styles.replyBody]}
+                  multiline
+                  numberOfLines={10}
+                  value={replyBody}
+                  onChangeText={setReplyBody}
+                  placeholder="Write your reply..."
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.replyFooter}>
+              <TouchableOpacity
+                onPress={closeReply}
+                style={styles.replyCancelBtn}
+                disabled={replySending}
+              >
+                <Text style={styles.replyCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSendReply}
+                style={[styles.replySendBtn, replySending && styles.btnDisabled]}
+                disabled={replySending}
+              >
+                <Text style={styles.replySendText}>{replySending ? 'Sending…' : 'Send'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -479,4 +666,87 @@ const styles = StyleSheet.create({
   emptyIcon:  { fontSize: 48 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: COLORS.ink },
   emptyText:  { fontSize: 14, color: COLORS.muted, textAlign: 'center', paddingHorizontal: 40 },
+
+  // Phase 4, C17: brand-aware reply modal
+  replyOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  replyCard: {
+    backgroundColor: COLORS.cream,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    maxHeight: '92%',
+    minHeight: '70%',
+  },
+  replyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  replyTitle: { fontSize: 16, fontWeight: '700', color: COLORS.ink },
+  replyClose: { fontSize: 22, color: COLORS.muted },
+  replyLabel: {
+    fontSize: 11, fontWeight: '700', color: COLORS.muted,
+    letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 4,
+  },
+  replyReadonly: {
+    fontSize: 14, color: COLORS.ink,
+    paddingVertical: 8, paddingHorizontal: 10,
+    backgroundColor: COLORS.white, borderRadius: 6,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  replyInput: {
+    fontSize: 14, color: COLORS.ink,
+    paddingVertical: 8, paddingHorizontal: 10,
+    backgroundColor: COLORS.white, borderRadius: 6,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  replyBody: {
+    minHeight: 140, textAlignVertical: 'top',
+  },
+  replyHint: { fontSize: 11, color: COLORS.muted, marginTop: 4 },
+  accountPicker: { gap: 6 },
+  accountOption: {
+    paddingVertical: 8, paddingHorizontal: 10,
+    backgroundColor: COLORS.white,
+    borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 6,
+  },
+  accountOptionSelected: {
+    borderColor: COLORS.forest,
+    backgroundColor: COLORS.forest + '15',
+  },
+  accountOptionDisabled: {
+    opacity: 0.4,
+  },
+  accountOptionText: { fontSize: 13, color: COLORS.ink },
+  accountOptionTextSelected: { color: COLORS.forest, fontWeight: '700' },
+  accountOptionTextDisabled: { color: COLORS.muted },
+  replyFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  replyCancelBtn: {
+    paddingVertical: 8, paddingHorizontal: 16,
+    borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 6, backgroundColor: COLORS.cream,
+  },
+  replyCancelText: { fontSize: 13, color: COLORS.muted, fontWeight: '600' },
+  replySendBtn: {
+    paddingVertical: 8, paddingHorizontal: 18,
+    backgroundColor: COLORS.forest, borderRadius: 6,
+  },
+  replySendText: { fontSize: 13, color: COLORS.white, fontWeight: '700' },
 });

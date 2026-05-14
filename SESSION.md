@@ -5,13 +5,13 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 4 in progress. C14 + C15 + C16 shipped + live. C17 (inbox brand awareness) up next.
+2026-05-14 Taiwan time. Phase 4 in progress. C14 + C15 + C16 shipped + live. C17 (inbox brand awareness) staged.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `1e9f417` (feat(phase-4): quote-to-SalesOrder + brand-aware SO/PI/Invoice (C16))
-- **Working tree:** clean
+- **Latest commit on main:** `f9c7fc6` (chore(phase-4): mark C16 shipped + live in SESSION.md)
+- **Working tree:** C17 staged, awaiting commit
 - **CI/CD Pipeline (1e9f417):** green
 - **Deploy (1e9f417):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
@@ -21,6 +21,58 @@
 ## Phase 4 — In progress
 
 Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
+
+### C17 — Inbox / email UX brand awareness (READY FOR COMMIT)
+
+**Schema:**
+- `ConnectedGoogleAccount.brandCode` STRING(8) NULL — FK Brand.code (constraints:false). Auto-added by autoMigrateSchema at boot.
+
+**Migration `migrateConnectedAccounts.js` (idempotent, sentinel-guarded):**
+- Backfills brandCode by matching account.email to Brand.senderEmail (LOWER comparison).
+- Orphans (no matching brand) left NULL + logged.
+- Sentinel: AuditLog action `phase4_connected_accounts_brand_backfilled`.
+- Wired into server.js boot after backfillBrandsIfNeeded.
+
+**OAuth enforcement (`googleAccountController.js`):**
+- Callback now looks up Brand by senderEmail. New connects without a matching brand redirect to `?google=no_brand_match`.
+- listAccounts + listAvailableAccounts include brandCode in returned attributes.
+
+**Gmail sync (`gmailSyncService.js`):**
+- processMessage accepts accountBrandCode. New TriageItem rows get brandCode = account.brandCode (fallback 'SH' for orphans).
+- rawEmailData.fromAccount stores the polling email for forensics.
+
+**Reply send (`triageController.js`):**
+- Accepts triageItemId + fromAccountId in body.
+- Resolves brand from triageItem.brandCode → req.brandScope.defaultBrand → 'SH'.
+- Enforces fromAccount.brandCode === resolvedBrandCode: 400 + audit `brand_account_mismatch_block`.
+- fromAddress = fromAccount.email || Brand.senderEmail || SMTP_FROM.
+- Egypt BCC via `applyEgyptBccIfNeeded` (new helper in emailService.js).
+- Audits every send as `reply_sent` with brand/from/to/subject/bccCount/country.
+
+**Egypt BCC single source of truth (`emailService.js`):**
+- New `applyEgyptBccIfNeeded(brandCode, country, bccList)` helper.
+- outreachController.js outreach send + campaign send + triageController.js reply all call it. Three near-duplicate inline checks collapsed into one helper.
+
+**Desktop (`frontend/admin-portal/src/pages/CRM/TriageInbox.jsx`):**
+- BrandBadge on every triage card.
+- ComposeModal: header brand chip; sender-account picker `/api/google/accounts` filtered by thread brand (mismatched accounts visible but disabled).
+- Cross-brand banner for super-admin in `brandScope.isCrossBrand` mode (list endpoint already merges via `brandScope.where = {}`).
+- Reply state passes triageItemId + threadBrandCode through to send-email.
+
+**Mobile (`mobile/sovern-ops-app/app/(tabs)/triage.tsx`):**
+- BrandBadge on every card (size sm, no label).
+- New Reply button + modal with brand-locked sender picker (touchable list).
+- `listConnectedGoogleAccounts` + `sendTriageReply` added to src/services/api.ts.
+- TriageItem + ConnectedGoogleAccount types extended with brandCode.
+
+**Three-surface docs:**
+- tooltipContent — new keys: `inboxBrandBadge`, `replySenderPicker`, `crossBrandTriage`, `egyptBccRule`.
+- helpContent — new `/crm/inbox` section: brand-aware threading, replying, Egypt BCC rule.
+- DEVELOPER_GUIDE — new "Inbox / email UX brand awareness (Phase 4, C17)" section: schema, migration, OAuth enforcement, gmail sync propagation, reply enforcement, Egypt BCC helper, desktop, mobile, audit actions, risks.
+- USER_GUIDE — new "Replying to inbox emails (Phase 4, C17)" section.
+
+**AuditLog actions added:**
+- `reply_sent`, `brand_account_mismatch_block`, `phase4_connected_accounts_brand_backfilled`.
 
 ### C16 — Quote-to-SalesOrder + brand-aware SO/PI/Invoice (SHIPPED, commit `1e9f417`, live)
 

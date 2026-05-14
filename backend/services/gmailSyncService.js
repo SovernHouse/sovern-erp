@@ -146,7 +146,7 @@ function extractTextBody(payload) {
 
 // ── Sync a single message ─────────────────────────────────────────────────────
 
-async function processMessage(gmail, messageId, accountEmail) {
+async function processMessage(gmail, messageId, accountEmail, accountBrandCode) {
   // Idempotent — skip if already in DB
   const existing = await db.TriageItem.findOne({ where: { gmailMessageId: messageId } });
   if (existing) return { skipped: true };
@@ -209,6 +209,10 @@ async function processMessage(gmail, messageId, accountEmail) {
     detectedLanguage: intel?.detectedLanguage || 'en',
     subject,
     bodySnippet: body.slice(0, 500) || msg.snippet?.slice(0, 500) || null,
+    // Phase 4, C17: the polling account's brandCode propagates onto every
+    // TriageItem so reply composition can enforce sender = thread brand.
+    // Falls back to 'SH' only if the account predates C17 backfill (orphan).
+    brandCode: accountBrandCode || 'SH',
     // Persist the structured draftInquiry alongside raw metadata so the
     // in-ERP AI / UI can offer "Convert to Quotation" with the data already
     // populated. See L-023: pass the raw object, never JSON.stringify.
@@ -217,6 +221,7 @@ async function processMessage(gmail, messageId, accountEmail) {
       to,
       labels: msg.labelIds,
       draftInquiry: intel?.draftInquiry || null,
+      fromAccount: accountEmail,
     },
     isReplyToOutreach,
     matchedOutreachEmailId,
@@ -325,7 +330,7 @@ async function syncAccount(account) {
   let skipped = 0;
   for (const messageId of messageIds) {
     try {
-      const result = await processMessage(gmail, messageId, account.email);
+      const result = await processMessage(gmail, messageId, account.email, account.brandCode);
       if (result.created) created++;
       else skipped++;
     } catch (msgErr) {

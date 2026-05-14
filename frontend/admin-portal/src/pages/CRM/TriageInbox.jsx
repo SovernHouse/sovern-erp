@@ -21,6 +21,8 @@ import {
   Send,
   Reply,
 } from 'lucide-react';
+import BrandBadge from '../../components/BrandBadge';
+import { useBrands } from '../../contexts/BrandsContext';
 
 // ── Brand tokens ──────────────────────────────────────────────────────────────
 const INK    = '#0E0D0C';
@@ -63,6 +65,13 @@ function ComposeModal({ initial, onClose, onSent }) {
   const [error,       setError]       = useState('');
   const [signatures,  setSignatures]  = useState([]);
   const [signatureId, setSignatureId] = useState(null);
+  // Phase 4, C17: sender-account picker. Only ConnectedGoogleAccount rows
+  // whose brandCode matches the thread are enabled; mismatched options
+  // are visible but disabled (so the user can see why they're blocked).
+  const [accounts,    setAccounts]    = useState([]);
+  const [fromAccountId, setFromAccountId] = useState('');
+  const threadBrandCode = initial.threadBrandCode || 'SH';
+  const triageItemId    = initial.triageItemId    || null;
   const bodyRef = useRef(null);
 
   // Fetch signatures on mount and auto-select default
@@ -74,6 +83,17 @@ function ComposeModal({ initial, onClose, onSent }) {
       if (def) setSignatureId(def.id);
     }).catch(() => {});
   }, []);
+
+  // Phase 4, C17: load connected Google accounts; default to one matching
+  // the thread's brand. Endpoint returns email + brandCode + isActive.
+  useEffect(() => {
+    api.get('/google/accounts').then(res => {
+      const list = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.accounts || []);
+      setAccounts(list);
+      const match = list.find(a => a.isActive !== false && (a.brandCode || null) === threadBrandCode);
+      if (match) setFromAccountId(match.id);
+    }).catch(() => setAccounts([]));
+  }, [threadBrandCode]);
 
   // Focus body on open when To/Subject already filled
   useEffect(() => {
@@ -94,17 +114,24 @@ function ComposeModal({ initial, onClose, onSent }) {
     setError('');
     try {
       await api.post('/triage/send-email', {
-        to:          to.trim(),
-        subject:     subject.trim(),
-        body:        body.trim(),
-        cc:          cc.trim()  || undefined,
-        bcc:         bcc.trim() || undefined,
-        signatureId: signatureId || undefined,
+        to:            to.trim(),
+        subject:       subject.trim(),
+        body:          body.trim(),
+        cc:            cc.trim()  || undefined,
+        bcc:           bcc.trim() || undefined,
+        signatureId:   signatureId || undefined,
+        // Phase 4, C17: brand-aware reply enforcement.
+        triageItemId:  triageItemId || undefined,
+        fromAccountId: fromAccountId || undefined,
       });
       onSent && onSent();
       onClose();
     } catch (err) {
-      setError(err.response?.data?.error?.message || 'Failed to send email. Please try again.');
+      setError(
+        err.response?.data?.error?.message
+        || err.response?.data?.message
+        || 'Failed to send email. Please try again.',
+      );
     } finally {
       setSending(false);
     }
@@ -150,9 +177,20 @@ function ComposeModal({ initial, onClose, onSent }) {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '14px 18px', borderBottom: '1px solid #E5E7EB', flexShrink: 0,
         }}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: INK }}>
+          <span style={{ fontWeight: 700, fontSize: 15, color: INK, display: 'flex', alignItems: 'center', gap: 8 }}>
             {initial.mode === 'reply'   ? 'Reply'   :
              initial.mode === 'forward' ? 'Forward' : 'New Message'}
+            {/* Phase 4, C17: thread brand badge so the user can't miss what brand context they're in */}
+            {triageItemId && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                padding: '2px 8px', borderRadius: 4,
+                background: threadBrandCode === 'FW' ? '#1F2933' : FOREST,
+                color: '#fff',
+              }}>
+                {threadBrandCode}
+              </span>
+            )}
           </span>
           <button onClick={onClose} style={{ color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>
             <X size={18} />
@@ -173,6 +211,41 @@ function ComposeModal({ initial, onClose, onSent }) {
               autoFocus={!initial.to}
             />
           </div>
+
+          {/* Phase 4, C17: From sender-account picker. Mismatched accounts are
+              visible but disabled so the user understands why they can't pick
+              them. Server re-validates on submit. */}
+          {triageItemId && (
+            <div>
+              <label style={labelStyle}>From (brand-matched accounts only)</label>
+              {accounts.length === 0 ? (
+                <div style={{ fontSize: 12, color: '#9CA3AF', fontStyle: 'italic' }}>
+                  No connected accounts. Add one under Settings → Connected Accounts.
+                </div>
+              ) : (
+                <select
+                  value={fromAccountId}
+                  onChange={(e) => setFromAccountId(e.target.value)}
+                  style={fieldStyle}
+                >
+                  <option value="">(use brand default address)</option>
+                  {accounts.map((a) => {
+                    const accBrand = a.brandCode || null;
+                    const enabled = accBrand === threadBrandCode;
+                    return (
+                      <option key={a.id} value={a.id} disabled={!enabled}>
+                        {a.email} {accBrand ? `[${accBrand}]` : '[no brand]'}
+                        {!enabled ? '  -  mismatch with thread brand' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
+              <p style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
+                Thread brand is {threadBrandCode}. Replies must come from a {threadBrandCode} account.
+              </p>
+            </div>
+          )}
 
           {/* CC / BCC toggles */}
           {(!showCc || !showBcc) && (
@@ -410,6 +483,8 @@ function TriageCard({ item, onAction, onReply, onForward, loading }) {
             {item.senderCompany && (
               <span style={{ fontSize: 12, color: '#6B7280' }}>· {item.senderCompany}</span>
             )}
+            {/* Phase 4, C17: thread brand surfaces on every triage card. */}
+            <BrandBadge code={item.brandCode || 'SH'} size="sm" />
             <IntentBadge score={item.intentScore} />
             {item.isReplyToOutreach && (
               <span style={{
@@ -620,6 +695,8 @@ function buildReplyState(item) {
     subject: `Re: ${item.subject || ''}`,
     body: quoted,
     cc: '',
+    triageItemId: item.id,
+    threadBrandCode: item.brandCode || 'SH',
   };
 }
 
@@ -646,6 +723,8 @@ function buildForwardState(item) {
     subject: `Fwd: ${item.subject || ''}`,
     body: `\n\n${details}`,
     cc: '',
+    triageItemId: item.id,
+    threadBrandCode: item.brandCode || 'SH',
   };
 }
 
@@ -661,6 +740,12 @@ export default function TriageInbox() {
   const [error, setError]             = useState(null);
   const [pagination, setPagination]   = useState({});
   const [compose, setCompose]         = useState(null); // null | initial state object
+
+  // Phase 4, C17: super-admin cross-brand triage view. When the user is in
+  // cross-brand mode (set via the global brand picker), the inbox renders
+  // a merged read-only stream. Per-item actions stay enabled because the
+  // backend still scopes individual writes by the item's brandCode.
+  const { isCrossBrand, accessibleBrands } = useBrands();
 
   const fetchItems = useCallback(async (tab = activeTab) => {
     setLoading(true);
@@ -782,6 +867,20 @@ export default function TriageInbox() {
           </button>
         </div>
       </div>
+
+      {/* Phase 4, C17: cross-brand mode banner (super-admin only). */}
+      {isCrossBrand && accessibleBrands && accessibleBrands.length > 1 && (
+        <div style={{
+          marginBottom: 14, padding: '10px 14px', borderRadius: 7,
+          background: '#F5F3FF', color: '#5B21B6', border: '1px solid #DDD6FE',
+          fontSize: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+        }}>
+          <span style={{ fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Cross-brand view</span>
+          <span style={{ opacity: 0.85 }}>
+            Showing {accessibleBrands.join(' + ')} together. Each card shows its own brand; replies still enforce sender-account match.
+          </span>
+        </div>
+      )}
 
       {/* Sync message */}
       {syncMessage && (

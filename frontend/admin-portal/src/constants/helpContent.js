@@ -950,6 +950,42 @@ export const HELP_CONTENT = {
     ],
   },
 
+  // ── Inbox / Triage (Phase 4, C17) ─────────────────────────────────────────
+  '/crm/inbox': {
+    title: 'Email Inbox',
+    summary: 'AI-triaged inbound emails from your connected Gmail accounts. Every thread is tagged with the brand of the polling account, and replies are brand-locked so an SH thread cannot accidentally be answered from a FW account.',
+    sections: [
+      {
+        heading: 'Brand-aware threading',
+        items: [
+          'Every triage card carries a brand badge (SH or FW) showing which Gmail account it arrived on.',
+          'The badge is set at sync time from ConnectedGoogleAccount.brandCode; the polling account is the source of truth.',
+          'Cross-brand mode (super-admin only): pick All brands in the global brand picker to see SH and FW threads merged into one chronological list. Each card keeps its own brand badge.',
+        ],
+      },
+      {
+        heading: 'Replying to a thread',
+        items: [
+          'Reply opens the composer pre-tagged with the thread brand. The From dropdown only enables accounts whose brand matches; mismatched accounts are visible but disabled so you can see why.',
+          'The default From is the seeded account for the thread brand (alex@sovernhouse.co for SH, alexflorway@gmail.com for FW).',
+          'Server re-validates on submit: a cross-brand send returns 400 and writes brand_account_mismatch_block to the audit log.',
+          'Every successful reply writes a reply_sent audit row with brand, fromAddress, BCC count, and country for forensic replay.',
+        ],
+      },
+      {
+        heading: 'Egypt BCC rule',
+        items: [
+          'For SH threads where the customer/lead country is Egypt, every outgoing email automatically BCCs mohanadfanzey@gmail.com.',
+          'FW threads NEVER BCC Fanzey, regardless of country. The rule lives in one helper (applyEgyptBccIfNeeded in emailService.js) so outreach, campaign, and reply paths cannot drift.',
+        ],
+      },
+    ],
+    tips: [
+      'If you accidentally pick a mismatched account, the modal disables Send and the server rejects it as defense-in-depth.',
+      'Cross-brand view is read-only navigation only — clicking a card opens the single-brand context where actions are enabled.',
+    ],
+  },
+
   // ── Default (unknown page) ────────────────────────────────────────────────
   '__default__': {
     title: 'Help',

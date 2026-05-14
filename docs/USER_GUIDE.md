@@ -897,6 +897,30 @@ For FlorWay quotations, the dialog warns you that the resulting Sales Order is a
 - Super-admin can convert across brands.
 - Server re-validates brand access on every request, so bypassing the UI returns 403.
 
+### Replying to inbox emails (Phase 4, C17)
+
+Inbox threads are brand-tagged so a reply to a Sovern House conversation can't accidentally be sent from a FlorWay account, and the Egypt BCC rule fires only when it should.
+
+**What you'll see**
+- Every triage card carries a brand badge (SH or FW) next to the sender name.
+- Opening Reply shows a "From (brand-matched accounts only)" picker. Only accounts of the same brand as the thread are enabled; mismatched accounts are visible but greyed out so you understand why they can't be used.
+- The default sender is the seeded brand address (alex@sovernhouse.co for SH, alexflorway@gmail.com for FW).
+
+**Cross-brand inbox (super-admin)**
+1. From the global brand picker, choose All brands.
+2. The inbox banner switches to "Cross-brand view" and the list merges SH + FW threads chronologically.
+3. Each card keeps its own brand badge. Clicking a card opens a single-brand context where replies and actions are scoped to that thread's brand.
+
+**Egypt-Fanzey BCC**
+- For SH threads where the customer/lead country is Egypt, every outgoing email automatically BCCs Mohannad Fanzey at mohanadfanzey@gmail.com.
+- FlorWay threads NEVER BCC Fanzey, regardless of country.
+- The rule applies to outreach sends, campaign sends, and triage replies (one helper in the backend keeps the three paths in sync).
+
+**Audit trail**
+- Every successful reply writes a reply_sent audit entry with the brand, From address, BCC count, and country.
+- Every blocked cross-brand attempt writes a brand_account_mismatch_block entry.
+- Both are visible to super-admin via the AuditLog table.
+
 ### FlorWay internal documents
 
 For FlorWay (`FW`) Sales Orders, Proforma Invoices, and Invoices, the ERP treats the document as an internal record only. The factory sends the buyer-facing version directly.

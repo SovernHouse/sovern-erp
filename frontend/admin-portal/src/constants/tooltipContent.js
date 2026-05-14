@@ -380,6 +380,11 @@ export const DASHBOARD = {
   convertToSO: 'Create a Sales Order from this accepted quotation. The source factory and line items carry over. Requires brand access; super-admin can convert across brands. For FW, the resulting SO, PI, and Invoice are ERP-internal records (the factory sends the document to the buyer).',
   fwInternalRecord: 'FlorWay Sales Orders, Proforma Invoices, and Invoices are ERP-internal records. The factory sends the buyer-facing document directly. The ERP disables the Send button, the PDF carries a "FACTORY WILL SEND TO BUYER" banner, and the server audits any blocked send attempt as fw_send_blocked.',
   salesOrderStatuses: 'draft → confirmed → in_production → ready → shipped → in_transit → delivered → completed. Any state can move to cancelled. confirmed transition triggers FW commission accrual.',
+  // Phase 4, C17: inbox brand awareness.
+  inboxBrandBadge: 'Every triage card shows the brand of the polling Gmail account that received it. SH = Sovern House, FW = FlorWay. Replies are restricted to sender accounts of the same brand.',
+  replySenderPicker: 'Pick the connected Google account to send from. Only accounts whose brandCode matches the thread are enabled; mismatched accounts are visible but disabled. The server re-validates on submit and audits any cross-brand attempt as brand_account_mismatch_block.',
+  crossBrandTriage: 'Super-admin only. When you select All brands in the global picker, the inbox merges SH + FW threads. Each card shows its own brand badge; replies still enforce sender match.',
+  egyptBccRule: 'SH-brand Egypt customers/leads BCC mohanadfanzey@gmail.com on every outgoing email (outreach, campaign, triage reply). FW never BCCs Fanzey. The rule lives in one helper in emailService.js so all three send paths stay in sync.',
 }
 
 // ─── Google Drive ─────────────────────────────────────────────────────────────

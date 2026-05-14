@@ -400,14 +400,59 @@ exports.clearSyncRequest = async (req, res) => {
 // ─── SEND EMAIL (reply / forward / compose from inbox) ───────────────────────
 
 exports.sendEmail = async (req, res) => {
-  const { to, subject, body, cc, bcc, signatureId } = req.body;
+  const { to, subject, body, cc, bcc, signatureId, triageItemId, fromAccountId } = req.body;
 
   if (!to || !subject || !body) {
     throw new ValidationError('to, subject, and body are required');
   }
 
-  const { sendOutreachEmail } = require('../services/emailService');
+  const { sendOutreachEmail, applyEgyptBccIfNeeded } = require('../services/emailService');
   const { generateSignatureHtml, generateSignatureText } = require('./emailSignatureController');
+  const auditService = require('../services/auditService');
+
+  // Phase 4, C17: resolve the thread's brand. Triage replies inherit the
+  // brand from the triage item; standalone composes fall back to the
+  // user's defaultBrand or 'SH'. The resolved brand drives:
+  //   1. Sender account must match (no cross-brand sends).
+  //   2. fromAddress comes from Brand.senderEmail.
+  //   3. Egypt BCC rule applies only to SH-Egypt threads.
+  const triageItem = triageItemId ? await db.TriageItem.findByPk(triageItemId) : null;
+  const resolvedBrandCode = triageItem?.brandCode || req.brandScope?.defaultBrand || 'SH';
+
+  // Enforce sender account = thread brand.
+  let fromAccount = null;
+  if (fromAccountId) {
+    fromAccount = await db.ConnectedGoogleAccount.findByPk(fromAccountId);
+    if (!fromAccount) throw new ValidationError('Connected account not found');
+    if (fromAccount.brandCode && fromAccount.brandCode !== resolvedBrandCode) {
+      auditService.logAction(
+        req.user?.id,
+        'brand_account_mismatch_block',
+        'TriageItem',
+        triageItem?.id || null,
+        {
+          threadBrand: resolvedBrandCode,
+          accountBrand: fromAccount.brandCode,
+          accountEmail: fromAccount.email,
+        },
+        req.ip,
+      ).catch(() => {});
+      throw new ValidationError(
+        `Cannot send: thread is ${resolvedBrandCode}, selected account is ${fromAccount.brandCode}.`,
+      );
+    }
+  }
+
+  // Resolve fromAddress from the Brand row (single source of truth).
+  const brand = await db.Brand.findOne({ where: { code: resolvedBrandCode } });
+  const fromAddress = (fromAccount && fromAccount.email)
+    || brand?.senderEmail
+    || process.env.SMTP_FROM
+    || process.env.SMTP_USER;
+
+  // Egypt BCC via single source of truth in emailService.
+  const country = triageItem?.country || null;
+  const finalBcc = applyEgyptBccIfNeeded(resolvedBrandCode, country, bcc);
 
   // Resolve signature: use provided signatureId, or fall back to user's default
   let signatureHtml = null;
@@ -434,12 +479,12 @@ exports.sendEmail = async (req, res) => {
 
   try {
     await sendOutreachEmail({
-      fromAddress: process.env.SMTP_FROM || process.env.SMTP_USER,
+      fromAddress,
       toAddress: to,
       subject,
       bodyText: body,
       cc: cc || null,
-      bcc: bcc || null,
+      bcc: finalBcc.length ? finalBcc : null,
       signatureHtml,
       signatureText,
     });
@@ -447,6 +492,24 @@ exports.sendEmail = async (req, res) => {
     logger.error('[triage] sendEmail failed:', emailErr.message);
     throw new ValidationError(`Failed to send email: ${emailErr.message}`);
   }
+
+  // Audit the reply so brand/Egypt-BCC behavior is traceable.
+  auditService.logAction(
+    req.user?.id,
+    'reply_sent',
+    'TriageItem',
+    triageItem?.id || null,
+    {
+      brandCode: resolvedBrandCode,
+      fromAddress,
+      toAddress: to,
+      subject,
+      bccCount: finalBcc.length,
+      country,
+      sentAt: new Date().toISOString(),
+    },
+    req.ip,
+  ).catch(() => {});
 
   return res.json({ success: true, message: `Email sent to ${to}` });
 };

@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const db = require('../models');
-const { sendOutreachEmail } = require('../services/emailService');
+const { sendOutreachEmail, applyEgyptBccIfNeeded } = require('../services/emailService');
 const dayjs = require('dayjs');
 const logger = require('../utils/logger.js');
 
@@ -114,17 +114,8 @@ const sendOutreachEmailToLead = async (req, res) => {
       resolvedSignatureText = brand.signatureText || null;
     }
 
-    // Build final BCC — Egypt rule: always include Mohannad Fanzey for SH-brand
-    // Egypt leads only. FW does not BCC Fanzey, ever.
-    let finalBcc = bcc ? (Array.isArray(bcc) ? [...bcc] : [bcc]) : [];
-    if (
-      lead.brandCode === 'SH' &&
-      lead.country &&
-      lead.country.toLowerCase() === 'egypt' &&
-      !finalBcc.map(e => e.toLowerCase()).includes('mohanadfanzey@gmail.com')
-    ) {
-      finalBcc.push('mohanadfanzey@gmail.com');
-    }
+    // Phase 4, C17: Egypt BCC rule via single source of truth in emailService.
+    const finalBcc = applyEgyptBccIfNeeded(lead.brandCode, lead.country, bcc);
 
     // Send email via Gmail API (preferred) or SMTP fallback
     let messageId;
@@ -430,17 +421,8 @@ const sendCampaign = async (req, res) => {
         const now = dayjs();
         const followUpDueAt = daysToAdd ? now.add(daysToAdd, 'day').toDate() : null;
 
-        // Build final BCC — Egypt rule: always include Mohannad Fanzey for
-        // SH-brand Egypt leads only. FW does not BCC Fanzey, ever.
-        let finalCampaignBcc = bcc ? (Array.isArray(bcc) ? [...bcc] : [bcc]) : [];
-        if (
-          lead.brandCode === 'SH' &&
-          lead.country &&
-          lead.country.toLowerCase() === 'egypt' &&
-          !finalCampaignBcc.map(e => e.toLowerCase()).includes('mohanadfanzey@gmail.com')
-        ) {
-          finalCampaignBcc.push('mohanadfanzey@gmail.com');
-        }
+        // Phase 4, C17: Egypt BCC rule via single source of truth in emailService.
+        const finalCampaignBcc = applyEgyptBccIfNeeded(lead.brandCode, lead.country, bcc);
 
         let messageId = null;
         let status = 'failed';

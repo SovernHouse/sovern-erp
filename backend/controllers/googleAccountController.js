@@ -75,8 +75,21 @@ exports.handleCallback = async (req, res) => {
     const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
     const { data: profile } = await oauth2.userinfo.get();
 
-    // Upsert: one record per Google account email
+    // Phase 4, C17: resolve brand from senderEmail before persisting.
+    // New connects require a Brand row whose senderEmail matches; without
+    // it we can't route Gmail polling output to the right brand.
+    const brand = await db.Brand.findOne({
+      where: db.sequelize.where(
+        db.sequelize.fn('LOWER', db.sequelize.col('sender_email')),
+        (profile.email || '').toLowerCase(),
+      ),
+    });
     const existing = await db.ConnectedGoogleAccount.findOne({ where: { email: profile.email } });
+
+    if (!brand && !existing) {
+      logger.warn(`[google-oauth] No Brand has senderEmail matching ${profile.email}; cannot connect`);
+      return res.redirect(`${process.env.FRONTEND_URL || ''}/settings?google=no_brand_match`);
+    }
 
     const accountData = {
       email: profile.email,
@@ -87,14 +100,15 @@ exports.handleCallback = async (req, res) => {
       scopes: GOOGLE_SCOPES,
       isActive: true,
       connectedByUserId: state !== 'anonymous' ? state : null,
+      brandCode: brand?.code || existing?.brandCode || null,
     };
 
     if (existing) {
       await existing.update(accountData);
-      logger.info(`[google-oauth] Updated connected account: ${profile.email}`);
+      logger.info(`[google-oauth] Updated connected account: ${profile.email} (brand=${accountData.brandCode || 'none'})`);
     } else {
       await db.ConnectedGoogleAccount.create(accountData);
-      logger.info(`[google-oauth] Connected new Google account: ${profile.email}`);
+      logger.info(`[google-oauth] Connected new Google account: ${profile.email} (brand=${accountData.brandCode})`);
     }
 
     return res.redirect(`${process.env.FRONTEND_URL || ''}/settings?google=connected`);
@@ -108,7 +122,9 @@ exports.handleCallback = async (req, res) => {
 
 exports.listAccounts = async (req, res) => {
   const accounts = await db.ConnectedGoogleAccount.findAll({
-    attributes: ['id', 'email', 'displayName', 'scopes', 'isActive', 'lastGmailSyncAt', 'lastCalendarSyncAt', 'createdAt'],
+    // Phase 4, C17: include brandCode so the triage reply composer can
+    // filter accounts to the thread's brand.
+    attributes: ['id', 'email', 'displayName', 'scopes', 'isActive', 'brandCode', 'lastGmailSyncAt', 'lastCalendarSyncAt', 'createdAt'],
     order: [['createdAt', 'ASC']],
   });
   return res.json({ success: true, data: accounts });
@@ -131,7 +147,9 @@ exports.listAvailableAccounts = async (req, res) => {
   const { scope } = req.query;
   const all = await db.ConnectedGoogleAccount.findAll({
     where: { isActive: true },
-    attributes: ['id', 'email', 'displayName', 'scopes', 'isActive'],
+    // Phase 4, C17: brandCode included so brand-aware feature pickers can
+    // filter without a second fetch.
+    attributes: ['id', 'email', 'displayName', 'scopes', 'isActive', 'brandCode'],
     order: [['createdAt', 'ASC']],
   });
   const filtered = scope

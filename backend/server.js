@@ -593,6 +593,16 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] brand backfill skipped:', e.message);
     }
+
+    // Phase 4, C17: tag every ConnectedGoogleAccount with its brand by
+    // matching account.email to Brand.senderEmail. Idempotent via AuditLog
+    // sentinel; orphan accounts are warned, not crashed.
+    try {
+      const { migrateConnectedAccounts } = require('./services/migrateConnectedAccounts');
+      await migrateConnectedAccounts(db);
+    } catch (e) {
+      logger.warn('[boot] C17 connected accounts migration skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {
