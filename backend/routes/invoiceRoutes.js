@@ -341,6 +341,19 @@ router.patch('/:id/send', requireAuth, async (req, res, next) => {
     const invoice = await db.Invoice.findByPk(req.params.id);
     if (!invoice || invoice.deletedAt) throw new NotFoundError('Invoice not found');
 
+    // Phase 4, C16: FW invoices are internal records — factory sends to
+    // the buyer. Defense-in-depth alongside the UI disable.
+    if (invoice.brandCode === 'FW') {
+      auditService.logAction(req.user.id, 'fw_send_blocked', 'Invoice', invoice.id, {
+        attemptedBy: req.user.email || req.user.id,
+        invoiceNumber: invoice.invoiceNumber,
+      }, req.ip).catch(() => {});
+      return res.status(400).json({
+        success: false,
+        message: 'FlorWay invoices are internal records; the factory sends the document to the buyer. Auto-send is disabled.',
+      });
+    }
+
     const beforeStatus = invoice.status;
 
     if (invoice.status !== 'draft') {

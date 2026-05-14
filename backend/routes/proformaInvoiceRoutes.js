@@ -165,6 +165,21 @@ router.post('/:id/send', requireAuth, async (req, res, next) => {
 
     if (!pi) throw new NotFoundError('Proforma Invoice not found');
 
+    // Phase 4, C16: FW PIs are internal records — the factory sends the
+    // document to the buyer directly. Defense-in-depth alongside the
+    // disabled Send button in the UI.
+    if (pi.brandCode === 'FW') {
+      const auditService = require('../services/auditService');
+      auditService.logAction(req.user.id, 'fw_send_blocked', 'ProformaInvoice', pi.id, {
+        attemptedBy: req.user.email || req.user.id,
+        piNumber: pi.piNumber,
+      }, req.ip).catch(() => {});
+      return res.status(400).json({
+        success: false,
+        message: 'FlorWay proforma invoices are internal records; the factory sends the document to the buyer. Auto-send is disabled.',
+      });
+    }
+
     const pdfFile = await documentGenerator.generateProformaInvoicePDF(pi, pi.items, pi.customer);
     await emailService.sendProformaInvoiceEmail(pi.customer, pi);
 

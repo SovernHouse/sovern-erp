@@ -247,6 +247,17 @@ export default function OrderDetail() {
       {/* Workflow Stage Bar */}
       <WorkflowStatusBar stages={SALES_ORDER_STAGES} currentStatus={order.status} />
 
+      {/* Phase 4, C16: FW Sales Orders are ERP-internal records. The factory
+          sends the actual document to the buyer. PDF carries the same banner. */}
+      {order.brandCode === 'FW' && (
+        <div className="rounded-lg border border-slate-800 bg-slate-900 text-slate-50 px-4 py-3">
+          <p className="text-sm font-semibold tracking-wide">FACTORY WILL SEND TO BUYER. INTERNAL RECORD</p>
+          <p className="text-xs opacity-80 mt-1">
+            FlorWay Sales Orders, Proforma Invoices, and Invoices are ERP-internal records. The factory sends the document to the buyer directly. Auto-send is disabled.
+          </p>
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="grid grid-cols-3 gap-6">
         {/* Left Column - Order Details */}

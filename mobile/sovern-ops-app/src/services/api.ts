@@ -1055,6 +1055,27 @@ export async function sendQuotation(id: string) {
 }
 
 /**
+ * Phase 4, C16: Create a Sales Order from an accepted quotation.
+ * Backend requires `quotationId` and `factoryId`; we default factoryId to
+ * the quotation's source factory. Server re-validates brand access via
+ * `req.brandScope.accessibleBrands` and returns 403 on mismatch.
+ */
+export async function createSalesOrderFromQuotation(payload: {
+  quotationId: string
+  factoryId: string
+  estimatedDelivery?: string
+  shippingMethod?: string
+  notes?: string
+}): Promise<{ id: string; orderNumber?: string }> {
+  const res = await request<{ success?: boolean; data?: any }>(`/api/sales-orders/create-from-quotation`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  const body: any = (res as any).data ?? res
+  return body
+}
+
+/**
  * Download the brand-aware quotation PDF and stash it in the cache
  * directory. Returns the local file URI suitable for Sharing.shareAsync()
  * or Linking.openURL().

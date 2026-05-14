@@ -5,15 +5,15 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 4 in progress. C14 shipped + live + dashboard 500 hotfix shipped. C15 (FW commission ledger + dashboard + accrual rewrite) staged.
+2026-05-14 Taiwan time. Phase 4 in progress. C14 + C15 shipped + live. C16 (quote-to-SO + brand-aware SO/PI/Invoice) staged.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `19c4c8d` (fix(phase-3): mobile dashboard 500 — InternalApproval is not brand-tagged)
-- **Working tree:** C15 staged, awaiting commit
-- **CI/CD Pipeline (19c4c8d):** green
-- **Deploy (19c4c8d):** green
+- **Latest commit on main:** `908d21d` (feat(phase-4): FW commission ledger + dashboard + accrual rewrite (C15))
+- **Working tree:** C16 staged, awaiting commit
+- **CI/CD Pipeline (908d21d):** green
+- **Deploy (908d21d):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
 
 ---
@@ -22,7 +22,38 @@
 
 Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
 
-### C15 — FW commission ledger + dashboard + accrual rewrite (READY FOR COMMIT)
+### C16 — Quote-to-SalesOrder + brand-aware SO/PI/Invoice (READY FOR COMMIT)
+
+**Backend:**
+- `backend/utils/statusMachine.js` — SO transitions reconciled with SalesOrder model enum: draft → confirmed → in_production → ready → shipped → in_transit → delivered → completed; cancellable from any non-terminal state. `processing` removed (pre-flight verified zero rows on live DB).
+- `backend/routes/salesOrderRoutes.js` — `POST /create-from-quotation` adds brand-access gate (403 if `req.brandScope.accessibleBrands` doesn't include the quotation's brand and not in cross-brand mode). `PATCH /:id/status` specialized audit `sales_order_status_change`.
+- `backend/routes/proformaInvoiceRoutes.js` — `POST /:id/send` hard-blocks when `pi.brandCode === 'FW'` with 400 and audit `fw_send_blocked`. Defense-in-depth alongside the UI disable.
+- `backend/routes/invoiceRoutes.js` — same FW send-block on `PATCH /:id/send`.
+
+**PDF templates:**
+- New `addFwInternalRecordBanner(doc, entity)` helper in `backend/services/pdf/pdfHelpers.js`. 28px iron-deep bar with cream "FACTORY WILL SEND TO BUYER — INTERNAL RECORD" text. No-op for non-FW.
+- Wired into `generateSalesOrderPDF` (`orderDocumentsPDF.js`), `generateProformaInvoicePDF` (`salesDocumentsPDF.js`), `generateInvoicePDF` (`financeDocumentsPDF.js`) — banner injected after `doc.pipe(stream)`, before `getCompanyHeader`.
+
+**Desktop:**
+- `QuotationDetail.jsx` — fixed pre-existing `'approved'` bug (the Quotation enum is draft|sent|revised|accepted|rejected|expired). Added Convert-to-SO button visible when status='accepted' and brand-accessible. Modal with factory picker (defaults to quotation factory), estimatedDelivery, shippingMethod, notes. Routes to new SO on success. Modal includes FW internal-record note when brand='FW'.
+- `ordersAPI.createFromQuotation()` added to `services/api.js`.
+- `ProformaDetail.jsx` — `isFwInternalRecord` flag disables Send button (+ tooltip) and renders an iron-deep banner below the action bar.
+- `OrderDetail.jsx` + `InvoiceDetail.jsx` — render the same iron-deep FW internal-record banner below the workflow status bar.
+
+**Mobile:**
+- `mobile/sovern-ops-app/src/services/api.ts` — new `createSalesOrderFromQuotation` exported.
+- `mobile/sovern-ops-app/app/quotation/[id].tsx` — FW iron-deep banner above PDF buttons. New Convert-to-Sales-Order button visible when status='accepted' and brand-accessible. Alert-driven confirm flow; uses quotation.factoryId (errors if missing). For FW, the confirm prompt repeats the internal-record framing.
+
+**Three-surface docs:**
+- tooltipContent — new keys: `convertToSO`, `fwInternalRecord`, `salesOrderStatuses`.
+- helpContent `/quotations` — new "Quotation lifecycle (Phase 4, C16)" section.
+- DEVELOPER_GUIDE — new "Quote-to-SalesOrder + brand-aware SO/PI/Invoice (Phase 4, C16)" section: status machine reconciliation, convert flow, FW send-block defense in depth, PDF banner wiring, mobile parity, audit actions, pre-existing bug fixed.
+- USER_GUIDE — new "Converting a Quotation to a Sales Order" + "FlorWay internal documents" sections under Common Workflows.
+
+**AuditLog actions added:**
+- `sales_order_status_change`, `fw_send_blocked`.
+
+### C15 — FW commission ledger + dashboard + accrual rewrite (SHIPPED, commit `908d21d`, live)
 
 **Schema:**
 - `CommissionTracking` — added `customerId`, `brandCode` (default 'FW'), `accrualDate`, `registeredBuyerSince`. Status enum widened to add `accrued`, `invoiced_to_factory`, `clawed_back`. Default for new rows: `'accrued'`. Indexes on customer_id, brand_code, brand_code+status, accrual_date.

@@ -873,6 +873,43 @@ This is the typical end-to-end process for a trading order.
 3. Confirms delivery date and address
 4. Confirms sales order
 
+### Converting a Quotation to a Sales Order (Phase 4, C16)
+
+Once a buyer has accepted a quotation, you can spin up a Sales Order directly from the quotation detail page.
+
+**Desktop**
+1. Open the quotation detail page in the admin portal.
+2. Confirm the status is "Accepted". The "Convert to SO" button only appears on accepted quotations.
+3. Click "Convert to SO". A dialog opens with: Factory (defaulted from the quotation), Estimated Delivery, Shipping Method, and Notes.
+4. Adjust if needed and click "Create Sales Order".
+5. You are redirected to the new SO, which is created with status "Confirmed".
+
+For FlorWay quotations, the dialog warns you that the resulting Sales Order is an ERP-internal record (the factory sends the buyer-facing document directly).
+
+**Mobile**
+1. Open the quotation in the mobile app.
+2. If the quotation is Accepted and you have access to its brand, tap "Convert to Sales Order".
+3. Confirm the prompt. The mobile app uses the quotation's source factory automatically; if no factory is on file you'll be asked to set one in the desktop ERP first.
+4. After conversion the app returns to the Sales Orders tab.
+
+**Permissions**
+- Brand-scoped users can only convert quotations under brands in their access list.
+- Super-admin can convert across brands.
+- Server re-validates brand access on every request, so bypassing the UI returns 403.
+
+### FlorWay internal documents
+
+For FlorWay (`FW`) Sales Orders, Proforma Invoices, and Invoices, the ERP treats the document as an internal record only. The factory sends the buyer-facing version directly.
+
+What you'll see:
+- A black "FACTORY WILL SEND TO BUYER. INTERNAL RECORD" banner above the workflow status bar on SO, PI, and Invoice detail pages.
+- The Send button on the FlorWay Proforma Invoice page is disabled. Hovering shows "FlorWay invoices are sent to the buyer by the factory. This document is for internal records only."
+- The generated PDF carries the same banner across the top of the page in the FlorWay iron-deep palette.
+
+If someone tries to bypass the UI and trigger Send via API, the server hard-blocks with a 400 and writes an `fw_send_blocked` entry to the audit log so the attempt is traceable.
+
+Sovern House documents are unaffected. The Send flow on SH PIs, SOs, and Invoices still emails the buyer from `alex@sovernhouse.co` (or the brand's seeded sender) as it always has.
+
 **Step 5: Purchase Order to Factory (Admin Portal)**
 1. System automatically creates purchase order
 2. Admin selects appropriate factory

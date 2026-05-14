@@ -68,9 +68,42 @@ const addFooter = (doc) => {
   doc.text(`Generated on ${new Date().toLocaleDateString()}`, 50, pageHeight - 30, { align: 'center' });
 };
 
+/**
+ * Phase 4, C16: FW-only internal-record banner.
+ *
+ * FlorWay PIs / SOs / Invoices are internal records — the factory sends
+ * the actual document to the buyer. Banner draws across the top of the
+ * page in FW iron-deep to make it unmistakable on print/share.
+ *
+ * No-op for non-FW brands. Call BEFORE getCompanyHeader so the banner
+ * occupies y=0..28 and the header that follows uses the same coordinate
+ * system; downstream content offsets ~32px when banner is present.
+ *
+ * @param {PDFDocument} doc       Active pdfkit doc.
+ * @param {object} entity         The PI/SO/Invoice/etc with .brandCode.
+ * @returns {number}              y offset added (32 if FW, 0 otherwise).
+ */
+const addFwInternalRecordBanner = (doc, entity) => {
+  if (!entity || entity.brandCode !== 'FW') return 0;
+  const FW_IRON_DEEP = '#1F2933';
+  const FW_CREAM = '#F1EEE7';
+  const pageWidth = doc.page.width;
+  doc.save();
+  doc.rect(0, 0, pageWidth, 28).fill(FW_IRON_DEEP);
+  doc.fillColor(FW_CREAM).font('Helvetica-Bold').fontSize(10)
+     .text(
+       'FACTORY WILL SEND TO BUYER  -  INTERNAL RECORD',
+       0, 9,
+       { align: 'center', width: pageWidth, characterSpacing: 1.5 }
+     );
+  doc.restore();
+  doc.y = 32;  // move cursor below banner for downstream content
+  return 32;
+};
+
 
 module.exports = {
   PDFDocument, fs, path, formatCurrency, uploadDir,
   createDir, getCompanyHeader, getDocumentTitle, getDocumentDetails,
-  createTable, addFooter,
+  createTable, addFooter, addFwInternalRecordBanner,
 };

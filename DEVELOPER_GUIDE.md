@@ -2197,6 +2197,90 @@ Effect: clears `productBrandingModeLockedAt`, sets the new mode + private label 
 
 ---
 
+# Quote-to-SalesOrder + brand-aware SO/PI/Invoice (Phase 4, C16)
+
+Builds the Sovern→FlorWay commercial workflow on top of the C15 commission ledger. Quotations convert to confirmed Sales Orders; the SO status machine drives FW commission accrual; SO / PI / Invoice PDFs and detail pages reflect FW's "factory sends to buyer" model.
+
+## Status machine reconciliation
+
+Before C16, `backend/models/SalesOrder.js` had a status enum that included `in_transit` while `backend/utils/statusMachine.js` referenced `processing`. The two were never aligned, which would silently 400 any transition involving `in_transit`.
+
+`statusMachine.js` is now the single source of truth:
+
+```
+draft        → confirmed | cancelled
+confirmed    → in_production | cancelled
+in_production → ready | shipped | cancelled
+ready        → shipped | cancelled
+shipped      → in_transit | delivered | cancelled
+in_transit   → delivered | cancelled
+delivered    → completed | cancelled
+completed    → []
+cancelled    → []
+```
+
+Pre-flight on the live DB confirmed zero rows in `processing` before the rename — safe to remove.
+
+## Convert to Sales Order
+
+`POST /api/sales-orders/create-from-quotation` (`backend/routes/salesOrderRoutes.js:372`) — accepts `{ quotationId, factoryId, estimatedDelivery?, shippingMethod?, notes? }`.
+
+C16 additions:
+
+1. **Brand-access gate** — after loading the quotation, check `req.brandScope.accessibleBrands.includes(quotation.brandCode)`; reject with 403 if mismatch and the user is not in cross-brand mode.
+2. The new SO is created with status `confirmed`, which triggers `accrueCommissionForOrder(db, so, userId)` (C15) inline at create time.
+3. Audit action remains `sales_order_create_from_quotation`; the dedicated status-change audit `sales_order_status_change` is logged only by the manual PATCH-status path.
+
+The quotation status is **not** auto-flipped after conversion — a quote remains `accepted` and can spawn additional SOs against the same accepted terms if needed. The SO's `quotationId` FK preserves traceability.
+
+## FW send-block (defense in depth)
+
+For `brandCode === 'FW'`, three send routes hard-block with 400 and audit `fw_send_blocked`:
+
+| Route | File | Block |
+|---|---|---|
+| `POST /api/proforma-invoices/:id/send` | `proformaInvoiceRoutes.js:171` | Returns 400 with message "FlorWay proforma invoices are internal records; the factory sends the document to the buyer." |
+| `PATCH /api/invoices/:id/send` | `invoiceRoutes.js` (analogous) | Same pattern. |
+| (Sales Orders have no public Send endpoint.) | — | Inherited from PI/Invoice. |
+
+UI mirrors the server in two ways:
+
+1. **ProformaDetail.jsx** — `isFwInternalRecord = pi.brandCode === 'FW'` disables the Send button with a tooltip; below the header the page renders an iron-deep banner repeating the explanation.
+2. **OrderDetail.jsx + InvoiceDetail.jsx** — render the same iron-deep banner immediately below the workflow status bar when `brandCode === 'FW'`. No Send button exists on these screens; the banner is purely informational.
+
+## FW PDF banner
+
+`backend/services/pdf/pdfHelpers.js` adds `addFwInternalRecordBanner(doc, entity)`. No-op for non-FW. For FW it draws a 28px iron-deep (`#1F2933`) bar across the full page width with cream-text label "FACTORY WILL SEND TO BUYER  -  INTERNAL RECORD".
+
+Wired into:
+
+- `salesDocumentsPDF.js` → `generateProformaInvoicePDF`
+- `orderDocumentsPDF.js` → `generateSalesOrderPDF`
+- `financeDocumentsPDF.js` → `generateInvoicePDF`
+
+In each case the call is placed after `doc.pipe(stream)` and before `getCompanyHeader(doc)` so the banner sits at y=0..28 and the rest of the document offsets naturally.
+
+The Phase 3 brand-aware quotation renderer is the architectural template; C16 inverts the relationship — instead of branching renderers, one helper short-circuits on `entity.brandCode !== 'FW'`. This stays maintainable because the banner is identical across the three document types.
+
+## Mobile parity (`mobile/sovern-ops-app/app/quotation/[id].tsx`)
+
+- New `createSalesOrderFromQuotation` exported from `src/services/api.ts`.
+- New Convert-to-Sales-Order button visible when `status === 'accepted'` and the quotation's brand is in `accessibleBrands` (or there are no scopes, i.e. super-admin cross-brand mode).
+- Confirm-then-post flow via `Alert.alert` — uses the quotation's factory; surfaces an explicit error if `factoryId` is missing so the user knows to set it in the desktop ERP first.
+- FW internal-record banner renders above the PDF buttons (iron-deep `#1F2933` background, cream text), mirroring the desktop ProformaDetail / OrderDetail / InvoiceDetail banners.
+- For FW conversions the confirm alert appends the internal-record note so the user can't miss the framing.
+
+## Pre-existing bugs fixed in C16
+
+- `QuotationDetail.jsx:184` — `canSend` referenced `'approved'` which never existed on the Quotation status enum (the enum is `draft|sent|revised|accepted|rejected|expired`). Replaced with the documented set.
+
+## Audit actions added
+
+- `sales_order_status_change` — specialized name for SO status transitions (previously rolled into generic `sales_order_update`). Logged from `PATCH /api/sales-orders/:id/status`.
+- `fw_send_blocked` — logged whenever a FW SO/PI/Invoice Send endpoint is hit. Includes `attemptedBy` and the entity number for forensics.
+
+---
+
 # Cross-brand auto-add + 404-on-wrong-brand (Phase 3, C13)
 
 ## Cross-brand auto-add

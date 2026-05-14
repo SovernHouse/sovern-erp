@@ -376,6 +376,10 @@ export const DASHBOARD = {
   clawBack: 'Super-admin only. Sets status to clawed_back. Requires a written reason (>= 5 chars). Audited.',
   pipelineForecast: 'Sum of open quotations under the brand multiplied by their commission rate. Upper-bound estimate assuming every open quote converts. Probability-by-stage weighting is future work.',
   outstandingTracker: 'Commission rows in status accrued or invoiced_to_factory aged more than 30 days. These should be chased with the factory.',
+  // Phase 4, C16: quote-to-SO conversion + FW internal-record framing.
+  convertToSO: 'Create a Sales Order from this accepted quotation. The source factory and line items carry over. Requires brand access; super-admin can convert across brands. For FW, the resulting SO, PI, and Invoice are ERP-internal records (the factory sends the document to the buyer).',
+  fwInternalRecord: 'FlorWay Sales Orders, Proforma Invoices, and Invoices are ERP-internal records. The factory sends the buyer-facing document directly. The ERP disables the Send button, the PDF carries a "FACTORY WILL SEND TO BUYER" banner, and the server audits any blocked send attempt as fw_send_blocked.',
+  salesOrderStatuses: 'draft → confirmed → in_production → ready → shipped → in_transit → delivered → completed. Any state can move to cancelled. confirmed transition triggers FW commission accrual.',
 }
 
 // ─── Google Drive ─────────────────────────────────────────────────────────────

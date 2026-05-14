@@ -11,8 +11,9 @@ import {
   FileText,
   Loader,
   CalendarClock,
+  Truck,
 } from 'lucide-react'
-import { quotationsAPI } from '../../services/api'
+import { quotationsAPI, ordersAPI, factoriesAPI } from '../../services/api'
 import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import { useBrands } from '../../contexts/BrandsContext'
 import BrandBadge from '../../components/BrandBadge'
@@ -30,7 +31,7 @@ import { QUOTATION_STATUS } from '../../utils/constants'
 export default function QuotationDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { getBrand } = useBrands()
+  const { getBrand, accessibleBrands } = useBrands()
 
   const [quotation, setQuotation] = useState(null)
   useBreadcrumbs(quotation?.quotationNumber)
@@ -38,13 +39,22 @@ export default function QuotationDetail() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
+  const [isConvertingToSO, setIsConvertingToSO] = useState(false)
   const [isDuplicating, setIsDuplicating] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showSendConfirm, setShowSendConfirm] = useState(false)
   const [showConvertConfirm, setShowConvertConfirm] = useState(false)
+  const [showConvertToSOModal, setShowConvertToSOModal] = useState(false)
   const [showActivityModal, setShowActivityModal] = useState(false)
   const [error, setError] = useState(null)
+
+  // Phase 4, C16: Convert-to-SO modal state.
+  const [factories, setFactories] = useState([])
+  const [soFactoryId, setSoFactoryId] = useState('')
+  const [soEstimatedDelivery, setSoEstimatedDelivery] = useState('')
+  const [soShippingMethod, setSoShippingMethod] = useState('')
+  const [soNotes, setSoNotes] = useState('')
 
   useEffect(() => {
     const fetchQuotation = async () => {
@@ -92,6 +102,46 @@ export default function QuotationDetail() {
     } finally {
       setIsConverting(false)
       setShowConvertConfirm(false)
+    }
+  }
+
+  // Phase 4, C16: open modal, preload factories list, prefill factory from quote.
+  const openConvertToSO = async () => {
+    setSoFactoryId(quotation.factoryId || quotation.factory?.id || '')
+    setSoEstimatedDelivery('')
+    setSoShippingMethod('')
+    setSoNotes('')
+    setShowConvertToSOModal(true)
+    try {
+      const res = await factoriesAPI.getAll({ limit: 200 })
+      setFactories(res.data?.data || res.data || [])
+    } catch {
+      setFactories([])
+    }
+  }
+
+  const handleConvertToSO = async () => {
+    if (!soFactoryId) {
+      toast.error('Factory is required to create a Sales Order')
+      return
+    }
+    try {
+      setIsConvertingToSO(true)
+      const res = await ordersAPI.createFromQuotation({
+        quotationId: id,
+        factoryId: soFactoryId,
+        estimatedDelivery: soEstimatedDelivery || undefined,
+        shippingMethod: soShippingMethod || undefined,
+        notes: soNotes || undefined,
+      })
+      const soId = res.data?.data?.id || res.data?.id || res?.id
+      toast.success('Sales Order created from quotation')
+      setShowConvertToSOModal(false)
+      if (soId) navigate(`/sales-orders/${soId}`)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to create Sales Order')
+    } finally {
+      setIsConvertingToSO(false)
     }
   }
 
@@ -181,9 +231,18 @@ export default function QuotationDetail() {
   const total = quotation.total || subtotal - discountAmount + taxAmount
 
   const canSend = quotation.status === 'draft'
-  const canConvert = ['approved', 'sent'].includes(quotation.status)
+  // Phase 4, C16: Quotation status enum is draft/sent/revised/accepted/rejected/expired.
+  // 'approved' was a stale reference (never on the model) — fixed.
+  // Convert-to-PI: allowed from 'sent' or 'accepted'.
+  const canConvert = ['sent', 'accepted'].includes(quotation.status)
   const brand = getBrand(quotation.brandCode || 'SH')
   const brandEmail = brand?.senderEmail || 'alex@sovernhouse.co'
+  // Phase 4, C16: Convert-to-SO requires formal acceptance + brand access.
+  // Backend re-validates via brandScope gate; this just hides the button
+  // when the user has no business clicking it.
+  const quoteBrand = quotation.brandCode || 'SH'
+  const hasBrandAccess = !accessibleBrands || accessibleBrands.length === 0 || accessibleBrands.includes(quoteBrand)
+  const canConvertToSO = quotation.status === 'accepted' && hasBrandAccess
 
   return (
     <div className="space-y-6">
@@ -267,6 +326,21 @@ export default function QuotationDetail() {
                 <FileText className="w-4 h-4" />
               )}
               <span>Convert to PI</span>
+            </button>
+          )}
+          {canConvertToSO && (
+            <button
+              onClick={openConvertToSO}
+              disabled={isConvertingToSO}
+              className="flex items-center space-x-2 px-4 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 transition-colors disabled:opacity-50"
+              title="Create a Sales Order from this accepted quotation"
+            >
+              {isConvertingToSO ? (
+                <Loader className="w-4 h-4 animate-spin" />
+              ) : (
+                <Truck className="w-4 h-4" />
+              )}
+              <span>Convert to SO</span>
             </button>
           )}
           <button
@@ -557,6 +631,105 @@ export default function QuotationDetail() {
         cancelText="Cancel"
         isLoading={isConverting}
       />
+
+      {/* Phase 4, C16: Convert to Sales Order modal */}
+      {showConvertToSOModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Convert to Sales Order</h3>
+              <button
+                onClick={() => setShowConvertToSOModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-xl leading-none"
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              {quoteBrand === 'FW' && (
+                <div className="rounded-md bg-slate-900 text-slate-50 px-3 py-2 text-xs">
+                  <p className="font-semibold">FlorWay internal record</p>
+                  <p className="opacity-80 mt-0.5">
+                    The factory sends the document to the buyer. This Sales Order, its PI, and Invoice are ERP-internal records only.
+                  </p>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Factory <span className="text-red-600">*</span>
+                </label>
+                <select
+                  value={soFactoryId}
+                  onChange={(e) => setSoFactoryId(e.target.value)}
+                  className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="">Select a factory...</option>
+                  {factories.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.companyName || f.name}{f.country ? ` (${f.country})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500 mt-1">
+                  Defaults to the quotation factory. Must match an existing factory.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Estimated Delivery
+                </label>
+                <input
+                  type="date"
+                  value={soEstimatedDelivery}
+                  onChange={(e) => setSoEstimatedDelivery(e.target.value)}
+                  className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Shipping Method
+                </label>
+                <input
+                  type="text"
+                  value={soShippingMethod}
+                  onChange={(e) => setSoShippingMethod(e.target.value)}
+                  placeholder="e.g. FOB Shanghai, CIF Alexandria"
+                  className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  value={soNotes}
+                  onChange={(e) => setSoNotes(e.target.value)}
+                  rows={3}
+                  className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 flex justify-end space-x-2">
+              <button
+                onClick={() => setShowConvertToSOModal(false)}
+                disabled={isConvertingToSO}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConvertToSO}
+                disabled={isConvertingToSO || !soFactoryId}
+                className="px-4 py-2 text-sm font-medium text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50 flex items-center space-x-2"
+              >
+                {isConvertingToSO && <Loader className="w-4 h-4 animate-spin" />}
+                <span>Create Sales Order</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog

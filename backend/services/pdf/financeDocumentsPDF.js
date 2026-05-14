@@ -1,6 +1,6 @@
 const { PDFDocument, fs, path, formatCurrency, uploadDir,
   createDir, getCompanyHeader, getDocumentTitle, getDocumentDetails,
-  createTable, addFooter } = require('./pdfHelpers');
+  createTable, addFooter, addFwInternalRecordBanner } = require('./pdfHelpers');
 
 const generateInvoicePDF = (invoice, salesOrder, customer) => {
   return new Promise((resolve, reject) => {
@@ -13,6 +13,9 @@ const generateInvoicePDF = (invoice, salesOrder, customer) => {
       const stream = fs.createWriteStream(filepath);
 
       doc.pipe(stream);
+
+      // Phase 4, C16: FW internal-record banner (no-op for non-FW).
+      addFwInternalRecordBanner(doc, invoice);
 
       getCompanyHeader(doc);
       getDocumentTitle(doc, 'INVOICE');

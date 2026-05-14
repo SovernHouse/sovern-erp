@@ -102,8 +102,9 @@ router.patch('/:id/status', requireAuth, async (req, res, next) => {
 
     res.json(getSuccessResponse(so, 'Status updated'));
 
-    // Fire-and-forget: audit log, real-time notification, and webhooks
-    auditService.logAction(req.user.id, 'UPDATE', 'SalesOrder', so.id, { statusChange: { before: beforeStatus, after: status } }, req.ip).catch(() => {});
+    // Phase 4, C16: specialize audit action for queryability — status
+    // transitions are a high-signal change worth their own action name.
+    auditService.logAction(req.user.id, 'sales_order_status_change', 'SalesOrder', so.id, { before: beforeStatus, after: status }, req.ip).catch(() => {});
     notificationService.emitOrderStatusChange(so.id, status, so.customerId, so.salesPersonId).catch(() => {});
     webhookService.triggerWebhook('order.statusChanged', {
       orderId: so.id,
@@ -385,6 +386,20 @@ router.post('/create-from-quotation', requireAuth, async (req, res, next) => {
     if (!quotation) throw new NotFoundError('Quotation not found');
     if (quotation.status !== 'accepted') {
       throw new ValidationError('Quotation status must be "accepted" to create sales order');
+    }
+
+    // Phase 4, C16: brand-access gate. The user must have the quotation's
+    // brand in their accessibleBrands set. Prevents an SH-only sales rep
+    // from converting an FW quotation (which they shouldn't be able to
+    // see in the first place per the brandScope, but defense in depth).
+    const accessible = req.brandScope?.accessibleBrands || [];
+    const isCrossBrand = req.brandScope?.isCrossBrand;
+    if (!isCrossBrand && !accessible.includes(quotation.brandCode || 'SH')) {
+      await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        message: `You do not have access to brand ${quotation.brandCode}`,
+      });
     }
 
     if (!quotation.items || quotation.items.length === 0) {

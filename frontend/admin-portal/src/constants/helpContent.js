@@ -217,6 +217,16 @@ export const HELP_CONTENT = {
           'For FlorWay, the variant is shown on the quotation detail page above the line items so you know what the buyer will receive before sending.',
         ],
       },
+      {
+        heading: 'Quotation lifecycle (Phase 4, C16)',
+        items: [
+          'Statuses: draft (editable) → sent (to buyer) → accepted (signed/agreed) or rejected/expired. revised re-opens a sent quote for edits.',
+          'Convert to PI: from sent or accepted. Creates a Proforma Invoice with the same line items.',
+          'Convert to Sales Order: from accepted only. Creates a confirmed SO with the source factory and line items. Triggers FW commission accrual when the SO transitions confirmed.',
+          'Both convert actions require brand access. Super-admin can convert across brands; brand-scoped users cannot.',
+          'For FW, the resulting SO, PI, and Invoice are ERP-internal records. The factory sends the buyer-facing document. The desktop and mobile both disable Send for FW, and the PDF carries a "FACTORY WILL SEND TO BUYER" banner.',
+        ],
+      },
     ],
     tips: [
       'A quotation can be upgraded to a Proforma Invoice once the buyer agrees to terms.',

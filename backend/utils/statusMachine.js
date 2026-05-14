@@ -7,15 +7,23 @@
 const { ValidationError } = require('../middleware/errorHandler');
 
 /**
- * Valid status transitions for Sales Orders
+ * Valid status transitions for Sales Orders.
+ *
+ * Phase 4, C16: reconciled with SalesOrder model enum
+ * (confirmed/in_production/ready/shipped/in_transit/delivered/completed/cancelled).
+ * Dropped the previous 'processing' state (never existed on the model
+ * and rejected by Sequelize at write time). Added 'in_transit'
+ * transition coverage (the model has it; the state machine didn't).
+ * 'draft' is retained for explicit-draft callers; the model defaults
+ * to 'confirmed' so most SOs never visit draft.
  */
 const SALES_ORDER_TRANSITIONS = {
-  draft: ['confirmed', 'in_production', 'processing', 'cancelled'],
-  confirmed: ['in_production', 'processing', 'cancelled'],
-  in_production: ['processing', 'ready', 'shipped', 'cancelled'],
-  processing: ['shipped', 'cancelled'],
+  draft: ['confirmed', 'cancelled'],
+  confirmed: ['in_production', 'cancelled'],
+  in_production: ['ready', 'shipped', 'cancelled'],
   ready: ['shipped', 'cancelled'],
-  shipped: ['delivered', 'cancelled'],
+  shipped: ['in_transit', 'delivered', 'cancelled'],
+  in_transit: ['delivered', 'cancelled'],
   delivered: ['completed', 'cancelled'],
   completed: [],
   cancelled: []

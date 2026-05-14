@@ -173,6 +173,8 @@ export const ordersAPI = {
   createPO: (id, data) => api.post(`/sales-orders/${id}/purchase-order`, data),
   getTimeline: (id) => api.get(`/sales-orders/${id}/timeline`),
   createPackingList: (id) => api.post(`/sales-orders/${id}/create-packing-list`),
+  // Phase 4, C16: create SO from an accepted quotation.
+  createFromQuotation: (data) => api.post('/sales-orders/create-from-quotation', data),
 }
 
 // Purchase Orders endpoints

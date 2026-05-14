@@ -9,7 +9,7 @@ import {
   Alert, RefreshControl, TouchableOpacity, Linking, Share,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { getQuotation, generateApprovalLink, sendQuotation, downloadQuotationPDF, type Quotation, type QuotationItem } from '../../src/services/api';
+import { getQuotation, generateApprovalLink, sendQuotation, downloadQuotationPDF, createSalesOrderFromQuotation, type Quotation, type QuotationItem } from '../../src/services/api';
 import ChatterSection from '../../src/components/ChatterSection';
 import { BrandBadge } from '../../src/components/BrandBadge';
 import { useBrands } from '../../src/hooks/useBrands';
@@ -113,7 +113,7 @@ export default function QuotationDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
   const router = useRouter();
-  const { getBrand } = useBrands();
+  const { getBrand, accessibleBrands } = useBrands();
 
   const [quotation, setQuotation] = useState<Quotation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,6 +121,7 @@ export default function QuotationDetailScreen() {
   const [generatingLink, setGeneratingLink] = useState(false);
   const [sendingViaERP, setSendingViaERP] = useState(false);
   const [pdfBusy, setPdfBusy] = useState<'preview' | 'download' | null>(null);
+  const [convertingToSO, setConvertingToSO] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
     try {
@@ -209,6 +210,49 @@ export default function QuotationDetailScreen() {
     } finally {
       setPdfBusy(null);
     }
+  }
+
+  // Phase 4, C16: Convert an accepted quotation into a Sales Order.
+  // Mobile flow keeps it light — confirms before posting, uses the
+  // quotation's source factory, and navigates to the new SO (desktop
+  // for full SO management). Server re-validates brand access and
+  // returns 403 if the user can't write to the quotation's brand.
+  async function handleConvertToSO() {
+    if (!quotation || convertingToSO) return;
+    if (!quotation.factoryId) {
+      Alert.alert(
+        'Factory required',
+        'This quotation has no source factory on file. Set a factory on the quotation in the desktop ERP before converting.',
+      );
+      return;
+    }
+    Alert.alert(
+      'Create Sales Order',
+      `Convert ${quotation.quotationNumber} into a Sales Order? The source factory and line items carry over.${
+        quotation.brandCode === 'FW' ? '\n\nFlorWay Sales Orders are ERP-internal records. The factory sends the document to the buyer.' : ''
+      }`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Create SO',
+          onPress: async () => {
+            setConvertingToSO(true);
+            try {
+              const so = await createSalesOrderFromQuotation({
+                quotationId: quotation.id,
+                factoryId: quotation.factoryId!,
+              });
+              Alert.alert('Sales Order created', so.orderNumber ? `Order ${so.orderNumber} created.` : 'Sales Order created.');
+              router.replace('/(tabs)/sales-orders');
+            } catch (err: any) {
+              Alert.alert('Convert failed', err.message ?? 'Server error');
+            } finally {
+              setConvertingToSO(false);
+            }
+          },
+        },
+      ],
+    );
   }
 
   async function handleSendViaERP() {
@@ -349,6 +393,16 @@ export default function QuotationDetailScreen() {
         );
       })() : null}
 
+      {/* ── Phase 4, C16: FW internal-record banner ─────────────────── */}
+      {quotation.brandCode === 'FW' ? (
+        <View style={styles.fwInternalBanner}>
+          <Text style={styles.fwInternalBannerTitle}>FACTORY WILL SEND TO BUYER. INTERNAL RECORD</Text>
+          <Text style={styles.fwInternalBannerDetail}>
+            FlorWay Sales Orders, Proforma Invoices, and Invoices are ERP-internal records. The factory sends the document to the buyer directly.
+          </Text>
+        </View>
+      ) : null}
+
       {/* ── Phase 3, C9: PDF preview + download buttons ─────────────── */}
       <View style={styles.pdfButtonRow}>
         <TouchableOpacity
@@ -478,6 +532,28 @@ export default function QuotationDetailScreen() {
           </Text>
         </View>
       </View>
+
+      {/* ── Phase 4, C16: Convert to Sales Order (accepted + brand access) ── */}
+      {quotation.status === 'accepted'
+        && (!accessibleBrands || accessibleBrands.length === 0 || accessibleBrands.includes(quotation.brandCode || 'SH')) ? (
+        <TouchableOpacity
+          style={[styles.signActionBtn, { borderColor: COLORS.success }, convertingToSO && styles.signActionBtnDisabled]}
+          onPress={handleConvertToSO}
+          disabled={convertingToSO}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.signActionIcon}>🚚</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.signActionLabel, { color: COLORS.success }]}>
+              {convertingToSO ? 'Creating Sales Order…' : 'Convert to Sales Order'}
+            </Text>
+            <Text style={styles.signActionMeta}>
+              Creates a confirmed SO from this accepted quotation. Line items and factory carry over.
+            </Text>
+          </View>
+          <Text style={styles.signActionChevron}>›</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {/* ── Send via ERP (draft only) ────────────────────────────────── */}
       {quotation.status === 'draft' ? (
@@ -795,4 +871,27 @@ const styles = StyleSheet.create({
   },
   pdfButtonIcon: { fontSize: 18 },
   pdfButtonLabel: { fontSize: 14, fontWeight: '600', color: COLORS.ink },
+
+  // Phase 4, C16: FW internal-record banner (iron-deep)
+  fwInternalBanner: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: '#1F2933',
+    borderWidth: 1,
+    borderColor: '#1F2933',
+  },
+  fwInternalBannerTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#F1EEE7',
+    letterSpacing: 1.2,
+    marginBottom: 6,
+  },
+  fwInternalBannerDetail: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#F1EEE7',
+    opacity: 0.8,
+  },
 });

@@ -534,6 +534,13 @@ export default function ProformaDetail() {
 
   const piNumber = pi.piNumber || pi.invoiceNumber || pi.proformaNumber || 'PI'
   const canSend = ['draft', 'pending'].includes(pi.status)
+  // Phase 4, C16: FW PIs are internal records. The factory sends the actual
+  // document to the buyer. UI disables Send; server (proformaInvoiceRoutes.js)
+  // re-blocks with fw_send_blocked audit even if someone bypasses the button.
+  const isFwInternalRecord = pi.brandCode === 'FW'
+  const sendDisabledReason = isFwInternalRecord
+    ? 'FlorWay invoices are sent to the buyer by the factory. This document is for internal records only.'
+    : null
   const canConvert = ['sent', 'approved', 'confirmed', 'pending'].includes(pi.status)
   const isConverted = pi.status === 'converted'
 
@@ -581,9 +588,10 @@ export default function ProformaDetail() {
 
           {canSend && (
             <button
-              onClick={() => setShowSendConfirm(true)}
-              disabled={isSending}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 text-sm font-medium"
+              onClick={() => !isFwInternalRecord && setShowSendConfirm(true)}
+              disabled={isSending || isFwInternalRecord}
+              title={sendDisabledReason || undefined}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
             >
               {isSending ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               <span>Send to Client</span>
@@ -631,6 +639,16 @@ export default function ProformaDetail() {
           )}
         </div>
       </div>
+
+      {/* Phase 4, C16: FW Proforma Invoices are ERP-internal records. The
+          factory sends the document to the buyer. UI disables Send button;
+          PDF carries an iron-deep banner; server route audits fw_send_blocked. */}
+      {isFwInternalRecord && (
+        <div className="rounded-lg border border-slate-800 bg-slate-900 text-slate-50 px-4 py-3">
+          <p className="text-sm font-semibold tracking-wide">FACTORY WILL SEND TO BUYER. INTERNAL RECORD</p>
+          <p className="text-xs opacity-80 mt-1">{sendDisabledReason}</p>
+        </div>
+      )}
 
       {/* Converted banner */}
       {isConverted && (
