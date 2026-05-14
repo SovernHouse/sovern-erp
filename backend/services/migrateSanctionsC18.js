@@ -42,22 +42,32 @@ async function migrateSanctionsC18(db) {
   let customerUpdated = 0;
   let leadUpdated = 0;
 
+  // Note: Customer table is singular (freezeTableName/tableName), Leads is
+  // plural. Use the model's getTableName() so this stays correct if the
+  // convention ever drifts.
+  const CUSTOMER_TABLE = (db.Customer && typeof db.Customer.getTableName === 'function')
+    ? db.Customer.getTableName()
+    : 'Customer';
+  const LEAD_TABLE = (db.Lead && typeof db.Lead.getTableName === 'function')
+    ? db.Lead.getTableName()
+    : 'Leads';
+
   try {
     const [, custRes] = await db.sequelize.query(
-      `UPDATE Customers SET screening_status = 'pending' WHERE screening_status IS NULL`
+      `UPDATE "${CUSTOMER_TABLE}" SET screening_status = 'pending' WHERE screening_status IS NULL`
     );
     customerUpdated = custRes?.changes || custRes?.rowCount || 0;
   } catch (e) {
-    logger.warn('[C18] Customer screening_status backfill warning:', e.message);
+    logger.warn(`[C18] Customer screening_status backfill warning: ${e.message || e}`);
   }
 
   try {
     const [, leadRes] = await db.sequelize.query(
-      `UPDATE Leads SET screening_status = 'pending' WHERE screening_status IS NULL`
+      `UPDATE "${LEAD_TABLE}" SET screening_status = 'pending' WHERE screening_status IS NULL`
     );
     leadUpdated = leadRes?.changes || leadRes?.rowCount || 0;
   } catch (e) {
-    logger.warn('[C18] Lead screening_status backfill warning:', e.message);
+    logger.warn(`[C18] Lead screening_status backfill warning: ${e.message || e}`);
   }
 
   await writeSentinel(db, {
