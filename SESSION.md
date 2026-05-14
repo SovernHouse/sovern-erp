@@ -5,24 +5,118 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 3 + first mechanical follow-up shipped. Mobile L-042 follow-up staged.
+2026-05-14 Taiwan time. Phase 3 + both mechanical follow-ups fully shipped and live. End of session.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `ddf80a1` (chore(phase-3): mechanical follow-ups — 404 + analytics + L-042 desktop)
-- **Working tree:** mobile L-042 timezone migration staged
-- **CI/CD Pipeline (ddf80a1):** green
-- **Deploy (ddf80a1):** green
+- **Latest commit on main:** `e65f664` (chore(phase-3): mobile L-042 — timezone Asia/Taipei on every date formatter)
+- **Working tree:** clean
+- **CI/CD Pipeline (e65f664):** green
+- **Deploy (e65f664):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
 
 ---
 
-## Phase 3 — In progress
+## Phase 3 — COMPLETE ✅
 
-Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
+Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md` (kept for reference)
 
-### Mobile L-042 follow-up (READY FOR COMMIT)
+**Commits shipped this session, in order:**
+
+| Hash | Scope |
+|---|---|
+| `cbb308a` | C9 — FW quotation document template (IronLite / Generic / Private Label) + mobile Preview/Download PDF |
+| `7e8a8f5` | C10 — SH brand-styled quotation renderer (forest / cream / ink) |
+| `72c7844` | C11 — Per-brand reporting + FW commission widget (5% default, adjustable per order) |
+| `e9c0938` | C12 — productBrandingMode picker + lock-after-sent + super-admin override |
+| `14cd45b` | C13 — Phase 1 polish bundle (BrandBadge expansion, BrandPicker on create forms, cross-brand auto-add, 404-on-wrong-brand) |
+| `ddf80a1` | Polish 1 — 404 extension (Inquiry/Activity/TriageItem/Document) + analytics brand-scope (7 endpoints) + desktop L-042 formatters |
+| `e65f664` | Polish 2 — mobile L-042 (timezone Asia/Taipei on 28 call sites across 14 files) |
+
+7 commits, all CI green, all deployed live on `erp.sovernhouse.co`.
+
+---
+
+## What Alex still owes manually (next time he's at his Windows machine)
+
+1. **Mobile npm install** — `cd "C:\Users\Alex\Desktop\International Trade Company\Trading ERP\mobile\sovern-ops-app"` then `npm install`. Picks up `expo-file-system` + `expo-sharing` added in C9 for the mobile Preview/Download PDF feature. Without this, the mobile PDF buttons throw on tap.
+
+2. **Optional: typography upgrade for PDFs** — drop these into `backend/assets/fonts/` to swap Helvetica fallback for the FW brand-spec fonts:
+   - `Anton-Regular.ttf` (display)
+   - `Inter-Regular.ttf` + `Inter-Bold.ttf` (body)
+   - All free from fonts.google.com (OFL). The PDF renderer's `registerBrandFonts` already conditionally registers them; no code change needed when they appear.
+
+3. **Optional: flex the FW commission rate** — set `FW_COMMISSION_RATE=<n>` (e.g. `7`) in the GCP VM's env and restart pm2 to seed a different default. Existing CommissionTracking rows keep their per-order rates.
+
+4. **Auto-update error on the Claude Code CLI** — separate from the ERP. Run `! claude doctor` from this prompt to diagnose, then `npm i -g @anthropic-ai/claude-code` in an elevated PowerShell if needed.
+
+---
+
+## Smoke-test checklist Alex hasn't run yet (Phase 3 verification)
+
+When you next have a phone in hand + a test customer in the DB, walk through:
+
+**FW PDF variants (after `npm install`):**
+1. FW customer with `productBrandingMode='ironlite'` + WPC quotation → Download PDF → I-Beam wordmark, OEM badge, construction diagram on page 2.
+2. Same customer with `productBrandingMode='generic'` → FlorWay Sdn Bhd wordmark, no IronLite imagery.
+3. Same customer with `productBrandingMode='private_label'` + a brand name → placeholder page with TODO banner.
+4. SH customer + quotation → new SH brand-styled layout (forest/cream/ink). This is a visual change from the old pdfkit-classic layout for SH; flag if it doesn't match your taste.
+5. Send FW quotation by email → PDF attached, sender `alexflorway@gmail.com`, no Mohanad BCC.
+6. Footer middot (U+00B7) renders, no em dashes anywhere.
+7. Mobile: open quotation detail → tap Preview PDF (opens in viewer) → tap Download PDF (share sheet).
+
+**Brand-scoped reporting:**
+8. Dashboard top-right brand picker → toggle SH / FW → KPIs and charts update.
+9. FW commission widget renders three tiles (Accrued / Paid / Pending) for the current Taipei month.
+10. Click "Show orders" → expand the per-order list → change a pending row's percentage → confirm the amount recalculates and saves.
+11. As super-admin in cross-brand view → see the BrandRevenueComparison side-by-side bar.
+
+**productBrandingMode lock:**
+12. Add FW to a customer's brand relationships → picker appears on customer detail.
+13. Set mode to `ironlite`, send an FW quotation → reload customer detail → picker locked with Asia/Taipei lock timestamp.
+14. As super-admin → click Override → enter reason (min 3 chars) → confirm. Audit log entry should appear.
+
+**Phase 1 polish:**
+15. Create an FW lead/quote/deal against an existing SH-only customer → toast appears, customer brand relationships now include FW.
+16. As an SH-only user, hit `/api/quotations/<FW-id>` directly → 404 (not 403).
+17. BrandBadge visible on Order, Invoice, ProformaInvoice detail headers.
+18. BrandPicker visible on LeadForm, QuotationForm, DealForm.
+
+**Timezone:**
+19. Every date and time on every screen, every PDF footer, every audit log timestamp → Taipei time.
+
+---
+
+## Deferred (not in Phase 3 — pick up in a future phase)
+
+- **SO / PO / Invoice / Packing List brand-aware document templates** — factory currently sends FW docs per your standing decision. Pick up when factory hands off.
+- **Full Private Label quotation template** — placeholder ships now; full template lands when the first OEM private-label buyer signs.
+- **Calendar / Docs MCP integration extensions** — not blocking.
+- **Quotation approval workflow** — Mr. Lee / Alice confirmed no sign-off needed.
+
+---
+
+## Stale memory note
+
+`project_expenses_per_brand` memory says Phase 1 didn't tag Expense/Office/Trip/Submission with brandCode and that we owe a sub-commit. The Phase 3 Explore agent confirmed they ARE tagged from Phase 1 Commit 3b-A. Memory should be updated/deleted when convenient.
+
+---
+
+## Next session pickup
+
+If you come back to ERP work, start by:
+
+1. `git log --oneline -8` to confirm we're at `e65f664` on `main` (or further if anyone pushed).
+2. Re-read this file and `lessons.md` per the standing protocol.
+3. Either:
+   - Smoke-test the checklist above and report findings, OR
+   - Pick up one of the deferred items above, OR
+   - Hit a new feature ask.
+
+---
+
+### Mobile L-042 follow-up (SHIPPED, commit `e65f664`, live)
 
 Every per-screen mobile date formatter now passes `timeZone: 'Asia/Taipei'`. 14 files touched, ~28 call sites updated.
 
