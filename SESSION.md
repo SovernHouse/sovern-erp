@@ -5,16 +5,17 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 4 in progress. C14 + C15 + C16 shipped + live. C17 (inbox brand awareness) staged.
+2026-05-14 Taiwan time. Phase 4 in progress. C14 + C15 + C16 + C17 shipped + live. C18 (sanctions screening) is the only remaining commit.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `f9c7fc6` (chore(phase-4): mark C16 shipped + live in SESSION.md)
-- **Working tree:** C17 staged, awaiting commit
-- **CI/CD Pipeline (1e9f417):** green
-- **Deploy (1e9f417):** green
+- **Latest commit on main:** `ac4ff75` (feat(phase-4): inbox brand awareness + Egypt BCC single source of truth (C17))
+- **Working tree:** clean
+- **CI/CD Pipeline (ac4ff75):** green
+- **Deploy (ac4ff75):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
+- **C17 migration verified:** `[C17] ConnectedGoogleAccount backfill: 2 tagged, 0 orphan` in pm2 logs
 
 ---
 
@@ -22,7 +23,7 @@
 
 Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
 
-### C17 — Inbox / email UX brand awareness (READY FOR COMMIT)
+### C17 — Inbox / email UX brand awareness (SHIPPED, commit `ac4ff75`, live)
 
 **Schema:**
 - `ConnectedGoogleAccount.brandCode` STRING(8) NULL — FK Brand.code (constraints:false). Auto-added by autoMigrateSchema at boot.
