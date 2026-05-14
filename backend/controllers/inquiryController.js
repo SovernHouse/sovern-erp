@@ -120,6 +120,12 @@ const getById = async (req, res, next) => {
       throw new NotFoundError('Inquiry not found');
     }
 
+    // Phase 3 follow-up: 404-on-wrong-brand.
+    const { isAccessibleByBrandCode } = require('../utils/notFoundOnWrongBrand');
+    if (!isAccessibleByBrandCode(req, inquiry.brandCode)) {
+      throw new NotFoundError('Inquiry not found');
+    }
+
     res.json(getSuccessResponse(inquiry));
   } catch (error) {
     next(error);

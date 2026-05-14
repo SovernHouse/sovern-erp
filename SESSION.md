@@ -5,15 +5,15 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 3 COMPLETE (pending C13 commit). C9 + C10 + C11 + C12 shipped + live. C13 (Phase 1 polish bundle) staged.
+2026-05-14 Taiwan time. Phase 3 COMPLETE + mechanical follow-ups (C14) staged. C9-C13 shipped and live.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `e9c0938` (feat(phase-3): productBrandingMode picker UI + lock + super-admin override (C12))
-- **Working tree:** C13 staged, awaiting commit
-- **CI/CD Pipeline (e9c0938):** green
-- **Deploy (e9c0938):** green
+- **Latest commit on main:** `14cd45b` (feat(phase-3): Phase 1 polish bundle - C13)
+- **Working tree:** Phase 3 mechanical follow-ups staged
+- **CI/CD Pipeline (14cd45b):** green
+- **Deploy (14cd45b):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
 
 ---
@@ -22,7 +22,31 @@
 
 Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
 
-### C13 — Phase 1 polish bundle (READY FOR COMMIT)
+### Phase 3 mechanical follow-ups (READY FOR COMMIT)
+
+**404-on-wrong-brand extended:**
+- `inquiryController.getById` — `isAccessibleByBrandCode` check after the findByPk.
+- `activityController.getActivityById` — same.
+- `triageController.getTriageItem` — same.
+- `documentRoutes` GET `/:id` — same.
+- OutreachEmail has no standalone get-by-id endpoint (only nested under leads) — nothing to lock down.
+
+**Analytics brand-scoped:**
+- `analyticsRoutes` — `order-funnel`, `top-products`, `customer-segments`, `factory-performance`, `payment-aging`, `shipment-timeline`, `profit-margins`, `forecast` all now use `brandWhere(req)` or `brandWhereSql(req, alias)`. Per-route `requireAuth` removed (router-level applies it).
+- `shipment-timeline` joins to SalesOrder for brand-scoping (Shipment carries no brandCode directly).
+- `factory-performance` brand-scopes PurchaseOrder side; Factory itself is shared across brands.
+- `customer-segments` brand-scopes the SalesOrder join; customers with zero matching orders still appear with revenue=0 (Customer's JSON `brandRelationships` requires app-layer filtering, separate concern).
+
+**L-042 desktop formatters:**
+- `frontend/admin-portal/src/utils/formatters.js` — `formatDate` and `formatDateTime` now use `Intl.DateTimeFormat` with `timeZone: 'Asia/Taipei'`. Every existing call site auto-upgrades.
+- Mobile screens use per-screen inline `toLocaleDateString` without timeZone — out of scope here; mark as future cleanup.
+
+**SH PDF path confirmation:**
+- No code change. `renderSovernHouseClassic` writes to `uploads/quotations/SH/classic/` since C10 (verified at `brandedQuotationRenderer.js:91`). The follow-up note in C13 was stale.
+
+---
+
+### C13 — Phase 1 polish bundle (SHIPPED, commit `14cd45b`, live)
 
 **BrandBadge expansion (desktop detail headers):**
 - `OrderDetail.jsx`, `InvoiceDetail.jsx`, `ProformaDetail.jsx` — added `<BrandBadge code={record.brandCode || 'SH'} size="sm" />` next to the StatusBadge.

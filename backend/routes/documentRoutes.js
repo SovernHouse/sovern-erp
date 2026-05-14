@@ -122,6 +122,13 @@ router.get('/:id', requireAuth, async (req, res, next) => {
     });
 
     if (!document) throw new NotFoundError('Document not found');
+
+    // Phase 3 follow-up: 404-on-wrong-brand.
+    const { isAccessibleByBrandCode } = require('../utils/notFoundOnWrongBrand');
+    if (!isAccessibleByBrandCode(req, document.brandCode)) {
+      throw new NotFoundError('Document not found');
+    }
+
     res.json(getSuccessResponse(document));
   } catch (error) {
     next(error);

@@ -80,6 +80,13 @@ exports.getTriageItem = async (req, res) => {
     ],
   });
   if (!item) throw new NotFoundError('Triage item not found');
+
+  // Phase 3 follow-up: 404-on-wrong-brand.
+  const { isAccessibleByBrandCode } = require('../utils/notFoundOnWrongBrand');
+  if (!isAccessibleByBrandCode(req, item.brandCode)) {
+    throw new NotFoundError('Triage item not found');
+  }
+
   return res.json({ success: true, data: item });
 };
 

@@ -100,14 +100,16 @@ router.get('/revenue-trend', async (req, res, next) => {
  * GET /api/analytics/order-funnel
  * Inquiry → Quotation → PI → Order conversion rates
  */
-router.get('/order-funnel', requireAuth, async (req, res, next) => {
+router.get('/order-funnel', async (req, res, next) => {
   try {
-    const inquiries = await db.Inquiry.count();
-    const quotations = await db.Quotation.count();
-    const proformas = await db.ProformaInvoice.count();
-    const salesOrders = await db.SalesOrder.count();
-    const invoices = await db.Invoice.count();
-    const paidInvoices = await db.Invoice.count({ where: { status: 'paid' } });
+    // Phase 3 follow-up: brand-scope every count.
+    const bw = brandWhere(req);
+    const inquiries = await db.Inquiry.count({ where: { ...bw } });
+    const quotations = await db.Quotation.count({ where: { ...bw } });
+    const proformas = await db.ProformaInvoice.count({ where: { ...bw } });
+    const salesOrders = await db.SalesOrder.count({ where: { ...bw } });
+    const invoices = await db.Invoice.count({ where: { ...bw } });
+    const paidInvoices = await db.Invoice.count({ where: { ...bw, status: 'paid' } });
 
     const stages = [
       { name: 'Inquiry', value: inquiries },
@@ -144,8 +146,10 @@ router.get('/order-funnel', requireAuth, async (req, res, next) => {
  * GET /api/analytics/top-products
  * Top 10 products by revenue
  */
-router.get('/top-products', requireAuth, async (req, res, next) => {
+router.get('/top-products', async (req, res, next) => {
   try {
+    // Phase 3 follow-up: brand-scope on the SalesOrder join.
+    const { sql: bsql, replacements: brs } = brandWhereSql(req, 'so');
     const topProducts = await db.sequelize.query(`
       SELECT
         p.id,
@@ -156,12 +160,12 @@ router.get('/top-products', requireAuth, async (req, res, next) => {
         COUNT(DISTINCT so.id) as orderCount
       FROM Product p
       LEFT JOIN SalesOrderItem soi ON p.id = soi.product_id
-      LEFT JOIN SalesOrder so ON soi.sales_order_id = so.id AND so.status = 'completed'
+      LEFT JOIN SalesOrder so ON soi.sales_order_id = so.id AND so.status = 'completed'${bsql}
       WHERE so.id IS NOT NULL OR p.id IS NOT NULL
       GROUP BY p.id, p.name, p.sku
       ORDER BY totalRevenue DESC
       LIMIT 10
-    `, { type: 'SELECT' });
+    `, { replacements: brs, type: 'SELECT' });
 
     const total = topProducts.reduce((sum, p) => sum + parseFloat(p.totalRevenue || 0), 0);
 
@@ -192,8 +196,13 @@ router.get('/top-products', requireAuth, async (req, res, next) => {
  * GET /api/analytics/customer-segments
  * Customer segmentation by revenue tiers
  */
-router.get('/customer-segments', requireAuth, async (req, res, next) => {
+router.get('/customer-segments', async (req, res, next) => {
   try {
+    // Phase 3 follow-up: brand-scope the SalesOrder join. Customer itself
+    // uses brandRelationships JSON; we narrow the orders being summed and
+    // accept that customers with zero matching orders still appear in the
+    // result (revenue = 0). The segmenting logic naturally handles that.
+    const { sql: bsql, replacements: brs } = brandWhereSql(req, 'so');
     const customerRevenue = await db.sequelize.query(`
       SELECT
         c.id,
@@ -201,10 +210,10 @@ router.get('/customer-segments', requireAuth, async (req, res, next) => {
         SUM(so.total) as totalRevenue,
         COUNT(so.id) as orderCount
       FROM Customer c
-      LEFT JOIN SalesOrder so ON c.id = so.customer_id AND so.status = 'completed'
+      LEFT JOIN SalesOrder so ON c.id = so.customer_id AND so.status = 'completed'${bsql}
       GROUP BY c.id, c.company_name
       ORDER BY totalRevenue DESC
-    `, { type: 'SELECT' });
+    `, { replacements: brs, type: 'SELECT' });
 
     const segments = {
       'Tier A (>$100K)': [],
@@ -268,15 +277,18 @@ router.get('/customer-segments', requireAuth, async (req, res, next) => {
  * GET /api/analytics/factory-performance
  * Factory comparison - quality, delivery, cost
  */
-router.get('/factory-performance', requireAuth, async (req, res, next) => {
+router.get('/factory-performance', async (req, res, next) => {
   try {
+    // Phase 3 follow-up: brand-scope PurchaseOrder and Inspection queries.
+    // Factory itself isn't brand-tagged (factories are shared across brands).
+    const bw = brandWhere(req);
     const factories = await db.Factory.findAll({ attributes: ['id', 'companyName'] });
 
     const performanceData = [];
 
     for (const factory of factories) {
       const purchaseOrders = await db.PurchaseOrder.findAll({
-        where: { factoryId: factory.id }
+        where: { ...bw, factoryId: factory.id }
       });
 
       const inspections = await db.Inspection.findAll({
@@ -322,11 +334,12 @@ router.get('/factory-performance', requireAuth, async (req, res, next) => {
  * GET /api/analytics/payment-aging
  * Payment aging buckets
  */
-router.get('/payment-aging', requireAuth, async (req, res, next) => {
+router.get('/payment-aging', async (req, res, next) => {
   try {
+    // Phase 3 follow-up: brand-scope outstanding invoices.
     const today = dayjs();
     const invoices = await db.Invoice.findAll({
-      where: { status: { [Op.in]: ['draft', 'sent', 'partially_paid'] } },
+      where: { ...brandWhere(req), status: { [Op.in]: ['draft', 'sent', 'partially_paid'] } },
       include: [{ model: db.Customer, as: 'customer', attributes: ['companyName'] }]
     });
 
@@ -383,23 +396,27 @@ router.get('/payment-aging', requireAuth, async (req, res, next) => {
  * GET /api/analytics/shipment-timeline
  * Shipment status over time
  */
-router.get('/shipment-timeline', requireAuth, async (req, res, next) => {
+router.get('/shipment-timeline', async (req, res, next) => {
   try {
     const months = 12;
     const endDate = dayjs().endOf('month').toDate();
     const startDate = dayjs(endDate).subtract(months - 1, 'month').startOf('month').toDate();
 
+    // Phase 3 follow-up: Shipment doesn't carry brandCode directly (it
+    // inherits via SalesOrder). Join to SO and brand-scope there.
+    const { sql: bsql, replacements: brs } = brandWhereSql(req, 'so');
     const shipmentData = await db.sequelize.query(`
       SELECT
-        strftime('%Y-%m', created_at) as month,
-        status,
+        strftime('%Y-%m', s.created_at) as month,
+        s.status,
         COUNT(*) as count
-      FROM Shipment
-      WHERE created_at BETWEEN ? AND ?
-      GROUP BY strftime('%Y-%m', created_at), status
+      FROM Shipment s
+      LEFT JOIN SalesOrder so ON s.sales_order_id = so.id
+      WHERE s.created_at BETWEEN ? AND ?${bsql}
+      GROUP BY strftime('%Y-%m', s.created_at), s.status
       ORDER BY month ASC, status ASC
     `, {
-      replacements: [startDate, endDate],
+      replacements: [startDate, endDate, ...brs],
       type: 'SELECT'
     });
 
@@ -435,12 +452,14 @@ router.get('/shipment-timeline', requireAuth, async (req, res, next) => {
  * GET /api/analytics/profit-margins
  * Profit margins by product/customer/factory
  */
-router.get('/profit-margins', requireAuth, async (req, res, next) => {
+router.get('/profit-margins', async (req, res, next) => {
   try {
     const { groupBy = 'product' } = req.query;
 
+    // Phase 3 follow-up: brand-scope both SO and PO sides of the margin calc.
+    const bw = brandWhere(req);
     const salesOrders = await db.SalesOrder.findAll({
-      where: { status: 'completed' },
+      where: { ...bw, status: 'completed' },
       include: [
         { model: db.Customer, as: 'customer', attributes: ['id', 'companyName'] },
         { association: 'items', include: [{ model: db.Product, as: 'product', attributes: ['id', 'name'] }] }
@@ -448,7 +467,7 @@ router.get('/profit-margins', requireAuth, async (req, res, next) => {
     });
 
     const purchaseOrders = await db.PurchaseOrder.findAll({
-      where: { status: 'completed' },
+      where: { ...bw, status: 'completed' },
       include: [{ association: 'items' }]
     });
 
@@ -520,22 +539,26 @@ router.get('/profit-margins', requireAuth, async (req, res, next) => {
  * GET /api/analytics/forecast
  * Simple linear forecast for next 3 months
  */
-router.get('/forecast', requireAuth, async (req, res, next) => {
+router.get('/forecast', async (req, res, next) => {
   try {
     const months = 6;
     const endDate = dayjs().endOf('month').toDate();
     const startDate = dayjs(endDate).subtract(months - 1, 'month').startOf('month').toDate();
 
+    // Phase 3 follow-up: brand-scope the historical revenue base. The
+    // forecast is per-brand because the model trains only on that brand's
+    // historical pattern.
+    const { sql: bsql, replacements: brs } = brandWhereSql(req, 'SalesOrder');
     const historicalData = await db.sequelize.query(`
       SELECT
         strftime('%Y-%m', created_at) as month,
         SUM(CASE WHEN status = 'completed' THEN total ELSE 0 END) as revenue
       FROM SalesOrder
-      WHERE created_at BETWEEN ? AND ?
+      WHERE created_at BETWEEN ? AND ?${bsql}
       GROUP BY strftime('%Y-%m', created_at)
       ORDER BY month ASC
     `, {
-      replacements: [startDate, endDate],
+      replacements: [startDate, endDate, ...brs],
       type: 'SELECT'
     });
 

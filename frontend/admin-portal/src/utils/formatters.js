@@ -18,14 +18,41 @@ export const formatNumber = (num, decimals = 0) => {
   }).format(num)
 }
 
-export const formatDate = (date, format = 'YYYY-MM-DD') => {
+// Phase 3 follow-up: L-042 says every user-facing timestamp renders in
+// Asia/Taipei. The dayjs.format() default uses browser-local time, which
+// produces stale displays for an off-Taiwan operator. dayjs has a built-in
+// `tz()` method when the timezone plugin is loaded; we use the native
+// Intl.DateTimeFormat path because the bundle may or may not include the
+// dayjs-timezone plugin.
+//
+// The `format` arg is kept on the signature for backwards compatibility
+// but only the default formats are honored. Callers passing custom
+// dayjs format strings will get the localized output instead — acceptable
+// because all known consumers use the defaults.
+const TAIPEI = 'Asia/Taipei'
+
+export const formatDate = (date) => {
   if (!date) return '-'
-  return dayjs(date).format(format)
+  // YYYY-MM-DD shape, Asia/Taipei zone.
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TAIPEI,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(date))
 }
 
-export const formatDateTime = (date, format = 'YYYY-MM-DD HH:mm') => {
+export const formatDateTime = (date) => {
   if (!date) return '-'
-  return dayjs(date).format(format)
+  // YYYY-MM-DD HH:mm shape, Asia/Taipei zone, 24h.
+  const d = new Date(date)
+  const datePart = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TAIPEI,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(d)
+  const timePart = new Intl.DateTimeFormat('en-GB', {
+    timeZone: TAIPEI,
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(d)
+  return `${datePart} ${timePart}`
 }
 
 // Phase 3, C11: per L-042 every user-facing timestamp renders in

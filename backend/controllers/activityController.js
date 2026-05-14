@@ -63,6 +63,12 @@ exports.getActivityById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Activity not found' });
     }
 
+    // Phase 3 follow-up: 404-on-wrong-brand.
+    const { isAccessibleByBrandCode } = require('../utils/notFoundOnWrongBrand');
+    if (!isAccessibleByBrandCode(req, activity.brandCode)) {
+      return res.status(404).json({ success: false, message: 'Activity not found' });
+    }
+
     res.json({ success: true, data: activity });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
