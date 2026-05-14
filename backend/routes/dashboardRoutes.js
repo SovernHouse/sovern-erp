@@ -46,8 +46,12 @@ router.get('/', async (req, res, next) => {
       db.Lead
         ? db.Lead.count({ where: { ...bw, status: { [Op.notIn]: ['won', 'lost'] } } })
         : Promise.resolve(0),
+      // InternalApproval is NOT brand-tagged (not in BRAND_TX_MODELS) — the
+      // table has no brand_code column. Do not spread `bw` here or SQLite
+      // throws "no such column: brand_code" → 500 on the mobile dashboard.
+      // Approvals are operational queue items shared across brands.
       db.InternalApproval
-        ? db.InternalApproval.count({ where: { ...bw, status: 'pending' } })
+        ? db.InternalApproval.count({ where: { status: 'pending' } })
         : Promise.resolve(0),
       db.Activity
         ? db.Activity.count({
