@@ -149,7 +149,7 @@ export function addActivity(leadId: string, note: string, type = 'note') {
 
 // ─── Products ─────────────────────────────────────────────────────────────
 
-export async function getProducts(params?: { search?: string; page?: number; limit?: number }) {
+export async function getProducts(params?: { search?: string; page?: number; limit?: number; brandCode?: string; status?: string }) {
   const qs = new URLSearchParams(
     Object.entries(params ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
   ).toString();
@@ -521,6 +521,14 @@ export interface Product {
   isActive?: boolean;
   prices?: ProductPrice[];
   specifications?: Record<string, unknown>;
+  // Phase 4, C14: brand-aware catalog fields
+  brandCode?: string;
+  productType?: 'lvt' | 'spc' | 'wpc' | 'hardwood' | 'laminate' | 'tile' | 'ceramic' | 'other' | null;
+  baseFobPrice?: number | null;
+  moqUnit?: string | null;
+  leadTimeDays?: number | null;
+  certifications?: Array<{ name: string; issuer?: string; expiresAt?: string | null }>;
+  originCountry?: string | null;
   // legacy compat
   unitPrice?: number;
   currency?: string;

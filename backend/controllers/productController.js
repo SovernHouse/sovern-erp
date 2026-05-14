@@ -3,12 +3,28 @@ const { Op } = require('sequelize');
 const db = require('../models');
 const { getPagination, getPaginatedResponse, getSuccessResponse } = require('../utils/helpers');
 const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
+const { assertBrandWritable } = require('../middleware/brandScope');
+const { isAccessibleByBrandCode } = require('../utils/notFoundOnWrongBrand');
 const auditService = require('../services/auditService');
 
 const create = async (req, res, next) => {
   try {
-    const { name, sku, description, categoryId, factoryId, unit, specifications, images, minOrderQty, weight, hsCode } = req.body;
+    const {
+      name, sku, description, salesDescription, purchaseDescription,
+      categoryId, factoryId, unit, specifications, images,
+      minOrderQty, weight, hsCode,
+      // Phase 4, C14: new brand-aware catalog fields
+      productType, baseFobPrice, currency, moqUnit, leadTimeDays,
+      certifications, originCountry,
+    } = req.body;
 
+    // Phase 4, C14: resolve brand (body wins, else user defaultBrand, else 'SH').
+    const resolvedBrandCode = req.body.brandCode || req.brandScope?.defaultBrand || 'SH';
+    if (!assertBrandWritable(req, res, resolvedBrandCode)) return;
+
+    // SKU stays globally unique (legacy column-level UNIQUE on the table).
+    // Plan deviation documented in the model. Brand-prefixed SKUs (FW-*/SH-*)
+    // avoid collisions in practice.
     const existingSku = await db.Product.findOne({ where: { sku } });
     if (existingSku) {
       throw new ValidationError('SKU already exists');
@@ -29,6 +45,8 @@ const create = async (req, res, next) => {
       name,
       sku,
       description,
+      salesDescription,
+      purchaseDescription,
       categoryId,
       factoryId,
       unit: unit || 'sqm',
@@ -37,7 +55,16 @@ const create = async (req, res, next) => {
       minOrderQty: minOrderQty || 1,
       weight,
       hsCode,
-      isActive: true
+      isActive: true,
+      // Phase 4, C14
+      brandCode: resolvedBrandCode,
+      productType: productType || null,
+      baseFobPrice: baseFobPrice != null ? baseFobPrice : null,
+      currency: currency || 'USD',
+      moqUnit: moqUnit || null,
+      leadTimeDays: leadTimeDays != null ? leadTimeDays : null,
+      certifications: certifications || [],
+      originCountry: originCountry || null,
     });
 
     const result = await db.Product.findByPk(product.id, {
@@ -59,13 +86,18 @@ const create = async (req, res, next) => {
 
 const getAll = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10, search, categoryId, factoryId, status } = req.query;
+    const { page = 1, limit = 10, search, categoryId, factoryId, status, productType } = req.query;
     const { offset } = getPagination(page, limit);
 
-    const where = { deletedAt: null };
+    // Phase 4, C14: brand-scope every list response. brandWhere() returns
+    // the partial where clause for the user's accessibleBrands (or the
+    // ?brandCode override for multi-brand users).
+    const { brandWhere } = require('../utils/brandFilterUtils');
+    const where = { ...brandWhere(req), deletedAt: null };
     if (status) where.isActive = status === 'active';
     if (categoryId) where.categoryId = categoryId;
     if (factoryId) where.factoryId = factoryId;
+    if (productType) where.productType = productType;
     if (search) {
       where[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
@@ -110,6 +142,12 @@ const getById = async (req, res, next) => {
       throw new NotFoundError('Product not found');
     }
 
+    // Phase 4, C14: 404-on-wrong-brand. Don't leak existence outside the
+    // user's accessible brands.
+    if (!isAccessibleByBrandCode(req, product.brandCode)) {
+      throw new NotFoundError('Product not found');
+    }
+
     res.json(getSuccessResponse(product));
   } catch (error) {
     next(error);
@@ -119,12 +157,25 @@ const getById = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, description, salesDescription, purchaseDescription, unit, specifications, images, minOrderQty, weight, hsCode, isActive } = req.body;
+    const {
+      name, description, salesDescription, purchaseDescription,
+      unit, specifications, images, minOrderQty, weight, hsCode, isActive,
+      // Phase 4, C14 — accept new fields. brandCode is NOT editable here
+      // (use /admin/brand-override for that flow).
+      productType, baseFobPrice, currency, moqUnit, leadTimeDays,
+      certifications, originCountry,
+    } = req.body;
 
     const product = await db.Product.findByPk(id);
     if (!product || product.deletedAt) {
       throw new NotFoundError('Product not found');
     }
+
+    // Phase 4, C14: 404-on-wrong-brand on writes too — same as get-by-id.
+    if (!isAccessibleByBrandCode(req, product.brandCode)) {
+      throw new NotFoundError('Product not found');
+    }
+    if (!assertBrandWritable(req, res, product.brandCode)) return;
 
     const beforeSnapshot = product.toJSON();
 
@@ -139,7 +190,15 @@ const update = async (req, res, next) => {
       minOrderQty: minOrderQty !== undefined ? minOrderQty : product.minOrderQty,
       weight: weight !== undefined ? weight : product.weight,
       hsCode: hsCode !== undefined ? hsCode : product.hsCode,
-      isActive: isActive !== undefined ? isActive : product.isActive
+      isActive: isActive !== undefined ? isActive : product.isActive,
+      // Phase 4, C14
+      productType: productType !== undefined ? productType : product.productType,
+      baseFobPrice: baseFobPrice !== undefined ? baseFobPrice : product.baseFobPrice,
+      currency: currency || product.currency,
+      moqUnit: moqUnit !== undefined ? moqUnit : product.moqUnit,
+      leadTimeDays: leadTimeDays !== undefined ? leadTimeDays : product.leadTimeDays,
+      certifications: certifications !== undefined ? certifications : product.certifications,
+      originCountry: originCountry !== undefined ? originCountry : product.originCountry,
     });
 
     const result = await db.Product.findByPk(id, {

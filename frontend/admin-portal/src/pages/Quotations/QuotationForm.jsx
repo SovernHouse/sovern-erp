@@ -70,27 +70,44 @@ export default function QuotationForm() {
     notes: '',
   })
 
-  // Load customers and products on mount
+  // Load customers and products on mount.
+  // Phase 4, C14: products are filtered by current brand context so the
+  // catalog picker only shows quotable items.
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [customersRes, productsRes, factoriesRes, leadsRes] = await Promise.all([
+        const [customersRes, factoriesRes, leadsRes] = await Promise.all([
           customersAPI.getAll(),
-          productsAPI.getAll(),
           factoriesAPI.getAll({ limit: 200 }),
           leadsAPI.getAll({ limit: 200 }),
         ])
         setCustomers(customersRes.data || [])
-        setProducts(productsRes.data || [])
         setFactories(factoriesRes.data || [])
         setLeads(leadsRes.data || [])
       } catch (error) {
-        toast.error('Failed to load form data (customers, products, factories, leads)')
+        toast.error('Failed to load form data (customers, factories, leads)')
         console.error(error)
       }
     }
     loadData()
   }, [])
+
+  // Phase 4, C14: re-fetch products when brand context changes so the
+  // dropdown is always brand-filtered. status=active is the typical
+  // catalog filter.
+  useEffect(() => {
+    const loadProducts = async () => {
+      try {
+        const params = { limit: 200, status: 'active' }
+        if (formData.brandCode) params.brandCode = formData.brandCode
+        const res = await productsAPI.getAll(params)
+        setProducts(Array.isArray(res.data) ? res.data : (res.data?.data || []))
+      } catch (error) {
+        console.error('Failed to load products', error)
+      }
+    }
+    loadProducts()
+  }, [formData.brandCode])
 
   // Load quotation data in edit mode
   useEffect(() => {
@@ -281,6 +298,9 @@ export default function QuotationForm() {
           unitPrice: item.unitPrice,
           ...(item.discount && { discount: item.discount }),
           ...(item.notes && { notes: item.notes }),
+          // Phase 4, C14: super-admin below-floor override reason. Server
+          // ignores the field when unitPrice is at or above floor.
+          ...(item.belowFloorReason && { belowFloorReason: item.belowFloorReason }),
         })),
         ...(formData.validUntil && { validUntil: formData.validUntil }),
         currency: formData.currency,
@@ -450,12 +470,33 @@ export default function QuotationForm() {
                   <SelectInput
                     label="Product"
                     value={item.productId}
-                    onChange={(e) =>
-                      handleItemChange(item.id, 'productId', e.target.value)
-                    }
+                    onChange={(e) => {
+                      // Phase 4, C14: when the user picks a product from the
+                      // brand-filtered catalog, auto-populate unitPrice from
+                      // baseFobPrice (the floor). User can edit upward freely;
+                      // below floor needs super-admin + reason (server-enforced).
+                      const newProductId = e.target.value
+                      const selected = products.find((p) => p.id === newProductId)
+                      setFormData((prev) => ({
+                        ...prev,
+                        items: prev.items.map((it) =>
+                          it.id === item.id
+                            ? {
+                                ...it,
+                                productId: newProductId,
+                                unit: selected?.moqUnit || selected?.unit || it.unit,
+                                unitPrice: selected?.baseFobPrice != null
+                                  ? parseFloat(selected.baseFobPrice)
+                                  : it.unitPrice,
+                                belowFloorReason: '',
+                              }
+                            : it
+                        ),
+                      }))
+                    }}
                     options={products.map((p) => ({
                       value: p.id,
-                      label: p.name,
+                      label: `${p.sku ? p.sku + ' — ' : ''}${p.name}`,
                     }))}
                     error={errors[`item_${index}_product`]}
                     required
@@ -492,17 +533,55 @@ export default function QuotationForm() {
                     required
                   />
 
-                  <NumberInput
-                    label="Unit Price"
-                    value={item.unitPrice}
-                    onChange={(e) =>
-                      handleItemChange(item.id, 'unitPrice', e.target.value)
-                    }
-                    min="0"
-                    step="0.01"
-                    error={errors[`item_${index}_price`]}
-                    required
-                  />
+                  <div>
+                    <NumberInput
+                      label="Unit Price"
+                      value={item.unitPrice}
+                      onChange={(e) =>
+                        handleItemChange(item.id, 'unitPrice', e.target.value)
+                      }
+                      min="0"
+                      step="0.01"
+                      error={errors[`item_${index}_price`]}
+                      required
+                    />
+                    {/* Phase 4, C14: floor hint + below-floor warning */}
+                    {(() => {
+                      const product = products.find((p) => p.id === item.productId)
+                      if (!product || product.baseFobPrice == null) return null
+                      const floor = parseFloat(product.baseFobPrice)
+                      const isBelow = parseFloat(item.unitPrice || 0) < floor
+                      return (
+                        <div className={`mt-1 text-xs ${isBelow ? 'text-amber-700' : 'text-slate-500'}`}>
+                          {isBelow ? (
+                            <>
+                              <strong>Below floor</strong> ({floor.toFixed(2)} {product.currency || 'USD'}).
+                              Super-admin can quote below with a written reason; otherwise raise to floor.
+                            </>
+                          ) : (
+                            <>Floor: {floor.toFixed(2)} {product.currency || 'USD'}. Editable upward without approval.</>
+                          )}
+                        </div>
+                      )
+                    })()}
+                    {/* Below-floor reason input — only shows when actually below */}
+                    {(() => {
+                      const product = products.find((p) => p.id === item.productId)
+                      if (!product || product.baseFobPrice == null) return null
+                      const floor = parseFloat(product.baseFobPrice)
+                      const isBelow = parseFloat(item.unitPrice || 0) < floor
+                      if (!isBelow) return null
+                      return (
+                        <input
+                          type="text"
+                          placeholder="Reason for quoting below floor (super-admin required, min 5 chars)"
+                          value={item.belowFloorReason || ''}
+                          onChange={(e) => handleItemChange(item.id, 'belowFloorReason', e.target.value)}
+                          className="mt-2 w-full px-3 py-2 border border-amber-300 rounded text-xs bg-amber-50"
+                        />
+                      )
+                    })()}
+                  </div>
 
                   <NumberInput
                     label="Line Discount (Amount)"

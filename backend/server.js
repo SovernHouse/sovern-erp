@@ -563,6 +563,15 @@ db.sequelize.authenticate()
       logger.warn('[boot] commission rule seed skipped:', e.message);
     }
 
+    // Phase 4, C14: seed placeholder catalog products (3 FW, 2 SH). Real
+    // product data Alex manages via the /settings/products admin UI.
+    try {
+      const { seedProductsIfEmpty } = require('./services/seedProducts');
+      await seedProductsIfEmpty(db);
+    } catch (e) {
+      logger.warn('[boot] product seed skipped:', e.message);
+    }
+
     // Phase 1 multi-brand (Commit 2): backfill brandCode='SH' on every
     // transactional row that's NULL after autoMigrateSchema added the column.
     // Customer.brandRelationships, User.accessibleBrands/defaultBrand are

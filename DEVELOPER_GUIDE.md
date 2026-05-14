@@ -1972,6 +1972,70 @@ Files of interest:
 
 ---
 
+# Product catalog (Phase 4, C14)
+
+Brand-aware product catalog driving the quotation line-item flow. baseFobPrice is the buyer-facing floor; the ERP NEVER adds a markup on top (the price the factory provides already includes Alex's commission, which is tracked separately in `CommissionTracking`).
+
+## Schema delta — `backend/models/Product.js`
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `brandCode` | STRING(8) | `'SH'` | FK Brand.code (constraints:false per L-043). Locked at creation. |
+| `productType` | ENUM | null | lvt/spc/wpc/hardwood/laminate/tile/ceramic/other. Coexists with categoryId FK. |
+| `baseFobPrice` | DECIMAL(12,2) | null | USD per unit. FLOOR. Buyer-facing. Includes commission. |
+| `currency` | STRING(3) | `'USD'` | |
+| `moqUnit` | ENUM | null | sqm/sqft/box/pallet/roll/piece/container. |
+| `leadTimeDays` | INTEGER | null | |
+| `certifications` | JSON | `[]` | Array of `{name, issuer, expiresAt}`. Raw per L-023. |
+| `originCountry` | STRING(2) | null | ISO-2. |
+
+`Product` is added to `BRAND_TX_MODELS` in `models/index.js` and to `TX_MODELS` in `migrateBrands.js` so existing rows backfill to `brandCode='SH'`.
+
+**SKU uniqueness deviation from Phase 4 spec:** the existing column-level `UNIQUE` on `sku` cannot be ALTER'd off in SQLite without a full table rebuild (31 live rows + many FK relations). SKU stays GLOBALLY unique; seed data uses brand prefixes (FW-*/SH-*) to avoid collisions. Per-brand SKU uniqueness deferred to a Phase 5 table rebuild.
+
+**Legacy `ProductPrice` table:** not used by the Phase 4 quotation flow. The `markup` column default (20%) in that table is unrelated and untouched. `Product.baseFobPrice` is the authoritative buyer price.
+
+## Quotation flow integration
+
+`backend/controllers/quotationController.js:36-54` (line-item loop) now enforces:
+
+1. **Brand match.** `product.brandCode !== resolvedBrandCode` → `ValidationError`.
+2. **Floor check.** `unitPrice < product.baseFobPrice` AND requester is NOT super-admin → reject. Super-admin must include `belowFloorReason` (≥ 5 chars) per item; written to AuditLog as `product_floor_override`.
+3. **Default unitPrice** from `product.baseFobPrice` when missing.
+
+NO-MARKUP INVARIANT comment block in the loop. Pattern: `total = quantity * unitPrice`. No multiplier branches anywhere.
+
+## Frontend integration
+
+- `frontend/admin-portal/src/pages/Settings/ProductCatalog.jsx` (new) — admin page at `/settings/products`. Brand filter, DataTable, create/edit modal with BrandPicker locked at creation, deactivate toggle.
+- `frontend/admin-portal/src/pages/Quotations/QuotationForm.jsx` — line-item product dropdown reads `productsAPI.getAll({brandCode, status:'active'})`. On product select, autofills `unitPrice = baseFobPrice` and `unit = moqUnit || unit`. Below-floor reveals a reason input + amber warning.
+
+## Mobile
+
+- `mobile/sovern-ops-app/app/(tabs)/products.tsx` — brand filter at top (hidden for single-brand users), BrandBadge on each row, baseFobPrice prefers over legacy ProductPrice.sellingPrice.
+
+## Seed
+
+`backend/services/seedProducts.js` — idempotent on `(brandCode, sku)`. Inserts 3 FW placeholders (`FW-SPC-65`, `FW-SPC-85`, `FW-WPC-65`) and 2 SH placeholders (`SH-HW-14`, `SH-LAM-8`). PLACEHOLDER prices commented for replacement before live use.
+
+## AuditLog actions added
+
+- `product_floor_override` — entity Product, changes `{sku, floor, quotedPrice, reason}`. Recorded when a super-admin quotes below `baseFobPrice` on a line item.
+
+## NO-MARKUP INVARIANT (anchor)
+
+Defense in depth. `baseFobPrice` IS the buyer price. Never compute `display = baseFobPrice * (1 + commissionRate)` anywhere in line-item math, PDF rendering, email HTML, or buyer-facing UI. Commission is a separate `CommissionTracking` ledger row.
+
+Grep blocklist (CI / QA gate):
+```
+- (?:price|fob|amount)\s*\*\s*\(?\s*1\s*\+\s*commission
+- baseFobPrice\s*\*\s*(?:[0-9.]+|commissionRate|brand\.commissionRate)
+- markup\s*=\s*commission
+- displayPrice\s*=\s*.*(?:baseFobPrice|fobPrice)\s*\*
+```
+
+---
+
 # Customer.productBrandingMode lock semantics (Phase 3, C12)
 
 `Customer.productBrandingMode` is FW-specific and picks which quotation variant is rendered (`ironlite` / `generic` / `private_label`). To prevent inconsistency between a sent quotation and a later edit of the mode, the field locks the first time an FW quotation tied to that customer transitions to `status='sent'`.

@@ -117,6 +117,29 @@ If you have FW access, the dashboard shows a FlorWay Commission card with three 
    - Mark as primary if needed
 4. Click "Save Customer"
 
+#### Managing the Product Catalog (Phase 4)
+
+Open **Settings > Product catalog** to manage what shows up in the quotation product picker. Each product belongs to a brand: FlorWay products on FlorWay quotations, Sovern House products on SH quotations.
+
+**Adding a product:**
+
+1. Click **+ New Product**.
+2. Pick the brand (locked at creation — to move a product to a different brand later you'd need a super-admin brand override).
+3. Enter SKU (use a brand prefix like `FW-` or `SH-`), name, category, factory.
+4. Enter the **Base FOB price**. This is the FLOOR — the price the buyer sees. It already includes any commission the factory bakes in, so the ERP never adds a percentage on top.
+5. Set MOQ, MOQ unit, lead-time days, origin country.
+6. Save.
+
+**Editing an existing product:** click the pencil icon on the catalog row. Brand is locked. Other fields are editable.
+
+**Deactivating:** click the power icon. Buyers can't pick a deactivated product on new quotations. Existing quotations referencing the product still work. Reactivate any time by clicking the power icon again.
+
+**How the catalog feeds the quotation form:**
+
+When you create a quotation, the Product dropdown is filtered to the quotation's brand. Picking a product auto-fills the unit price with the base FOB. You can edit the price upward without approval. Editing below floor requires super-admin role plus a written reason (saved to the audit log).
+
+**Mobile:** the Products tab on mobile shows the same brand-aware list with a brand filter at top. Single-brand users don't see the filter; super-admins see the picker.
+
 #### Cross-Brand Auto-Add (Phase 3)
 
 When you create a new Lead, Quotation, or Deal against an existing customer under a brand that customer didn't yet have, the brand is added to their relationships automatically. A confirmation toast appears: "Customer X is now also a [BRAND] relationship." The customer's detail page picks up the new brand badge on next load. The change is logged in the audit trail.

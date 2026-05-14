@@ -29,6 +29,8 @@ const logger = require('../utils/logger');
 const TX_MODELS = [
   'Lead', 'Deal', 'Quotation', 'Inquiry', 'SalesOrder', 'PurchaseOrder',
   'Invoice', 'ProformaInvoice',
+  // Phase 4 C14 — Product catalog is brand-scoped.
+  'Product',
   'Activity', 'OutreachEmail', 'TriageItem', 'ScheduledActivity',
   'Document', 'DocumentApproval',
   // Phase 1 Commit 3b-A — Expenses module is per-brand (SH offices

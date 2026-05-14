@@ -7,6 +7,8 @@ import {
 } from 'react-native';
 import { getProducts, getProduct, type Product, type ProductPrice } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
+import { BrandBadge } from '../../src/components/BrandBadge';
+import BrandFilterPicker from '../../src/components/BrandFilterPicker';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -26,16 +28,31 @@ function categoryName(cat: Product['category']): string {
 function ProductRow({ product, onPress }: { product: Product; onPress: () => void }) {
   const activePrice = getActivePrice(product.prices);
   const factory = product.factory?.companyName;
+  // Phase 4, C14: prefer baseFobPrice (the buyer-facing floor) over the
+  // legacy ProductPrice.sellingPrice. baseFobPrice ALREADY INCLUDES the
+  // commission baked in by the factory; ERP never adds a markup on top.
+  const showBaseFob = product.baseFobPrice != null;
 
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.rowBody}>
-        <Text style={styles.name}>{product.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <Text style={styles.name}>{product.name}</Text>
+          {product.brandCode ? <BrandBadge code={product.brandCode} size="sm" showLabel={false} /> : null}
+        </View>
         {product.sku ? <Text style={styles.meta}>SKU: {product.sku}</Text> : null}
         {factory ? <Text style={styles.factory}>{factory}</Text> : null}
         {categoryName(product.category) ? <Text style={styles.category}>{categoryName(product.category)}</Text> : null}
       </View>
-      {activePrice ? (
+      {showBaseFob ? (
+        <View style={styles.priceBox}>
+          <Text style={styles.priceLabel}>Base FOB</Text>
+          <Text style={styles.fobPrice}>
+            {product.currency || 'USD'} {Number(product.baseFobPrice).toFixed(2)}
+          </Text>
+          {(product.moqUnit || product.unit) ? <Text style={styles.unitText}>/{product.moqUnit || product.unit}</Text> : null}
+        </View>
+      ) : activePrice ? (
         <View style={styles.priceBox}>
           <Text style={styles.priceLabel}>{activePrice.priceType} buy</Text>
           <Text style={styles.fobPrice}>
@@ -186,11 +203,17 @@ export default function ProductsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Phase 4, C14: brand filter at top of catalog. Hidden for single-brand users.
+  const [brandFilter, setBrandFilter] = useState<string | null>(null);
 
   async function load(isRefresh = false) {
     try {
       isRefresh ? setRefreshing(true) : setLoading(true);
-      const res = await getProducts({ page: 1, limit: 100 });
+      const params: { page: number; limit: number; brandCode?: string; status?: string } = {
+        page: 1, limit: 100, status: 'active',
+      };
+      if (brandFilter && brandFilter !== 'all') params.brandCode = brandFilter;
+      const res = await getProducts(params);
       setProducts(res.data);
       setFiltered(res.data);
     } catch (err: any) {
@@ -201,7 +224,8 @@ export default function ProductsScreen() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brandFilter]);
 
   useEffect(() => {
     const q = search.toLowerCase();
@@ -227,6 +251,11 @@ export default function ProductsScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Phase 4, C14: brand filter (hidden for single-brand users) */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+        <BrandFilterPicker value={brandFilter} onChange={setBrandFilter} />
+      </View>
+
       <View style={styles.searchBar}>
         <TextInput
           style={styles.searchInput}

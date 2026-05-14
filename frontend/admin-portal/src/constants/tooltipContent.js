@@ -209,6 +209,16 @@ export const PRODUCT = {
   sellingPrice:        'Your sell price to the buyer. Auto-calculated from the buy price and margin. This is the price that appears on quotations.',
   priceIsActive:       'Only one price per factory can be active at a time. The active price is used on new quotations. Inactive prices are archived for reference.',
 
+  // Phase 4, C14: brand-aware catalog
+  brandCode:           'Which brand owns this product. Quotations under this brand can pick from products of this brand only. Locked at creation; super-admin override via brand-override flow.',
+  productType:         'Catalog filter dimension. Coexists with the category hierarchy (used for taxonomy + reporting). Pick the closest match.',
+  baseFobPrice:        'Floor price the buyer sees. ALREADY INCLUDES any commission baked in by the factory. Quotation line items default to this; super-admin can quote below with a written reason (audited). The ERP NEVER adds a percentage on top of this for the buyer.',
+  moqUnit:             'Unit the MOQ is expressed in. Default matches the product unit but can differ (e.g. MOQ 1 container but priced per sqm).',
+  leadTimeDays:        'Typical factory lead time from PO confirmation to ready-to-ship in days. Used for delivery date estimates.',
+  certifications:      'Array of {name, issuer, expiresAt}. Shown on buyer-facing documents when relevant (FloorScore, CARB2, FSC, CE, …).',
+  originCountry:       'ISO-2 country code (e.g. MY, CN). Drives certificate of origin templates and tariff calculation.',
+  floorOverride:       'Below-floor pricing requires super-admin role plus a written reason (≥ 5 chars), recorded in the audit log. Buyers should never see prices below the factory floor unless an explicit deal is approved.',
+
   // Specs tabs
   clientVisibleFields: 'Check which specification fields appear on client-facing documents (quotations, sales orders, customer portal). All fields always appear on supplier purchase orders.',
   specs_notes:         'Internal notes for the factory — QC tolerances, packaging requirements, or production constraints. Not shown to buyers.',

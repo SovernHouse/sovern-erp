@@ -1,0 +1,324 @@
+/**
+ * ProductCatalog — Phase 4, C14.
+ *
+ * Admin page at /settings/products. Manages the brand-aware catalog
+ * that quotations pick from. Brand filter at top (single-brand users
+ * see only their brand). Create / edit / deactivate flows.
+ *
+ * baseFobPrice is the floor — quotations default to this and editing
+ * upward is free; editing below floor on the quotation form requires
+ * super-admin + reason (enforced server-side).
+ *
+ * NO-MARKUP INVARIANT: the price shown here IS the buyer-facing price.
+ * Alex's commission is already baked into the factory's quoted FOB and
+ * is tracked separately in CommissionTracking. Nothing on this page or
+ * the quotation it feeds adds a percentage on top.
+ */
+
+import { useEffect, useState } from 'react'
+import toast from 'react-hot-toast'
+import { Plus, Edit2, Power } from 'lucide-react'
+import { productsAPI, factoriesAPI } from '../../services/api'
+import api from '../../services/api'
+import BrandFilterPicker from '../../components/BrandFilterPicker'
+import BrandPicker from '../../components/BrandPicker'
+import BrandBadge from '../../components/BrandBadge'
+import LoadingSpinner from '../../components/LoadingSpinner'
+import { formatCurrency } from '../../utils/formatters'
+
+const PRODUCT_TYPES = [
+  { value: 'lvt', label: 'LVT' },
+  { value: 'spc', label: 'SPC' },
+  { value: 'wpc', label: 'WPC' },
+  { value: 'hardwood', label: 'Hardwood' },
+  { value: 'laminate', label: 'Laminate' },
+  { value: 'tile', label: 'Tile' },
+  { value: 'ceramic', label: 'Ceramic' },
+  { value: 'other', label: 'Other' },
+]
+
+const MOQ_UNITS = ['sqm', 'sqft', 'box', 'pallet', 'roll', 'piece', 'container']
+
+export default function ProductCatalog() {
+  const [brandFilter, setBrandFilter] = useState(null)
+  const [products, setProducts] = useState([])
+  const [categories, setCategories] = useState([])
+  const [factories, setFactories] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editing, setEditing] = useState(null)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const params = brandFilter && brandFilter !== 'all' ? { brandCode: brandFilter, limit: 100 } : { limit: 100 }
+      const res = await productsAPI.getAll(params)
+      setProducts(Array.isArray(res.data) ? res.data : (res.data?.data || []))
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load products')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brandFilter])
+
+  useEffect(() => {
+    api.get('/products/categories/flat').then(r => setCategories(Array.isArray(r.data) ? r.data : (r.data?.data || []))).catch(() => {})
+    factoriesAPI.getAll({ limit: 200 }).then(r => setFactories(Array.isArray(r.data) ? r.data : (r.data?.data || []))).catch(() => {})
+  }, [])
+
+  const handleDeactivate = async (product) => {
+    if (!confirm(`Deactivate ${product.sku}? Buyers can't pick it on new quotations until reactivated.`)) return
+    try {
+      await productsAPI.update(product.id, { isActive: !product.isActive })
+      toast.success(product.isActive ? 'Deactivated' : 'Reactivated')
+      load()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Toggle failed')
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Product catalog</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Brand-aware list of products quotations pick from. Base FOB price is the floor; below floor requires super-admin override.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <BrandFilterPicker value={brandFilter} onChange={setBrandFilter} />
+          <button
+            onClick={() => { setEditing(null); setShowForm(true) }}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" /> New Product
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        {loading ? (
+          <LoadingSpinner message="Loading catalog…" />
+        ) : products.length === 0 ? (
+          <div className="p-8 text-center text-slate-500">
+            No products yet. Click <strong>New Product</strong> to add one.
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-slate-700">SKU</th>
+                <th className="text-left px-4 py-3 font-semibold text-slate-700">Name</th>
+                <th className="text-left px-4 py-3 font-semibold text-slate-700">Brand</th>
+                <th className="text-left px-4 py-3 font-semibold text-slate-700">Type</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-700">Floor price</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-700">MOQ</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-700">Lead</th>
+                <th className="text-center px-4 py-3 font-semibold text-slate-700">Active</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-700"> </th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map(p => (
+                <tr key={p.id} className={`border-b border-slate-100 hover:bg-slate-50 ${!p.isActive ? 'opacity-60' : ''}`}>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-700">{p.sku}</td>
+                  <td className="px-4 py-3 text-slate-900">{p.name}</td>
+                  <td className="px-4 py-3"><BrandBadge code={p.brandCode || 'SH'} size="sm" /></td>
+                  <td className="px-4 py-3 text-slate-700">{p.productType || '—'}</td>
+                  <td className="px-4 py-3 text-right font-mono text-slate-900">
+                    {p.baseFobPrice != null ? formatCurrency(p.baseFobPrice, p.currency || 'USD') : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right text-slate-700">
+                    {p.minOrderQty != null ? `${p.minOrderQty} ${p.moqUnit || p.unit || ''}` : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right text-slate-700">{p.leadTimeDays ? `${p.leadTimeDays}d` : '—'}</td>
+                  <td className="px-4 py-3 text-center">{p.isActive ? '✓' : '—'}</td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="inline-flex gap-2">
+                      <button onClick={() => { setEditing(p); setShowForm(true) }} className="p-1.5 hover:bg-slate-200 rounded">
+                        <Edit2 className="w-4 h-4 text-slate-600" />
+                      </button>
+                      <button onClick={() => handleDeactivate(p)} className="p-1.5 hover:bg-slate-200 rounded">
+                        <Power className={`w-4 h-4 ${p.isActive ? 'text-slate-600' : 'text-amber-600'}`} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {showForm && (
+        <ProductForm
+          editing={editing}
+          categories={categories}
+          factories={factories}
+          onClose={() => { setShowForm(false); setEditing(null) }}
+          onSaved={() => { setShowForm(false); setEditing(null); load() }}
+        />
+      )}
+    </div>
+  )
+}
+
+function ProductForm({ editing, categories, factories, onClose, onSaved }) {
+  const isEdit = !!editing
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    brandCode: editing?.brandCode || '',
+    sku: editing?.sku || '',
+    name: editing?.name || '',
+    productType: editing?.productType || '',
+    description: editing?.description || '',
+    salesDescription: editing?.salesDescription || '',
+    categoryId: editing?.categoryId || '',
+    factoryId: editing?.factoryId || '',
+    baseFobPrice: editing?.baseFobPrice ?? '',
+    currency: editing?.currency || 'USD',
+    minOrderQty: editing?.minOrderQty ?? 1,
+    moqUnit: editing?.moqUnit || 'sqm',
+    leadTimeDays: editing?.leadTimeDays ?? '',
+    originCountry: editing?.originCountry || '',
+  })
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!form.name || !form.sku || !form.categoryId || !form.factoryId) {
+      toast.error('Name, SKU, category, and factory are required')
+      return
+    }
+    setSaving(true)
+    try {
+      const payload = {
+        ...form,
+        baseFobPrice: form.baseFobPrice === '' ? null : Number(form.baseFobPrice),
+        leadTimeDays: form.leadTimeDays === '' ? null : Number(form.leadTimeDays),
+        minOrderQty: form.minOrderQty === '' ? null : Number(form.minOrderQty),
+      }
+      if (isEdit) {
+        // brandCode is immutable on update; the BrandPicker is disabled.
+        delete payload.brandCode
+        await productsAPI.update(editing.id, payload)
+        toast.success('Product updated')
+      } else {
+        await productsAPI.create(payload)
+        toast.success('Product created')
+      }
+      onSaved()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const f = (k) => (e) => setForm(prev => ({ ...prev, [k]: e.target.value }))
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <h2 className="text-xl font-bold text-slate-900">
+            {isEdit ? `Edit ${editing.sku}` : 'New product'}
+          </h2>
+
+          <BrandPicker
+            value={form.brandCode}
+            onChange={(v) => setForm(prev => ({ ...prev, brandCode: v }))}
+            disabled={isEdit}
+          />
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="SKU *" value={form.sku} onChange={f('sku')} disabled={isEdit}
+              help={isEdit ? 'SKU is locked on edit.' : 'Use brand prefix (e.g., FW-SPC-65). Globally unique.'}
+            />
+            <Field label="Product name *" value={form.name} onChange={f('name')} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <SelectField label="Type" value={form.productType} onChange={f('productType')}
+              options={[{ value: '', label: '— None —' }, ...PRODUCT_TYPES]}
+            />
+            <SelectField label="Category *" value={form.categoryId} onChange={f('categoryId')}
+              options={[{ value: '', label: '— Pick category —' }, ...categories.map(c => ({ value: c.id, label: c.name }))]}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <SelectField label="Factory *" value={form.factoryId} onChange={f('factoryId')}
+              options={[{ value: '', label: '— Pick factory —' }, ...factories.map(fy => ({ value: fy.id, label: fy.companyName || fy.name }))]}
+            />
+            <Field label="Origin country (ISO-2)" value={form.originCountry} onChange={f('originCountry')}
+              placeholder="MY, CN, …" maxLength={2}
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <Field label="Base FOB price (floor)" type="number" step="0.01" value={form.baseFobPrice} onChange={f('baseFobPrice')}
+              help="ALREADY includes commission. No system markup."
+            />
+            <SelectField label="Currency" value={form.currency} onChange={f('currency')}
+              options={['USD', 'EUR', 'GBP', 'CNY', 'MYR'].map(c => ({ value: c, label: c }))}
+            />
+            <Field label="Lead time (days)" type="number" value={form.leadTimeDays} onChange={f('leadTimeDays')} />
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <Field label="MOQ" type="number" value={form.minOrderQty} onChange={f('minOrderQty')} />
+            <SelectField label="MOQ unit" value={form.moqUnit} onChange={f('moqUnit')}
+              options={MOQ_UNITS.map(u => ({ value: u, label: u }))}
+            />
+            <div />
+          </div>
+
+          <Field label="Description" value={form.description} onChange={f('description')} multiline />
+          <Field label="Sales description (buyer-facing)" value={form.salesDescription} onChange={f('salesDescription')} multiline />
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg">Cancel</button>
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
+              {saving ? 'Saving…' : (isEdit ? 'Save changes' : 'Create product')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function Field({ label, value, onChange, type = 'text', step, disabled, placeholder, multiline, help, maxLength }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
+      {multiline ? (
+        <textarea value={value || ''} onChange={onChange} rows={2} disabled={disabled}
+          className="w-full px-3 py-2 border border-slate-300 rounded text-sm disabled:bg-slate-100 disabled:text-slate-500"
+        />
+      ) : (
+        <input type={type} step={step} value={value ?? ''} onChange={onChange} disabled={disabled} placeholder={placeholder} maxLength={maxLength}
+          className="w-full px-3 py-2 border border-slate-300 rounded text-sm disabled:bg-slate-100 disabled:text-slate-500"
+        />
+      )}
+      {help && <p className="text-xs text-slate-500 mt-1">{help}</p>}
+    </div>
+  )
+}
+
+function SelectField({ label, value, onChange, options }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
+      <select value={value || ''} onChange={onChange}
+        className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+      >
+        {options.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+      </select>
+    </div>
+  )
+}

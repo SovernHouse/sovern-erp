@@ -586,6 +586,17 @@ export default function Layout({ children }) {
                     </Link>
                   )}
 
+                  {/* Phase 4, C14: Product catalog admin */}
+                  <Link
+                    to="/settings/products"
+                    onClick={() => setShowUserMenu(false)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', fontSize: 13, color: INK, textDecoration: 'none' }}
+                    onMouseEnter={e => e.currentTarget.style.background = c(INK, 0.04)}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <Package size={14} style={{ color: c(INK, 0.50) }} /> Product catalog
+                  </Link>
+
                   {/* Modules — admin only */}
                   {user?.role === 'admin' && (
                     <Link

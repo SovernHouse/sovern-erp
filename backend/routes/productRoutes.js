@@ -14,8 +14,13 @@ const router = express.Router();
 const productController = require('../controllers/productController');
 const categoryController = require('../controllers/productCategoryController');
 const { requireAuth, requireAny, requireRole } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const { body, handleValidationErrors } = require('../middleware/validation');
 const { validate, productSchemas } = require('../middleware/zodValidation');
+
+// Phase 4, C14: brand-scope every product request. Single-brand users see
+// only their brand's catalog; super-admin in cross-brand mode sees all.
+router.use(requireAuth, brandScope);
 
 /**
  * Create a new product

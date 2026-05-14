@@ -568,6 +568,16 @@ export const HELP_CONTENT = {
     summary: 'Your sourcing and pricing database. Each product holds buy prices from one or more factories, sell prices with margin, and dual specifications — a full technical spec for suppliers and a commercial spec for buyers.',
     sections: [
       {
+        heading: 'Brand-aware catalog (Phase 4)',
+        items: [
+          'Every product belongs to a brand. Quotations under a brand can only pick products of the same brand.',
+          'Brand is locked at creation. Use the brand-override flow (super-admin) to move a product between brands.',
+          'Base FOB price is the buyer-facing floor. It ALREADY INCLUDES any commission baked in by the factory; the ERP never adds a percentage on top for the buyer.',
+          'Quotation line items default to baseFobPrice. Editing upward is free; editing below floor requires super-admin role + a written reason (audited).',
+          'Manage the catalog at Settings > Product catalog. Mobile users see the same list with brand-aware filtering.',
+        ],
+      },
+      {
         heading: 'Product structure',
         items: [
           'Basic Info: name, SKU, category, primary factory, unit, HS code, min order qty.',

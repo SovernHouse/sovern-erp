@@ -5,16 +5,54 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 3 + both mechanical follow-ups fully shipped and live. End of session.
+2026-05-14 Taiwan time. Phase 4 started. C14 (brand-aware product catalog + no-markup floor enforcement) staged for commit.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `e65f664` (chore(phase-3): mobile L-042 — timezone Asia/Taipei on every date formatter)
-- **Working tree:** clean
-- **CI/CD Pipeline (e65f664):** green
-- **Deploy (e65f664):** green
+- **Latest commit on main:** `cdee299` (chore: end-of-session SESSION.md update at Phase 3 close)
+- **Working tree:** C14 staged, awaiting commit
+- **CI/CD Pipeline (cdee299):** green
+- **Deploy (cdee299):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
+
+---
+
+## Phase 4 — In progress
+
+Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
+
+### C14 — Brand-aware product catalog (READY FOR COMMIT)
+
+**Backend:**
+- `backend/models/Product.js` — added 8 fields: brandCode (default 'SH'), productType (enum), baseFobPrice (decimal FLOOR), currency, moqUnit, leadTimeDays, certifications (JSON), originCountry. Compound + brand_code indexes added; SKU stays globally unique (column-level UNIQUE can't ALTER on SQLite; deviation documented).
+- `backend/models/index.js` + `backend/services/migrateBrands.js` — 'Product' added to BRAND_TX_MODELS + TX_MODELS so existing 31 rows backfill to brandCode='SH'.
+- `backend/routes/productRoutes.js` — router-level `requireAuth + brandScope`. Every product request is brand-scoped.
+- `backend/controllers/productController.js` — create accepts new fields, defaults brandCode from req.brandScope.defaultBrand, calls assertBrandWritable. getAll applies brandWhere(req) + productType filter. getById + update both 404 on wrong brand (no existence leak).
+- `backend/controllers/quotationController.js` line 36-54 — line-item loop now enforces (a) brand match between product and quotation, (b) floor check (unitPrice >= product.baseFobPrice); below-floor requires super-admin role + belowFloorReason (>= 5 chars) per item, audited as `product_floor_override`. Defaults unitPrice from baseFobPrice when absent. Explicit no-markup invariant comment.
+- New `backend/services/seedProducts.js` — idempotent on (brandCode, sku). 3 FW placeholders (FW-SPC-65 IronLite 6.5mm $5.80, FW-SPC-85 IronLite 8.5mm $7.20, FW-WPC-65 Generic WPC 6.5mm $6.40), 2 SH placeholders (SH-HW-14 Engineered Oak 14mm $24.00, SH-LAM-8 Laminate 8mm AC4 $6.80). PLACEHOLDER prices commented for replacement. Wired into server.js boot after seedCommissionRulesIfEmpty.
+
+**Desktop:**
+- New `frontend/admin-portal/src/pages/Settings/ProductCatalog.jsx` — admin page at /settings/products. Brand filter (BrandFilterPicker), DataTable with SKU/Name/Brand/Type/floor price/MOQ/Lead/Active columns, New/Edit modal with BrandPicker (locked on edit), deactivate toggle. Floor price column reads baseFobPrice.
+- `App.jsx` lazy route + `Layout.jsx` user-menu link "Product catalog".
+- `QuotationForm.jsx` — line-item Product dropdown is brand-filtered via re-fetch on brandCode change. Picking a product autofills unitPrice from baseFobPrice and unit from moqUnit. Below-floor reveals an amber warning + reason input; reason submitted as `belowFloorReason` per item.
+
+**Mobile:**
+- `mobile/sovern-ops-app/app/(tabs)/products.tsx` — BrandFilterPicker at top, BrandBadge on each row. baseFobPrice preferred over legacy ProductPrice.sellingPrice on display.
+- `mobile/sovern-ops-app/src/services/api.ts` — Product type extended with new fields. getProducts accepts brandCode + status params.
+
+**Three-surface docs:**
+- `tooltipContent.js` PRODUCT — new entries: brandCode, productType, baseFobPrice, moqUnit, leadTimeDays, certifications, originCountry, floorOverride.
+- `helpContent.js` `/products` — new "Brand-aware catalog (Phase 4)" section.
+- `DEVELOPER_GUIDE.md` — new "Product catalog (Phase 4, C14)" section: schema delta, quotation flow integration, frontend, mobile, seed, AuditLog actions, no-markup invariant + grep blocklist.
+- `docs/USER_GUIDE.md` — new "Managing the Product Catalog (Phase 4)" walkthrough.
+
+**AuditLog action:**
+- `product_floor_override` — entity Product, changes {sku, floor, quotedPrice, reason}.
+
+**Plan deviation: SKU globally unique (not per-brand).** SQLite ALTER limitations + 31 live rows + many FK relations make the table rebuild unsafe for this commit. Brand-prefixed seed SKUs (FW-*/SH-*) sidestep collisions. Phase 5 ticket: rationalize Product+ProductPrice and do the per-brand SKU rebuild.
+
+**Pre-existing bug fixed in-flight:** productController.create didn't call assertBrandWritable. Now it does.
 
 ---
 

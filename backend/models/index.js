@@ -611,6 +611,8 @@ if (db.Lead && db.CalendarEvent) {
 const BRAND_TX_MODELS = [
   'Lead', 'Deal', 'Quotation', 'Inquiry', 'SalesOrder', 'PurchaseOrder',
   'Invoice', 'ProformaInvoice',
+  // Phase 4, C14: Product catalog is brand-scoped.
+  'Product',
   'Activity', 'OutreachEmail', 'TriageItem', 'ScheduledActivity',
   'Document', 'DocumentApproval',
   // Expense module (Phase 1 Commit 3b-A).

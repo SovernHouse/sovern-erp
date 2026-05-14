@@ -33,11 +33,57 @@ const create = async (req, res, next) => {
     let subtotal = 0;
     const createdItems = [];
 
+    // NO-MARKUP INVARIANT (Phase 4): baseFobPrice is the buyer-facing price
+    // and ALREADY INCLUDES Alex's commission. The line-item math below is
+    // a straight `quantity * unitPrice`. Do NOT multiply by (1 + rate)
+    // anywhere; commission is tracked as a separate CommissionTracking row.
     for (const item of items) {
       const product = await db.Product.findByPk(item.productId);
       if (!product) continue;
 
-      const total = item.quantity * item.unitPrice;
+      // Phase 4, C14: brand match — products of the current brand only.
+      if (product.brandCode && product.brandCode !== resolvedBrandCode) {
+        throw new ValidationError(
+          `Product ${product.sku} belongs to brand ${product.brandCode}; cannot quote under ${resolvedBrandCode}.`
+        );
+      }
+
+      // Phase 4, C14: floor check. Default unitPrice from baseFobPrice when
+      // absent. Below-floor requires super_admin + belowFloorReason.
+      let unitPrice = item.unitPrice;
+      if (unitPrice == null || unitPrice === '' || Number(unitPrice) === 0) {
+        if (product.baseFobPrice != null) {
+          unitPrice = parseFloat(product.baseFobPrice);
+        }
+      }
+      if (product.baseFobPrice != null) {
+        const floor = parseFloat(product.baseFobPrice);
+        if (parseFloat(unitPrice) < floor) {
+          const isSuperAdmin = req.user?.role === 'super_admin';
+          if (!isSuperAdmin) {
+            throw new ValidationError(
+              `Unit price ${unitPrice} for ${product.sku} is below floor ${floor.toFixed(2)}. Super-admin override required.`
+            );
+          }
+          const reason = (item.belowFloorReason || '').trim();
+          if (reason.length < 5) {
+            throw new ValidationError(
+              `belowFloorReason (>= 5 chars) is required when quoting ${product.sku} below floor ${floor.toFixed(2)}.`
+            );
+          }
+          // Audit the override. Fire-and-forget.
+          auditService.logAction(
+            req.user.id,
+            'product_floor_override',
+            'Product',
+            product.id,
+            { sku: product.sku, floor, quotedPrice: parseFloat(unitPrice), reason },
+            req.ip,
+          ).catch(() => {});
+        }
+      }
+
+      const total = item.quantity * unitPrice;
       subtotal += total;
 
       createdItems.push({
@@ -46,7 +92,7 @@ const create = async (req, res, next) => {
         description: item.description || product.name,
         quantity: item.quantity,
         unit: item.unit,
-        unitPrice: item.unitPrice,
+        unitPrice: unitPrice,
         discount: item.discount || 0,
         total,
         notes: item.notes || ''
