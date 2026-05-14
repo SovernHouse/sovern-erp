@@ -7,10 +7,11 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import DataTable from '../../components/DataTable'
 import StatusBadge from '../../components/StatusBadge'
 import { BrandBadgeGroup } from '../../components/BrandBadge'
+import SanctionsBadge from '../../components/SanctionsBadge'
 import { useBrands } from '../../contexts/BrandsContext'
 import ProductBrandingModePicker from '../../components/ProductBrandingModePicker'
 import ProfitabilityPanel from './ProfitabilityPanel'
-import { customersAPI } from '../../services/api'
+import api, { customersAPI } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
 import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
@@ -35,6 +36,10 @@ export default function CustomerDetail() {
   const [quotations, setQuotations] = useState([])
   const [invoices, setInvoices] = useState([])
   const [claims, setClaims] = useState([])
+  // Phase 4, C18: sanctions override modal state. super-admin only.
+  const [showOverrideModal, setShowOverrideModal] = useState(false)
+  const [overrideReason, setOverrideReason] = useState('')
+  const [overrideSubmitting, setOverrideSubmitting] = useState(false)
 
   useEffect(() => {
     fetchCustomer()
@@ -113,8 +118,31 @@ export default function CustomerDetail() {
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-3xl font-bold text-slate-900">{customer.name || customer.companyName}</h1>
               <BrandBadgeGroup codes={customerBrands} size="md" />
+              {/* Phase 4, C18: sanctions screening badge. Always rendered
+                  (defaults to 'pending' for legacy rows). super-admin sees
+                  an Override button when the customer is flagged. */}
+              <SanctionsBadge status={customer.screeningStatus || 'pending'} size="md" />
+              {customer.screeningStatus === 'flagged' && user?.role === 'super_admin' && (
+                <button
+                  onClick={() => setShowOverrideModal(true)}
+                  className="px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  Override
+                </button>
+              )}
             </div>
             <p className="text-slate-600 text-sm mt-1">{customer.country}</p>
+            {customer.screeningStatus === 'flagged' && customer.sanctionBlockReason && (
+              <p className="text-xs text-red-700 mt-1">
+                {customer.sanctionBlockReason}
+              </p>
+            )}
+            {customer.screeningStatus === 'override' && customer.sanctionOverrideReason && (
+              <p className="text-xs text-amber-700 mt-1" title={customer.sanctionOverrideReason}>
+                Override on file: {customer.sanctionOverrideReason.slice(0, 80)}
+                {customer.sanctionOverrideReason.length > 80 ? '...' : ''}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center space-x-2">
@@ -409,6 +437,82 @@ export default function CustomerDetail() {
         entityId={id}
         entityLabel={customer?.name || 'Customer'}
       />
+
+      {/* Phase 4, C18: super-admin sanctions override modal. Requires
+          reason ≥ 10 chars; backend audits as sanctions_override and sets
+          screeningStatus='override' (does NOT clear flag details). */}
+      {showOverrideModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Override Sanctions Block</h3>
+              <button
+                onClick={() => setShowOverrideModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-xl leading-none"
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="px-6 py-4 space-y-3">
+              <p className="text-sm text-slate-700">
+                {customer.companyName} matched a sanctions list ({(customer.sanctionsScreenDetails || []).map((h) => h.list).join(', ') || 'multiple lists'}).
+              </p>
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                Override is an attestation, not a clear. The flag details remain on file; the override reason becomes the auditable justification. Action is super-admin only and logged as sanctions_override.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Override reason <span className="text-red-600">*</span>
+                </label>
+                <textarea
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  rows={4}
+                  placeholder="Explain why you are attesting that this match does not block transacting (minimum 10 characters)..."
+                  className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  {overrideReason.trim().length} / 10 characters minimum.
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 flex justify-end space-x-2">
+              <button
+                onClick={() => setShowOverrideModal(false)}
+                disabled={overrideSubmitting}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (overrideReason.trim().length < 10) {
+                    toast.error('Reason must be at least 10 characters.')
+                    return
+                  }
+                  setOverrideSubmitting(true)
+                  try {
+                    await api.post(`/compliance/customers/${id}/override`, { reason: overrideReason.trim() })
+                    toast.success('Sanctions override applied.')
+                    setShowOverrideModal(false)
+                    setOverrideReason('')
+                    fetchCustomer()
+                  } catch (err) {
+                    toast.error(err.response?.data?.message || 'Override failed')
+                  } finally {
+                    setOverrideSubmitting(false)
+                  }
+                }}
+                disabled={overrideSubmitting || overrideReason.trim().length < 10}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50"
+              >
+                {overrideSubmitting ? 'Applying...' : 'Apply Override'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

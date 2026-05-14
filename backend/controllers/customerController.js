@@ -21,6 +21,13 @@ const create = async (req, res, next) => {
       ? brandRelationships
       : [req.brandScope?.defaultBrand || 'SH'];
 
+    // Phase 4, C18: synchronous sanctions screen at create time.
+    // Flagged customers are created with screeningStatus='flagged' +
+    // isActive=false so they exist for super-admin review but cannot be
+    // transacted against. Response is 403 with the block details.
+    const sanctionsService = require('../services/sanctionsService');
+    const screen = sanctionsService.screenName(companyName, country);
+
     const customer = await db.Customer.create({
       id: uuidv4(),
       companyName,
@@ -35,9 +42,31 @@ const create = async (req, res, next) => {
       creditLimit: creditLimit || 0,
       balance: 0,
       rating: 5,
-      isActive: true,
+      isActive: screen.status !== 'flagged',
       brandRelationships: brands,
+      screeningStatus: screen.status,
+      sanctionsScreenDetails: screen.hits,
+      lastScreenedAt: new Date(),
+      sanctionBlockReason: screen.status === 'flagged'
+        ? `Matched on ${screen.hits.map((h) => h.list).join(', ')}`
+        : null,
     });
+
+    if (screen.status === 'flagged') {
+      auditService.logAction(
+        req.user.id,
+        'sanctions_block',
+        'Customer',
+        customer.id,
+        { companyName, country, hits: screen.hits },
+        req.ip,
+      ).catch(() => {});
+      return res.status(403).json({
+        success: false,
+        message: `Customer "${companyName}" matched a sanctions list (${screen.hits.map((h) => h.list).join(', ')}). The record was created as inactive; super-admin override required to transact.`,
+        sanctionsBlock: { status: screen.status, hits: screen.hits, customerId: customer.id },
+      });
+    }
 
     res.status(201).json(getSuccessResponse(customer, 'Customer created successfully'));
 

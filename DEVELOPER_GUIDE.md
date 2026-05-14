@@ -2197,6 +2197,131 @@ Effect: clears `productBrandingModeLockedAt`, sets the new mode + private label 
 
 ---
 
+# Sanctions screening (Phase 4, C18)
+
+Adds the operational compliance backbone: every Customer and Lead is screened against four public sanctions lists, and four hard-block entry points refuse to onboard or transact with a flagged entity. Super-admin can attest-override with a written reason that becomes the auditable justification.
+
+## Schema delta
+
+**`backend/models/Customer.js`** — adds:
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `screeningStatus` | ENUM | `'pending'` | pending / cleared / flagged / requires_review / override. |
+| `lastScreenedAt` | DATE | null | Set by createCustomer, /screen/:id, and the 90d cron. |
+| `sanctionsScreenDetails` | JSON | null | `[{list, matchedName, country, score, countryOverlap}]` per L-023. |
+| `sanctionBlockReason` | TEXT | null | Filled when flagged; surfaced on the badge tooltip. |
+| `sanctionOverrideReason` | TEXT | null | Super-admin attestation text (>= 10 chars). |
+| `sanctionOverrideAt` | DATE | null | When override applied. |
+| `sanctionOverrideBy` | UUID | null | FK User who applied the override. |
+| `registeredBuyerSince` | DATE | null | First-confirmed-SO snapshot (consumed by commission accrual). |
+| `registeredBuyer` | BOOLEAN | false | Flag for "has at least one confirmed SO". |
+
+**`backend/models/Lead.js`** — adds `screeningStatus`, `sanctionsScreenDetails`, `lastScreenedAt`. Legacy `Lead.sanctionsScreened` (boolean) kept for read compatibility; new code reads the enum.
+
+Indexes: `(screening_status)` and `(last_screened_at)` for the 90d rescreen cron + block scans.
+
+## Migration — `backend/services/migrateSanctionsC18.js`
+
+`autoMigrateSchema` adds the columns at boot as nullable. The migration UPDATE-sets `screening_status = 'pending'` on every NULL row in `Customers` and `Leads` so the enum has a coherent value across the codebase. Idempotent via AuditLog sentinel `phase4_sanctions_backfilled`.
+
+## `backend/services/sanctionsService.js`
+
+Two public functions:
+
+- `refreshSanctionsData()` — downloads all four sources to `backend/data/sanctions/`. Atomic write via `.tmp` + rename so a half-fetch never replaces a good cache. Writes `last_refresh.json` manifest. Returns `[{key, ok, bytes, mtime}]` per source.
+- `screenName(name, country)` — loads parsed files (mtime-cached in memory; re-parses only when a list file's mtime changes), then:
+  - **Exact normalized name match** with country overlap (or no country specified) → `flagged`.
+  - **Exact normalized name match** with country mismatch → demoted to `requires_review`.
+  - **Fuzzy match** (Levenshtein ratio >= 0.85, length within 4 chars) with country overlap → `requires_review`.
+  - **Fuzzy match** with country mismatch → `cleared` (too noisy otherwise).
+  - **No data loaded** → `pending` (never silently waves traffic through on a cold cache).
+
+Name normalization strips common suffixes (Ltd, LLC, Inc, GmbH, SA, Sdn, Bhd, etc.) and punctuation before comparing.
+
+The Levenshtein implementation is inline (~30 lines) — no new package dependency. Hard list sizes (~20K rows combined) keep the in-memory cache well under 50MB.
+
+Sources:
+
+| List | URL | Format | Parser |
+|---|---|---|---|
+| OFAC SDN | treasury.gov/ofac/downloads/sdn.csv | CSV (no header) | column 1 = name, column 11 = remarks (country extracted) |
+| OFAC Consolidated | treasury.gov/ofac/downloads/consolidated/cons_prim.csv | CSV (no header) | same |
+| EU Consolidated | webgate.ec.europa.eu/.../csvFullSanctionsList | CSV (with header) | finds name + country columns by header lookup |
+| UN SC | scsanctions.un.org/.../consolidated.xml | XML | regex over `<INDIVIDUAL>` and `<ENTITY>` blocks |
+
+## Cron jobs — `backend/services/schedulerService.js`
+
+| Cron | Job | Env toggle |
+|---|---|---|
+| `30 3 * * *` | `refreshSanctionsLists` (downloads + audits) | `SCHEDULER_SANCTIONS_REFRESH=false` to disable |
+| `0 4 * * *` | `rescreenCustomers90d` (active customers with NULL or >90d lastScreenedAt) | `SCHEDULER_SANCTIONS_RESCREEN=false` to disable |
+
+Both audit (`sanctions_refresh`, `sanctions_rescreen_batch`). Failures are logged but never crash the scheduler.
+
+## Compliance API — `backend/modules/compliance/complianceRoutes.js`
+
+Extends the existing compliance router with:
+
+| Endpoint | Auth | Description |
+|---|---|---|
+| `POST /api/compliance/screen` | any auth | Stateless screen of `{name, country}`. No persistence. |
+| `POST /api/compliance/screen/:customerId` | any auth | Re-screens a customer, persists, audits as `sanctions_screen`. |
+| `POST /api/compliance/customers/:id/override` | super-admin | Body `{reason}` (>= 10 chars). Sets `screeningStatus='override'` + override metadata. Audits as `sanctions_override`. Re-activates the customer (isActive=true). |
+| `GET /api/compliance/sanctions/status` | any auth | Last refresh manifest + per-source file sizes + cron-enabled flags. |
+| `POST /api/compliance/sanctions/refresh` | super-admin | Manual refresh trigger. |
+
+## Four hard-block entry points
+
+| Entry point | File | Behavior |
+|---|---|---|
+| Lead create | `backend/controllers/leadController.js:createLead` | Synchronous screen at create. flagged → 403, lead NOT created, sanctions_block audited. requires_review / cleared persist with the status set so the UI can warn. |
+| Customer create | `backend/controllers/customerController.js:create` | Synchronous screen at create. flagged → row created with `isActive=false`, sanctionBlockReason set, 403 returned with the customerId so super-admin can override. |
+| Quotation create | `backend/controllers/quotationController.js:create` | Loads customer; rejects if `screeningStatus === 'flagged'` (override bypasses). 403 with sanctionsBlock detail. |
+| Outreach send | `backend/controllers/outreachController.js` (per-lead + campaign) | Stale check (>7d since last screen) triggers a re-screen on the fly. flagged → 403 (per-lead) or skipped + OutreachEmail row with `status='failed'` + reason (campaign loop). |
+
+In all cases the response includes `sanctionsBlock: { status, hits }` so the frontend can render a structured banner with the "Request override" affordance.
+
+## Override flow
+
+- Backend rejects reasons shorter than 10 characters.
+- On success: `screeningStatus = 'override'`, `sanctionOverrideReason / At / By` populated, `isActive = true`. The flag details remain on the record (override is attestation, not clearance).
+- AuditLog `sanctions_override` captures the prior status, prior hits, reason, and user.
+- The Customer detail page shows the orange "Override on file" badge and a truncated preview of the reason.
+
+## Frontend
+
+`frontend/admin-portal/src/components/SanctionsBadge.jsx` — five-variant pill (cleared / pending / requires_review / flagged / override). Used on customer detail headers and reused in lists.
+
+`frontend/admin-portal/src/pages/Customers/CustomerDetail.jsx`:
+- Renders the badge next to BrandBadgeGroup.
+- Surfaces `sanctionBlockReason` (flagged) or truncated `sanctionOverrideReason` (override) under the title.
+- Super-admin sees a red Override button that opens a modal: 10+ char reason required, posts to `/api/compliance/customers/:id/override`, refetches the customer on success.
+
+## Mobile parity
+
+`mobile/sovern-ops-app/app/(tabs)/customers.tsx` — customer row gains a SANCTIONS / OVERRIDE / REVIEW chip next to the company name when the status warrants it (cleared/pending render nothing to keep the directory clean).
+
+`mobile/sovern-ops-app/src/services/api.ts` — Customer interface extended with the new sanctions fields so callers can drive UI off them without a second fetch.
+
+## AuditLog actions added
+
+- `sanctions_screen` — manual or scheduled re-screen of a customer.
+- `sanctions_block` — every blocked operation at the 4 entry points. `context` field disambiguates lead_create / customer_create / quotation_create / outreach_send / campaign_send.
+- `sanctions_override` — super-admin attestation.
+- `sanctions_refresh` — daily cron + manual triggers.
+- `sanctions_rescreen_batch` — daily cron summary.
+- `phase4_sanctions_backfilled` — one-time migration sentinel.
+
+## Risks + open questions
+
+- False positives on common names are the primary risk. Mitigation: country gating, length-prefilter, fuzzy gets `requires_review` not `flagged`, and human-review override path.
+- CSV format changes upstream — parsers are defensive (header lookup + remarks regex) but log warnings if a source drops to a fraction of its prior size; the last-known-good file remains in place.
+- Override expiry: today an override sticks indefinitely. The 90d rescreen preserves it (the cron explicitly checks `cust.screeningStatus === 'override'` and leaves it alone). Future work could auto-revert after a window.
+- ProductPrice / Lead legacy `sanctionsScreened` BOOLEAN remains for read compatibility; new code reads `screeningStatus`.
+
+---
+
 # Inbox / email UX brand awareness (Phase 4, C17)
 
 Pulls the brand-aware multi-brand model all the way through the inbox: every Gmail polling account is tagged with a brand, every TriageItem inherits the polling account's brand, the reply composer enforces sender-account = thread brand, and the Egypt-Fanzey BCC rule lives in one helper shared by all three send paths.

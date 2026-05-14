@@ -5,23 +5,77 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 4 in progress. C14 + C15 + C16 + C17 shipped + live. C18 (sanctions screening) is the only remaining commit.
+2026-05-14 Taiwan time. Phase 4 in progress. C14 + C15 + C16 + C17 shipped + live. C18 (sanctions screening) staged.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `ac4ff75` (feat(phase-4): inbox brand awareness + Egypt BCC single source of truth (C17))
-- **Working tree:** clean
+- **Latest commit on main:** `4db4dd8` (chore(phase-4): mark C17 shipped + live in SESSION.md)
+- **Working tree:** C18 staged, awaiting commit
 - **CI/CD Pipeline (ac4ff75):** green
 - **Deploy (ac4ff75):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
-- **C17 migration verified:** `[C17] ConnectedGoogleAccount backfill: 2 tagged, 0 orphan` in pm2 logs
 
 ---
 
 ## Phase 4 — In progress
 
 Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
+
+### C18 — Sanctions screening (READY FOR COMMIT)
+
+**Schema:**
+- `Customer` — added `screeningStatus` (enum), `lastScreenedAt`, `sanctionsScreenDetails` (JSON), `sanctionBlockReason`, `sanctionOverrideReason / At / By`, `registeredBuyerSince`, `registeredBuyer`. Indexes on `screening_status`, `last_screened_at`.
+- `Lead` — added `screeningStatus`, `sanctionsScreenDetails`, `lastScreenedAt`. Legacy `sanctionsScreened` boolean kept for read compat.
+
+**Migration `migrateSanctionsC18.js`:**
+- Idempotent backfill setting `screening_status='pending'` on every NULL row. Sentinel: `phase4_sanctions_backfilled`. Wired into server.js after migrateConnectedAccounts.
+
+**`backend/services/sanctionsService.js` (new):**
+- `refreshSanctionsData()` — downloads OFAC SDN, OFAC Consolidated, EU Consolidated, UN SC Consolidated to `backend/data/sanctions/`. Atomic .tmp + rename writes. Manifest in `last_refresh.json`.
+- `screenName(name, country)` — name normalization (strips Ltd/LLC/Inc/GmbH/Sdn/Bhd etc.), exact match + country-overlap gating, fuzzy via inline Levenshtein (ratio >= 0.85). Five statuses: pending / cleared / flagged / requires_review / override.
+- mtime-cached in-memory parse so screen calls are sync after first load.
+- Zero new package dependencies.
+
+**Cron jobs (`schedulerService.js`):**
+- `30 3 * * *` refreshSanctionsLists — toggle `SCHEDULER_SANCTIONS_REFRESH=false`.
+- `0 4 * * *` rescreenCustomers90d — toggle `SCHEDULER_SANCTIONS_RESCREEN=false`.
+- Both audit (`sanctions_refresh`, `sanctions_rescreen_batch`).
+
+**API (`backend/modules/compliance/complianceRoutes.js`):**
+- POST `/screen` — stateless screen of `{name, country}`.
+- POST `/screen/:customerId` — re-screen + persist + audit `sanctions_screen`.
+- POST `/customers/:id/override` — super-admin only, reason ≥ 10 chars, audits `sanctions_override`, sets `isActive=true`.
+- GET `/sanctions/status` — last refresh manifest + file sizes + cron toggles.
+- POST `/sanctions/refresh` — super-admin manual trigger.
+
+**Four hard-block entry points:**
+- `leadController.createLead` — synchronous screen; flagged → 403, NOT created, audit.
+- `customerController.create` — synchronous screen; flagged → row created with `isActive=false`, 403 returned.
+- `quotationController.create` — rejects on `customer.screeningStatus === 'flagged'`. override bypasses.
+- `outreachController` per-lead + campaign — stale (>7d) re-screen on the fly; flagged blocks.
+- All write `sanctions_block` with `context` field.
+
+**Desktop:**
+- New `SanctionsBadge.jsx` (5 variants).
+- `CustomerDetail.jsx` — badge + red Override button (super-admin) + override modal (reason ≥ 10 chars, posts to `/compliance/customers/:id/override`).
+- Block reason / override reason previewed under the customer title.
+
+**Mobile:**
+- `app/(tabs)/customers.tsx` — SANCTIONS / OVERRIDE / REVIEW inline chip on each customer row when status warrants.
+- Customer interface in `src/services/api.ts` extended with sanctions fields.
+
+**Three-surface docs:**
+- tooltipContent — new keys: `sanctionsScreening`, `sanctionsCleared`, `sanctionsFlagged`, `sanctionsReview`, `sanctionsOverride`, `screeningSources`.
+- helpContent — new `/compliance/sanctions` section.
+- DEVELOPER_GUIDE — new "Sanctions screening (Phase 4, C18)" section.
+- USER_GUIDE — new "Sanctions screening (Phase 4, C18)" section.
+
+**`.gitignore`:**
+- `backend/data/sanctions/*.csv` + `*.xml` + `last_refresh.json` (runtime caches; don't commit).
+
+**AuditLog actions added:**
+- `sanctions_screen`, `sanctions_block`, `sanctions_override`, `sanctions_refresh`, `sanctions_rescreen_batch`, `phase4_sanctions_backfilled`.
 
 ### C17 — Inbox / email UX brand awareness (SHIPPED, commit `ac4ff75`, live)
 

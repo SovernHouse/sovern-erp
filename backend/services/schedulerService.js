@@ -277,6 +277,87 @@ async function purgeExpiredSoftDeletes() {
   }
 }
 
+// ─── Job 7: Sanctions list refresh (Phase 4, C18) ────────────────────────────
+// Daily at 03:30 server time. Downloads the 4 sanctions lists; failures
+// retain the last-known-good cache. Audited as sanctions_refresh.
+async function refreshSanctionsLists() {
+  try {
+    const sanctionsService = require('./sanctionsService');
+    const auditService = require('./auditService');
+    const results = await sanctionsService.refreshSanctionsData();
+    auditService.logAction(
+      null,
+      'sanctions_refresh',
+      'System',
+      '00000000-0000-0000-0000-000000000000',
+      { results, ranAt: new Date().toISOString() },
+      null,
+    ).catch(() => {});
+    const ok = results.filter((r) => r.ok).length;
+    const fail = results.length - ok;
+    logger.info(`[SCHEDULER][SANCTIONS] Refresh complete: ${ok} ok, ${fail} failed`);
+  } catch (err) {
+    logger.error('[SCHEDULER][SANCTIONS] refresh error:', err.message);
+  }
+}
+
+// ─── Job 8: 90-day rescreen (Phase 4, C18) ───────────────────────────────────
+// Daily at 04:00 server time. Re-screens active customers whose
+// lastScreenedAt is older than 90 days (or NULL). Status updates persist;
+// flagged customers are blocked at the 4 hard-block entry points until
+// super-admin clears or overrides. Audited as sanctions_rescreen_batch.
+async function rescreenCustomers90d() {
+  const db = getDB();
+  try {
+    const sanctionsService = require('./sanctionsService');
+    const auditService = require('./auditService');
+    const cutoff = dayjs().subtract(90, 'day').toDate();
+    const due = await db.Customer.findAll({
+      where: {
+        isActive: true,
+        [Op.or]: [
+          { lastScreenedAt: null },
+          { lastScreenedAt: { [Op.lt]: cutoff } },
+        ],
+      },
+      limit: 500,
+    });
+    let cleared = 0, flagged = 0, review = 0;
+    for (const cust of due) {
+      try {
+        const result = sanctionsService.screenName(cust.companyName, cust.country);
+        const updates = {
+          screeningStatus: cust.screeningStatus === 'override' ? 'override' : result.status,
+          sanctionsScreenDetails: result.hits,
+          lastScreenedAt: new Date(),
+        };
+        if (result.status === 'flagged' && cust.screeningStatus !== 'override') {
+          updates.sanctionBlockReason = `Matched on ${result.hits.map((h) => h.list).join(', ')}`;
+        }
+        await cust.update(updates);
+        if (result.status === 'flagged') flagged++;
+        else if (result.status === 'requires_review') review++;
+        else cleared++;
+      } catch (err) {
+        logger.warn(`[SCHEDULER][SANCTIONS] rescreen failed for ${cust.id}: ${err.message}`);
+      }
+    }
+    auditService.logAction(
+      null,
+      'sanctions_rescreen_batch',
+      'System',
+      '00000000-0000-0000-0000-000000000000',
+      { total: due.length, cleared, flagged, review, ranAt: new Date().toISOString() },
+      null,
+    ).catch(() => {});
+    if (due.length > 0) {
+      logger.info(`[SCHEDULER][SANCTIONS] Rescreen batch: ${due.length} screened (${cleared} cleared, ${flagged} flagged, ${review} review)`);
+    }
+  } catch (err) {
+    logger.error('[SCHEDULER][SANCTIONS] rescreen error:', err.message);
+  }
+}
+
 // ─── Job 6: Triage auto-archive ───────────────────────────────────────────────
 // Runs every hour. Archives pending TriageItems whose autoArchiveAt has passed.
 async function autoArchiveTriageItems() {
@@ -297,6 +378,8 @@ function startScheduler() {
     productionAlerts:  process.env.SCHEDULER_PRODUCTION_ALERTS  !== 'false',
     dataRetention:     process.env.SCHEDULER_DATA_RETENTION     !== 'false',
     triageAutoArchive: process.env.SCHEDULER_TRIAGE_ARCHIVE     !== 'false',
+    sanctionsRefresh:  process.env.SCHEDULER_SANCTIONS_REFRESH  !== 'false',
+    sanctionsRescreen: process.env.SCHEDULER_SANCTIONS_RESCREEN !== 'false',
   };
 
   // Jobs that run every morning at 08:00 server time
@@ -327,6 +410,15 @@ function startScheduler() {
     cron.schedule('0 * * * *', autoArchiveTriageItems, { name: 'triage-auto-archive' });
   }
 
+  // Phase 4, C18: sanctions list refresh at 03:30 and customer rescreen
+  // at 04:00. Server-local time, off-peak after data retention.
+  if (enabled.sanctionsRefresh) {
+    cron.schedule('30 3 * * *', refreshSanctionsLists, { name: 'sanctions-refresh' });
+  }
+  if (enabled.sanctionsRescreen) {
+    cron.schedule('0 4 * * *', rescreenCustomers90d, { name: 'sanctions-rescreen' });
+  }
+
   const activeJobs = Object.entries(enabled)
     .filter(([, v]) => v)
     .map(([k]) => k);
@@ -345,4 +437,6 @@ module.exports = {
   checkProductionDelays,
   purgeExpiredSoftDeletes,
   autoArchiveTriageItems,
+  refreshSanctionsLists,
+  rescreenCustomers90d,
 };

@@ -85,6 +85,43 @@ const sendOutreachEmailToLead = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Lead not found' });
     }
 
+    // Phase 4, C18: refuse to send outreach to a flagged lead unless
+    // super-admin overrode the screening. Optionally re-screen if the
+    // last screen is older than 7 days so a stale cleared lead can flip
+    // to flagged before we email a sanctioned entity. 'override' bypasses.
+    if (lead.screeningStatus !== 'override') {
+      const sanctionsService = require('../services/sanctionsService');
+      const auditService = require('../services/auditService');
+      const stale = !lead.lastScreenedAt || (Date.now() - new Date(lead.lastScreenedAt).getTime()) > 7 * 24 * 3600 * 1000;
+      if (stale) {
+        const re = sanctionsService.screenName(lead.companyName, lead.country);
+        await lead.update({
+          screeningStatus: re.status,
+          sanctionsScreenDetails: re.hits,
+          lastScreenedAt: new Date(),
+        });
+      }
+      if (lead.screeningStatus === 'flagged') {
+        auditService.logAction(
+          req.user?.id,
+          'sanctions_block',
+          'Lead',
+          lead.id,
+          {
+            context: 'outreach_send',
+            companyName: lead.companyName,
+            hits: lead.sanctionsScreenDetails,
+          },
+          req.ip,
+        ).catch(() => {});
+        return res.status(403).json({
+          success: false,
+          message: `Lead "${lead.companyName}" is on a sanctions list. Outreach blocked. Super-admin override required.`,
+          sanctionsBlock: { status: lead.screeningStatus, leadId: lead.id, hits: lead.sanctionsScreenDetails },
+        });
+      }
+    }
+
     // Look up brand for this lead — derives fromAddress, signature, and display name.
     const brand = lead.brandCode
       ? await db.Brand.findOne({ where: { code: lead.brandCode, active: true } })
@@ -407,6 +444,9 @@ const sendCampaign = async (req, res) => {
         campaignSignatureText = campaignBrand.signatureText || null;
       }
 
+      const sanctionsService = require('../services/sanctionsService');
+      const auditService = require('../services/auditService');
+
       for (let i = 0; i < leads.length; i++) {
         const lead = leads[i];
 
@@ -414,6 +454,57 @@ const sendCampaign = async (req, res) => {
         if (i > 0) {
           const jitter = 2000 + Math.floor(Math.random() * 6000);
           await new Promise(r => setTimeout(r, jitter));
+        }
+
+        // Phase 4, C18: per-recipient sanctions check inside the campaign
+        // loop. Stale leads (> 7d since last screen) are re-screened on the
+        // fly so a list that just refreshed catches a previously-cleared
+        // entity. 'override' bypasses. Flagged leads count as failed
+        // sends; the rest of the campaign continues.
+        if (lead.screeningStatus !== 'override') {
+          const stale = !lead.lastScreenedAt || (Date.now() - new Date(lead.lastScreenedAt).getTime()) > 7 * 24 * 3600 * 1000;
+          if (stale) {
+            try {
+              const re = sanctionsService.screenName(lead.companyName, lead.country);
+              await lead.update({
+                screeningStatus: re.status,
+                sanctionsScreenDetails: re.hits,
+                lastScreenedAt: new Date(),
+              });
+            } catch (e) {}
+          }
+          if (lead.screeningStatus === 'flagged') {
+            auditService.logAction(
+              sentByUserId,
+              'sanctions_block',
+              'Lead',
+              lead.id,
+              {
+                context: 'campaign_send',
+                campaignId,
+                companyName: lead.companyName,
+                hits: lead.sanctionsScreenDetails,
+              },
+              null,
+            ).catch(() => {});
+            failedCount++;
+            await db.OutreachEmail.create({
+              campaignId,
+              leadId: lead.id,
+              brandCode: lead.brandCode || null,
+              touchNumber,
+              subject: mergeTemplate(subjectTemplate, lead),
+              bodyText: '(blocked by sanctions screen)',
+              fromAddress: campaignBrand?.senderEmail || 'alex@sovernhouse.co',
+              toAddress: lead.email,
+              status: 'failed',
+              errorMessage: `sanctions_block: matched ${
+                (lead.sanctionsScreenDetails || []).map((h) => h.list).join(', ') || 'flagged'
+              }`,
+              sentByUserId,
+            }).catch(() => {});
+            continue;
+          }
         }
 
         const mergedSubject = mergeTemplate(subjectTemplate, lead);

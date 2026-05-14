@@ -603,6 +603,16 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] C17 connected accounts migration skipped:', e.message);
     }
+
+    // Phase 4, C18: default screeningStatus='pending' on existing Customer
+    // + Lead rows so the 4 hard-block entry points see a coherent enum
+    // value and the 90d rescreen cron picks them up.
+    try {
+      const { migrateSanctionsC18 } = require('./services/migrateSanctionsC18');
+      await migrateSanctionsC18(db);
+    } catch (e) {
+      logger.warn('[boot] C18 sanctions backfill skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {

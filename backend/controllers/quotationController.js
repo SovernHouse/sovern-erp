@@ -20,6 +20,37 @@ const create = async (req, res, next) => {
       throw new NotFoundError('Customer not found');
     }
 
+    // Phase 4, C18: refuse to quote a sanctioned customer. 'override' is
+    // the super-admin attestation path and DOES unblock; only 'flagged'
+    // hard-blocks. 'requires_review' and 'pending' are not blocked here
+    // (the UI shows a warning but lets the user proceed).
+    if (customer.screeningStatus === 'flagged') {
+      const auditService = require('../services/auditService');
+      auditService.logAction(
+        req.user?.id,
+        'sanctions_block',
+        'Customer',
+        customer.id,
+        {
+          context: 'quotation_create',
+          companyName: customer.companyName,
+          reason: customer.sanctionBlockReason,
+          hits: customer.sanctionsScreenDetails,
+        },
+        req.ip,
+      ).catch(() => {});
+      const err = new ValidationError(
+        `Customer "${customer.companyName}" is on a sanctions list. Reason: ${customer.sanctionBlockReason || 'flagged'}. Super-admin override required.`
+      );
+      err.statusCode = 403;
+      err.sanctionsBlock = {
+        status: customer.screeningStatus,
+        customerId: customer.id,
+        hits: customer.sanctionsScreenDetails,
+      };
+      throw err;
+    }
+
     // Phase 3, C13: resolve brandCode (body wins, else user defaultBrand, else 'SH').
     const resolvedBrandCode = brandCode || req.brandScope?.defaultBrand || 'SH';
 

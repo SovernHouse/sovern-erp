@@ -123,7 +123,50 @@ module.exports = (sequelize) => {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: null,
-    }
+    },
+    // Phase 4, C18: sanctions screening. screeningStatus drives the
+    // hard-block at Lead/Customer/Quotation create and Outreach send.
+    // 'override' is super-admin attestation — preserves the underlying
+    // flag in sanctionsScreenDetails but unblocks downstream actions.
+    screeningStatus: {
+      type: DataTypes.ENUM('pending', 'cleared', 'flagged', 'requires_review', 'override'),
+      allowNull: false,
+      defaultValue: 'pending',
+    },
+    lastScreenedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    // [{list, matchedName, country, score, reason}] — raw per L-023.
+    sanctionsScreenDetails: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: null,
+    },
+    sanctionBlockReason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    sanctionOverrideReason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    sanctionOverrideAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    sanctionOverrideBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
+    registeredBuyerSince: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    registeredBuyer: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
   }, {
     paranoid: true, // soft deletes — sets deletedAt instead of hard-deleting
     indexes: [
@@ -131,7 +174,10 @@ module.exports = (sequelize) => {
       { fields: ['company_name'] },
       { fields: ['is_active'] },
       { fields: ['country'] },
-      { fields: ['credit_hold'] }
+      { fields: ['credit_hold'] },
+      // Phase 4, C18: indexes for the 90d rescreen cron + sanctions-block scans.
+      { fields: ['screening_status'] },
+      { fields: ['last_screened_at'] },
     ]
   });
 

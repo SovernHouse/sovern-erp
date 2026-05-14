@@ -150,3 +150,9 @@ __pycache__
 Thumbs.db
 ehthumbs.db
 .DS_Store
+
+# Phase 4, C18: sanctions list data is fetched at runtime from public
+# sources; do not commit the raw caches.
+backend/data/sanctions/*.csv
+backend/data/sanctions/*.xml
+backend/data/sanctions/last_refresh.json

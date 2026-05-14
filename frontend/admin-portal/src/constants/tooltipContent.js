@@ -385,6 +385,13 @@ export const DASHBOARD = {
   replySenderPicker: 'Pick the connected Google account to send from. Only accounts whose brandCode matches the thread are enabled; mismatched accounts are visible but disabled. The server re-validates on submit and audits any cross-brand attempt as brand_account_mismatch_block.',
   crossBrandTriage: 'Super-admin only. When you select All brands in the global picker, the inbox merges SH + FW threads. Each card shows its own brand badge; replies still enforce sender match.',
   egyptBccRule: 'SH-brand Egypt customers/leads BCC mohanadfanzey@gmail.com on every outgoing email (outreach, campaign, triage reply). FW never BCCs Fanzey. The rule lives in one helper in emailService.js so all three send paths stay in sync.',
+  // Phase 4, C18: sanctions screening.
+  sanctionsScreening: 'Customers and leads are screened against OFAC SDN + Consolidated, EU Consolidated, and UN Consolidated sanctions lists. Lists refresh daily at 03:30. Active customers re-screen every 90 days. Screening uses company name + country to minimize false positives.',
+  sanctionsCleared: 'No hits across the 4 sanctions lists. Transactions proceed normally.',
+  sanctionsFlagged: 'Exact-name match against a sanctions list with matching country (or no country specified). Blocks Lead, Customer, Quotation creation, and outreach send. Super-admin override required to proceed.',
+  sanctionsReview: 'Fuzzy match (Levenshtein ratio >= 0.85) or exact name with mismatching country. Surfaces a warning but does not hard-block — operator decides.',
+  sanctionsOverride: 'Super-admin attestation that bypasses the block. Requires a written reason of at least 10 characters. Flag details remain on file; the reason becomes the auditable justification. Logged as sanctions_override.',
+  screeningSources: 'Sources: treasury.gov OFAC SDN + Consolidated CSV; webgate.ec.europa.eu EU Consolidated CSV; scsanctions.un.org UN Consolidated XML. All public, no API key required. Atomic write means a failed refresh retains the last-known-good cache.',
 }
 
 // ─── Google Drive ─────────────────────────────────────────────────────────────

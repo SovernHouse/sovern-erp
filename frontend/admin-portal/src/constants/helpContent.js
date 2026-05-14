@@ -986,6 +986,54 @@ export const HELP_CONTENT = {
     ],
   },
 
+  // ── Sanctions / Compliance (Phase 4, C18) ─────────────────────────────────
+  '/compliance/sanctions': {
+    title: 'Sanctions Screening',
+    summary: 'Every Customer and Lead is screened against four public sanctions lists (OFAC SDN, OFAC Consolidated, EU Consolidated, UN SC Consolidated). Flagged entities are blocked at four entry points: Lead create, Customer create, Quotation create, and Outreach send.',
+    sections: [
+      {
+        heading: 'How screening works',
+        items: [
+          'A daily cron at 03:30 server-time refreshes the four lists from their public sources. A failed download retains the last-known-good cache.',
+          'A second daily cron at 04:00 re-screens any active customer whose lastScreenedAt is older than 90 days.',
+          'Screening compares company name and country. Exact name + country match = flagged. Fuzzy match (Levenshtein ratio >= 0.85) = requires_review. Country mismatch demotes flagged to requires_review.',
+        ],
+      },
+      {
+        heading: 'When a flag fires',
+        items: [
+          'Lead create: blocked with HTTP 403 + sanctions_block audit. The lead is NOT created.',
+          'Customer create: the row is created with isActive=false and screeningStatus=flagged so super-admin can review; transactions are blocked until override.',
+          'Quotation create: blocked with HTTP 403 if customer.screeningStatus is flagged. override status bypasses.',
+          'Outreach send: per-lead and campaign sends pre-screen if the last screen is older than 7 days. Flagged leads block; the rest of the campaign continues.',
+        ],
+      },
+      {
+        heading: 'Super-admin override',
+        items: [
+          'Open the customer detail page, click Override on the red sanctions badge.',
+          'Enter a written reason (minimum 10 characters). The reason becomes the auditable justification.',
+          'screeningStatus moves to override; flag details remain on the record for future reference.',
+          'Override is logged as sanctions_override with the prior status and hits captured.',
+        ],
+      },
+      {
+        heading: 'Manual screening',
+        items: [
+          'POST /api/compliance/screen — stateless check of a (name, country) pair. No persistence.',
+          'POST /api/compliance/screen/:customerId — re-screens a specific customer and writes the result. Audited.',
+          'POST /api/compliance/sanctions/refresh — super-admin only. Pulls fresh data from all four sources.',
+          'GET /api/compliance/sanctions/status — last refresh timestamp, per-source byte counts, cron-enabled flags.',
+        ],
+      },
+    ],
+    tips: [
+      'Override is an attestation, not a clear. Future re-screens still flag the entity; the override sticks until manually changed.',
+      'A "requires_review" status warns the operator but does NOT block. Treat it as a prompt to investigate before proceeding.',
+      'False positives on common names are most likely. Country gating reduces them, but human review is the final check.',
+    ],
+  },
+
   // ── Default (unknown page) ────────────────────────────────────────────────
   '__default__': {
     title: 'Help',

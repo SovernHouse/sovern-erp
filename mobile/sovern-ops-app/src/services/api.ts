@@ -562,6 +562,13 @@ export interface Customer {
   // quotation has been sent under the current mode; non-super_admin
   // edits to productBrandingMode are 403 until override.
   productBrandingModeLockedAt?: string | null;
+  // Phase 4, C18: sanctions screening fields.
+  screeningStatus?: 'pending' | 'cleared' | 'flagged' | 'requires_review' | 'override' | null;
+  sanctionsScreenDetails?: Array<{ list: string; matchedName: string; country: string | null; score: number; countryOverlap?: boolean }> | null;
+  sanctionBlockReason?: string | null;
+  sanctionOverrideReason?: string | null;
+  sanctionOverrideAt?: string | null;
+  lastScreenedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

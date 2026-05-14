@@ -149,6 +149,32 @@ exports.createLead = async (req, res) => {
     }
     if (!assertBrandWritable(req, res, payload.brandCode)) return;
 
+    // Phase 4, C18: synchronous sanctions screen at create time. Flagged
+    // leads block here BEFORE the row persists — a quick win compared to
+    // creating-then-blocking. requires_review still creates but with the
+    // status set so the UI can surface the warning.
+    const sanctionsService = require('../services/sanctionsService');
+    const auditService = require('../services/auditService');
+    const screen = sanctionsService.screenName(payload.companyName, payload.country);
+    payload.screeningStatus = screen.status;
+    payload.sanctionsScreenDetails = screen.hits;
+    payload.lastScreenedAt = new Date();
+    if (screen.status === 'flagged') {
+      auditService.logAction(
+        req.user?.id,
+        'sanctions_block',
+        'Lead',
+        null,
+        { companyName: payload.companyName, country: payload.country, hits: screen.hits },
+        req.ip,
+      ).catch(() => {});
+      return res.status(403).json({
+        success: false,
+        message: `Sanctions match on "${payload.companyName}". Matched on ${screen.hits.map((h) => h.list).join(', ')}. Super-admin override required.`,
+        sanctionsBlock: { status: screen.status, hits: screen.hits },
+      });
+    }
+
     const lead = await db.Lead.create(payload);
 
     // Phase 3, C13: if this lead was created against an existing customer

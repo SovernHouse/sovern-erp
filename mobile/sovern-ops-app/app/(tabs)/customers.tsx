@@ -169,7 +169,27 @@ function CustomerRow({ customer, onPress }: { customer: Customer; onPress: () =>
         <Text style={styles.avatarText}>{initials}</Text>
       </View>
       <View style={styles.rowBody}>
-        <Text style={styles.name}>{displayName}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <Text style={styles.name}>{displayName}</Text>
+          {/* Phase 4, C18: sanctions warning indicator. Only renders for
+              non-cleared / non-pending so a clean directory isn't visually
+              cluttered. */}
+          {(customer as any).screeningStatus === 'flagged' && (
+            <View style={{ backgroundColor: '#FEE2E2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: '#991B1B', letterSpacing: 0.5 }}>SANCTIONS</Text>
+            </View>
+          )}
+          {(customer as any).screeningStatus === 'override' && (
+            <View style={{ backgroundColor: '#FFEDD5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: '#9A3412', letterSpacing: 0.5 }}>OVERRIDE</Text>
+            </View>
+          )}
+          {(customer as any).screeningStatus === 'requires_review' && (
+            <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: '#92400E', letterSpacing: 0.5 }}>REVIEW</Text>
+            </View>
+          )}
+        </View>
         {customer.contactPerson ? (
           <Text style={styles.sub}>{customer.contactPerson}</Text>
         ) : null}

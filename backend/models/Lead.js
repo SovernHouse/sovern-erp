@@ -131,9 +131,31 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true,
     },
+    // Phase 1 legacy: simple boolean flag. Kept for read compatibility;
+    // Phase 4 C18 replaces with screeningStatus enum + details. New code
+    // reads screeningStatus; old code may still read this boolean (kept
+    // in sync where the controller touches both).
     sanctionsScreened: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
+    },
+    // Phase 4, C18: full sanctions screening enum + hit details. Lead is
+    // screened at create time (company name + country) BEFORE the row
+    // persists so we can block creation when flagged. Override is the
+    // super-admin attestation path.
+    screeningStatus: {
+      type: DataTypes.ENUM('pending', 'cleared', 'flagged', 'requires_review', 'override'),
+      allowNull: false,
+      defaultValue: 'pending',
+    },
+    sanctionsScreenDetails: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: null,
+    },
+    lastScreenedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
     },
     emailVerified: {
       type: DataTypes.BOOLEAN,

@@ -897,6 +897,39 @@ For FlorWay quotations, the dialog warns you that the resulting Sales Order is a
 - Super-admin can convert across brands.
 - Server re-validates brand access on every request, so bypassing the UI returns 403.
 
+### Sanctions screening (Phase 4, C18)
+
+Every Customer and Lead is screened against four public sanctions lists (OFAC SDN, OFAC Consolidated, EU Consolidated, UN SC Consolidated). Screening is automatic at creation, on demand, and on a 90-day rolling basis for active customers.
+
+**What you'll see**
+- A green "Cleared" badge on customers with no hits.
+- A yellow "Requires review" badge if the screen found a partial match (fuzzy similarity OR exact name with mismatching country). This is a warning, not a block.
+- A red "Sanctions hit" badge if the screen found an exact match with country overlap. Downstream actions are blocked until super-admin overrides.
+- An orange "Override on file" badge if super-admin attested that the match does not block transacting. The match remains visible on the record.
+
+**Where the block fires**
+- Creating a Lead with a flagged company name is rejected with HTTP 403; the Lead is NOT saved.
+- Creating a Customer with a flagged name creates the row but marks it inactive; transactions are blocked until super-admin overrides.
+- Creating a Quotation against a flagged customer is rejected with HTTP 403.
+- Sending outreach (per-lead or campaign) to a flagged lead is rejected. Campaign loops skip flagged leads and continue with the rest.
+
+**Super-admin override**
+1. Open the flagged customer's detail page.
+2. Click the red Override button next to the sanctions badge.
+3. Enter a written reason of at least 10 characters explaining why the match should not block transacting.
+4. The status moves to Override; the flag details stay on the record for audit. The override reason becomes the auditable justification.
+
+**Manual screening**
+- POST /api/compliance/screen with `{ name, country }` returns a screen result without persisting.
+- POST /api/compliance/screen/:customerId re-screens a specific customer and persists the result.
+- POST /api/compliance/sanctions/refresh (super-admin only) pulls fresh data from all four sources.
+- GET /api/compliance/sanctions/status shows the last refresh timestamp, per-source byte counts, and whether the scheduled jobs are enabled.
+
+**Audit trail**
+- Every block writes a sanctions_block audit entry with the entity, hits, and context (lead_create, customer_create, quotation_create, outreach_send, campaign_send).
+- Every override writes a sanctions_override entry with the prior status, hits, reason, and user.
+- Daily refresh and rescreen cron jobs each write a single summary entry.
+
 ### Replying to inbox emails (Phase 4, C17)
 
 Inbox threads are brand-tagged so a reply to a Sovern House conversation can't accidentally be sent from a FlorWay account, and the Egypt BCC rule fires only when it should.
