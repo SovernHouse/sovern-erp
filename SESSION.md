@@ -5,15 +5,15 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 4 in progress. C14 + C15 shipped + live. C16 (quote-to-SO + brand-aware SO/PI/Invoice) staged.
+2026-05-14 Taiwan time. Phase 4 in progress. C14 + C15 + C16 shipped + live. C17 (inbox brand awareness) up next.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `908d21d` (feat(phase-4): FW commission ledger + dashboard + accrual rewrite (C15))
-- **Working tree:** C16 staged, awaiting commit
-- **CI/CD Pipeline (908d21d):** green
-- **Deploy (908d21d):** green
+- **Latest commit on main:** `1e9f417` (feat(phase-4): quote-to-SalesOrder + brand-aware SO/PI/Invoice (C16))
+- **Working tree:** clean
+- **CI/CD Pipeline (1e9f417):** green
+- **Deploy (1e9f417):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
 
 ---
@@ -22,7 +22,7 @@
 
 Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
 
-### C16 — Quote-to-SalesOrder + brand-aware SO/PI/Invoice (READY FOR COMMIT)
+### C16 — Quote-to-SalesOrder + brand-aware SO/PI/Invoice (SHIPPED, commit `1e9f417`, live)
 
 **Backend:**
 - `backend/utils/statusMachine.js` — SO transitions reconciled with SalesOrder model enum: draft → confirmed → in_production → ready → shipped → in_transit → delivered → completed; cancellable from any non-terminal state. `processing` removed (pre-flight verified zero rows on live DB).
