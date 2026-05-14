@@ -55,6 +55,18 @@ export const HELP_CONTENT = {
         ],
       },
       {
+        heading: 'FlorWay commission tracking (Phase 4)',
+        items: [
+          'Open the FlorWay Commission page from the user menu (visible only when you have FW access or are super-admin).',
+          'Rate floor is 5% (HanHua/FlorWay agreement, locked 2026-05-14). Per-quotation override on the quotation itself; the dashboard surfaces "Your commission rate: X%".',
+          'Rate resolution order: quotation.commissionRateOverride → Brand.commissionRate → legacy CommissionRule.',
+          'Statuses: accrued → invoiced_to_factory → paid. Disputed or clawed_back are off-flow.',
+          'Accrual fires when a SalesOrder transitions to "confirmed". Idempotent — a second status flip does not re-accrue.',
+          'Super-admin can Mark paid (sets paidDate + status=paid) and Claw back (status=clawed_back, requires a written reason). Both audited.',
+          'Outstanding tracker surfaces deals stuck in accrued / invoiced_to_factory for over 30 days — chase the factory.',
+        ],
+      },
+      {
         heading: 'Brand-filtered reporting (Phase 3)',
         items: [
           'Top-right Brand picker narrows every dashboard widget to one brand. Hidden for single-brand users.',

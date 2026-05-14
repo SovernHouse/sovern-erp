@@ -597,6 +597,21 @@ export default function Layout({ children }) {
                     <Package size={14} style={{ color: c(INK, 0.50) }} /> Product catalog
                   </Link>
 
+                  {/* Phase 4, C15: FW commission dashboard. Visible only when
+                      the user has FW access or is super_admin. */}
+                  {(user?.role === 'super_admin' ||
+                    (Array.isArray(user?.accessibleBrands) && user.accessibleBrands.includes('FW'))) && (
+                    <Link
+                      to="/commissions"
+                      onClick={() => setShowUserMenu(false)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', fontSize: 13, color: INK, textDecoration: 'none' }}
+                      onMouseEnter={e => e.currentTarget.style.background = c(INK, 0.04)}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <DollarSign size={14} style={{ color: c(INK, 0.50) }} /> FlorWay commission
+                    </Link>
+                  )}
+
                   {/* Modules — admin only */}
                   {user?.role === 'admin' && (
                     <Link

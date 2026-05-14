@@ -572,6 +572,16 @@ db.sequelize.authenticate()
       logger.warn('[boot] product seed skipped:', e.message);
     }
 
+    // Phase 4, C15: status enum migration + brandCode / customerId /
+    // accrualDate backfill on CommissionTracking, and commissionRate
+    // backfill on Brand. Idempotent (sentinel AuditLog rows).
+    try {
+      const { migrateCommissionsC15 } = require('./services/migrateCommissionsC15');
+      await migrateCommissionsC15(db);
+    } catch (e) {
+      logger.warn('[boot] C15 commission migration skipped:', e.message);
+    }
+
     // Phase 1 multi-brand (Commit 2): backfill brandCode='SH' on every
     // transactional row that's NULL after autoMigrateSchema added the column.
     // Customer.brandRelationships, User.accessibleBrands/defaultBrand are

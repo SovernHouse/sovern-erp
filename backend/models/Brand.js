@@ -86,6 +86,17 @@ module.exports = (sequelize) => {
       allowNull: false,
       defaultValue: true,
     },
+    // Phase 4, C15: brand-level commission rate (decimal 0..1).
+    // Default 0.0500 (5%) for FW per the HanHua/FlorWay agreement
+    // (locked 2026-05-14). SH defaults to 0.0000 (Alex's own business —
+    // no factory commission flow). Per-quotation override via
+    // Quotation.commissionRateOverride must be >= 0.0500. The floor
+    // applies to FW only; SH can be zero.
+    commissionRate: {
+      type: DataTypes.DECIMAL(5, 4),
+      allowNull: false,
+      defaultValue: 0.0500,
+    },
   });
 
   return Brand;

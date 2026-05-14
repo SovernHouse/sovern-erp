@@ -117,6 +117,29 @@ If you have FW access, the dashboard shows a FlorWay Commission card with three 
    - Mark as primary if needed
 4. Click "Save Customer"
 
+#### Tracking FlorWay Commission (Phase 4)
+
+Open the **FlorWay commission** entry in the user menu (visible if you have FW access or are super-admin).
+
+**KPIs at top:**
+- MTD / QTD / YTD Accrued — total commission you've accrued in the current Taipei month, quarter, year.
+- Pending payment — any commission stuck in `accrued` or `invoiced_to_factory` status, regardless of date.
+
+**Pipeline forecast** — sum of every open FlorWay quotation multiplied by its commission rate (override if set, else brand default 5%). Upper-bound estimate assuming every open quote converts.
+
+**Outstanding > 30 days** — commission rows stuck in `accrued` or `invoiced_to_factory` for more than 30 days. Chase the factory.
+
+**Deals table** — every commission row under FlorWay with customer, date, rate, amount, status.
+
+**Super-admin only actions** (visible only when you're super-admin):
+- **Inline rate edit** on the deals table — click the percentage cell, type a new rate (≥ 5%), press blur. Saves immediately, audited.
+- **Mark paid** — sets status to paid and stamps the date. Audited.
+- **Claw back** — sets status to clawed_back. Requires a written reason (≥ 5 chars). Audited.
+
+**Per-quotation commission rate override** — set on the quotation itself (NOT on the SO). The override applies when the resulting SO confirms and accrual fires. The 5% floor is locked (HanHua/FlorWay agreement, 2026-05-14) and cannot be overridden.
+
+**Mobile** — the dashboard tab shows a commission widget for FW users. Tapping it opens the full read-only deals list. Rate edits and mark-paid stay desktop-only.
+
 #### Managing the Product Catalog (Phase 4)
 
 Open **Settings > Product catalog** to manage what shows up in the quotation product picker. Each product belongs to a brand: FlorWay products on FlorWay quotations, Sovern House products on SH quotations.

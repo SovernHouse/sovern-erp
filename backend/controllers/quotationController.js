@@ -13,7 +13,7 @@ const { validateFinancials } = require('../utils/validateFinancials');
 const create = async (req, res, next) => {
   try {
     validateFinancials(req.body);
-    const { customerId, inquiryId, salesPersonId, items, discount, discountType, taxRate, terms, factoryId, leadId, brandCode } = req.body;
+    const { customerId, inquiryId, salesPersonId, items, discount, discountType, taxRate, terms, factoryId, leadId, brandCode, commissionRateOverride } = req.body;
 
     const customer = await db.Customer.findByPk(customerId);
     if (!customer) {
@@ -22,6 +22,26 @@ const create = async (req, res, next) => {
 
     // Phase 3, C13: resolve brandCode (body wins, else user defaultBrand, else 'SH').
     const resolvedBrandCode = brandCode || req.brandScope?.defaultBrand || 'SH';
+
+    // Phase 4, C15: validate commissionRateOverride against the 5% floor.
+    // Stored as decimal 0..1 (e.g. 0.07 = 7%). NULL = use brand default.
+    let resolvedOverride = null;
+    if (commissionRateOverride != null && commissionRateOverride !== '') {
+      const rate = parseFloat(commissionRateOverride);
+      if (!Number.isFinite(rate)) {
+        throw new ValidationError('commissionRateOverride must be a number');
+      }
+      const { COMMISSION_FLOOR_DECIMAL } = require('../services/commissionAccrual');
+      if (rate < COMMISSION_FLOOR_DECIMAL) {
+        throw new ValidationError(
+          `commissionRateOverride must be >= ${COMMISSION_FLOOR_DECIMAL} (5% floor)`
+        );
+      }
+      if (rate > 1) {
+        throw new ValidationError('commissionRateOverride must be a decimal between 0 and 1 (e.g. 0.07 = 7%)');
+      }
+      resolvedOverride = rate;
+    }
 
     const lastQuotation = await db.Quotation.findOne({
       order: [['createdAt', 'DESC']]
@@ -113,6 +133,7 @@ const create = async (req, res, next) => {
       factoryId: factoryId || null,
       leadId: leadId || null,
       brandCode: resolvedBrandCode,
+      commissionRateOverride: resolvedOverride,
       status: 'draft',
       subtotal,
       discount: discountAmount,
@@ -228,7 +249,7 @@ const getById = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { items, discount, taxRate, terms, validUntil, factoryId, leadId } = req.body;
+    const { items, discount, taxRate, terms, validUntil, factoryId, leadId, commissionRateOverride } = req.body;
 
     const quotation = await db.Quotation.findByPk(id);
     if (!quotation || quotation.deletedAt) {
@@ -240,6 +261,40 @@ const update = async (req, res, next) => {
     }
 
     const beforeSnapshot = quotation.toJSON();
+
+    // Phase 4, C15: validate commissionRateOverride if present in body.
+    // Same floor as create.
+    let newOverride;
+    if (commissionRateOverride !== undefined) {
+      if (commissionRateOverride === null || commissionRateOverride === '') {
+        newOverride = null;
+      } else {
+        const rate = parseFloat(commissionRateOverride);
+        const { COMMISSION_FLOOR_DECIMAL } = require('../services/commissionAccrual');
+        if (!Number.isFinite(rate)) {
+          throw new ValidationError('commissionRateOverride must be a number');
+        }
+        if (rate < COMMISSION_FLOOR_DECIMAL || rate > 1) {
+          throw new ValidationError(
+            `commissionRateOverride must be between ${COMMISSION_FLOOR_DECIMAL} and 1`
+          );
+        }
+        newOverride = rate;
+      }
+      // Apply the override change + audit.
+      const prev = quotation.commissionRateOverride;
+      if (String(prev || '') !== String(newOverride || '')) {
+        await quotation.update({ commissionRateOverride: newOverride });
+        auditService.logAction(
+          req.user.id,
+          'commission_rate_override',
+          'Quotation',
+          quotation.id,
+          { previous: prev, next: newOverride },
+          req.ip,
+        ).catch(() => {});
+      }
+    }
 
     if (items) {
       let subtotal = 0;

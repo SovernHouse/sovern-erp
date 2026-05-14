@@ -1,18 +1,19 @@
-// CommissionWidget — Phase 3, C11 mobile counterpart.
+// CommissionWidget — Phase 3 C11 + Phase 4 C15 (rewired).
 //
-// Read-only summary: Accrued / Paid / Pending for the current
-// Asia/Taipei month-to-date, brandCode=FW. Rendered only for users with
-// FW in their accessibleBrands. Per-order percentage edits happen on
-// desktop (the table-with-inputs UI doesn't fit a phone screen well).
+// Read-only summary: Accrued (MTD) + Pending Payment for the current
+// Asia/Taipei MTD, brandCode=FW. Rendered only for users with FW in
+// accessibleBrands. Tap → opens commission detail screen with full
+// deals list. Per-order percentage edits happen on desktop.
 
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useBrands } from '../hooks/useBrands';
 import { COLORS } from '../constants/config';
 import * as SecureStore from 'expo-secure-store';
 import { CONFIG } from '../constants/config';
 
-type Summary = { accrued: number; paid: number; pending: number };
+type Kpis = { mtdAccrued: number; qtdAccrued?: number; ytdAccrued?: number; pendingPayment: number };
 
 function fmtMoney(v: number, currency = 'USD') {
   if (v == null) return '-';
@@ -23,7 +24,8 @@ function fmtMoney(v: number, currency = 'USD') {
 
 export default function CommissionWidget() {
   const { accessibleBrands } = useBrands();
-  const [summary, setSummary] = useState<Summary | null>(null);
+  const router = useRouter();
+  const [kpis, setKpis] = useState<Kpis | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,14 +38,16 @@ export default function CommissionWidget() {
     (async () => {
       try {
         const token = await SecureStore.getItemAsync(CONFIG.TOKEN_KEY);
+        // Phase 4, C15: use the new /dashboard endpoint so MTD/Pending
+        // match the desktop dashboard.
         const res = await fetch(
-          `${CONFIG.SERVER_URL}/api/personalization/commissions/summary?brandCode=FW&period=mtd`,
+          `${CONFIG.SERVER_URL}/api/personalization/commissions/dashboard?brand=FW`,
           { headers: token ? { Authorization: `Bearer ${token}` } : {} },
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = await res.json();
         const data = body.data || body;
-        if (!cancelled) setSummary(data.summary);
+        if (!cancelled) setKpis(data.kpis);
       } catch (err: any) {
         if (!cancelled) setError(err.message);
       } finally {
@@ -56,22 +60,25 @@ export default function CommissionWidget() {
   if (!hasFw) return null;
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => router.push('/commission')}
+      activeOpacity={0.7}
+    >
       <View style={styles.headerRow}>
         <Text style={styles.heading}>FlorWay Commission  ·  MTD</Text>
         {loading ? <ActivityIndicator size="small" color={COLORS.forest} /> : null}
       </View>
-      <Text style={styles.subheading}>5% default rate, adjustable per order (desktop)</Text>
+      <Text style={styles.subheading}>Tap for full deals list  ·  5% floor, adjustable on desktop</Text>
       {error ? (
         <Text style={styles.error}>Unavailable: {error}</Text>
       ) : (
         <View style={styles.tilesRow}>
-          <Tile label="Accrued" value={fmtMoney(summary?.accrued ?? 0)} color="#1F2933" />
-          <Tile label="Paid"    value={fmtMoney(summary?.paid    ?? 0)} color="#16a34a" />
-          <Tile label="Pending" value={fmtMoney(summary?.pending ?? 0)} color="#92400E" />
+          <Tile label="MTD Accrued" value={fmtMoney(kpis?.mtdAccrued ?? 0)} color="#1F2933" />
+          <Tile label="Pending payment" value={fmtMoney(kpis?.pendingPayment ?? 0)} color="#92400E" />
         </View>
       )}
-    </View>
+    </TouchableOpacity>
   );
 }
 

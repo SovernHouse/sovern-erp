@@ -368,6 +368,14 @@ export const DASHBOARD = {
   allBrands:      'Super-admin only. Combined SH + FW view; reports are read-only in this mode.',
   fwCommission:   'FlorWay commission accrued this Asia/Taipei month from SalesOrders tagged FW. Default 5%; per-order rate is adjustable inline (pending rows only).',
   brandRevenueComparison: 'Super-admin only. Side-by-side SH vs FW revenue + commission for the current month.',
+  // Phase 4, C15: commission ledger
+  commissionRateOverride: 'Per-quotation commission rate override. Decimal 0..1 (e.g. 0.07 = 7%). NULL = use Brand.commissionRate. Cannot go below 5% (HanHua/FlorWay agreement floor, locked 2026-05-14).',
+  commissionFloor: 'The 5% rate floor is non-negotiable per the HanHua/FlorWay agreement. Unlike the product price floor (which super-admin can override with a reason), the commission floor has no override path.',
+  commissionStatuses: 'accrued — newly owed; invoiced_to_factory — billed; paid — received; disputed — factory contests; clawed_back — refunded. Legacy "pending" rows from before C15 are readable but new accruals default to accrued.',
+  markPaid: 'Super-admin only. Sets status to paid and stamps the paidDate. Audited.',
+  clawBack: 'Super-admin only. Sets status to clawed_back. Requires a written reason (>= 5 chars). Audited.',
+  pipelineForecast: 'Sum of open quotations under the brand multiplied by their commission rate. Upper-bound estimate assuming every open quote converts. Probability-by-stage weighting is future work.',
+  outstandingTracker: 'Commission rows in status accrued or invoiced_to_factory aged more than 30 days. These should be chased with the factory.',
 }
 
 // ─── Google Drive ─────────────────────────────────────────────────────────────

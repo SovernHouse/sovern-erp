@@ -3,6 +3,12 @@
 const express = require('express');
 const router = express.Router();
 
+// Phase 4, C15: brandScope so commission endpoints can read accessibleBrands
+// (used by requireFwAccess for the FW dashboard gate).
+const { requireAuth } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
+router.use(requireAuth, brandScope);
+
 router.use('/', require('./personalization/notificationRoutes'));
 router.use('/', require('./personalization/commissionRoutes'));
 router.use('/', require('./personalization/filterPresetRoutes'));

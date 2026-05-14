@@ -282,6 +282,213 @@ router.get('/commissions/brand-comparison', requireAuth, requireRole('super_admi
   }
 });
 
+// ─── Phase 4, C15 — FW commission dashboard + ledger transitions ─────────
+
+/**
+ * Require the user to have FW in their accessibleBrands OR be super_admin.
+ * Used to gate the FW-specific commission dashboard so a sales rep with
+ * SH-only access never sees commission data they shouldn't.
+ */
+function requireFwAccess(req, res, next) {
+  if (req.user?.role === 'super_admin') return next();
+  const accessible = req.brandScope?.accessibleBrands || [];
+  if (Array.isArray(accessible) && accessible.includes('FW')) return next();
+  return res.status(403).json({
+    success: false,
+    message: 'FW access required for commission dashboard',
+  });
+}
+
+/**
+ * Asia/Taipei month-to-date boundary expressed in UTC (createdAt is UTC).
+ */
+function mtdStart() {
+  const now = new Date();
+  const taipei = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+  const start = new Date(Date.UTC(taipei.getFullYear(), taipei.getMonth(), 1));
+  start.setUTCHours(start.getUTCHours() - 8);  // Taipei is UTC+8
+  return start;
+}
+function quarterStart() {
+  const now = new Date();
+  const taipei = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+  const q = Math.floor(taipei.getMonth() / 3) * 3;
+  const start = new Date(Date.UTC(taipei.getFullYear(), q, 1));
+  start.setUTCHours(start.getUTCHours() - 8);
+  return start;
+}
+function ytdStart() {
+  const now = new Date();
+  const taipei = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+  const start = new Date(Date.UTC(taipei.getFullYear(), 0, 1));
+  start.setUTCHours(start.getUTCHours() - 8);
+  return start;
+}
+
+/**
+ * GET /api/personalization/commissions/dashboard?brand=FW
+ *
+ * Returns full FW commission dashboard data.
+ *   {
+ *     brandCode,
+ *     kpis: { mtdAccrued, qtdAccrued, ytdAccrued, pendingPayment },
+ *     pipelineForecast: number,  // open quotations × rate (probability-by-stage)
+ *     deals: [{ id, orderNumber, customerName, accrualDate, amount, status, percentage, daysOpen }],
+ *     outstanding: [{ id, orderNumber, customerName, daysOpen, amount }],  // status accrued/invoiced_to_factory > 30d
+ *   }
+ */
+router.get('/commissions/dashboard', requireAuth, requireFwAccess, async (req, res, next) => {
+  try {
+    const brandCode = req.query.brand || req.query.brandCode || 'FW';
+
+    const sumAmounts = (rows) => rows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+
+    const [mtd, qtd, ytd, allOpen] = await Promise.all([
+      db.CommissionTracking.findAll({
+        where: { brandCode, createdAt: { [Op.gte]: mtdStart() } },
+        attributes: ['amount'],
+      }),
+      db.CommissionTracking.findAll({
+        where: { brandCode, createdAt: { [Op.gte]: quarterStart() } },
+        attributes: ['amount'],
+      }),
+      db.CommissionTracking.findAll({
+        where: { brandCode, createdAt: { [Op.gte]: ytdStart() } },
+        attributes: ['amount'],
+      }),
+      db.CommissionTracking.findAll({
+        where: { brandCode, status: { [Op.in]: ['accrued', 'invoiced_to_factory', 'pending'] } },
+        attributes: ['amount'],
+      }),
+    ]);
+
+    const kpis = {
+      mtdAccrued: sumAmounts(mtd),
+      qtdAccrued: sumAmounts(qtd),
+      ytdAccrued: sumAmounts(ytd),
+      pendingPayment: sumAmounts(allOpen),
+    };
+
+    // Pipeline forecast: open quotations under brand × commission rate.
+    // Use override when present, else Brand.commissionRate.
+    const brandRow = await db.Brand.findOne({ where: { code: brandCode } });
+    const brandRate = brandRow ? parseFloat(brandRow.commissionRate || 0) : 0;
+    const openQuotes = await db.Quotation.findAll({
+      where: {
+        brandCode,
+        status: { [Op.in]: ['draft', 'sent', 'revised'] },
+        deletedAt: null,
+      },
+      attributes: ['total', 'commissionRateOverride'],
+    });
+    const pipelineForecast = openQuotes.reduce((s, q) => {
+      const rate = q.commissionRateOverride != null
+        ? parseFloat(q.commissionRateOverride)
+        : brandRate;
+      return s + (parseFloat(q.total || 0) * rate);
+    }, 0);
+
+    // Deal-level table — recent + active.
+    const deals = await db.CommissionTracking.findAll({
+      where: { brandCode },
+      include: [
+        { model: db.SalesOrder, attributes: ['id', 'orderNumber', 'createdAt'] },
+        { model: db.Customer, attributes: ['id', 'companyName'] },
+      ],
+      order: [['createdAt', 'DESC']],
+      limit: 100,
+    });
+
+    const dealsList = deals.map((r) => {
+      const daysOpen = r.createdAt
+        ? Math.floor((Date.now() - new Date(r.createdAt).getTime()) / 86400000)
+        : null;
+      return {
+        id: r.id,
+        orderNumber: r.SalesOrder?.orderNumber || null,
+        customerName: r.Customer?.companyName || null,
+        accrualDate: r.accrualDate || r.createdAt,
+        amount: parseFloat(r.amount || 0),
+        percentage: parseFloat(r.percentage || 0),
+        status: r.status,
+        daysOpen,
+      };
+    });
+
+    // Outstanding: accrued or invoiced_to_factory for >30 days.
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+    const outstanding = dealsList.filter((d) =>
+      (d.status === 'accrued' || d.status === 'invoiced_to_factory') &&
+      d.daysOpen != null && d.daysOpen > 30
+    );
+
+    res.json(getSuccessResponse({
+      brandCode,
+      kpis,
+      pipelineForecast,
+      deals: dealsList,
+      outstanding,
+      currency: 'USD',
+    }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/personalization/commissions/:id/mark-paid
+ *
+ * Super-admin only. Sets status='paid', paidDate=now. Audited.
+ */
+router.post('/commissions/:id/mark-paid', requireAuth, requireRole('super_admin'), async (req, res, next) => {
+  try {
+    const row = await db.CommissionTracking.findByPk(req.params.id);
+    if (!row) throw new NotFoundError('Commission row not found');
+    const prevStatus = row.status;
+    await row.update({ status: 'paid', paidDate: new Date() });
+    const auditService = require('../../services/auditService');
+    auditService.logAction(req.user.id, 'commission_paid', 'CommissionTracking', row.id, {
+      previousStatus: prevStatus,
+      amount: row.amount,
+      paidDate: row.paidDate,
+    }, req.ip).catch(() => {});
+    res.json(getSuccessResponse(row, 'Commission marked paid'));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/personalization/commissions/:id/claw-back
+ *
+ * Super-admin only. Body: { reason: string (>= 5 chars) }. Sets
+ * status='clawed_back'. Audited.
+ */
+router.post('/commissions/:id/claw-back', requireAuth, requireRole('super_admin'), async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    if (!reason || String(reason).trim().length < 5) {
+      throw new ValidationError('reason is required (>= 5 characters)');
+    }
+    const row = await db.CommissionTracking.findByPk(req.params.id);
+    if (!row) throw new NotFoundError('Commission row not found');
+    const prevStatus = row.status;
+    await row.update({
+      status: 'clawed_back',
+      notes: `${row.notes ? row.notes + '\n' : ''}Clawed back: ${reason}`,
+    });
+    const auditService = require('../../services/auditService');
+    auditService.logAction(req.user.id, 'commission_clawed_back', 'CommissionTracking', row.id, {
+      previousStatus: prevStatus,
+      amount: row.amount,
+      reason,
+    }, req.ip).catch(() => {});
+    res.json(getSuccessResponse(row, 'Commission clawed back'));
+  } catch (error) {
+    next(error);
+  }
+});
+
 /**
  * Get user's filter presets
  * @route GET /api/personalization/filter-presets

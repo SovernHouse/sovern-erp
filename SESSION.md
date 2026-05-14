@@ -5,15 +5,15 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 4 started. C14 (brand-aware product catalog + no-markup floor enforcement) staged for commit.
+2026-05-14 Taiwan time. Phase 4 in progress. C14 shipped + live + dashboard 500 hotfix shipped. C15 (FW commission ledger + dashboard + accrual rewrite) staged.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `cdee299` (chore: end-of-session SESSION.md update at Phase 3 close)
-- **Working tree:** C14 staged, awaiting commit
-- **CI/CD Pipeline (cdee299):** green
-- **Deploy (cdee299):** green
+- **Latest commit on main:** `19c4c8d` (fix(phase-3): mobile dashboard 500 — InternalApproval is not brand-tagged)
+- **Working tree:** C15 staged, awaiting commit
+- **CI/CD Pipeline (19c4c8d):** green
+- **Deploy (19c4c8d):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
 
 ---
@@ -22,7 +22,59 @@
 
 Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
 
-### C14 — Brand-aware product catalog (READY FOR COMMIT)
+### C15 — FW commission ledger + dashboard + accrual rewrite (READY FOR COMMIT)
+
+**Schema:**
+- `CommissionTracking` — added `customerId`, `brandCode` (default 'FW'), `accrualDate`, `registeredBuyerSince`. Status enum widened to add `accrued`, `invoiced_to_factory`, `clawed_back`. Default for new rows: `'accrued'`. Indexes on customer_id, brand_code, brand_code+status, accrual_date.
+- `Brand` — added `commissionRate DECIMAL(5,4) DEFAULT 0.0500`. seedBrands: SH = 0.0000, FW = 0.0500.
+- `Quotation` — added `commissionRateOverride DECIMAL(5,4) NULL` + index `(status, brand_code)` for forecast scan.
+
+**Migration `migrateCommissionsC15.js` (idempotent, sentinel-guarded):**
+- Status enum remap: `approved → accrued`, `cancelled → clawed_back`.
+- Field backfill: customerId / brandCode / accrualDate via joined SO; orphans default brandCode='FW'.
+- Brand.commissionRate backfill: SH=0.0000, FW=0.0500.
+- Wired into server.js after seedProductsIfEmpty.
+
+**Accrual rewrite `commissionAccrual.js`:**
+- New `accrueIfConfirmed(db, so, userId)` — no-op unless SO is at 'confirmed'.
+- Rate resolution: quotation.commissionRateOverride → brand.commissionRate → legacy CommissionRule fallback.
+- Sets customerId, brandCode, accrualDate, registeredBuyerSince. Status 'accrued' for new rows.
+- Backwards-compat alias `accrueCommissionForOrder` preserved.
+- `updateCommissionPercentage` now enforces 5% floor (cannot override).
+- Exports `COMMISSION_FLOOR_DECIMAL = 0.05`, `COMMISSION_FLOOR_PERCENT = 5.0`.
+
+**salesOrderRoutes.js:**
+- `PATCH /:id/status` now hooks accrueCommissionForOrder when status transitions from non-confirmed to 'confirmed'.
+
+**quotationController.js:**
+- create + update validate `commissionRateOverride >= 0.05` (decimal). Update path audits `commission_rate_override` when the field changes.
+
+**New endpoints (`backend/routes/personalization/commissionRoutes.js`):**
+- `GET /api/personalization/commissions/dashboard?brand=FW` — KPIs (MTD/QTD/YTD/PendingPayment) + pipeline forecast + deals + outstanding. Gated by inline `requireFwAccess` (super_admin OR accessibleBrands.includes('FW')).
+- `POST /commissions/:id/mark-paid` — super_admin only, status=paid + paidDate. Audit `commission_paid`.
+- `POST /commissions/:id/claw-back` — super_admin + reason (≥ 5 chars). Audit `commission_clawed_back`.
+
+**Backend brandScope hook:** `personalizationRoutes.js` now applies `requireAuth + brandScope` at the router so commission endpoints can read `accessibleBrands`.
+
+**Desktop:**
+- New `frontend/admin-portal/src/pages/Analytics/CommissionDashboard.jsx` — KPI strip, pipeline forecast card, outstanding > 30d section (super-admin Mark-paid actions), full deals table with inline percentage editor (super-admin only on accrued/pending rows). Status pills color-coded.
+- App.jsx: new lazy route `/commissions`.
+- Layout.jsx: user-menu entry "FlorWay commission" visible only for super_admin OR `accessibleBrands.includes('FW')`.
+
+**Mobile:**
+- `mobile/sovern-ops-app/src/components/CommissionWidget.tsx` rewired to use new `/dashboard` endpoint. Now tappable → navigates to `/commission` detail. Tiles show MTD Accrued + Pending payment.
+- New `mobile/sovern-ops-app/app/commission.tsx` — read-only deals list with KPIs, outstanding section, status pills. Mobile-friendly card layout.
+
+**Three-surface docs:**
+- tooltipContent — new keys: `commissionRateOverride`, `commissionFloor`, `commissionStatuses`, `markPaid`, `clawBack`, `pipelineForecast`, `outstandingTracker`.
+- helpContent — new "FlorWay commission tracking (Phase 4)" section under `/`.
+- DEVELOPER_GUIDE — new "FlorWay commission tracking (Phase 4, C15)" section: schema deltas, migration, rate resolution, accrual trigger points, floor enforcement, API endpoints, percentage-vs-decimal note, UI, AuditLog actions, pipeline forecast notes.
+- USER_GUIDE — new "Tracking FlorWay Commission (Phase 4)" walkthrough.
+
+**AuditLog actions added:**
+- `commission_rate_override`, `commission_paid`, `commission_clawed_back`, `phase4_commission_status_migrated`, `phase4_commission_fields_backfilled`, `phase4_brand_commission_rate_backfilled`.
+
+### C14 — Brand-aware product catalog (SHIPPED, commit `8fb9a6a`, live)
 
 **Backend:**
 - `backend/models/Product.js` — added 8 fields: brandCode (default 'SH'), productType (enum), baseFobPrice (decimal FLOOR), currency, moqUnit, leadTimeDays, certifications (JSON), originCountry. Compound + brand_code indexes added; SKU stays globally unique (column-level UNIQUE can't ALTER on SQLite; deviation documented).

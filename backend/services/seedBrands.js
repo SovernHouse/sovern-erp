@@ -29,6 +29,8 @@ const SEEDS = [
     documentTemplateIds: null,     // Phase 3
     acceptedProductCategories: null, // null = no constraint (Phase 3 enforces)
     active: true,
+    // Phase 4, C15: SH is Alex's own business — no factory commission flow.
+    commissionRate: 0.0000,
   },
   {
     code: 'FW',
@@ -46,6 +48,9 @@ const SEEDS = [
     // FW only sources for LVT / SPC / WPC / IronLite (Q7).
     acceptedProductCategories: ['LVT', 'SPC', 'WPC', 'IronLite'],
     active: true,
+    // Phase 4, C15: 5% floor commission per the HanHua/FlorWay agreement
+    // (locked 2026-05-14). Per-quotation override on Quotation.commissionRateOverride.
+    commissionRate: 0.0500,
   },
 ];
 

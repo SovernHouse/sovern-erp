@@ -2036,6 +2036,115 @@ Grep blocklist (CI / QA gate):
 
 ---
 
+# FlorWay commission tracking (Phase 4, C15)
+
+Extends the Phase 3 C11 CommissionTracking ledger to a full FW commission flow: brand-aware accrual, per-quotation rate override, status enum lifecycle, super-admin mark-paid + claw-back, and a dashboard with KPIs + pipeline forecast + outstanding tracker.
+
+## Schema deltas
+
+**`backend/models/CommissionTracking.js`**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `customerId` | UUID | null | FK Customer (constraints:false per L-043). |
+| `brandCode` | STRING(8) | `'FW'` | FK Brand.code. Required NOT NULL. |
+| `accrualDate` | DATE | null | Stamped when SO transitions to confirmed. |
+| `registeredBuyerSince` | DATE | null | Snapshot of first confirmed SO date for this (customerId, brandCode). |
+| `status` (widened) | ENUM | `'accrued'` | Adds `accrued`, `invoiced_to_factory`, `clawed_back`. Preserves `pending`, `paid`, `disputed`. |
+
+**`backend/models/Brand.js`**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `commissionRate` | DECIMAL(5,4) | `0.0500` | Brand-level default rate as decimal. SH = 0.0000 in seed/backfill. FW = 0.0500. |
+
+**`backend/models/Quotation.js`**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `commissionRateOverride` | DECIMAL(5,4) | null | Per-quote override. >= 0.05 enforced server-side. |
+
+Plus a new index `(status, brand_code)` on Quotation for the pipeline forecast scan.
+
+## Migration — `backend/services/migrateCommissionsC15.js`
+
+Idempotent (AuditLog sentinel rows on each step). Three parts:
+
+1. **Status enum remap.** SQL UPDATEs: `approved → accrued`, `cancelled → clawed_back`. Other values preserved. Sentinel: `phase4_commission_status_migrated`.
+2. **Field backfill.** Rows missing `customerId` / `brandCode` / `accrualDate` get them from the joined SO. Orphan rows default brandCode to 'FW'. Sentinel: `phase4_commission_fields_backfilled`.
+3. **Brand.commissionRate backfill.** SH → 0.0000, FW → 0.0500. Sentinel: `phase4_brand_commission_rate_backfilled`.
+
+Runs in `server.js` boot after `seedProductsIfEmpty`. Wrapped in try/catch — never blocks boot.
+
+## Rate resolution order — `commissionAccrual.resolveCommissionRateDecimal`
+
+1. `quotation.commissionRateOverride` via the SO's quotation chain (proformaInvoiceId → ProformaInvoice.quotationId; or matching accepted quote).
+2. `brand.commissionRate` (Phase 4 authoritative source).
+3. Legacy `CommissionRule.baseValue / 100` (fallback). The C11 `FW Sales Commission` rule remains as the fallback safety net.
+
+## Accrual trigger
+
+`accrueIfConfirmed(db, so, userId, opts)` is the Phase 4 entry point. No-op unless `so.status === 'confirmed'`. Called from:
+
+1. `POST /api/sales-orders` (SO born confirmed) — existing.
+2. `POST /api/sales-orders/create-from-quotation` (SO from accepted quote) — existing.
+3. **NEW** `PATCH /api/sales-orders/:id/status` when transitioning draft → confirmed.
+
+Backwards-compat alias `accrueCommissionForOrder` still exists; route callers don't change.
+
+Idempotency: existing `(userId, salesOrderId)` row → returned as-is, no double-accrual.
+
+## Floor enforcement
+
+5% (0.05 decimal, 5.0 percentage) cannot be overridden — unlike the product price floor.
+
+Enforced at:
+
+| Point | File | What it does |
+|---|---|---|
+| Quotation create | `quotationController.create` | Body `commissionRateOverride < 0.05` → 400. |
+| Quotation update | `quotationController.update` | Same. Override change writes `commission_rate_override` AuditLog. |
+| PATCH commission row | `commissionAccrual.updateCommissionPercentage` | `< 5.0%` throws. Existing endpoint. |
+| Brand admin save | Future — `BrandAdmin.jsx` save handler | TODO in C15 follow-up if Alex edits Brand.commissionRate via admin UI. |
+
+## API endpoints (new)
+
+- `GET /api/personalization/commissions/dashboard?brand=FW` — full dashboard payload. Gate: super_admin OR `accessibleBrands.includes('FW')`.
+- `POST /api/personalization/commissions/:id/mark-paid` — super_admin only. Sets `status='paid'`, `paidDate=now`. Audits `commission_paid`.
+- `POST /api/personalization/commissions/:id/claw-back` — super_admin only. Body `{reason: string >= 5 chars}`. Sets `status='clawed_back'`. Audits `commission_clawed_back`.
+
+`requireFwAccess` middleware lives inline in `commissionRoutes.js` — super_admin bypass + `brandScope.accessibleBrands.includes('FW')` check.
+
+## Percentage vs decimal — important reading
+
+The CommissionTracking `percentage` column is stored as PERCENTAGE (5.0, not 0.05) for backward-compatibility with the C11 dashboard math. New code converts decimal rate → percentage at write time.
+
+Brand.commissionRate is DECIMAL (0.0500 = 5%). Quotation.commissionRateOverride is also DECIMAL. Convert at the accrual boundary.
+
+A grep for `* 100` and `/ 100` in `commissionAccrual.js` shows the conversion points; don't add more.
+
+## UI
+
+- Desktop: `frontend/admin-portal/src/pages/Analytics/CommissionDashboard.jsx`. Route at `/commissions`. Sidebar entry visible only for super_admin or `accessibleBrands.includes('FW')`.
+- Mobile: existing `CommissionWidget.tsx` rewired to call `/dashboard` (instead of legacy `/summary`). Tapping the widget navigates to `mobile/sovern-ops-app/app/commission.tsx` (read-only deals list + outstanding section).
+
+Mobile parity intentionally omits rate edits and mark-paid actions — the table-with-inputs UX is desktop-only.
+
+## AuditLog actions added
+
+- `commission_rate_override` — Quotation, when override field changes.
+- `commission_paid` — CommissionTracking, super-admin mark-paid.
+- `commission_clawed_back` — CommissionTracking, super-admin claw-back + reason.
+- `phase4_commission_status_migrated` — System, one-time sentinel.
+- `phase4_commission_fields_backfilled` — System, one-time sentinel.
+- `phase4_brand_commission_rate_backfilled` — System, one-time sentinel.
+
+## Pipeline forecast
+
+`GET /commissions/dashboard` sums open quotations under the brand × rate (override if set, else brand default). Status filter: `['draft', 'sent', 'revised']`. Upper-bound estimate; probability-by-stage weighting is future work. Performance is fine at current row counts; revisit if open-quote volume grows past low thousands.
+
+---
+
 # Customer.productBrandingMode lock semantics (Phase 3, C12)
 
 `Customer.productBrandingMode` is FW-specific and picks which quotation variant is rendered (`ironlite` / `generic` / `private_label`). To prevent inconsistency between a sent quotation and a later edit of the mode, the field locks the first time an FW quotation tied to that customer transitions to `status='sent'`.

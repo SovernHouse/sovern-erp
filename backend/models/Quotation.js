@@ -115,6 +115,17 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING(8),
       allowNull: false,
       defaultValue: 'SH',
+    },
+    // Phase 4, C15: per-quotation override of the brand-default commission
+    // rate. Decimal 0..1 (e.g. 0.07 = 7%). NULL = use Brand.commissionRate.
+    // Enforced server-side to be >= 0.0500 (5% floor locked 2026-05-14
+    // for FW; SH commission is 0 by default so the override is effectively
+    // unused there). Stored to surface "Your commission rate: X%" on the
+    // quotation detail UI and to feed the accrual on SO confirmation.
+    commissionRateOverride: {
+      type: DataTypes.DECIMAL(5, 4),
+      allowNull: true,
+      defaultValue: null,
     }
   }, {
     indexes: [
@@ -124,7 +135,9 @@ module.exports = (sequelize) => {
       { fields: ['inquiry_id'] },
       { fields: ['factory_id'] },
       { fields: ['lead_id'] },
-      { fields: ['deleted_at'] }
+      { fields: ['deleted_at'] },
+      // Phase 4, C15: brand+status forecast filter
+      { fields: ['status', 'brand_code'] },
     ]
   });
 

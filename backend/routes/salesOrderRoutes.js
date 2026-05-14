@@ -92,6 +92,14 @@ router.patch('/:id/status', requireAuth, async (req, res, next) => {
       );
     }
 
+    // Phase 4, C15: accrue commission on draft → confirmed transition.
+    // SO born confirmed (POST /, POST /create-from-quotation) already
+    // accrue at create time; this catches the manual-promotion path.
+    // Idempotent — no-op if a row already exists for (user, SO).
+    if (beforeStatus !== 'confirmed' && status === 'confirmed') {
+      await accrueCommissionForOrder(db, so, req.user.id);
+    }
+
     res.json(getSuccessResponse(so, 'Status updated'));
 
     // Fire-and-forget: audit log, real-time notification, and webhooks
