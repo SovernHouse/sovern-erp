@@ -9,7 +9,7 @@ import {
   Alert, RefreshControl, TouchableOpacity, Linking, Share,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { getQuotation, generateApprovalLink, sendQuotation, type Quotation, type QuotationItem } from '../../src/services/api';
+import { getQuotation, generateApprovalLink, sendQuotation, downloadQuotationPDF, type Quotation, type QuotationItem } from '../../src/services/api';
 import ChatterSection from '../../src/components/ChatterSection';
 import { BrandBadge } from '../../src/components/BrandBadge';
 import { useBrands } from '../../src/hooks/useBrands';
@@ -120,6 +120,7 @@ export default function QuotationDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [generatingLink, setGeneratingLink] = useState(false);
   const [sendingViaERP, setSendingViaERP] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState<'preview' | 'download' | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     try {
@@ -169,6 +170,44 @@ export default function QuotationDetailScreen() {
       Alert.alert('Could not generate link', err.message ?? 'Server error');
     } finally {
       setGeneratingLink(false);
+    }
+  }
+
+  // Phase 3, C9: brand-aware PDF preview + download.
+  // Fetches the binary PDF (the backend renders FW/IronLite/Generic/PrivateLabel
+  // or SH classic depending on quotation.brandCode + customer.productBrandingMode),
+  // saves to the device cache, then either opens or shares it.
+  async function handlePdfAction(mode: 'preview' | 'download') {
+    if (!quotation || pdfBusy) return;
+    setPdfBusy(mode);
+    try {
+      const uri = await downloadQuotationPDF(quotation.id, { inline: mode === 'preview' });
+      if (mode === 'preview') {
+        // Try expo-sharing first (renders preview UI), fall back to Linking.
+        try {
+          const Sharing = require('expo-sharing');
+          const available = await Sharing.isAvailableAsync();
+          if (available) {
+            await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
+          } else {
+            await Linking.openURL(uri);
+          }
+        } catch (_) {
+          await Linking.openURL(uri);
+        }
+      } else {
+        // Download mode: share-sheet so user can save to Files / Drive.
+        try {
+          const Sharing = require('expo-sharing');
+          await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
+        } catch (_) {
+          Alert.alert('PDF saved', `Saved to ${uri}`);
+        }
+      }
+    } catch (err: any) {
+      Alert.alert('PDF unavailable', err.message ?? 'Could not generate PDF');
+    } finally {
+      setPdfBusy(null);
     }
   }
 
@@ -267,6 +306,69 @@ export default function QuotationDetailScreen() {
             {formatCurrency(quotation.total, quotation.currency)}
           </Text>
         </View>
+      </View>
+
+      {/* ── Phase 3, C9: FW variant hint banner ─────────────────────── */}
+      {quotation.brandCode === 'FW' ? (() => {
+        const mode = quotation.customer?.productBrandingMode;
+        const variants: Record<string, { title: string; detail: string; tone: 'dark' | 'light' | 'warn' }> = {
+          ironlite: {
+            tone: 'dark',
+            title: 'IronLite Core branding',
+            detail: 'PDF renders with the IronLite I-Beam wordmark and OEM badge. WPC products get a construction diagram addendum page.',
+          },
+          generic: {
+            tone: 'light',
+            title: 'FlorWay generic',
+            detail: 'PDF renders under the FlorWay Sdn. Bhd. wordmark. No IronLite imagery or OEM badge.',
+          },
+          private_label: {
+            tone: 'warn',
+            title: 'Private Label template in development',
+            detail: `PDF will render with the FlorWay generic layout. The full private-label template ships once the first OEM private-label buyer signs${quotation.customer?.privateLabelProductName ? ` (planned brand: ${quotation.customer.privateLabelProductName})` : ''}.`,
+          },
+        };
+        const fallback = {
+          tone: 'light' as const,
+          title: 'FlorWay generic (no productBrandingMode set)',
+          detail: 'Set the customer\'s product branding mode on their detail page to render an IronLite or Private Label quotation.',
+        };
+        const info = (mode && variants[mode]) || fallback;
+        const bgColor = info.tone === 'dark' ? COLORS.ink : info.tone === 'warn' ? '#FEF3C7' : COLORS.white;
+        const textColor = info.tone === 'dark' ? COLORS.cream : info.tone === 'warn' ? '#78350F' : COLORS.ink;
+        const subColor = info.tone === 'dark' ? COLORS.cream : info.tone === 'warn' ? '#92400E' : COLORS.muted;
+        return (
+          <View style={[styles.variantBanner, { backgroundColor: bgColor }]}>
+            <Text style={[styles.variantBannerTitle, { color: textColor }]}>
+              FlorWay quotation document  ·  {info.title}
+            </Text>
+            <Text style={[styles.variantBannerDetail, { color: subColor }]}>
+              {info.detail}
+            </Text>
+          </View>
+        );
+      })() : null}
+
+      {/* ── Phase 3, C9: PDF preview + download buttons ─────────────── */}
+      <View style={styles.pdfButtonRow}>
+        <TouchableOpacity
+          style={[styles.pdfButton, pdfBusy === 'preview' && styles.signActionBtnDisabled]}
+          onPress={() => handlePdfAction('preview')}
+          disabled={!!pdfBusy}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.pdfButtonIcon}>👁️</Text>
+          <Text style={styles.pdfButtonLabel}>{pdfBusy === 'preview' ? 'Loading…' : 'Preview PDF'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.pdfButton, pdfBusy === 'download' && styles.signActionBtnDisabled]}
+          onPress={() => handlePdfAction('download')}
+          disabled={!!pdfBusy}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.pdfButtonIcon}>⬇️</Text>
+          <Text style={styles.pdfButtonLabel}>{pdfBusy === 'download' ? 'Saving…' : 'Download PDF'}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Sourcing Trail ───────────────────────────────────────────── */}
@@ -650,4 +752,47 @@ const styles = StyleSheet.create({
   signActionLabel:    { fontSize: 14, fontWeight: '700', color: COLORS.forest },
   signActionMeta:     { fontSize: 11, color: COLORS.muted, marginTop: 2 },
   signActionChevron:  { fontSize: 22, color: COLORS.muted, alignSelf: 'center' },
+
+  // Phase 3, C9: FW variant hint banner
+  variantBanner: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  variantBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  variantBannerDetail: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  // Phase 3, C9: Preview/Download PDF buttons row
+  pdfButtonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  pdfButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+  },
+  pdfButtonIcon: { fontSize: 18 },
+  pdfButtonLabel: { fontSize: 14, fontWeight: '600', color: COLORS.ink },
 });

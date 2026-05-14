@@ -72,6 +72,9 @@ export const QUOTATION = {
   factoryId:     'The factory supplying the goods for this quotation. Links the buyer price to the source factory for full sourcing traceability.',
   leadId:        'The CRM lead this quotation originated from. Preserved for pipeline attribution: tracks which prospect became a deal.',
   brand:         'Which brand issues this quotation. Determines sender email, signature, footer legal text, and template. Locked at creation.',
+  // Phase 3, C9: brand-aware quotation document tooltips
+  documentPreview: 'Download a buyer-ready PDF. SH and FlorWay quotations render with brand-specific layouts. FlorWay variant (IronLite / Generic / Private Label) is picked automatically from the customer’s productBrandingMode.',
+  florWayVariants: 'FlorWay variants. IronLite — full I-Beam wordmark + OEM badge + WPC construction diagram. Generic — FlorWay Sdn. Bhd. wordmark, no OEM imagery (default). Private Label — placeholder; full template ships when the first OEM private-label buyer signs.',
 }
 
 export const PROFORMA_INVOICE = {

@@ -294,6 +294,44 @@ export default function QuotationDetail() {
       {/* Workflow Stage Bar */}
       <WorkflowStatusBar stages={QUOTATION_STAGES} currentStatus={quotation.status} />
 
+      {/* Phase 3, C9: FW variant hint banner. The PDF renderer picks the
+          variant from customer.productBrandingMode. Surface it here so the
+          user knows what the buyer will see before clicking Download. */}
+      {quotation.brandCode === 'FW' && (
+        (() => {
+          const mode = quotation.customer?.productBrandingMode
+          const labels = {
+            ironlite: {
+              tone: 'bg-slate-900 text-slate-50',
+              title: 'IronLite Core branding',
+              detail: 'PDF renders with the IronLite I-Beam wordmark, OEM badge, and (for WPC product) a construction diagram addendum page.',
+            },
+            generic: {
+              tone: 'bg-slate-100 text-slate-900',
+              title: 'FlorWay generic',
+              detail: 'PDF renders under the FlorWay Sdn. Bhd. wordmark. No IronLite imagery or OEM badge.',
+            },
+            private_label: {
+              tone: 'bg-amber-50 text-amber-900 border border-amber-200',
+              title: 'Private Label template in development',
+              detail: `PDF will render with the FlorWay generic layout. The full private-label template, including "Manufactured exclusively for ${quotation.customer?.privateLabelProductName || 'the buyer'}" framing, ships once the first OEM private-label buyer signs.`,
+            },
+          }
+          const fallback = {
+            tone: 'bg-slate-50 text-slate-700 border border-slate-200',
+            title: 'FlorWay generic (no productBrandingMode set)',
+            detail: 'Set the customer\'s product branding mode on their detail page to render an IronLite or Private Label quotation.',
+          }
+          const info = labels[mode] || fallback
+          return (
+            <div className={`rounded-lg p-4 ${info.tone}`}>
+              <p className="text-sm font-semibold mb-1">FlorWay quotation document  ·  {info.title}</p>
+              <p className="text-xs leading-relaxed opacity-90">{info.detail}</p>
+            </div>
+          )
+        })()
+      )}
+
       {/* Main Content */}
       <div className="grid grid-cols-3 gap-6">
         {/* Left Column - Quotation Details */}

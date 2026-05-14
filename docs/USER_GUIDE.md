@@ -225,6 +225,30 @@ Upon login, you'll see the Admin Dashboard with key performance indicators:
 5. New revision becomes current version
 6. Can revert to previous revision if needed
 
+#### Brand-Aware Quotation Documents (Phase 3)
+
+Quotations render with the layout of the brand that issues them:
+
+- **Sovern House** quotations render with the Sovern House layout (ink and forest palette, NRIEC Taiwan legal footer, alex@sovernhouse.co sender block).
+- **FlorWay** quotations render with the FlorWay iron-deep and cream palette, FLORWAY SDN. BHD. Malaysian legal footer, and alexflorway@gmail.com sender block.
+
+For FlorWay, three sub-variants exist. The renderer picks one automatically based on the customer's **Product Branding Mode**:
+
+| Mode | When to use | What the PDF looks like |
+|---|---|---|
+| **IronLite** | Buyer wants to sell under the IronLite Core brand | I-Beam wordmark header, OEM badge on cover and footer, and (when any line item is a WPC product) a construction diagram addendum page |
+| **Generic** (default) | Buyer wants a neutral FlorWay quote with no sub-brand | FlorWay Sdn. Bhd. wordmark with no IronLite imagery |
+| **Private Label** | Buyer wants their own brand on the document | Placeholder during development. The PDF currently uses the FlorWay generic layout with a banner naming the buyer's brand. The full template ships when the first OEM private-label buyer signs |
+
+The variant is shown above the line items on the quotation detail page so you know what the buyer will receive before clicking **Send** or **Download PDF**. To switch a customer between IronLite and Generic, go to the customer detail page and update Product Branding Mode (this picker UI ships in C12).
+
+#### Downloading and Previewing the PDF
+
+- **Desktop**: click **PDF** in the quotation header. The brand-aware PDF downloads instantly.
+- **Mobile**: open the quotation, tap **Preview PDF** (opens in the device's PDF viewer) or **Download PDF** (opens the share sheet so you can save to Files, Drive, or send to a buyer).
+
+The same PDF is attached to the email when you click **Send via ERP**.
+
 ### Managing Shipments
 
 #### Creating a Shipment

@@ -382,12 +382,20 @@ const send = async (req, res, next) => {
     const fromAddress = brand?.senderEmail || 'alex@sovernhouse.co';
     const fromDisplayName = brand ? `${brand.displayName} | Alex` : 'Sovern House | Alex';
 
-    const pdfFile = await documentGenerator.generateQuotationPDF(
+    // Phase 3, C9: pass the brand record we already fetched above into the
+    // PDF generator so the rendered document matches the email theme.
+    // dispatch() will pick the FW variant (ironlite/generic/private_label)
+    // from customer.productBrandingMode automatically.
+    // Returns { filename, filepath } — keep the legacy response shape by
+    // exposing just the filename below.
+    const pdfResult = await documentGenerator.generateQuotationPDF(
       quotation,
       quotation.items,
       quotation.customer,
-      quotation.salesPerson
+      quotation.salesPerson,
+      brand
     );
+    const pdfFile = pdfResult.filename;
 
     const subject = `Quotation ${quotation.quotationNumber} from ${brand?.displayName || 'Sovern House'}`;
     const htmlContent = buildQuotationEmailHtml(quotation, brand);
@@ -590,14 +598,32 @@ const generatePDF = async (req, res, next) => {
       throw new NotFoundError('Quotation not found');
     }
 
-    const pdfFile = await documentGenerator.generateQuotationPDF(
+    // Phase 3, C9: brand-aware PDF generation. Fetch the brand once here
+    // and pass it through so the renderer doesn't re-query inside dispatch.
+    const brand = quotation.brandCode
+      ? await db.Brand.findOne({ where: { code: quotation.brandCode, active: true } })
+      : null;
+
+    const pdfResult = await documentGenerator.generateQuotationPDF(
       quotation,
       quotation.items,
       quotation.customer,
-      quotation.salesPerson
+      quotation.salesPerson,
+      brand
     );
 
-    res.json(getSuccessResponse({ pdfFile }, 'PDF generated successfully'));
+    // Phase 3, C9: frontend (quotationsAPI.getPDF) requests responseType:'blob'
+    // and creates `new Blob([res.data])` for download. Stream the file as
+    // application/pdf so the binary actually reaches the client. The legacy
+    // code returned JSON here, which was inconsistent with the frontend
+    // contract.
+    const disposition = req.query.inline === '1' ? 'inline' : 'attachment';
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition',
+      `${disposition}; filename="${pdfResult.filename}"`);
+    res.sendFile(pdfResult.filepath, (err) => {
+      if (err) next(err);
+    });
   } catch (error) {
     next(error);
   }

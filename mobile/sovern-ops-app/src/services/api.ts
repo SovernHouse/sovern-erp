@@ -1040,6 +1040,71 @@ export async function sendQuotation(id: string) {
   return (res as any).data ?? res
 }
 
+/**
+ * Download the brand-aware quotation PDF and stash it in the cache
+ * directory. Returns the local file URI suitable for Sharing.shareAsync()
+ * or Linking.openURL().
+ *
+ * The backend (Phase 3, C9) streams binary application/pdf with auth, so
+ * we fetch with the bearer token, write to cache, and hand back the URI.
+ *
+ * `inline=1` query asks the backend to set Content-Disposition: inline so
+ * device PDF viewers preview rather than download.
+ *
+ * Requires expo-file-system in package.json (added in Phase 3 C9). If the
+ * dependency hasn't been installed yet, the caller surfaces a friendly
+ * error and falls back to instructing the user to run npm install.
+ */
+export async function downloadQuotationPDF(id: string, options: { inline?: boolean } = {}): Promise<string> {
+  const token = await SecureStore.getItemAsync(CONFIG.TOKEN_KEY)
+  const inlineParam = options.inline ? '?inline=1' : ''
+  const url = `${CONFIG.SERVER_URL}/api/quotations/${id}/pdf${inlineParam}`
+
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(body || `PDF download failed (HTTP ${res.status})`)
+  }
+
+  // Read the binary as base64 so we can hand it to FileSystem.writeAsStringAsync.
+  // fetch + .blob() + FileReader is the React Native-friendly path.
+  const blob = await res.blob()
+  const base64: string = await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const result = reader.result as string
+      // strip "data:application/pdf;base64," prefix
+      const comma = result.indexOf(',')
+      resolve(comma >= 0 ? result.slice(comma + 1) : result)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+
+  // Lazy-load expo-file-system so missing dep gives a clear message instead
+  // of a bundler error at app boot.
+  let FileSystem: any
+  try {
+    FileSystem = require('expo-file-system/legacy')
+  } catch (_) {
+    try {
+      FileSystem = require('expo-file-system')
+    } catch (_inner) {
+      throw new Error('expo-file-system not installed. Run "npm install" in mobile/sovern-ops-app.')
+    }
+  }
+
+  const filename = `quotation-${id}-${Date.now()}.pdf`
+  const uri = `${FileSystem.cacheDirectory}${filename}`
+  await FileSystem.writeAsStringAsync(uri, base64, {
+    encoding: FileSystem.EncodingType?.Base64 ?? 'base64',
+  })
+  return uri
+}
+
 export interface QuotationItem {
   id: string
   productId?: string
@@ -1081,7 +1146,16 @@ export interface Quotation {
   createdAt: string
   updatedAt: string
   items?: QuotationItem[]
-  customer?: { id: string; companyName: string; email?: string; country?: string }
+  customer?: {
+    id: string
+    companyName: string
+    email?: string
+    country?: string
+    // Phase 3, C9: surfaced on the included customer so the quotation
+    // screen can show which FW variant the PDF will render under.
+    productBrandingMode?: 'ironlite' | 'generic' | 'private_label' | null
+    privateLabelProductName?: string | null
+  }
   factory?: { id: string; companyName: string; country?: string }
   lead?: { id: string; companyName: string; contactName?: string }
   inquiry?: { id: string; inquiryNumber: string }

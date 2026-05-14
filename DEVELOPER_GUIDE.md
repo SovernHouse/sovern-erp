@@ -1809,3 +1809,95 @@ Rules:
 - **Test setup doesn't run boot backfill** — `__tests__/setup.js` calls `sequelize.sync({ force: true })` directly, bypassing the `server.js` boot chain. brandScope falls back to `['SH']` defaults so existing tests continue to pass without per-test brand seeding.
 - **Egypt BCC** — the Mohannad Fanzey BCC rule in `outreachController.js` is now gated on `lead.brandCode === 'SH'`. The FW outbound composer (Phase 2) must not inadvertently re-introduce a blanket country check.
 
+---
+
+# Brand-Aware Quotation Documents (Phase 3, C9 / C10)
+
+The buyer-facing quotation PDF is brand-aware. Brand and (for FlorWay) the customer's `productBrandingMode` together pick the variant. SH falls through to a brand-styled SH layout (C10 lands the SH renderer; C9 ships only the FW variants and routes SH through the legacy pdfkit-classic layout).
+
+## Pipeline
+
+```
+quotationController.send / generatePDF
+  ↓ fetches Brand by quotation.brandCode
+  ↓ passes (quotation, items, customer, salesPerson, brand)
+documentGenerator.generateQuotationPDF   ← barrel override
+  ↓ dispatch() in brandedQuotationRenderer.js
+  ↓ switches on brand.code, then customer.productBrandingMode
+  ├─ FW + ironlite      → renderFlorWayIronLite
+  ├─ FW + private_label → renderFlorWayPrivateLabel  (placeholder)
+  ├─ FW + generic/null  → renderFlorWayGeneric       (default for FW)
+  └─ SH or unknown      → renderSovernHouseClassic
+returns { filename, filepath }
+  ↓
+generatePDF streams binary as Content-Type: application/pdf
+send embeds the filename in the JSON response (legacy shape preserved)
+```
+
+Files of interest:
+
+| File | Role |
+|---|---|
+| `backend/services/pdf/brandedQuotationRenderer.js` | Single dispatch point, FW renderers, SH classic delegate |
+| `backend/services/pdf/brandStyleTokens.js` | Per-brand colors, footer legal, sender block, asset paths, font registration |
+| `backend/services/pdf/salesDocumentsPDF.js` | Legacy pdfkit-classic — SH uses this until C10 |
+| `backend/services/documentGenerator.js` | Barrel that overrides `generateQuotationPDF` with the new dispatch |
+| `backend/controllers/quotationController.js` | `send` + `generatePDF` pass brand through; `generatePDF` now streams binary |
+| `frontend/admin-portal/public/brand-assets/florway/` | I-Beam wordmark, OEM badge, construction diagram (committed) |
+| `backend/assets/fonts/` | Anton + Inter TTFs (conditional registration — fonts fall back to Helvetica if missing) |
+
+## Variant selector
+
+```js
+// in brandedQuotationRenderer.dispatch
+if (brand.code === 'FW') {
+  switch (customer.productBrandingMode) {
+    case 'ironlite':      return renderFlorWayIronLite(...)
+    case 'private_label': return renderFlorWayPrivateLabel(...)
+    default:              return renderFlorWayGeneric(...)
+  }
+}
+return renderSovernHouseClassic(...)
+```
+
+`customer.productBrandingMode === null` and unknown values default to `generic`. The variant is shown in the admin portal and mobile app via a banner above the line items so the user knows which document the buyer will receive.
+
+## Output paths
+
+```
+uploads/quotations/{brandCode}/{variant}/quotation-{number}-{timestamp}.pdf
+```
+
+For SH the legacy path `uploads/quotations/quotation-{number}.pdf` is preserved in C9 because the SH classic renderer delegates to the legacy code. C10 migrates SH under `uploads/quotations/SH/classic/`.
+
+## Asset path resolution
+
+The PDF renderer reads asset PNGs (IronLite wordmark, OEM badge, construction diagram) from the deployed frontend public folder via relative traversal:
+
+```js
+path.resolve(__dirname, '..', '..', '..',
+  'frontend', 'admin-portal', 'public', 'brand-assets')
+```
+
+This works in dev and on the GCP VM because the deploy preserves repo structure. Assets are sourced from `IronLite Branding/` on Alex's Desktop, copied into the repo as part of the C9 commit.
+
+## Fonts
+
+`backend/services/pdf/brandStyleTokens.js → registerBrandFonts(doc)` conditionally registers Anton-Regular.ttf and Inter-{Regular,Bold}.ttf if they exist in `backend/assets/fonts/`. If absent, the renderer falls back to pdfkit's built-in Helvetica family. The TTFs are free Google Fonts (OFL) and safe to commit; they were not bundled in the C9 PR to keep the diff small. Drop them in to upgrade typography without code changes.
+
+## No em dashes (L-015)
+
+Footer line uses U+00B7 middot (·). All renderer copy and tooltips use periods, commas, parens, or middot. Audit any new render text before merging.
+
+## Streaming the binary
+
+`GET /api/quotations/:id/pdf` now responds with `Content-Type: application/pdf` and streams the file directly. `?inline=1` sets `Content-Disposition: inline` (preview); default is `attachment` (download). The legacy JSON-response shape was inconsistent with the frontend's `responseType: 'blob'` and produced corrupted downloads. Fixed in C9.
+
+## Adding a new brand
+
+1. Add a SEEDS entry in `backend/services/seedBrands.js`.
+2. Add a token block in `backend/services/pdf/brandStyleTokens.js` (colors, footer text, sender block, asset paths).
+3. Add a render function in `brandedQuotationRenderer.js` and wire it into `dispatch()`.
+4. Drop assets into `frontend/admin-portal/public/brand-assets/<brand>/`.
+5. Update `tooltipContent.js` `QUOTATION.documentPreview`, `helpContent.js` `/quotations` section, and this guide.
+
