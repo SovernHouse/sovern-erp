@@ -11,8 +11,7 @@
  *     'private_label' → renderFlorWayPrivateLabel (placeholder, defers full template)
  *     'generic'|null  → renderFlorWayGeneric (default for FW)
  *   brand.code === 'SH' → renderSovernHouseClassic
- *     (delegates to legacy salesDocumentsPDF.generateQuotationPDF in C9;
- *      replaced with a brand-aware native renderer in C10)
+ *     (brand-styled SH layout with the forest/cream/ink palette as of C10)
  *   anything else      → renderSovernHouseClassic (safe fallback)
  *
  * File output path:
@@ -30,7 +29,6 @@ const fs = require('fs');
 const path = require('path');
 const { formatCurrency } = require('../../utils/helpers');
 const tokens = require('./brandStyleTokens');
-const legacySales = require('./salesDocumentsPDF');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 
@@ -77,18 +75,83 @@ async function dispatch(quotation, items, customer, salesPerson, brand = null) {
   return renderSovernHouseClassic(quotation, items, customer, salesPerson, brand);
 }
 
-// ─── SH CLASSIC (C9 placeholder; C10 builds the native renderer) ───────────
+// ─── SH (Sovern House) NATIVE RENDERER (C10) ───────────────────────────────
+// Replaces the C9 legacy delegate. Brand-styled SH layout with the forest/
+// cream/ink palette and Sovern House wordmark. Reuses the shared draw
+// helpers below (drawHeaderBand, drawCustomerAndMeta, drawItemsTable,
+// drawTotals, drawTerms, drawSenderBlock, drawFooter) which take a tokens
+// bag and are brand-agnostic. Output path is uploads/quotations/SH/classic/
+// (the brand+variant sub-folder convention introduced for FW in C9).
 
-async function renderSovernHouseClassic(quotation, items, customer, salesPerson, _brand) {
-  // Preserve the prior file layout for SH until C10 lands the brand-aware
-  // SH renderer. Legacy writes to uploads/quotations/quotation-{number}.pdf
-  // with no brand/variant sub-folders — that's intentional: SH had no
-  // sub-variants in the legacy code, so the old path is the right
-  // backwards-compatible default. C10 will add SH-specific theming and
-  // move the output under uploads/quotations/SH/classic/.
-  const filename = await legacySales.generateQuotationPDF(quotation, items, customer, salesPerson);
-  const filepath = path.resolve(UPLOAD_DIR, 'quotations', filename);
-  return { filename, filepath };
+function renderSovernHouseClassic(quotation, items, customer, salesPerson, brand) {
+  return new Promise((resolve, reject) => {
+    try {
+      const t = tokens.resolveTokens(brand || { code: 'SH' });
+      const { filename, filepath } =
+        buildOutputPath('SH', 'classic', quotation.quotationNumber);
+
+      const doc = new PDFDocument({ margin: 40, size: 'A4' });
+      const fonts = tokens.registerBrandFonts(doc);
+      const stream = fs.createWriteStream(filepath);
+      doc.pipe(stream);
+
+      let pageNum = 1;
+      let y;
+
+      // ── Header band with Sovern House wordmark ─────────────────────────
+      y = drawFwHeaderBand(doc, t, 72);
+      const logoPlaced = tryImage(doc, t.assets?.logoLight, 40, 18,
+        { height: 38 });
+      if (!logoPlaced) {
+        doc.fillColor('#FFFFFF').font(fonts.display).fontSize(18)
+           .text('SOVERN HOUSE', 40, 22, { characterSpacing: 1.4 });
+        doc.fillColor(t.accentColor).font(fonts.body).fontSize(9)
+           .text('INTERNATIONAL TRADE', 40, 48, { characterSpacing: 1.2 });
+      }
+      // Right-aligned QUOTATION title in the band
+      doc.fillColor('#FFFFFF').font(fonts.display).fontSize(18)
+         .text('QUOTATION', doc.page.width - 220, 22,
+           { width: 180, align: 'right', characterSpacing: 1.4 });
+      doc.fillColor(t.accentColor).font(fonts.body).fontSize(9)
+         .text(quotation.quotationNumber || '', doc.page.width - 220, 50,
+           { width: 180, align: 'right' });
+
+      // ── Customer + meta ─────────────────────────────────────────────────
+      y = drawFwCustomerAndMeta(doc, t, fonts, quotation, customer, salesPerson, y + 4);
+
+      // ── Intro paragraph (SH trading-house tone) ─────────────────────────
+      const intro = 'Thank you for the opportunity to quote. Sovern House sources from verified factories across Asia and ships under your preferred Incoterm. Pricing and commercial terms below.';
+      doc.fillColor(t.ink).font(fonts.body).fontSize(10.5)
+         .text(intro, 50, y, { width: doc.page.width - 100, lineGap: 2 });
+      y += doc.heightOfString(intro, { width: doc.page.width - 100, lineGap: 2 }) + 18;
+
+      // ── Items table ─────────────────────────────────────────────────────
+      y = drawFwItemsTable(doc, t, fonts, items, quotation.currency || 'USD', y);
+
+      // ── Totals ──────────────────────────────────────────────────────────
+      y = drawFwTotals(doc, t, fonts, quotation, y + 6);
+
+      // ── Terms ───────────────────────────────────────────────────────────
+      y = drawFwTerms(doc, t, fonts, quotation.terms, y + 18);
+
+      // ── Sender block ────────────────────────────────────────────────────
+      if (y > doc.page.height - 180) {
+        drawFwFooter(doc, t, fonts, pageNum);
+        doc.addPage(); pageNum += 1;
+        y = drawFwHeaderBand(doc, t, 50);
+      }
+      drawFwSenderBlock(doc, t, fonts, y + 12);
+
+      // ── Footer ──────────────────────────────────────────────────────────
+      drawFwFooter(doc, t, fonts, pageNum);
+
+      doc.end();
+      stream.on('finish', () => resolve({ filename, filepath: path.resolve(filepath) }));
+      stream.on('error', reject);
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
 // ─── FW SHARED HELPERS ─────────────────────────────────────────────────────

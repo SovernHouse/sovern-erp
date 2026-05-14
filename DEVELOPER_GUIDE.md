@@ -1813,7 +1813,7 @@ Rules:
 
 # Brand-Aware Quotation Documents (Phase 3, C9 / C10)
 
-The buyer-facing quotation PDF is brand-aware. Brand and (for FlorWay) the customer's `productBrandingMode` together pick the variant. SH falls through to a brand-styled SH layout (C10 lands the SH renderer; C9 ships only the FW variants and routes SH through the legacy pdfkit-classic layout).
+The buyer-facing quotation PDF is brand-aware. Brand and (for FlorWay) the customer's `productBrandingMode` together pick the variant. SH renders with a brand-styled SH layout (forest/cream/ink palette, NRIEC Taiwan footer) as of C10. FW has three variants (IronLite, Generic, Private Label placeholder) as of C9.
 
 ## Pipeline
 
@@ -1838,9 +1838,9 @@ Files of interest:
 
 | File | Role |
 |---|---|
-| `backend/services/pdf/brandedQuotationRenderer.js` | Single dispatch point, FW renderers, SH classic delegate |
+| `backend/services/pdf/brandedQuotationRenderer.js` | Single dispatch point, SH renderer + FW variants |
 | `backend/services/pdf/brandStyleTokens.js` | Per-brand colors, footer legal, sender block, asset paths, font registration |
-| `backend/services/pdf/salesDocumentsPDF.js` | Legacy pdfkit-classic — SH uses this until C10 |
+| `backend/services/pdf/salesDocumentsPDF.js` | Legacy pdfkit-classic — no longer used for quotations as of C10; still used by Proforma Invoice + Sales Note |
 | `backend/services/documentGenerator.js` | Barrel that overrides `generateQuotationPDF` with the new dispatch |
 | `backend/controllers/quotationController.js` | `send` + `generatePDF` pass brand through; `generatePDF` now streams binary |
 | `frontend/admin-portal/public/brand-assets/florway/` | I-Beam wordmark, OEM badge, construction diagram (committed) |
@@ -1868,7 +1868,7 @@ return renderSovernHouseClassic(...)
 uploads/quotations/{brandCode}/{variant}/quotation-{number}-{timestamp}.pdf
 ```
 
-For SH the legacy path `uploads/quotations/quotation-{number}.pdf` is preserved in C9 because the SH classic renderer delegates to the legacy code. C10 migrates SH under `uploads/quotations/SH/classic/`.
+SH writes to `uploads/quotations/SH/classic/` (as of C10). FW writes to `uploads/quotations/FW/{ironlite|generic|private_label}/`. The brand+variant sub-folder layout means a renderer regression doesn't clobber prior PDFs and we can diff between variants directly on the VM.
 
 ## Asset path resolution
 

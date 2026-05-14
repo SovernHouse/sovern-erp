@@ -61,18 +61,28 @@ const FW = {
 };
 
 // ─── SOVERN HOUSE (SH) ─────────────────────────────────────────────────────
-// Stub for C9; fleshed out in C10. The C9 SH path delegates to the legacy
-// pdfkit-classic renderer, so most of these tokens are unused until C10.
+// Fleshed out in C10. Premium, conservative trading-house tone. Forest +
+// cream from sovernhouse.co, with a clay/bronze accent reserved for the
+// totals rule (analogous to FW's bronze). Less aggressive characterSpacing
+// than FW so the SH document reads as a buying-house document rather than
+// a manufacturing document.
 const SH = {
   code: 'SH',
   displayName: 'Sovern House',
   primaryColor: '#1D5A32',  // forest
   accentColor:  '#F1EEE7',  // cream
-  ink:          '#0E0D0C',
+  ink:          '#0E0D0C',  // body text
+  steel:        '#8A8680',  // muted muted-warm (cream-grey) for dividers + footer
+  clay:         '#92400E',  // bronze/clay accent for totals rule
   senderEmail:  'alex@sovernhouse.co',
   senderName:   'Alexander McConnell',
   senderTitle:  'Founder',
   footerLegal:  'New Route International Exchange Co., Ltd. · Taiwan',
+  assets: {
+    logoLight: path.join(ASSET_ROOT, 'sovern-house', 'sovern-house-logo-light.png'),
+    logoDark:  path.join(ASSET_ROOT, 'sovern-house', 'sovern-house-logo-dark.png'),
+    ruleLight: path.join(ASSET_ROOT, 'sovern-house', 'sovern-house-rule-light.png'),
+  },
 };
 
 const BY_CODE = { FW, SH };

@@ -5,15 +5,15 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 3 started. C9 (FW quotation document template + SH classic delegate) is staged for Alex to commit. Phase 2 work (C5-C8) remains fully shipped and live.
+2026-05-14 Taiwan time. Phase 3 in progress. C9 shipped + live. C10 (SH brand-styled renderer) staged for commit.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `553b303` (feat(phase-2): FlorWay outreach templates + brand-filtered template picker — C8)
-- **Working tree:** C9 staged, awaiting Alex commit (see "Phase 3 — In progress" below)
-- **CI/CD Pipeline (main):** green
-- **Deploy:** green
+- **Latest commit on main:** `cbb308a` (feat(phase-3): brand-aware quotation document templates - FW (C9))
+- **Working tree:** C10 staged, awaiting commit
+- **CI/CD Pipeline (cbb308a):** green
+- **Deploy (cbb308a):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
 
 ---
@@ -22,7 +22,22 @@
 
 Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
 
-### C9 — FW quotation document template (READY FOR COMMIT)
+### C10 — SH brand-styled quotation renderer (READY FOR COMMIT)
+
+**What ships:**
+- Replaced the C9 SH classic delegate with a native `renderSovernHouseClassic()` in `backend/services/pdf/brandedQuotationRenderer.js`. Same shared draw helpers as FW (brand-agnostic — they take a tokens bag) so the SH document has the same structural rigor as FW but with the Sovern House palette: forest #1D5A32 primary, cream #F1EEE7 accent, ink body text, with a clay/bronze accent reserved.
+- SH wordmark header reads the `sovern-house-logo-light.png` asset; falls back to text "SOVERN HOUSE / INTERNATIONAL TRADE" when the asset is missing.
+- Footer middot legal "New Route International Exchange Co., Ltd. · Taiwan".
+- Sender block "Alexander McConnell / FOUNDER / alex@sovernhouse.co".
+- Trading-house intro paragraph ("verified factories across Asia, ships under your preferred Incoterm").
+- Output path moved from `uploads/quotations/quotation-{number}.pdf` to `uploads/quotations/SH/classic/quotation-{number}-{timestamp}.pdf` for consistency with the FW brand+variant convention.
+- 3 SH logo PNGs copied into `frontend/admin-portal/public/brand-assets/sovern-house/` for consistency with the florway/ folder layout. The originals at `/public/` root are untouched.
+- `legacySales` import removed from `brandedQuotationRenderer.js` (no longer used). `salesDocumentsPDF.js` retained for `generateProformaInvoicePDF` + `generateSalesNotePDF` which other phases will replace.
+- Doc wording generalized: tooltips + helpContent + DEVELOPER_GUIDE no longer say "SH falls through to legacy"; they now describe SH as brand-styled.
+
+**Visual regression accepted:** every existing SH quotation now re-renders with the new layout when re-downloaded. No data change.
+
+### C9 — FW quotation document template (SHIPPED, commit `cbb308a`, live)
 
 **What ships:**
 - New `backend/services/pdf/brandedQuotationRenderer.js` — dispatch + 3 FW variants + SH classic delegate. Selects variant from `Customer.productBrandingMode` automatically.

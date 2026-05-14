@@ -166,12 +166,12 @@ export const HELP_CONTENT = {
       {
         heading: 'Brand-aware quotation document (Phase 3)',
         items: [
-          'SH quotations render with the Sovern House layout (ink / cream / forest palette).',
-          'FlorWay quotations render with the FlorWay iron-deep / cream palette and one of three variants picked from the customer’s productBrandingMode.',
+          'Sovern House quotations render with the SH layout — forest/cream palette, Sovern House wordmark, footer "New Route International Exchange Co., Ltd. · Taiwan", sender alex@sovernhouse.co.',
+          'FlorWay quotations render with the FlorWay layout — iron-deep/cream palette, FLORWAY SDN. BHD. footer, sender alexflorway@gmail.com, with one of three variants picked from the customer’s productBrandingMode.',
           'IronLite variant — full IronLite I-Beam wordmark, OEM badge, plus a construction diagram addendum page when any line item is a WPC product.',
           'Generic variant — default for FlorWay. FlorWay Sdn. Bhd. wordmark with no IronLite imagery.',
           'Private Label variant — placeholder during development. PDF currently uses the FlorWay generic layout with a TODO banner naming the buyer’s brand.',
-          'The variant is shown on the quotation detail page above the line items so you know what the buyer will receive before sending.',
+          'For FlorWay, the variant is shown on the quotation detail page above the line items so you know what the buyer will receive before sending.',
         ],
       },
     ],
