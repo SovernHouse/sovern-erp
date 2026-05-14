@@ -555,6 +555,14 @@ db.sequelize.authenticate()
       logger.warn('[boot] email template seed skipped:', e.message);
     }
 
+    // Phase 3, C11: seed "FW Sales Commission" rule (5% default; adjustable per-order).
+    try {
+      const { seedCommissionRulesIfEmpty } = require('./services/seedCommissionRules');
+      await seedCommissionRulesIfEmpty(db);
+    } catch (e) {
+      logger.warn('[boot] commission rule seed skipped:', e.message);
+    }
+
     // Phase 1 multi-brand (Commit 2): backfill brandCode='SH' on every
     // transactional row that's NULL after autoMigrateSchema added the column.
     // Customer.brandRelationships, User.accessibleBrands/defaultBrand are

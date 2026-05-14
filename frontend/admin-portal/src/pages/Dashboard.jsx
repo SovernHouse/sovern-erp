@@ -30,6 +30,9 @@ import DataTable from '../components/DataTable'
 import LoadingSpinner from '../components/LoadingSpinner'
 import SkeletonLoader from '@shared/components/SkeletonLoader'
 import StatusBadge from '../components/StatusBadge'
+import BrandFilterPicker from '../components/BrandFilterPicker'
+import CommissionWidget from '../components/DashboardWidgets/CommissionWidget'
+import BrandRevenueComparison from '../components/DashboardWidgets/BrandRevenueComparison'
 import { dashboardAPI } from '../services/api'
 import { formatCurrency, formatDate } from '../utils/formatters'
 
@@ -88,6 +91,9 @@ export default function Dashboard() {
   const [recentOrders, setRecentOrders] = useState([])
   const [upcomingShipments, setUpcomingShipments] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  // Phase 3, C11: brand filter. null = picker hasn't initialized yet,
+  // 'all' = aggregate (super_admin cross-brand only), 'SH'/'FW'/... = narrow.
+  const [brandFilter, setBrandFilter] = useState(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -96,6 +102,9 @@ export default function Dashboard() {
         setIsLoading(true)
         // Use allSettled so one failed API doesn't break the entire dashboard
         const safe = (promise) => promise.catch(e => { console.warn('Dashboard API error:', e.message); return { data: null } })
+        // Phase 3, C11: pass ?brandCode= when a specific brand is picked.
+        // 'all' or null both mean "no override, use the user's scope".
+        const params = brandFilter && brandFilter !== 'all' ? { brandCode: brandFilter } : undefined
         const [
           metricsRes,
           revenueRes,
@@ -105,13 +114,13 @@ export default function Dashboard() {
           ordersRes2,
           shipmentsRes,
         ] = await Promise.all([
-          safe(dashboardAPI.getMetrics()),
-          safe(dashboardAPI.getRevenueChart({ period: '12m' })),
-          safe(dashboardAPI.getOrdersChart()),
-          safe(dashboardAPI.getTopCustomers()),
-          safe(dashboardAPI.getRecentInquiries()),
-          safe(dashboardAPI.getRecentOrders()),
-          safe(dashboardAPI.getUpcomingShipments()),
+          safe(dashboardAPI.getMetrics(params)),
+          safe(dashboardAPI.getRevenueChart({ period: '12m', ...(params || {}) })),
+          safe(dashboardAPI.getOrdersChart(params)),
+          safe(dashboardAPI.getTopCustomers(params)),
+          safe(dashboardAPI.getRecentInquiries(params)),
+          safe(dashboardAPI.getRecentOrders(params)),
+          safe(dashboardAPI.getUpcomingShipments(params)),
         ])
 
         // Response interceptor auto-unwraps { success, data } envelope
@@ -146,7 +155,7 @@ export default function Dashboard() {
     }
 
     fetchDashboardData()
-  }, [])
+  }, [brandFilter])
 
   if (isLoading) return (
     <div className="space-y-6">
@@ -189,7 +198,9 @@ export default function Dashboard() {
         >
           Dashboard
         </h1>
-        <div className="flex items-center" style={{ gap: 8 }}>
+        <div className="flex items-center" style={{ gap: 12 }}>
+          {/* Phase 3, C11: brand filter (hidden for single-brand users) */}
+          <BrandFilterPicker value={brandFilter} onChange={setBrandFilter} />
           <button onClick={() => navigate('/inquiries/new')} style={actionBtn}
             onMouseEnter={e => e.currentTarget.style.background = SH.forestLight}
             onMouseLeave={e => e.currentTarget.style.background = SH.forest}>
@@ -209,6 +220,15 @@ export default function Dashboard() {
             New Order
           </button>
         </div>
+      </div>
+
+      {/* Phase 3, C11: brand-aware widgets. CommissionWidget renders only
+          for users with FW access. BrandRevenueComparison renders only for
+          super_admin in cross-brand viewMode. Both gracefully no-op
+          otherwise so the dashboard stays unchanged for single-brand users. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <CommissionWidget />
+        <BrandRevenueComparison />
       </div>
 
       {/* KPI Cards */}

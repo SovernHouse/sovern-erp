@@ -16,6 +16,7 @@ const { validateTransition } = require('../utils/statusMachine');
 const { validateFinancials } = require('../utils/validateFinancials');
 const { validateTradeFields } = require('../utils/validateTradeFields');
 const logger = require('../utils/logger.js');
+const { accrueCommissionForOrder } = require('../services/commissionAccrual');
 
 // Phase 1 Commit 3b-B: brand-scope every sales-order request.
 router.use(requireAuth, brandScope);
@@ -283,6 +284,9 @@ router.post('/', requireAuth, async (req, res, next) => {
     const taxAmount = tax || 0;
     const total = subtotal - discountAmount + taxAmount;
 
+    // Phase 3, C11: propagate brandCode (body wins, else user default, else 'SH').
+    const orderBrandCode = req.body.brandCode || req.brandScope?.defaultBrand || 'SH';
+
     // Create sales order
     const so = await db.SalesOrder.create(
       {
@@ -290,6 +294,7 @@ router.post('/', requireAuth, async (req, res, next) => {
         orderNumber,
         customerId,
         factoryId,
+        brandCode: orderBrandCode,
         status: 'confirmed',
         subtotal,
         discount: discountAmount,
@@ -308,6 +313,11 @@ router.post('/', requireAuth, async (req, res, next) => {
     for (const item of validatedItems) {
       await db.SalesOrderItem.create({ ...item, salesOrderId: so.id }, { transaction });
     }
+
+    // Phase 3, C11: auto-accrue commission for FW orders (5% default,
+    // adjustable per-row via PATCH later). No-op for SH and any brand
+    // without a "<displayName> Sales Commission" rule.
+    await accrueCommissionForOrder(db, so, req.user.id, { transaction });
 
     await transaction.commit();
 
@@ -385,13 +395,16 @@ router.post('/create-from-quotation', requireAuth, async (req, res, next) => {
       status: 'pending'
     }));
 
-    // Create sales order with quotation totals
+    // Create sales order with quotation totals.
+    // Phase 3, C11: inherit brandCode from the source quotation. SO under
+    // an FW quotation must accrue under FW; SH under SH.
     const so = await db.SalesOrder.create(
       {
         id: uuidv4(),
         orderNumber,
         customerId: quotation.customerId,
         factoryId,
+        brandCode: quotation.brandCode || req.brandScope?.defaultBrand || 'SH',
         status: 'confirmed',
         subtotal: quotation.subtotal,
         discount: quotation.discount || 0,
@@ -410,6 +423,9 @@ router.post('/create-from-quotation', requireAuth, async (req, res, next) => {
     for (const item of salesOrderItems) {
       await db.SalesOrderItem.create({ ...item, salesOrderId: so.id }, { transaction });
     }
+
+    // Phase 3, C11: auto-accrue commission (FW 5% by default).
+    await accrueCommissionForOrder(db, so, req.user.id, { transaction });
 
     await transaction.commit();
 

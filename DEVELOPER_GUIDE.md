@@ -1901,3 +1901,72 @@ Footer line uses U+00B7 middot (·). All renderer copy and tooltips use periods,
 4. Drop assets into `frontend/admin-portal/public/brand-assets/<brand>/`.
 5. Update `tooltipContent.js` `QUOTATION.documentPreview`, `helpContent.js` `/quotations` section, and this guide.
 
+---
+
+# Brand-Scoped Dashboards + FW Commission (Phase 3, C11)
+
+Every dashboard / analytics / report endpoint is now brand-aware. Single-brand users are auto-scoped via `brandScope` middleware; multi-brand users can narrow via `?brandCode=` query string.
+
+## Wiring pattern
+
+Backend (any route that queries brand-tagged models):
+
+```js
+const { brandScope } = require('../middleware/brandScope')
+const { brandWhere } = require('../utils/brandFilterUtils')
+
+router.use(requireAuth, brandScope)
+
+router.get('/my-report', async (req, res) => {
+  const where = { ...brandWhere(req), status: 'paid' }  // merges scope + ?brandCode
+  const rows = await db.Invoice.findAll({ where })
+  res.json(rows)
+})
+```
+
+For raw SQL:
+
+```js
+const { sql: bsql, replacements: brs } = brandWhereSql(req, 'so')
+const query = `SELECT * FROM SalesOrder so WHERE created_at > ? ${bsql}`
+db.sequelize.query(query, { replacements: [start, ...brs], type: 'SELECT' })
+```
+
+For `Customer` queries (JSON `brandRelationships` array — SQLite can't filter directly):
+
+```js
+let rows = await db.Customer.findAll(...)
+rows = filterCustomersByBrand(rows, req)  // application-layer filter
+```
+
+Files of interest:
+
+| File | Role |
+|---|---|
+| `backend/utils/brandFilterUtils.js` | `brandWhere`, `brandWhereSql`, `filterCustomersByBrand` |
+| `backend/routes/dashboardRoutes.js` | `router.use(requireAuth, brandScope)`; admin/mobile summary brand-scoped |
+| `backend/routes/analyticsRoutes.js` | revenue-trend uses `brandWhereSql` |
+| `backend/routes/reportRoutes.js` | sales report uses `brandWhere` |
+| `frontend/admin-portal/src/components/BrandFilterPicker.jsx` | Top-of-page filter; hidden for single-brand users; persists to localStorage |
+| `frontend/admin-portal/src/components/DashboardWidgets/CommissionWidget.jsx` | FW MTD tiles + expandable per-order percentage edit |
+| `frontend/admin-portal/src/components/DashboardWidgets/BrandRevenueComparison.jsx` | Super_admin cross-brand only; Recharts grouped bar |
+
+## FW Sales Commission
+
+- `backend/services/seedCommissionRules.js` seeds `FW Sales Commission` idempotently. Default 5%; override via `FW_COMMISSION_RATE` env var on the GCP VM if you need to flex without a code change.
+- `backend/services/commissionAccrual.js` exports `accrueCommissionForOrder(db, so, userId)` — fire-and-forget called from `salesOrderRoutes.js` after both create paths. Looks up the rule by name `${brand.displayName} Sales Commission`; idempotent per `(userId, salesOrderId)`.
+- Per-order rate is editable via `PATCH /api/personalization/commissions/:id` (super_admin any row; row owner only on pending). `commissionAccrual.updateCommissionPercentage()` recalculates `amount = orderAmount * percentage / 100`.
+- Brand-tagging: `salesOrderRoutes.js` now propagates `brandCode` (body wins, else `req.brandScope.defaultBrand`, else `'SH'`). `create-from-quotation` inherits `quotation.brandCode`. Without this, SH-defaulted SOs would never accrue against FW.
+
+## Endpoints added in C11
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET  | `/api/personalization/commissions/summary?brandCode=FW&period=mtd` | Accrued / paid / pending tiles + contributing rows |
+| PATCH | `/api/personalization/commissions/:id` | Per-order percentage edit |
+| GET  | `/api/personalization/commissions/brand-comparison` | Super_admin only; SH vs FW revenue + commission for MTD |
+
+## L-042 formatters
+
+`frontend/admin-portal/src/utils/formatters.js` exports `formatDateTaipei` and `formatDateTimeTaipei` (Asia/Taipei). Use these for any new user-facing timestamp from Phase 3 onward. The legacy `formatDate` / `formatDateTime` use browser-local time and are kept to avoid mid-phase regression; broader migration is a follow-up.
+

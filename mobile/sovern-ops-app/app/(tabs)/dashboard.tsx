@@ -12,6 +12,8 @@ import { useRouter } from 'expo-router';
 import { getDashboard, type DashboardSummary } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
 import { useAuthStore } from '../../src/store/authStore';
+import BrandFilterPicker from '../../src/components/BrandFilterPicker';
+import CommissionWidget from '../../src/components/CommissionWidget';
 
 // ─── Module grid definition ───────────────────────────────────────────────────
 // To add a module: append here + register a Tabs.Screen in _layout.tsx.
@@ -77,11 +79,15 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Phase 3, C11: brand filter — passed to getDashboard as ?brandCode=.
+  const [brandFilter, setBrandFilter] = useState<string | null>(null);
 
   async function load(isRefresh = false) {
     try {
       isRefresh ? setRefreshing(true) : setLoading(true);
-      const summary = await getDashboard();
+      const summary = await getDashboard(
+        brandFilter && brandFilter !== 'all' ? { brandCode: brandFilter } : undefined,
+      );
       setData(summary);
       setError(null);
     } catch (err: any) {
@@ -92,7 +98,7 @@ export default function HomeScreen() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [brandFilter]);
 
   if (loading) {
     return (
@@ -120,6 +126,12 @@ export default function HomeScreen() {
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : null}
+
+      {/* Phase 3, C11: brand filter (hidden for single-brand users) */}
+      <BrandFilterPicker value={brandFilter} onChange={setBrandFilter} />
+
+      {/* Phase 3, C11: FW commission summary (hidden if user has no FW access) */}
+      <CommissionWidget />
 
       {/* Pipeline metrics */}
       <Text style={styles.sectionTitle}>Pipeline</Text>

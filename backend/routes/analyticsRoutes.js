@@ -12,19 +12,27 @@ const express = require('express');
 const router = express.Router();
 const db = require('../models');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const { getSuccessResponse } = require('../utils/helpers');
 const { Op } = require('sequelize');
 const dayjs = require('dayjs');
+const { brandWhereSql, brandWhere } = require('../utils/brandFilterUtils');
+
+// Phase 3, C11: brand-scope every analytics request.
+router.use(requireAuth, brandScope);
 
 /**
  * GET /api/analytics/revenue-trend
  * Monthly revenue for last 12 months
  */
-router.get('/revenue-trend', requireAuth, async (req, res, next) => {
+router.get('/revenue-trend', async (req, res, next) => {
   try {
     const months = 12;
     const endDate = dayjs().endOf('month').toDate();
     const startDate = dayjs(endDate).subtract(months - 1, 'month').startOf('month').toDate();
+
+    // Phase 3, C11: brand-scope the raw SQL via the helper.
+    const { sql: brandSql, replacements: brandReps } = brandWhereSql(req, 'SalesOrder');
 
     const data = await db.sequelize.query(`
       SELECT
@@ -32,11 +40,11 @@ router.get('/revenue-trend', requireAuth, async (req, res, next) => {
         SUM(CASE WHEN status = 'completed' THEN total ELSE 0 END) as revenue,
         COUNT(*) as orderCount
       FROM SalesOrder
-      WHERE created_at BETWEEN ? AND ?
+      WHERE created_at BETWEEN ? AND ?${brandSql}
       GROUP BY strftime('%Y-%m', created_at)
       ORDER BY month ASC
     `, {
-      replacements: [startDate, endDate],
+      replacements: [startDate, endDate, ...brandReps],
       type: 'SELECT'
     });
 

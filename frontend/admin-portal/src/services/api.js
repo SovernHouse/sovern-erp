@@ -286,14 +286,17 @@ export const reportsAPI = {
 }
 
 // Dashboard endpoints
+// Phase 3, C11: every endpoint accepts an optional { brandCode } param.
+// The backend resolves: ?brandCode=X narrows multi-brand users to that
+// brand; omitted means "use my accessibleBrands scope".
 export const dashboardAPI = {
-  getMetrics: () => api.get('/dashboard/admin'),
+  getMetrics: (params) => api.get('/dashboard/admin', { params }),
   getRevenueChart: (params) => api.get('/dashboard/revenue', { params }),
-  getOrdersChart: () => api.get('/dashboard/recent-orders'),
-  getTopCustomers: () => api.get('/dashboard/top-customers'),
-  getRecentInquiries: () => api.get('/dashboard/recent-inquiries'),
-  getRecentOrders: () => api.get('/dashboard/recent-orders'),
-  getUpcomingShipments: () => api.get('/dashboard/upcoming-shipments'),
+  getOrdersChart: (params) => api.get('/dashboard/recent-orders', { params }),
+  getTopCustomers: (params) => api.get('/dashboard/top-customers', { params }),
+  getRecentInquiries: (params) => api.get('/dashboard/recent-inquiries', { params }),
+  getRecentOrders: (params) => api.get('/dashboard/recent-orders', { params }),
+  getUpcomingShipments: (params) => api.get('/dashboard/upcoming-shipments', { params }),
   getRoleConfig: (role) => api.get(`/dashboard/role/${role}`),
   getAvailableWidgets: () => api.get('/dashboard/widgets'),
   saveLayout: (data) => api.post('/dashboard/layout', data),

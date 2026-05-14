@@ -13,33 +13,46 @@ const express = require('express');
 const router = express.Router();
 const db = require('../models');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const { getSuccessResponse } = require('../utils/helpers');
 const { Op } = require('sequelize');
 const dayjs = require('dayjs');
 const { cacheRoute, invalidateCache } = require('../middleware/cacheMiddleware');
+const { brandWhere } = require('../utils/brandFilterUtils');
 
 // Apply caching to dashboard GET endpoints (60 second TTL)
 const dashboardCacheTTL = 60;
+
+// Phase 3, C11: brand-scope every dashboard request. brandScope populates
+// req.brandScope.where (single-brand users) and accessibleBrands; the
+// brandWhere() helper layers ?brandCode= on top so multi-brand users can
+// narrow to one brand via the picker.
+router.use(requireAuth, brandScope);
 
 /**
  * GET /api/dashboard — Mobile consolidated summary
  * Single-call endpoint used by Sovern Ops mobile app.
  * Returns open leads, pending approvals, pending activities, and pipeline value.
  */
-router.get('/', requireAuth, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const { Op } = require('sequelize');
+    // Phase 3, C11: brand-scope every count. brandWhere() returns a partial
+    // where clause that narrows to the user's accessible brands (or to the
+    // ?brandCode= override for multi-brand users).
+    const bw = brandWhere(req);
 
     const [openLeads, pendingApprovals, pendingActivities, pipelineValue] = await Promise.all([
       db.Lead
-        ? db.Lead.count({ where: { status: { [Op.notIn]: ['won', 'lost'] } } })
+        ? db.Lead.count({ where: { ...bw, status: { [Op.notIn]: ['won', 'lost'] } } })
         : Promise.resolve(0),
       db.InternalApproval
-        ? db.InternalApproval.count({ where: { status: 'pending' } })
+        ? db.InternalApproval.count({ where: { ...bw, status: 'pending' } })
         : Promise.resolve(0),
       db.Activity
         ? db.Activity.count({
             where: {
+              ...bw,
               completedAt: null,
               scheduledAt: { [Op.lte]: dayjs().endOf('day').toDate() },
             },
@@ -47,7 +60,7 @@ router.get('/', requireAuth, async (req, res, next) => {
         : Promise.resolve(0),
       db.Lead
         ? db.Lead.sum('estimatedValue', {
-            where: { status: { [Op.notIn]: ['won', 'lost'] } },
+            where: { ...bw, status: { [Op.notIn]: ['won', 'lost'] } },
           })
         : Promise.resolve(0),
     ]);
@@ -73,25 +86,32 @@ router.get('/', requireAuth, async (req, res, next) => {
  * @description Provides metrics including customer count, revenue, orders, and inventory status
  * @returns {Object} Dashboard metrics and KPIs
  */
-router.get('/admin', cacheRoute(dashboardCacheTTL), requireAuth, requireRole('admin'), async (req, res, next) => {
+router.get('/admin', cacheRoute(dashboardCacheTTL), requireRole('admin', 'super_admin'), async (req, res, next) => {
   try {
+    // Phase 3, C11: brand-scope every aggregate. Customer.brandRelationships
+    // is a JSON array so a Sequelize where filter on it isn't reliable on
+    // SQLite — Customer counts here count ALL customers in scope, with the
+    // understanding that JSON-array filtering will be added as a follow-up.
+    // The order/revenue numbers below ARE brand-scoped via brandCode.
+    const bw = brandWhere(req);
     const totalCustomers = await db.Customer.count();
     const activeCustomers = await db.Customer.count({ where: { isActive: true } });
     const totalFactories = await db.Factory.count({ where: { isActive: true } });
     const totalProducts = await db.Product.count({ where: { isActive: true } });
 
-    const totalOrders = await db.SalesOrder.count();
-    const completedOrders = await db.SalesOrder.count({ where: { status: 'completed' } });
+    const totalOrders = await db.SalesOrder.count({ where: { ...bw } });
+    const completedOrders = await db.SalesOrder.count({ where: { ...bw, status: 'completed' } });
 
-    const totalRevenue = await db.SalesOrder.sum('total');
+    const totalRevenue = await db.SalesOrder.sum('total', { where: { ...bw } });
     const thisMonthRevenue = await db.SalesOrder.sum('total', {
       where: {
+        ...bw,
         createdAt: { [Op.gte]: dayjs().startOf('month').toDate() }
       }
     });
 
     const pendingInvoices = await db.Invoice.sum('balance', {
-      where: { status: { [Op.in]: ['draft', 'sent'] } }
+      where: { ...bw, status: { [Op.in]: ['draft', 'sent'] } }
     });
 
     // Quote -> Order conversion. In this workflow, a quotation flips to
@@ -102,13 +122,14 @@ router.get('/admin', cacheRoute(dashboardCacheTTL), requireAuth, requireRole('ad
     // Denominator: quotations actually sent to a customer (status !=
     // 'draft'). Drafts haven't entered the funnel and shouldn't count.
     const totalQuotations = await db.Quotation.count({
-      where: { status: { [Op.ne]: 'draft' } }
+      where: { ...bw, status: { [Op.ne]: 'draft' } }
     });
     const convertedQuotations = await db.Quotation.count({
-      where: { status: 'accepted' }
+      where: { ...bw, status: 'accepted' }
     });
 
     const recentOrders = await db.SalesOrder.findAll({
+      where: { ...bw },
       limit: 5,
       order: [['createdAt', 'DESC']],
       include: [{ model: db.Customer, as: 'customer', attributes: ['companyName'] }]

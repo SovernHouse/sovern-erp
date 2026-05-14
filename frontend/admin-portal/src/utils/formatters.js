@@ -28,6 +28,28 @@ export const formatDateTime = (date, format = 'YYYY-MM-DD HH:mm') => {
   return dayjs(date).format(format)
 }
 
+// Phase 3, C11: per L-042 every user-facing timestamp renders in
+// Asia/Taipei (UTC+8). The global formatDate / formatDateTime above use
+// the browser's local time, which is the long-standing legacy and not
+// safe to change mid-phase. Phase 3 dashboard and audit-log code should
+// switch to these helpers explicitly; broader migration is a follow-up.
+export const formatDateTaipei = (date) => {
+  if (!date) return '-'
+  return new Date(date).toLocaleDateString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    timeZone: 'Asia/Taipei',
+  })
+}
+
+export const formatDateTimeTaipei = (date) => {
+  if (!date) return '-'
+  return new Date(date).toLocaleString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+    timeZone: 'Asia/Taipei',
+  })
+}
+
 export const formatRelativeTime = (date) => {
   if (!date) return '-'
   return dayjs(date).fromNow()

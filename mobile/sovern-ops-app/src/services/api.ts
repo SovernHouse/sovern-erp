@@ -120,8 +120,10 @@ export async function getCurrentUser(): Promise<User> {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────
 
-export function getDashboard() {
-  return request<DashboardSummary>('/api/dashboard');
+export function getDashboard(params?: { brandCode?: string }) {
+  // Phase 3, C11: forward ?brandCode= for multi-brand users to narrow.
+  const qs = params?.brandCode ? `?brandCode=${encodeURIComponent(params.brandCode)}` : '';
+  return request<DashboardSummary>(`/api/dashboard${qs}`);
 }
 
 // ─── Leads ────────────────────────────────────────────────────────────────

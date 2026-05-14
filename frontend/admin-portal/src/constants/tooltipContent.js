@@ -349,6 +349,11 @@ export const DASHBOARD = {
   saveLayout:     'Save your current widget arrangement to the server. Layout is per-user — saving does not affect other users.',
   resetToDefault: 'Restore the default widget set for your role, overwriting your saved layout.',
   removeWidget:   'Remove this widget from your dashboard. Re-add it at any time via Customize.',
+  // Phase 3, C11: brand-aware reporting
+  brandFilter:    'Narrow dashboard data to one brand. Single-brand users see only their brand and the picker is hidden.',
+  allBrands:      'Super-admin only. Combined SH + FW view; reports are read-only in this mode.',
+  fwCommission:   'FlorWay commission accrued this Asia/Taipei month from SalesOrders tagged FW. Default 5%; per-order rate is adjustable inline (pending rows only).',
+  brandRevenueComparison: 'Super-admin only. Side-by-side SH vs FW revenue + commission for the current month.',
 }
 
 // ─── Google Drive ─────────────────────────────────────────────────────────────

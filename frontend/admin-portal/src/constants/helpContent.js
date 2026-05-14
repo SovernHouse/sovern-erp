@@ -54,10 +54,21 @@ export const HELP_CONTENT = {
           'Click Reset to Default to restore the preset layout for your role.',
         ],
       },
+      {
+        heading: 'Brand-filtered reporting (Phase 3)',
+        items: [
+          'Top-right Brand picker narrows every dashboard widget to one brand. Hidden for single-brand users.',
+          'Multi-brand users see SH and FW pills; selection persists across sessions via localStorage.',
+          'Super-admin in cross-brand mode gets an "All Brands" option that shows aggregated revenue and a side-by-side SH vs FW comparison widget.',
+          'FlorWay Commission widget shows month-to-date accrued / paid / pending tiles. Default rate 5%. Click "Show orders" to expand the per-order list and adjust any pending row\'s percentage inline.',
+          'Per-order edits are restricted to pending rows for the row owner; super-admin can edit any row.',
+        ],
+      },
     ],
     tips: [
       'Pending Approvals widget shows all open approval links — click through to the document.',
       'Overdue activities appear in red. Click to open the CRM lead and record an update.',
+      'FlorWay commission is auto-accrued at SalesOrder creation. If you change the percentage on a pending row, the amount recalculates immediately.',
     ],
   },
 

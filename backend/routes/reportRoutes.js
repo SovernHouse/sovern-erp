@@ -12,9 +12,14 @@ const express = require('express');
 const router = express.Router();
 const db = require('../models');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { brandScope } = require('../middleware/brandScope');
 const { getSuccessResponse } = require('../utils/helpers');
 const { Op } = require('sequelize');
 const dayjs = require('dayjs');
+const { brandWhere } = require('../utils/brandFilterUtils');
+
+// Phase 3, C11: brand-scope every report request.
+router.use(requireAuth, brandScope);
 
 /**
  * Helper function to get date range based on period
@@ -48,12 +53,18 @@ const getDateRange = (period) => {
   };
 };
 
-router.get('/sales', requireAuth, requireRole('finance', 'admin', 'sales'), async (req, res, next) => {
+router.get('/sales', requireRole('finance', 'admin', 'sales', 'super_admin'), async (req, res, next) => {
   try {
     const { period = 'month', customerId, salesPersonId } = req.query;
     const { startDate, endDate } = getDateRange(period);
 
-    const where = { createdAt: { [Op.between]: [startDate, endDate] } };
+    // Phase 3, C11: brand-scope the sales report. ?brandCode= narrows
+    // to a single brand for multi-brand users; single-brand users get
+    // their accessibleBrand automatically.
+    const where = {
+      ...brandWhere(req),
+      createdAt: { [Op.between]: [startDate, endDate] },
+    };
     if (customerId) where.customerId = customerId;
 
     const orders = await db.SalesOrder.findAll({

@@ -47,6 +47,16 @@ Upon login, you'll see the Admin Dashboard with key performance indicators:
 - Check shipment status
 - Generate reports
 
+**Brand Filter on Dashboards (Phase 3)**
+
+Multi-brand users (you, today) see a Brand picker in the top right of the dashboard. Pick SH or FW to narrow every widget to that brand. Single-brand users (e.g. a future FW-only sales rep) don't see the picker; their view is always scoped to their brand.
+
+In cross-brand mode, super-admin gets an additional "All Brands" option that shows a combined revenue widget and a side-by-side SH vs FW comparison chart. All Brands mode is read-only by design (per the Phase 1 architectural decision); switch back to a single brand before making any outbound action.
+
+**FlorWay Commission Widget**
+
+If you have FW access, the dashboard shows a FlorWay Commission card with three tiles: Accrued, Paid, Pending — all for the current Asia/Taipei month. Click "Show orders" to expand the contributing list; each pending row has an inline percentage input that re-calculates and saves on blur. Default rate is 5%; you can adjust any pending row up or down. Once a commission is approved or paid, the rate locks for that row.
+
 ### Navigation Menu
 
 **1. Customer Management**
