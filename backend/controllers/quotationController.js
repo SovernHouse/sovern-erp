@@ -13,12 +13,15 @@ const { validateFinancials } = require('../utils/validateFinancials');
 const create = async (req, res, next) => {
   try {
     validateFinancials(req.body);
-    const { customerId, inquiryId, salesPersonId, items, discount, discountType, taxRate, terms, factoryId, leadId } = req.body;
+    const { customerId, inquiryId, salesPersonId, items, discount, discountType, taxRate, terms, factoryId, leadId, brandCode } = req.body;
 
     const customer = await db.Customer.findByPk(customerId);
     if (!customer) {
       throw new NotFoundError('Customer not found');
     }
+
+    // Phase 3, C13: resolve brandCode (body wins, else user defaultBrand, else 'SH').
+    const resolvedBrandCode = brandCode || req.brandScope?.defaultBrand || 'SH';
 
     const lastQuotation = await db.Quotation.findOne({
       order: [['createdAt', 'DESC']]
@@ -63,6 +66,7 @@ const create = async (req, res, next) => {
       salesPersonId: salesPersonId || null,
       factoryId: factoryId || null,
       leadId: leadId || null,
+      brandCode: resolvedBrandCode,
       status: 'draft',
       subtotal,
       discount: discountAmount,
@@ -89,7 +93,19 @@ const create = async (req, res, next) => {
       ]
     });
 
-    res.status(201).json(getSuccessResponse(result, 'Quotation created successfully'));
+    // Phase 3, C13: cross-brand auto-add to customer.brandRelationships.
+    let autoAddedBrand = null;
+    try {
+      const { addBrandIfMissing } = require('../services/crossBrandAutoAdd');
+      autoAddedBrand = await addBrandIfMissing(db, customerId, resolvedBrandCode, {
+        userId: req.user?.id,
+        entity: 'Quotation',
+        entityId: quotation.id,
+        ip: req.ip,
+      });
+    } catch (_) { /* never block the create */ }
+
+    res.status(201).json(getSuccessResponse({ ...result.toJSON(), autoAddedBrand }, 'Quotation created successfully'));
 
     // Fire-and-forget audit log
     auditService.logAction(req.user.id, 'CREATE', 'Quotation', quotation.id, { data: result?.toJSON?.() || quotation.toJSON() }, req.ip).catch(() => {});
@@ -147,6 +163,13 @@ const getById = async (req, res, next) => {
     });
 
     if (!quotation || quotation.deletedAt) {
+      throw new NotFoundError('Quotation not found');
+    }
+
+    // Phase 3, C13: 404-on-wrong-brand. Don't leak the existence of a
+    // quotation outside the user's accessible brands.
+    const { isAccessibleByBrandCode } = require('../utils/notFoundOnWrongBrand');
+    if (!isAccessibleByBrandCode(req, quotation.brandCode)) {
       throw new NotFoundError('Quotation not found');
     }
 

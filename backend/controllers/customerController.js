@@ -112,6 +112,13 @@ const getById = async (req, res, next) => {
       throw new NotFoundError('Customer not found');
     }
 
+    // Phase 3, C13: 404-on-wrong-brand. Customer uses the JSON array
+    // brandRelationships pattern.
+    const { isAccessibleByBrandRelationships } = require('../utils/notFoundOnWrongBrand');
+    if (!isAccessibleByBrandRelationships(req, customer.brandRelationships)) {
+      throw new NotFoundError('Customer not found');
+    }
+
     res.json(getSuccessResponse(customer));
   } catch (error) {
     next(error);

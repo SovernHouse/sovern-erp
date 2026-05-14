@@ -16,6 +16,7 @@ import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import Chatter from '../../components/Chatter'
 import WorkflowStatusBar, { SALES_ORDER_STAGES } from '../../components/WorkflowStatusBar'
 import StatusBadge from '../../components/StatusBadge'
+import BrandBadge from '../../components/BrandBadge'
 import DocumentGenerateButton from '../../components/DocumentGenerateButton'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -167,6 +168,7 @@ export default function OrderDetail() {
           <div>
             <h1 className="text-3xl font-bold text-slate-900">{order.orderNumber || 'Order'}</h1>
             <div className="flex items-center space-x-2 mt-2">
+              <BrandBadge code={order.brandCode || 'SH'} size="sm" />
               <StatusBadge status={order.status} />
               <span className="text-sm text-slate-500">•</span>
               <span className="text-sm text-slate-600">{formatDate(order.createdAt)}</span>

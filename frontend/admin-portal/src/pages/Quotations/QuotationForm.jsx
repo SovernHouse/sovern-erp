@@ -10,6 +10,7 @@ import {
   TextArea,
 } from '../../components/FormFields'
 import { quotationsAPI, customersAPI, productsAPI, factoriesAPI, leadsAPI } from '../../services/api'
+import BrandPicker from '../../components/BrandPicker'
 
 const UNITS = [
   { value: 'sqm', label: 'Square Meter (sqm)' },
@@ -42,6 +43,9 @@ export default function QuotationForm() {
   const [errors, setErrors] = useState({})
 
   const [formData, setFormData] = useState({
+    // Phase 3, C13: brand context. BrandPicker auto-fills from
+    // useBrands().defaultBrand on mount; disabled in edit mode.
+    brandCode: '',
     customerId: '',
     factoryId: '',
     leadId: '',
@@ -285,14 +289,26 @@ export default function QuotationForm() {
         ...(formData.taxRate && { taxRate: formData.taxRate }),
         ...(formData.terms && { terms: formData.terms }),
         ...(formData.notes && { notes: formData.notes }),
+        // Phase 3, C13: send brandCode on create (D-5 brand-locked-at-creation
+        // so the backend ignores it on edit anyway).
+        ...(formData.brandCode && { brandCode: formData.brandCode }),
       }
 
       if (isEditMode) {
         await quotationsAPI.update(id, submitData)
         toast.success('Quotation updated successfully')
       } else {
-        await quotationsAPI.create(submitData)
+        const res = await quotationsAPI.create(submitData)
         toast.success('Quotation created successfully')
+        // Phase 3, C13: cross-brand auto-add toast. Backend returns
+        // autoAddedBrand when the create extended customer.brandRelationships.
+        const autoAdded = res?.data?.autoAddedBrand
+        if (autoAdded) {
+          toast(
+            `Customer is now also a ${autoAdded} relationship.`,
+            { icon: '🔁', duration: 5000 },
+          )
+        }
       }
 
       navigate('/quotations')
@@ -331,6 +347,16 @@ export default function QuotationForm() {
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Phase 3, C13: brand picker — top of form so it's the first
+            decision. Disabled in edit mode (D-5 brand-locked-at-creation). */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <BrandPicker
+            value={formData.brandCode}
+            onChange={(v) => setFormData((prev) => ({ ...prev, brandCode: v }))}
+            disabled={isEditMode}
+          />
+        </div>
+
         {/* Customer Section */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold text-slate-900 mb-4">

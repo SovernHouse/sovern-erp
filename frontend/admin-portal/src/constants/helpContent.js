@@ -106,6 +106,16 @@ export const HELP_CONTENT = {
         ],
       },
       {
+        heading: 'Cross-brand auto-add (Phase 3, C13)',
+        items: [
+          'When you create a new Lead, Quotation, or Deal against an existing customer under a brand that customer didn\'t yet have, the brand is automatically added to their brand relationships.',
+          'A confirmation toast appears: "Customer X is now also a [BRAND] relationship."',
+          'The change is recorded in the audit log as `cross_brand_relationship_added` with the user, the triggering entity, and the brand timestamp.',
+          'No manual step is required: the customer\'s detail page picks up the new brand badge on next load.',
+          'Per the brand isolation rule, GET-by-id for any entity in a brand outside your accessible brands returns 404 (not 403). The existence of the record isn\'t leaked.',
+        ],
+      },
+      {
         heading: 'Brand context (cross-brand customers)',
         items: [
           'A customer may transact under more than one brand. The badge group next to the name shows every brand they have a relationship with.',

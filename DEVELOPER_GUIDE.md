@@ -2022,3 +2022,59 @@ Effect: clears `productBrandingModeLockedAt`, sets the new mode + private label 
 - Desktop: `frontend/admin-portal/src/components/ProductBrandingModePicker.jsx` — three radio cards + private-label input + lock badge + super-admin "Override lock" dialog. Rendered on `CustomerDetail.jsx` only when `customer.brandRelationships.includes('FW')`.
 - Mobile: `mobile/sovern-ops-app/src/components/ProductBrandingModePicker.tsx` — pill toggle + private-label input. Rendered inside the customers tab modal. Override stays desktop-only (the reason-bound dialog reads better on a larger screen).
 
+---
+
+# Cross-brand auto-add + 404-on-wrong-brand (Phase 3, C13)
+
+## Cross-brand auto-add
+
+When a new Lead / Quotation / Deal is created against an existing customer under a brand they didn't yet have, `customer.brandRelationships` is automatically extended. The change is audited and the create response includes `autoAddedBrand` so the frontend can toast.
+
+`backend/services/crossBrandAutoAdd.js` exports `addBrandIfMissing(db, customerId, brandCode, triggeredBy)`. It's dedup-safe (`Array.from(new Set([...existing, brandCode]))`) and fire-and-forget at the call site (wrapped in try/catch — never blocks the create).
+
+Wired into:
+- `leadController.createLead` → `addBrandIfMissing(db, lead.customerId, lead.brandCode, {entity:'Lead', entityId:lead.id})`
+- `quotationController.create` → same, entity='Quotation'
+- `dealController.createDeal` → same, entity='Deal'
+
+Audit entry: action=`cross_brand_relationship_added`, entity='Customer', changes={oldBrands, newBrands, addedBrand, triggeredByEntity, triggeredByEntityId}.
+
+Frontend toast surfaces are in `LeadForm.jsx`, `QuotationForm.jsx`, `DealForm.jsx`.
+
+## 404-on-wrong-brand
+
+`backend/utils/notFoundOnWrongBrand.js` exports two helpers:
+
+- `isAccessibleByBrandCode(req, brandCode)` — for models with a single `brandCode` field.
+- `isAccessibleByBrandRelationships(req, brandRelationships)` — for Customer's JSON array.
+
+Both return true for super_admin in cross-brand mode. Routes that have applied the helper in C13:
+
+| Endpoint | Helper |
+|---|---|
+| `GET /api/quotations/:id` | byBrandCode |
+| `GET /api/customers/:id` | byBrandRelationships |
+| `GET /api/crm/deals/:id` | byBrandCode |
+| `GET /api/sales-orders/:id` | byBrandCode |
+| `GET /api/invoices/:id` | byBrandCode |
+| `GET /api/proforma-invoices/:id` | byBrandCode |
+| `GET /api/leads/:id` | (pre-C13, original D-3 pattern in leadController) |
+
+Remaining endpoints (Activity, OutreachEmail, TriageItem, Document, Inquiry) follow the same pattern; mechanical follow-up.
+
+Writes stay 403 via the existing `assertBrandWritable` in `brandScope.js` — once the user has seen the entity in a list response, there's no information to hide on a write boundary.
+
+## BrandPicker on create forms
+
+`frontend/admin-portal/src/components/BrandPicker.jsx` (from Phase 1) is now wired to:
+
+- `LeadForm.jsx`
+- `QuotationForm.jsx`
+- `DealForm.jsx`
+
+Pre-fills from `useBrands().defaultBrand` on mount. Always visible (even for single-brand users, who see it disabled). Disabled in edit mode (D-5 brand-locked-at-creation).
+
+## BrandBadge on detail headers
+
+Added to Sales Order, Invoice, ProformaInvoice detail page headers (Customer, Lead, Quotation already had it from earlier phases). PurchaseOrder and Inquiry detail pages are stubs without real headers; deferred.
+

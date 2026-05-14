@@ -20,6 +20,7 @@ import { proformaAPI, factoriesAPI, approvalAPI } from '../../services/api'
 import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import StatusBadge from '../../components/StatusBadge'
+import BrandBadge from '../../components/BrandBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { formatCurrency, formatDate } from '../../utils/formatters'
@@ -552,6 +553,7 @@ export default function ProformaDetail() {
           <div>
             <h1 className="text-3xl font-bold text-slate-900">{piNumber}</h1>
             <div className="flex items-center space-x-2 mt-1">
+              <BrandBadge code={pi.brandCode || 'SH'} size="sm" />
               <StatusBadge status={pi.status} />
               <span className="text-sm text-slate-400">•</span>
               <span className="text-sm text-slate-500">{formatDate(pi.createdAt)}</span>

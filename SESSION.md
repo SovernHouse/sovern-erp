@@ -5,15 +5,15 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 3 in progress. C9 + C10 + C11 shipped + live. C12 (productBrandingMode picker + lock + override) staged for commit.
+2026-05-14 Taiwan time. Phase 3 COMPLETE (pending C13 commit). C9 + C10 + C11 + C12 shipped + live. C13 (Phase 1 polish bundle) staged.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `72c7844` (feat(phase-3): per-brand reporting + FW commission widget (C11))
-- **Working tree:** C12 staged, awaiting commit
-- **CI/CD Pipeline (72c7844):** green
-- **Deploy (72c7844):** green
+- **Latest commit on main:** `e9c0938` (feat(phase-3): productBrandingMode picker UI + lock + super-admin override (C12))
+- **Working tree:** C13 staged, awaiting commit
+- **CI/CD Pipeline (e9c0938):** green
+- **Deploy (e9c0938):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
 
 ---
@@ -22,7 +22,44 @@
 
 Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
 
-### C12 — productBrandingMode picker UI + lock + super-admin override (READY FOR COMMIT)
+### C13 — Phase 1 polish bundle (READY FOR COMMIT)
+
+**BrandBadge expansion (desktop detail headers):**
+- `OrderDetail.jsx`, `InvoiceDetail.jsx`, `ProformaDetail.jsx` — added `<BrandBadge code={record.brandCode || 'SH'} size="sm" />` next to the StatusBadge.
+- Customer, Lead, Quotation already had it from earlier phases.
+- PurchaseOrder and Inquiry detail pages are stubs without real headers — deferred.
+
+**BrandPicker on create forms:**
+- New `frontend/admin-portal/src/components/BrandPicker.jsx` (from Phase 1) wired into:
+  - `LeadForm.jsx` — picker above company info, brandCode in form state, disabled in edit mode.
+  - `QuotationForm.jsx` — picker above customer section, brandCode in submitData payload.
+  - `DealForm.jsx` — picker above deal information, brandCode in spread submitData.
+
+**Cross-brand auto-add:**
+- New `backend/services/crossBrandAutoAdd.js` — `addBrandIfMissing(db, customerId, brandCode, triggeredBy)` extends `customer.brandRelationships` dedup-safe and writes `cross_brand_relationship_added` AuditLog row. Fire-and-forget at call sites.
+- Wired into `leadController.createLead`, `quotationController.create`, `dealController.createDeal`. All three now return `autoAddedBrand` in the response.
+- Frontend create forms (LeadForm, QuotationForm, DealForm) show a toast / success banner when `autoAddedBrand` is present.
+
+**404-on-wrong-brand:**
+- New `backend/utils/notFoundOnWrongBrand.js` — `isAccessibleByBrandCode(req, brandCode)` and `isAccessibleByBrandRelationships(req, rels)` helpers.
+- Applied to getById on: Quotation, Customer (brandRelationships pattern), Deal, SalesOrder, Invoice, ProformaInvoice.
+- Remaining (Activity, OutreachEmail, TriageItem, Document, Inquiry) follow the same pattern — mechanical follow-up. Writes stay 403 via `assertBrandWritable`.
+
+**brandCode propagation on quotation create:**
+- `quotationController.create` now reads `brandCode` from body, falls back to `req.brandScope.defaultBrand` then `'SH'`, and persists it on the new Quotation. (Phase 1 model had brandCode but the create route wasn't passing it.)
+
+**Audit log action:**
+- New action `cross_brand_relationship_added` — entity=Customer, changes={oldBrands, newBrands, addedBrand, triggeredByEntity, triggeredByEntityId}.
+
+**Three-surface docs:**
+- `tooltipContent.js` — `BRAND.crossBrandAutoAdd`, `BRAND.brandPickerOnCreate`.
+- `helpContent.js` — new "Cross-brand auto-add (Phase 3, C13)" section under `/customers`.
+- `DEVELOPER_GUIDE.md` — new "Cross-brand auto-add + 404-on-wrong-brand (Phase 3, C13)" section with helper docs, endpoint coverage table, BrandPicker wiring notes.
+- `docs/USER_GUIDE.md` — new "Cross-Brand Auto-Add (Phase 3)" subsection under Managing Customers.
+
+---
+
+### C12 — productBrandingMode picker UI + lock + super-admin override (SHIPPED, commit `e9c0938`, live)
 
 **Schema:**
 - `backend/models/Customer.js` — adds `productBrandingModeLockedAt` (DATE, nullable, default null). Auto-migrates on boot via alter-sync.

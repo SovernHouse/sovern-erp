@@ -46,6 +46,13 @@ router.get('/:id', requireAuth, async (req, res, next) => {
     });
 
     if (!pi) throw new NotFoundError('Proforma Invoice not found');
+
+    // Phase 3, C13: 404-on-wrong-brand.
+    const { isAccessibleByBrandCode } = require('../utils/notFoundOnWrongBrand');
+    if (!isAccessibleByBrandCode(req, pi.brandCode)) {
+      throw new NotFoundError('Proforma Invoice not found');
+    }
+
     res.json(getSuccessResponse(pi));
   } catch (error) {
     next(error);

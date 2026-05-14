@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import BrandPicker from '../../components/BrandPicker';
 
 const DealForm = () => {
   const navigate = useNavigate();
@@ -14,6 +16,9 @@ const DealForm = () => {
   const [contacts, setContacts] = useState([]);
   const [users, setUsers] = useState([]);
   const [formData, setFormData] = useState({
+    // Phase 3, C13: brand context. BrandPicker auto-fills from
+    // useBrands().defaultBrand on mount; disabled in edit mode.
+    brandCode: '',
     title: '',
     customerId: '',
     contactId: '',
@@ -105,7 +110,15 @@ const DealForm = () => {
       if (id) {
         await api.put(`/crm/deals/${id}`, submitData);
       } else {
-        await api.post('/crm/deals', submitData);
+        const res = await api.post('/crm/deals', submitData);
+        // Phase 3, C13: cross-brand auto-add toast.
+        const autoAdded = res?.data?.data?.autoAddedBrand || res?.data?.autoAddedBrand;
+        if (autoAdded) {
+          toast(
+            `Customer is now also a ${autoAdded} relationship.`,
+            { icon: '🔁', duration: 5000 },
+          );
+        }
       }
 
       setSuccess(true);
@@ -163,6 +176,15 @@ const DealForm = () => {
         )}
 
         <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-8 space-y-8">
+          {/* Phase 3, C13: brand picker — top of form, disabled in edit mode. */}
+          <div>
+            <BrandPicker
+              value={formData.brandCode}
+              onChange={(v) => setFormData((prev) => ({ ...prev, brandCode: v }))}
+              disabled={!!id}
+            />
+          </div>
+
           {/* Deal Information */}
           <div>
             <h2 className="text-xl font-semibold text-gray-900 mb-6">Deal Information</h2>

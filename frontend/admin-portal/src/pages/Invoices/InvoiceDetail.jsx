@@ -15,6 +15,7 @@ import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import Chatter from '../../components/Chatter'
 import StatusBadge from '../../components/StatusBadge'
+import BrandBadge from '../../components/BrandBadge'
 import DocumentGenerateButton from '../../components/DocumentGenerateButton'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -217,6 +218,7 @@ export default function InvoiceDetail() {
           <div>
             <h1 className="text-3xl font-bold text-slate-900">{invoice.invoiceNumber || 'Invoice'}</h1>
             <div className="flex items-center space-x-2 mt-2">
+              <BrandBadge code={invoice.brandCode || 'SH'} size="sm" />
               <StatusBadge status={invoice.status} />
               <span className="text-sm text-slate-500">•</span>
               <span className="text-sm text-slate-600">{formatDate(invoice.createdAt)}</span>

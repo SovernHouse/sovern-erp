@@ -150,7 +150,22 @@ exports.createLead = async (req, res) => {
     if (!assertBrandWritable(req, res, payload.brandCode)) return;
 
     const lead = await db.Lead.create(payload);
-    res.status(201).json({ success: true, data: lead });
+
+    // Phase 3, C13: if this lead was created against an existing customer
+    // under a brand they didn't yet have, extend customer.brandRelationships
+    // and surface the new brand on the response so the frontend can toast.
+    let autoAddedBrand = null;
+    if (lead.customerId && lead.brandCode) {
+      const { addBrandIfMissing } = require('../services/crossBrandAutoAdd');
+      autoAddedBrand = await addBrandIfMissing(db, lead.customerId, lead.brandCode, {
+        userId: req.user?.id,
+        entity: 'Lead',
+        entityId: lead.id,
+        ip: req.ip,
+      });
+    }
+
+    res.status(201).json({ success: true, data: lead, autoAddedBrand });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }

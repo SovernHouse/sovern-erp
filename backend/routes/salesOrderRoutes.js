@@ -59,6 +59,13 @@ router.get('/:id', requireAuth, async (req, res, next) => {
     });
 
     if (!so) throw new NotFoundError('Sales Order not found');
+
+    // Phase 3, C13: 404-on-wrong-brand.
+    const { isAccessibleByBrandCode } = require('../utils/notFoundOnWrongBrand');
+    if (!isAccessibleByBrandCode(req, so.brandCode)) {
+      throw new NotFoundError('Sales Order not found');
+    }
+
     res.json(getSuccessResponse(so));
   } catch (error) {
     next(error);

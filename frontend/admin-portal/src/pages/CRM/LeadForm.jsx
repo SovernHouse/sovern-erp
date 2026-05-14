@@ -4,6 +4,7 @@ import { ArrowLeft, AlertCircle, CheckCircle, Mail, Copy, Check, Edit2, Lock, X 
 import { useNavigate, useParams } from 'react-router-dom';
 import Chatter from '../../components/Chatter';
 import LeadAIPanel from '../../components/LeadAIPanel';
+import BrandPicker from '../../components/BrandPicker';
 import { useAuth } from '../../hooks/useAuth';
 
 const LeadForm = () => {
@@ -38,6 +39,10 @@ const LeadForm = () => {
     tags: '',
     draftEmailSubject: '',
     draftEmailBody: '',
+    // Phase 3, C13: brand context. BrandPicker auto-fills from
+    // useBrands().defaultBrand on mount; users can override per D-4.
+    // Sent to the backend on create; on subsequent loads it's read-only.
+    brandCode: '',
   });
   const [copiedField, setCopiedField] = useState(null);
   const [createdBy, setCreatedBy] = useState(null);
@@ -153,9 +158,18 @@ const LeadForm = () => {
         setSubmitting(false);
         return;
       }
-      await api.post('/crm/leads', submitData);
-
-      setSuccess(true);
+      const createRes = await api.post('/crm/leads', submitData);
+      // Phase 3, C13: cross-brand auto-add toast.
+      const autoAdded = createRes?.data?.data?.autoAddedBrand || createRes?.data?.autoAddedBrand;
+      if (autoAdded) {
+        // react-hot-toast is not imported here; success banner below
+        // already gives confirmation. Surface the auto-add via inline
+        // success state so the page banner still shows; the customer
+        // detail page will reflect both brand badges on next load.
+        setSuccess(`Saved. Customer is now also a ${autoAdded} relationship.`);
+      } else {
+        setSuccess(true);
+      }
       setTimeout(() => {
         navigate('/crm/leads');
       }, 1500);
@@ -263,6 +277,17 @@ const LeadForm = () => {
 
           <fieldset disabled={!!(id && !editMode)} className={id && !editMode ? 'opacity-95' : ''}>
             <div className="space-y-8">
+          {/* Phase 3, C13: brand picker — top of the form so it's the
+              first decision. Auto-fills to useBrands().defaultBrand;
+              disabled in edit mode (brand-locked-at-creation per D-5). */}
+          <div className="mb-4">
+            <BrandPicker
+              value={formData.brandCode}
+              onChange={(v) => setFormData((prev) => ({ ...prev, brandCode: v }))}
+              disabled={!!id}
+            />
+          </div>
+
           {/* Company Information */}
           <div>
             <h2 className="text-xl font-semibold text-gray-900 mb-6">Company Information</h2>

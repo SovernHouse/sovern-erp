@@ -246,6 +246,9 @@ export const BRAND = {
   productBrandingMode: 'How FlorWay-brand products appear on this customer\'s docs. Generic = no sub-brand. IronLite = FW\'s flagship badge. Private label = the customer\'s own brand name on packaging. Locks once a quotation has been sent under the current mode; super-admin can override with a written reason.',
   privateLabelProductName: 'Used only when product branding mode is Private label. The exact name printed on packaging and quoted in docs.',
   productBrandingModeLocked: 'Locked since the first FW quotation was sent under this mode. Switching mid-deal would create document inconsistency. Super-admin can clear the lock from the customer detail page with a reason; the override is audited.',
+  // Phase 3, C13
+  crossBrandAutoAdd: 'When you create a Lead/Quote/Deal against an existing customer under a brand they didn\'t yet have, the customer\'s brand relationships extend automatically. The change is logged in the audit trail and a toast confirms it.',
+  brandPickerOnCreate: 'Pre-filled to your default brand. Lock at creation: once the entity is saved, super-admin override is required to change it.',
 }
 
 // ─── Entity-level brand field (referenced from many sections) ─────────────────

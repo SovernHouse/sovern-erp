@@ -72,6 +72,12 @@ exports.getDealById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Deal not found' });
     }
 
+    // Phase 3, C13: 404-on-wrong-brand.
+    const { isAccessibleByBrandCode } = require('../utils/notFoundOnWrongBrand');
+    if (!isAccessibleByBrandCode(req, deal.brandCode)) {
+      return res.status(404).json({ success: false, message: 'Deal not found' });
+    }
+
     res.json({ success: true, data: deal });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -80,13 +86,31 @@ exports.getDealById = async (req, res) => {
 
 exports.createDeal = async (req, res) => {
   try {
+    // Phase 3, C13: resolve brandCode (body wins, else user defaultBrand).
+    const resolvedBrandCode = req.body.brandCode || req.brandScope?.defaultBrand || 'SH';
     const dealData = {
       ...req.body,
+      brandCode: resolvedBrandCode,
       dealNumber: generateDealNumber(),
     };
 
     const deal = await db.Deal.create(dealData);
-    res.status(201).json({ success: true, data: deal });
+
+    // Phase 3, C13: cross-brand auto-add.
+    let autoAddedBrand = null;
+    if (deal.customerId) {
+      try {
+        const { addBrandIfMissing } = require('../services/crossBrandAutoAdd');
+        autoAddedBrand = await addBrandIfMissing(db, deal.customerId, resolvedBrandCode, {
+          userId: req.user?.id,
+          entity: 'Deal',
+          entityId: deal.id,
+          ip: req.ip,
+        });
+      } catch (_) { /* never block the create */ }
+    }
+
+    res.status(201).json({ success: true, data: deal, autoAddedBrand });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }

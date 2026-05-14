@@ -117,6 +117,14 @@ If you have FW access, the dashboard shows a FlorWay Commission card with three 
    - Mark as primary if needed
 4. Click "Save Customer"
 
+#### Cross-Brand Auto-Add (Phase 3)
+
+When you create a new Lead, Quotation, or Deal against an existing customer under a brand that customer didn't yet have, the brand is added to their relationships automatically. A confirmation toast appears: "Customer X is now also a [BRAND] relationship." The customer's detail page picks up the new brand badge on next load. The change is logged in the audit trail.
+
+The Brand picker appears at the top of every create form (Lead, Quotation, Deal). It pre-fills to your default brand and locks once the record is saved (super-admin can override later via the brand-override flow).
+
+**Brand isolation**: if a colleague who only has access to brand SH tries to open a FW quotation by URL or ID, they get a 404 (not a 403). The existence of the record isn't leaked to users outside the brand.
+
 #### FlorWay Product Branding Mode (Phase 3)
 
 For FlorWay customers, the customer detail page shows a **FW Product Branding Mode** card with three options:
