@@ -8,8 +8,10 @@ import DataTable from '../../components/DataTable'
 import StatusBadge from '../../components/StatusBadge'
 import { BrandBadgeGroup } from '../../components/BrandBadge'
 import { useBrands } from '../../contexts/BrandsContext'
+import ProductBrandingModePicker from '../../components/ProductBrandingModePicker'
 import ProfitabilityPanel from './ProfitabilityPanel'
 import { customersAPI } from '../../services/api'
+import { useAuth } from '../../hooks/useAuth'
 import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import ScheduleActivityModal from '../../components/ScheduleActivityModal'
 import { formatCurrency, formatDate } from '../../utils/formatters'
@@ -18,6 +20,7 @@ export default function CustomerDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { accessibleBrands, isCrossBrand, getBrand } = useBrands()
+  const { user } = useAuth()
   const [customer, setCustomer] = useState(null)
   useBreadcrumbs(customer?.name)
   const [isLoading, setIsLoading] = useState(true)
@@ -135,6 +138,18 @@ export default function CustomerDetail() {
           )}
         </div>
       </div>
+
+      {/* Phase 3, C12: FlorWay productBrandingMode picker. Renders only
+          for customers with FW in their brandRelationships. Locks on the
+          first FW quotation sent under that mode; super-admin can override
+          with a reason. */}
+      {customerBrands.includes('FW') && (
+        <ProductBrandingModePicker
+          customer={customer}
+          currentUserRole={user?.role}
+          onSaved={(updated) => setCustomer(updated)}
+        />
+      )}
 
       {/* Customer Info Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

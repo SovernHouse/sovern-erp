@@ -111,6 +111,18 @@ module.exports = (sequelize) => {
     privateLabelProductName: {
       type: DataTypes.STRING,
       allowNull: true,
+    },
+    // Phase 3, C12: locked-after-sent timestamp. Set automatically by
+    // quotationController.send when the first FW quotation tied to this
+    // customer flips status='sent'. Super_admin can override via
+    // POST /api/customers/:id/override-branding-mode-lock with a reason;
+    // override clears this column and writes a product_branding_mode_override
+    // audit row. Non-super_admin updates to productBrandingMode are
+    // rejected with 403 while locked.
+    productBrandingModeLockedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
     }
   }, {
     paranoid: true, // soft deletes — sets deletedAt instead of hard-deleting

@@ -96,6 +96,16 @@ export const HELP_CONTENT = {
         ],
       },
       {
+        heading: 'FlorWay product branding mode (Phase 3)',
+        items: [
+          'For FlorWay customers, the FW Product Branding Mode card on the customer detail page picks which quotation variant is rendered: IronLite, Generic, or Private Label.',
+          'Default is Generic (no IronLite imagery). Pick IronLite when the buyer wants the full IronLite Core branding (wordmark + OEM badge + construction diagram for WPC).',
+          'Private Label requires a buyer brand name (e.g. "OakCove Flooring") which appears on the document.',
+          'The mode LOCKS the first time a FlorWay quotation under that mode is sent (status flips to "sent"). Switching mid-deal would create document inconsistency.',
+          'Super-admin can override the lock from the same card. The override requires a written reason (min 3 chars) and is recorded in the audit log.',
+        ],
+      },
+      {
         heading: 'Brand context (cross-brand customers)',
         items: [
           'A customer may transact under more than one brand. The badge group next to the name shows every brand they have a relationship with.',

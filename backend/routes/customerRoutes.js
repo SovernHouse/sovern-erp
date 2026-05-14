@@ -12,7 +12,7 @@
 const express = require('express');
 const router = express.Router();
 const customerController = require('../controllers/customerController');
-const { requireAuth, requireAny } = require('../middleware/auth');
+const { requireAuth, requireAny, requireRole } = require('../middleware/auth');
 const { brandScope } = require('../middleware/brandScope');
 const { body, handleValidationErrors } = require('../middleware/validation');
 const { validate, customerSchemas } = require('../middleware/zodValidation');
@@ -50,6 +50,15 @@ router.put('/:id', requireAuth, requireAny('customers'),
 );
 
 router.delete('/:id', requireAuth, requireAny('customers'), customerController.delete);
+
+// Phase 3, C12: super_admin-only override of the productBrandingMode
+// lock. L-031 bare-string requireRole.
+router.post(
+  '/:id/override-branding-mode-lock',
+  requireAuth,
+  requireRole('super_admin'),
+  customerController.overrideProductBrandingModeLock,
+);
 
 router.get('/:id/balance', requireAuth, customerController.getBalance);
 

@@ -5,15 +5,15 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 3 in progress. C9 + C10 shipped + live. C11 (per-brand reporting + FW commission widget) staged for commit.
+2026-05-14 Taiwan time. Phase 3 in progress. C9 + C10 + C11 shipped + live. C12 (productBrandingMode picker + lock + override) staged for commit.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `7e8a8f5` (feat(phase-3): SH brand-styled quotation renderer (C10))
-- **Working tree:** C11 staged, awaiting commit
-- **CI/CD Pipeline (7e8a8f5):** green
-- **Deploy (7e8a8f5):** green
+- **Latest commit on main:** `72c7844` (feat(phase-3): per-brand reporting + FW commission widget (C11))
+- **Working tree:** C12 staged, awaiting commit
+- **CI/CD Pipeline (72c7844):** green
+- **Deploy (72c7844):** green
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
 
 ---
@@ -22,7 +22,36 @@
 
 Plan file: `C:\Users\Alex\.claude\plans\mutable-stargazing-bubble.md`
 
-### C11 — Per-brand reporting + FW commission widget (READY FOR COMMIT)
+### C12 — productBrandingMode picker UI + lock + super-admin override (READY FOR COMMIT)
+
+**Schema:**
+- `backend/models/Customer.js` — adds `productBrandingModeLockedAt` (DATE, nullable, default null). Auto-migrates on boot via alter-sync.
+
+**Backend:**
+- `customerController.update()` accepts `productBrandingMode` and `privateLabelProductName`. Rejects non-super_admin edits when locked. Validates `private_label` requires non-empty `privateLabelProductName`.
+- New `customerController.overrideProductBrandingModeLock` + route `POST /api/customers/:id/override-branding-mode-lock` (super_admin only via bare-string requireRole per L-031). Body `{ newMode, newPrivateLabelProductName?, reason }`. Reason min 3 chars. Clears lock, writes `product_branding_mode_override` AuditLog row.
+- `quotationController.send` — after status flip to 'sent', if `brandCode==='FW'` and the customer has a mode set and isn't already locked, sets `productBrandingModeLockedAt = new Date()` and writes `product_branding_mode_locked` AuditLog row. Idempotent.
+
+**Desktop:**
+- New `frontend/admin-portal/src/components/ProductBrandingModePicker.jsx` — three radio cards (IronLite / Generic / Private Label), required private-label name input, lock badge with Asia/Taipei timestamp, super-admin "Override lock" dialog (mode + name + reason).
+- `frontend/admin-portal/src/pages/Customers/CustomerDetail.jsx` — renders the picker only when `customer.brandRelationships.includes('FW')`. Uses `useAuth()` for super_admin gating.
+
+**Mobile:**
+- New `mobile/sovern-ops-app/src/components/ProductBrandingModePicker.tsx` — pill toggle, private-label inline input, lock badge. Override stays desktop-only.
+- `app/(tabs)/customers.tsx` — renders the picker inside the customer detail modal when FW is in brand relationships.
+- `src/services/api.ts` Customer type — adds `productBrandingModeLockedAt`.
+
+**Audit log:**
+- New action `product_branding_mode_locked` — entity=Customer, changes={mode, lockedAt, triggeredBy:{entity:'Quotation', id, quotationNumber}}.
+- New action `product_branding_mode_override` — entity=Customer, changes={oldMode, newMode, oldPrivateLabelProductName, newPrivateLabelProductName, oldLockedAt, newLockedAt:null, reason}.
+
+**Three-surface docs:**
+- `tooltipContent.js` — extends `CUSTOMER.productBrandingMode` with lock note, new `CUSTOMER.productBrandingModeLocked`.
+- `helpContent.js` — new "FlorWay product branding mode (Phase 3)" section under `/customers`.
+- `DEVELOPER_GUIDE.md` — new "Customer.productBrandingMode lock semantics (Phase 3, C12)" section with schema, trigger, enforcement, override flow, audit actions.
+- `docs/USER_GUIDE.md` — new "FlorWay Product Branding Mode" subsection under Managing Customers.
+
+### C11 — Per-brand reporting + FW commission widget (SHIPPED, commit `72c7844`, live)
 
 **Backend:**
 - New `backend/services/seedCommissionRules.js` — idempotently inserts `FW Sales Commission` rule (ruleType=percentage, baseValue=5, applicableRoles=['sales','super_admin']). Wired into `server.js` after the brand seed. Reads `FW_COMMISSION_RATE` env if you want to flex the default without a code change.

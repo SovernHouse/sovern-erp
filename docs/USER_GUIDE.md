@@ -117,6 +117,20 @@ If you have FW access, the dashboard shows a FlorWay Commission card with three 
    - Mark as primary if needed
 4. Click "Save Customer"
 
+#### FlorWay Product Branding Mode (Phase 3)
+
+For FlorWay customers, the customer detail page shows a **FW Product Branding Mode** card with three options:
+
+- **IronLite Core**: Buyer's quotations render under the IronLite brand (I-Beam wordmark, OEM badge, plus a construction-diagram addendum page for WPC products).
+- **Generic FlorWay** (default): Quotations render under the FlorWay Sdn. Bhd. wordmark with no IronLite imagery.
+- **Private Label**: Buyer's own brand name appears on the document. You must enter the brand name (e.g. "OakCove Flooring"); the quotation says "Manufactured exclusively for [buyer]".
+
+**Lock-after-sent**: The first time you send an FW quotation under the current mode, the mode locks. This prevents switching mid-deal, which would create document inconsistency between what the buyer received and what's on file. The locked-since timestamp is displayed on the card in Asia/Taipei time.
+
+**Super-admin override**: If you need to change the mode after it's been locked (e.g. the buyer reconsiders IronLite vs Private Label between deals), click **Override lock** on the picker, enter a reason (min 3 chars), and confirm. The override is logged in the audit trail.
+
+For SH-only customers the card doesn't appear (productBrandingMode is FW-specific).
+
 #### Viewing Customer Details
 
 1. Go to **Customer Management** → **Customers**

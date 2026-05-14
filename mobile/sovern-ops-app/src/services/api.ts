@@ -550,6 +550,10 @@ export interface Customer {
   brandRelationships?: string[] | null;
   productBrandingMode?: 'ironlite' | 'generic' | 'private_label' | null;
   privateLabelProductName?: string | null;
+  // Phase 3, C12: lock-after-sent timestamp. Non-null means a FW
+  // quotation has been sent under the current mode; non-super_admin
+  // edits to productBrandingMode are 403 until override.
+  productBrandingModeLockedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

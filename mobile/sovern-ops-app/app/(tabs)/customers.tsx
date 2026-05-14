@@ -13,6 +13,7 @@ import {
 import { COLORS } from '../../src/constants/config';
 import { BrandBadge, BrandBadgeGroup } from '../../src/components/BrandBadge';
 import { useBrands } from '../../src/hooks/useBrands';
+import ProductBrandingModePicker from '../../src/components/ProductBrandingModePicker';
 
 // ─── Profitability helpers ───────────────────────────────────────────────
 
@@ -389,6 +390,14 @@ function CustomerDetailModal({
                   </TouchableOpacity>
                 ) : null}
               </View>
+            ) : null}
+
+            {/* Phase 3, C12: FW productBrandingMode picker (FW customers only) */}
+            {customerBrands.includes('FW') ? (
+              <ProductBrandingModePicker
+                customer={customer}
+                onSaved={(updated) => setCustomer(updated)}
+              />
             ) : null}
 
             {row('Contact', customer.contactPerson)}

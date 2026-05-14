@@ -414,6 +414,34 @@ const send = async (req, res, next) => {
     const beforeStatus = quotation.status;
     await quotation.update({ status: 'sent' });
 
+    // Phase 3, C12: lock the customer's productBrandingMode on the FIRST
+    // FW quotation sent under that mode. Idempotent (no-op if already
+    // locked) and audited. We only lock when the customer actually has a
+    // mode set — otherwise the FW PDF rendered with the 'generic' default
+    // and there's nothing to freeze.
+    if (
+      quotation.brandCode === 'FW' &&
+      quotation.customer &&
+      quotation.customer.productBrandingMode &&
+      !quotation.customer.productBrandingModeLockedAt
+    ) {
+      const lockedAt = new Date();
+      await quotation.customer.update({ productBrandingModeLockedAt: lockedAt });
+      auditService.logAction(
+        req.user.id,
+        'product_branding_mode_locked',
+        'Customer',
+        quotation.customer.id,
+        {
+          mode: quotation.customer.productBrandingMode,
+          privateLabelProductName: quotation.customer.privateLabelProductName,
+          lockedAt,
+          triggeredBy: { entity: 'Quotation', id: quotation.id, quotationNumber: quotation.quotationNumber },
+        },
+        req.ip,
+      ).catch(() => {});
+    }
+
     await notificationService.createQuotationNotification(quotation, quotation.customer.id, 'sent');
 
     res.json(getSuccessResponse({ quotation, pdfFile }, 'Quotation sent successfully'));

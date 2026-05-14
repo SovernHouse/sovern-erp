@@ -121,7 +121,14 @@ const getById = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, creditLimit, rating, isActive } = req.body;
+    const {
+      companyName, contactPerson, email, phone, address, city, country,
+      currency, paymentTerms, creditLimit, rating, isActive,
+      // Phase 3, C12: productBrandingMode + privateLabelProductName editable
+      // from CustomerDetail. brandRelationships stays write-protected here
+      // (auto-managed by cross-brand auto-add, C13).
+      productBrandingMode, privateLabelProductName,
+    } = req.body;
 
     const customer = await db.Customer.findByPk(id);
     if (!customer) {
@@ -130,7 +137,8 @@ const update = async (req, res, next) => {
 
     const beforeSnapshot = customer.toJSON();
 
-    await customer.update({
+    // Phase 3, C12: productBrandingMode + lock enforcement.
+    const updates = {
       companyName: companyName || customer.companyName,
       contactPerson: contactPerson !== undefined ? contactPerson : customer.contactPerson,
       email: email || customer.email,
@@ -143,12 +151,106 @@ const update = async (req, res, next) => {
       creditLimit: creditLimit !== undefined ? creditLimit : customer.creditLimit,
       rating: rating !== undefined ? rating : customer.rating,
       isActive: isActive !== undefined ? isActive : customer.isActive
-    });
+    };
+
+    const wantsBrandingChange =
+      (productBrandingMode !== undefined && productBrandingMode !== customer.productBrandingMode) ||
+      (privateLabelProductName !== undefined && privateLabelProductName !== customer.privateLabelProductName);
+
+    if (wantsBrandingChange) {
+      // Lock enforcement: non-super_admin cannot change once a quotation
+      // has been sent under the current mode. Super_admin uses the
+      // dedicated /override-branding-mode-lock endpoint to clear the lock.
+      if (customer.productBrandingModeLockedAt && req.user.role !== 'super_admin') {
+        throw new ValidationError(
+          'Product branding mode is locked. A quotation has already been sent under the current mode. ' +
+          'Ask super-admin to clear the lock via Override.'
+        );
+      }
+      // Validation: if mode is private_label, privateLabelProductName must be non-empty.
+      const finalMode = productBrandingMode !== undefined ? productBrandingMode : customer.productBrandingMode;
+      const finalName = privateLabelProductName !== undefined ? privateLabelProductName : customer.privateLabelProductName;
+      if (finalMode === 'private_label' && (!finalName || !finalName.trim())) {
+        throw new ValidationError(
+          'privateLabelProductName is required when productBrandingMode is "private_label"'
+        );
+      }
+      if (productBrandingMode !== undefined) updates.productBrandingMode = productBrandingMode;
+      if (privateLabelProductName !== undefined) updates.privateLabelProductName = privateLabelProductName;
+    }
+
+    await customer.update(updates);
 
     res.json(getSuccessResponse(customer, 'Customer updated successfully'));
 
     // Fire-and-forget audit log
     auditService.logAction(req.user.id, 'UPDATE', 'Customer', id, { before: beforeSnapshot, after: customer.toJSON() }, req.ip).catch(() => {});
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Phase 3, C12: super_admin-only override of the productBrandingMode lock.
+ *
+ * POST /api/customers/:id/override-branding-mode-lock
+ * Body: { newMode: 'ironlite'|'generic'|'private_label', newPrivateLabelProductName?: string, reason: string }
+ *
+ * Clears productBrandingModeLockedAt and sets the new mode (and optional
+ * private-label name). Writes a `product_branding_mode_override` AuditLog
+ * row with the old and new mode plus the reason.
+ *
+ * `reason` is required (min 3 chars), matching the brand-override
+ * endpoint convention in brandRoutes.js.
+ */
+const overrideProductBrandingModeLock = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { newMode, newPrivateLabelProductName, reason } = req.body;
+
+    if (!reason || reason.trim().length < 3) {
+      throw new ValidationError('reason is required (minimum 3 characters)');
+    }
+    if (!['ironlite', 'generic', 'private_label'].includes(newMode)) {
+      throw new ValidationError('newMode must be one of: ironlite, generic, private_label');
+    }
+    if (newMode === 'private_label' && (!newPrivateLabelProductName || !newPrivateLabelProductName.trim())) {
+      throw new ValidationError('newPrivateLabelProductName is required when newMode is "private_label"');
+    }
+
+    const customer = await db.Customer.findByPk(id);
+    if (!customer) {
+      throw new NotFoundError('Customer not found');
+    }
+
+    const oldMode = customer.productBrandingMode;
+    const oldName = customer.privateLabelProductName;
+    const oldLockedAt = customer.productBrandingModeLockedAt;
+
+    await customer.update({
+      productBrandingMode: newMode,
+      privateLabelProductName: newMode === 'private_label' ? newPrivateLabelProductName : null,
+      productBrandingModeLockedAt: null,
+    });
+
+    res.json(getSuccessResponse(customer, 'Product branding mode override applied'));
+
+    // Audit log — fire-and-forget. Mirrors the brand-override pattern.
+    auditService.logAction(
+      req.user.id,
+      'product_branding_mode_override',
+      'Customer',
+      id,
+      {
+        oldMode, newMode,
+        oldPrivateLabelProductName: oldName,
+        newPrivateLabelProductName: newMode === 'private_label' ? newPrivateLabelProductName : null,
+        oldLockedAt,
+        newLockedAt: null,
+        reason,
+      },
+      req.ip,
+    ).catch(() => {});
   } catch (error) {
     next(error);
   }
@@ -490,4 +592,5 @@ module.exports = {
   getOrderHistory,
   getDashboard,
   getProfitability,
+  overrideProductBrandingModeLock,
 };

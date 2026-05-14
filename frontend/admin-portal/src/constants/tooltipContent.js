@@ -243,8 +243,9 @@ export const BRAND = {
   accessibleBrands:   'The brands this user can see and act on. Set per user. Super admin can read across brands via the All Brands view.',
   brandOverride:      'Force-change an entity\'s brand. Super-admin only, requires a written reason, writes a permanent audit log entry.',
   scanReceiptBrand:   'Receipts logged from your phone inherit the brand of the office you route them to. Pick an FW office for FW expenses, an SH office for SH.',
-  productBrandingMode: 'How FlorWay-brand products appear on this customer\'s docs. Generic = no sub-brand. IronLite = FW\'s flagship badge. Private label = the customer\'s own brand name on packaging.',
+  productBrandingMode: 'How FlorWay-brand products appear on this customer\'s docs. Generic = no sub-brand. IronLite = FW\'s flagship badge. Private label = the customer\'s own brand name on packaging. Locks once a quotation has been sent under the current mode; super-admin can override with a written reason.',
   privateLabelProductName: 'Used only when product branding mode is Private label. The exact name printed on packaging and quoted in docs.',
+  productBrandingModeLocked: 'Locked since the first FW quotation was sent under this mode. Switching mid-deal would create document inconsistency. Super-admin can clear the lock from the customer detail page with a reason; the override is audited.',
 }
 
 // ─── Entity-level brand field (referenced from many sections) ─────────────────

@@ -1970,3 +1970,55 @@ Files of interest:
 
 `frontend/admin-portal/src/utils/formatters.js` exports `formatDateTaipei` and `formatDateTimeTaipei` (Asia/Taipei). Use these for any new user-facing timestamp from Phase 3 onward. The legacy `formatDate` / `formatDateTime` use browser-local time and are kept to avoid mid-phase regression; broader migration is a follow-up.
 
+---
+
+# Customer.productBrandingMode lock semantics (Phase 3, C12)
+
+`Customer.productBrandingMode` is FW-specific and picks which quotation variant is rendered (`ironlite` / `generic` / `private_label`). To prevent inconsistency between a sent quotation and a later edit of the mode, the field locks the first time an FW quotation tied to that customer transitions to `status='sent'`.
+
+## Schema
+
+`backend/models/Customer.js` adds `productBrandingModeLockedAt` (`DataTypes.DATE`, nullable, default null). Auto-migrates on boot via the existing alter-sync pattern.
+
+## Lock trigger
+
+`backend/controllers/quotationController.js:send()` checks after the `quotation.update({status:'sent'})` write:
+
+```js
+if (
+  quotation.brandCode === 'FW' &&
+  quotation.customer.productBrandingMode &&
+  !quotation.customer.productBrandingModeLockedAt
+) {
+  await quotation.customer.update({ productBrandingModeLockedAt: new Date() });
+  auditService.logAction(req.user.id, 'product_branding_mode_locked', 'Customer', ...);
+}
+```
+
+Idempotent: a second send to the same customer is a no-op. Only locks when the customer actually has a mode set; if the mode is `null` (FW falls through to 'generic' by default) there's nothing meaningful to freeze.
+
+## Update enforcement
+
+`customerController.update`:
+- Accepts `productBrandingMode` + `privateLabelProductName` in the body.
+- If `productBrandingModeLockedAt` is non-null AND the requester is NOT super_admin, returns a `ValidationError` (HTTP 400) advising to use the override flow.
+- If `productBrandingMode === 'private_label'`, requires non-empty `privateLabelProductName`.
+
+## Super_admin override
+
+`POST /api/customers/:id/override-branding-mode-lock` (super_admin only via bare-string `requireRole('super_admin')` per L-031).
+
+Body: `{ newMode, newPrivateLabelProductName?, reason }`. `reason` is required and must be at least 3 characters (same convention as the brand-override endpoint in `brandRoutes.js`).
+
+Effect: clears `productBrandingModeLockedAt`, sets the new mode + private label name, writes a `product_branding_mode_override` audit row with `{ oldMode, newMode, oldLockedAt, newLockedAt: null, reason }`.
+
+## Audit log actions added in C12
+
+- `product_branding_mode_locked` — entity=Customer, changes={mode, lockedAt, triggeredBy:{entity:'Quotation', id, quotationNumber}}.
+- `product_branding_mode_override` — entity=Customer, changes={oldMode, newMode, oldPrivateLabelProductName, newPrivateLabelProductName, oldLockedAt, newLockedAt:null, reason}.
+
+## UI surfaces
+
+- Desktop: `frontend/admin-portal/src/components/ProductBrandingModePicker.jsx` — three radio cards + private-label input + lock badge + super-admin "Override lock" dialog. Rendered on `CustomerDetail.jsx` only when `customer.brandRelationships.includes('FW')`.
+- Mobile: `mobile/sovern-ops-app/src/components/ProductBrandingModePicker.tsx` — pill toggle + private-label input. Rendered inside the customers tab modal. Override stays desktop-only (the reason-bound dialog reads better on a larger screen).
+
