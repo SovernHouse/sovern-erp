@@ -784,6 +784,17 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] 4.9.2b reconcile skipped:', e.message);
     }
+
+    // Phase 4.9.3a: add Customer.metadata catch-all JSON column so the
+    // AI create_customer tool can persist industry / yearFounded /
+    // website / source / primaryAddress / additionalAddresses without
+    // schema churn for each new field.
+    try {
+      const { migrate493aCustomerMetadata } = require('./services/migrate493aCustomerMetadata');
+      await migrate493aCustomerMetadata(db);
+    } catch (e) {
+      logger.warn('[boot] 4.9.3a customer metadata migration skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {

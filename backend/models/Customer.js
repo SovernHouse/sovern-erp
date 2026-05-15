@@ -167,6 +167,17 @@ module.exports = (sequelize) => {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
+    // Phase 4.9.3a: catch-all JSON for spec fields not modelled as
+    // typed columns. Schema-clean queryability not required for these
+    // (industry / yearFounded / website / source / primaryAddress
+    // object / additionalAddresses array). MCP tools write here; the
+    // admin Customer form can render them via a small details panel
+    // in a later UI pass.
+    metadata: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: {},
+    },
   }, {
     paranoid: true, // soft deletes — sets deletedAt instead of hard-deleting
     indexes: [

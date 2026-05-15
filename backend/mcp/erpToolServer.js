@@ -1807,74 +1807,108 @@ async function callTool(name, args) {
     }
 
     case 'list_products': {
+      // Phase 4.9.3a: extended filters per spec — brandCode,
+      // productCategoryId, active, ironliteBadged, searchTerm.
       const { Op } = require('sequelize');
       const where = { deletedAt: null };
-      if (args.search) {
+      const term = args.searchTerm || args.search;
+      if (term) {
         where[Op.or] = [
-          { name:  { [Op.like]: `%${args.search}%` } },
-          { sku:   { [Op.like]: `%${args.search}%` } },
+          { name: { [Op.like]: `%${term}%` } },
+          { sku:  { [Op.like]: `%${term}%` } },
         ];
       }
-      if (args.category_id) where.categoryId = args.category_id;
-      if (args.factory_id)  where.factoryId  = args.factory_id;
+      if (args.category_id || args.productCategoryId) {
+        where.categoryId = args.productCategoryId || args.category_id;
+      }
+      if (args.factory_id) where.factoryId = args.factory_id;
+      if (args.brandCode || args.brand_code) {
+        where.brandCode = String(args.brandCode || args.brand_code).toUpperCase();
+      }
+      if (args.active !== undefined) where.isActive = Boolean(args.active);
 
-      const products = await getDb().Product.findAll({
+      let products = await getDb().Product.findAll({
         where,
         limit: Math.min(args.limit || 20, 50),
         order: [['createdAt', 'DESC']],
-        attributes: ['id', 'name', 'sku', 'description', 'unit', 'specifications',
+        attributes: ['id', 'name', 'sku', 'brandCode', 'description', 'unit', 'moqUnit',
+          'productType', 'specifications', 'baseFobPrice', 'currency',
           'minOrderQty', 'hsCode', 'isActive', 'categoryId', 'factoryId'],
         include: [
           { model: getDb().ProductCategory, as: 'category', attributes: ['id', 'name'] },
-          { model: getDb().Factory, as: 'factory', attributes: ['id', 'name', 'country'] },
+          { model: getDb().Factory, as: 'factory', attributes: ['id', 'companyName', 'country'] },
         ],
       });
+      if (args.ironliteBadged !== undefined) {
+        const want = Boolean(args.ironliteBadged);
+        products = products.filter(p => Boolean(p.specifications?.ironliteBadged) === want);
+      }
       return products.length ? products.map(p => p.toJSON()) : 'No products found.';
     }
 
     case 'get_product': {
+      // Phase 4.9.3a: decorates the product row with the array of
+      // currently-active ProductPrice rows so the AI doesn't need a
+      // second call to see the floor.
+      const id = args.id || args.productId || args.product_id;
       const product = await getDb().Product.findOne({
-        where: { id: args.id, deletedAt: null },
+        where: { id, deletedAt: null },
         include: [
           { model: getDb().ProductCategory, as: 'category', attributes: ['id', 'name'] },
-          { model: getDb().Factory, as: 'factory', attributes: ['id', 'name', 'country', 'city'] },
+          { model: getDb().Factory, as: 'factory', attributes: ['id', 'companyName', 'country', 'city'] },
         ],
       });
-      if (!product) return `Product ${args.id} not found.`;
-      return product.toJSON();
+      if (!product) return `Product ${id} not found.`;
+      const today = new Date().toISOString().slice(0, 10);
+      const { Op } = require('sequelize');
+      const currentPrices = await getDb().ProductPrice.findAll({
+        where: {
+          productId: id,
+          validFrom: { [Op.lte]: today },
+          [Op.or]: [{ validTo: null }, { validTo: { [Op.gte]: today } }],
+        },
+        order: [['validFrom', 'DESC']],
+      });
+      return { ...product.toJSON(), _currentPrices: currentPrices.map(p => p.toJSON()) };
     }
 
     case 'create_product': {
       const { Op } = require('sequelize');
 
-      // Resolve factory: prefer factory_id, fall back to name search
+      // Phase 4.9.3a: brandCode is required (was implicit-default 'SH').
+      // Validates against active Brand. AI must pick a brand context
+      // explicitly so cross-brand product creation is auditable.
+      const brandCode = (args.brandCode || args.brand_code || '').toUpperCase();
+      if (!brandCode) return 'Error: brandCode is required. Use list_brands to find a valid code (e.g. "FW" for HanHua / FlorWay / IronLite, "SH" for Sovern House).';
+      const brand = await getDb().Brand.findOne({ where: { code: brandCode, active: true } });
+      if (!brand) return `Error: brand "${brandCode}" not active.`;
+
+      // Resolve factory: prefer factory_id, fall back to name search.
+      // Now optional — products can be created without a factory in
+      // the AI assistant flow (factory tagged later via create_product_price).
       let factoryId = args.factory_id;
       if (!factoryId && args.factory_name) {
         const factory = await getDb().Factory.findOne({
-          where: { name: { [Op.like]: `%${args.factory_name}%` } },
-          attributes: ['id', 'name'],
+          where: { companyName: { [Op.like]: `%${args.factory_name}%` } },
+          attributes: ['id', 'companyName'],
         });
         if (!factory) return `Factory not found: "${args.factory_name}". Use list_factories to find the correct record.`;
         factoryId = factory.id;
       }
-      if (!factoryId) return 'factory_id or factory_name is required.';
 
-      // Resolve category: prefer category_id, fall back to name search
-      let categoryId = args.category_id;
+      // Resolve category: prefer category_id (or productCategoryId from
+      // spec), fall back to name search. Refuse create_category fallback;
+      // category provisioning is its own preview-confirm flow.
+      let categoryId = args.productCategoryId || args.category_id;
       if (!categoryId && args.category_name) {
         const cat = await getDb().ProductCategory.findOne({
-          where: { name: { [Op.like]: `%${args.category_name}%` }, isActive: true },
+          where: { name: { [Op.like]: `%${args.category_name}%` }, isActive: true, isArchived: false },
           attributes: ['id', 'name'],
         });
-        if (!cat) {
-          // Create category on the fly if it doesn't exist
-          const newCat = await getDb().ProductCategory.create({ name: args.category_name });
-          categoryId = newCat.id;
-        } else {
-          categoryId = cat.id;
-        }
+        if (!cat) return `Error: category "${args.category_name}" not found. Use list_product_categories to find one, or create_product_category to add a new one (with preview + confirm).`;
+        categoryId = cat.id;
       }
-      if (!categoryId) return 'category_id or category_name is required.';
+      if (!categoryId) return 'Error: productCategoryId or category_name is required.';
 
       // Auto-generate SKU if not provided
       let sku = args.sku;
@@ -1891,56 +1925,134 @@ async function callTool(name, args) {
         sku = `${prefix}-${suffix}`;
       }
 
-      // Build specifications object — includes product specs + logistics/pricing metadata
+      // Build specifications object. Phase 4.9.3a: spec fields that
+      // don't map to typed columns land here as a typed sub-bag, so
+      // a future schema migration can promote any of them without
+      // touching write callers.
       const specs = {};
       const specKeys = ['thickness', 'width', 'length', 'material', 'finish', 'color',
         'wearLayer', 'acRating', 'species', 'grade', 'construction', 'clickSystem'];
       for (const k of specKeys) {
         if (args.specifications?.[k] != null) specs[k] = args.specifications[k];
       }
-      // Logistics fields stored in specifications JSON (no dedicated column)
+      // Logistics fields stored in specifications JSON
       if (args.departure_port)  specs.departurePort = args.departure_port;
       if (args.lead_time)       specs.leadTime      = args.lead_time;
       if (args.packing)         specs.packing       = args.packing;
       if (args.certifications)  specs.certifications = args.certifications;
 
+      // Phase 4.9.3a typed spec fields, all into specs JSON for now:
+      const pcKeys = [
+        'productType', 'constructionType', 'fullBuildDescription',
+        'plankWidthInches', 'plankLengthInches', 'totalThicknessMm', 'wearLayerMil',
+        'piecesPerBox', 'boxesPerPallet', 'palletsPerContainer',
+        'm2PerBox', 'm2PerPallet', 'm2PerContainer',
+        'ironliteBadged', 'defaultCommissionRate',
+      ];
+      for (const k of pcKeys) {
+        if (args[k] !== undefined && args[k] !== null) specs[k] = args[k];
+      }
+      // Merge any caller-supplied raw specs object too.
+      if (args.specs && typeof args.specs === 'object') {
+        Object.assign(specs, args.specs);
+      }
+
+      // productType column is a STRICT ENUM (lvt/spc/wpc/hardwood/
+      // laminate/tile/ceramic/other). If the AI passes a free-form
+      // label that matches one of the enum values, use it; otherwise
+      // store the raw label in specs.productTypeLabel and set the
+      // column to 'other' so the catalog filter still sees it.
+      const productTypeEnum = ['lvt', 'spc', 'wpc', 'hardwood', 'laminate', 'tile', 'ceramic', 'other'];
+      let typedProductType = null;
+      if (args.productType) {
+        const lower = String(args.productType).toLowerCase();
+        if (productTypeEnum.includes(lower)) {
+          typedProductType = lower;
+        } else {
+          specs.productTypeLabel = args.productType;
+          typedProductType = 'other';
+        }
+      }
+
+      // moqUnit is also ENUM (sqm/sqft/box/pallet/roll/piece/container).
+      // Spec's unitOfMeasure: m2/sqft/piece/set. Map m2 → sqm, set → piece.
+      const unitMap = { m2: 'sqm', sqft: 'sqft', piece: 'piece', set: 'piece', sqm: 'sqm', box: 'box', pallet: 'pallet', roll: 'roll', container: 'container' };
+      const resolvedMoqUnit = unitMap[String(args.unitOfMeasure || args.unit || 'sqm').toLowerCase()] || 'sqm';
+
       // Products are created inactive — Alex must approve before they're live
+      // EXCEPT when args.active===true is explicitly passed (the 4.9.3a
+      // spec allows active default true; we keep inactive as a safer
+      // default unless the caller opts in).
+      const isActive = args.active === true;
+
       const product = await getDb().Product.create({
+        brandCode,
         name:               args.name,
         sku,
         description:        args.description         || null,
         salesDescription:   args.sales_description   || null,
         purchaseDescription:args.purchase_description || null,
         categoryId,
-        factoryId,
-        unit:               args.unit                || 'sqm',
+        factoryId:          factoryId || null,
+        productType:        typedProductType,
+        unit:               resolvedMoqUnit,
+        moqUnit:            resolvedMoqUnit,
+        currency:           args.currency || 'USD',
         specifications:     specs,
         minOrderQty:        args.min_order_qty        || 1,
         weight:             args.weight               || null,
         hsCode:             args.hs_code              || null,
-        isActive:           false,
+        isActive,
       });
 
-      // Create a ProductPrice record if FOB price is provided (also inactive pending approval)
+      // Create a ProductPrice record if FOB price is provided.
+      // Phase 4.9.2b schema: costPriceUsdPerM2 (req) + sellingPriceUsdPerM2
+      // (optional, computed when null) + markupPercent (decimal 0..1) +
+      // origin/factoryId (at least one required). Without a factoryId
+      // we need an origin — derive from the country of the matched
+      // factory if known, else require args.origin.
       let priceRecord = null;
-      if (args.fob_price) {
-        // Sovern selling price = factory FOB / (1 - margin/100), margin by division
-        const margin       = parseFloat(args.margin ?? 5);
-        const costPrice    = parseFloat(args.fob_price);
-        const sellingPrice = parseFloat((costPrice / (1 - margin / 100)).toFixed(4));
-        const validTo      = args.price_valid_until ? new Date(args.price_valid_until) : null;
-
+      const fobPriceUsd = args.fob_price ?? args.fobPrice ?? args.costPriceUsdPerM2;
+      if (fobPriceUsd) {
+        const cost = parseFloat(fobPriceUsd);
+        const markupArg = args.margin ?? args.markupPercent;
+        // Old code accepted margin as a percentage (5 = 5%); new schema
+        // stores decimal (0.05 = 5%). Heuristic: > 1 → treat as percent.
+        const markup = markupArg != null
+          ? (Number(markupArg) > 1 ? Number(markupArg) / 100 : Number(markupArg))
+          : null;
+        const selling = args.sellingPriceUsdPerM2 != null
+          ? parseFloat(args.sellingPriceUsdPerM2)
+          : (markup != null ? +(cost * (1 + markup)).toFixed(4) : cost);
+        const validTo = args.price_valid_until || args.validTo || null;
+        const origin = args.origin || (factoryId ? null : null);
+        if (!origin && !factoryId) {
+          // Skip price creation — at least one of origin/factoryId is
+          // required by the ProductPrice validator. Tell the caller.
+          return {
+            success: true,
+            productId: product.id,
+            name: product.name,
+            sku: product.sku,
+            status: 'pending_approval',
+            priceId: null,
+            warning: 'Product created without a price row: provide origin (e.g. "China") or factory_id/factory_name when you want to seed a ProductPrice in the same call.',
+          };
+        }
         priceRecord = await getDb().ProductPrice.create({
-          productId:  product.id,
-          factoryId,
-          costPrice,
-          priceType:    'FOB',
-          markup:       margin,
-          sellingPrice,
-          currency:     'USD',
-          validFrom:    new Date(),
-          validTo,
-          isActive:     false, // inactive until Alex approves
+          productId:           product.id,
+          factoryId:           factoryId || null,
+          origin:              origin || null,
+          costPriceUsdPerM2:   cost,
+          sellingPriceUsdPerM2:selling,
+          markupPercent:       markup,
+          currency:            args.currency || 'USD',
+          tariffRate:          args.tariffRate != null ? parseFloat(args.tariffRate) : null,
+          tariffDestination:   args.tariffDestination || null,
+          validFrom:           (args.validFrom || new Date().toISOString().slice(0, 10)),
+          validTo:             validTo,
+          sourceNote:          args.sourceNote || 'create_product MCP call',
+          createdBy:           USER_ID || null,
         });
       }
 
@@ -1993,6 +2105,102 @@ async function callTool(name, args) {
       };
     }
 
+    // ── Phase 4.9.3a: Product update / get / archive ────────────────────
+
+    case 'update_product': {
+      const requester = await requireSuperAdmin();
+      const id = args.id || args.productId || args.product_id;
+      if (!id) return 'Error: id is required.';
+      const product = await getDb().Product.findByPk(id);
+      if (!product) return `Error: Product ${id} not found.`;
+
+      const patch = {};
+      // Typed columns
+      const direct = ['name', 'sku', 'description', 'salesDescription', 'purchaseDescription',
+                      'categoryId', 'factoryId', 'currency', 'minOrderQty', 'weight', 'hsCode',
+                      'baseFobPrice', 'originCountry'];
+      for (const k of direct) {
+        if (args[k] !== undefined) patch[k] = args[k];
+      }
+      const aliases = {
+        productCategoryId: 'categoryId',
+        unitOfMeasure:     'moqUnit',
+        unit:              'moqUnit',
+        brand_code:        'brandCode',
+        brandCode:         'brandCode',
+        active:            'isActive',
+      };
+      for (const [src, dst] of Object.entries(aliases)) {
+        if (args[src] !== undefined) patch[dst] = args[src];
+      }
+      // Brand validation
+      if (patch.brandCode !== undefined) {
+        const code = String(patch.brandCode).toUpperCase();
+        const b = await getDb().Brand.findOne({ where: { code, active: true } });
+        if (!b) return `Error: brand "${code}" not active.`;
+        patch.brandCode = code;
+      }
+      // moqUnit ENUM mapping
+      if (patch.moqUnit !== undefined) {
+        const unitMap = { m2: 'sqm', sqft: 'sqft', piece: 'piece', set: 'piece', sqm: 'sqm', box: 'box', pallet: 'pallet', roll: 'roll', container: 'container' };
+        patch.moqUnit = unitMap[String(patch.moqUnit).toLowerCase()] || patch.moqUnit;
+        patch.unit = patch.moqUnit;
+      }
+      // active → isActive boolean
+      if (patch.isActive !== undefined) patch.isActive = Boolean(patch.isActive);
+
+      // productType ENUM coercion
+      if (args.productType !== undefined) {
+        const productTypeEnum = ['lvt', 'spc', 'wpc', 'hardwood', 'laminate', 'tile', 'ceramic', 'other'];
+        const lower = String(args.productType).toLowerCase();
+        if (productTypeEnum.includes(lower)) patch.productType = lower;
+        else {
+          patch.productType = 'other';
+          // Stash label into specs below.
+        }
+      }
+
+      // Spec-bag fields merge into existing specifications JSON.
+      const specMerge = {};
+      const pcKeys = [
+        'constructionType', 'fullBuildDescription',
+        'plankWidthInches', 'plankLengthInches', 'totalThicknessMm', 'wearLayerMil',
+        'piecesPerBox', 'boxesPerPallet', 'palletsPerContainer',
+        'm2PerBox', 'm2PerPallet', 'm2PerContainer',
+        'ironliteBadged', 'defaultCommissionRate',
+      ];
+      for (const k of pcKeys) {
+        if (args[k] !== undefined) specMerge[k] = args[k];
+      }
+      if (args.productType !== undefined && patch.productType === 'other') {
+        specMerge.productTypeLabel = args.productType;
+      }
+      if (args.specs && typeof args.specs === 'object') Object.assign(specMerge, args.specs);
+      if (Object.keys(specMerge).length > 0) {
+        patch.specifications = { ...(product.specifications || {}), ...specMerge };
+      }
+
+      if (Object.keys(patch).length === 0) return 'Error: no editable fields provided.';
+
+      const before = {};
+      for (const k of Object.keys(patch)) before[k] = product[k];
+      await product.update(patch);
+      await auditAiWrite('update_product', 'Product', product.id, { before, after: patch }, requester.id);
+      return { success: true, id: product.id, updated: Object.keys(patch), before, after: patch };
+    }
+
+    case 'archive_product': {
+      const requester = await requireSuperAdmin();
+      const id = args.id || args.productId || args.product_id;
+      if (!id) return 'Error: id is required.';
+      const product = await getDb().Product.findByPk(id);
+      if (!product) return `Error: Product ${id} not found.`;
+      if (!product.isActive) return `Product "${product.name}" (${product.sku}) is already inactive.`;
+      await product.update({ isActive: false });
+      await auditAiWrite('archive_product', 'Product', product.id, { name: product.name, sku: product.sku }, requester.id);
+      return { success: true, id: product.id, name: product.name, sku: product.sku, archived: true };
+    }
+
     case 'approve_product': {
       const product = await getDb().Product.findByPk(args.product_id);
       if (!product) return `Product ${args.product_id} not found.`;
@@ -2038,7 +2246,173 @@ async function callTool(name, args) {
       }));
     }
 
-    // ── Customers (lookup wrapper) ──────────────────────────────────────────
+    // ── Customers (Phase 4.9.3a CRUD + lookup) ──────────────────────────────
+
+    case 'create_customer': {
+      const requester = await requireSuperAdmin();
+      const brandCode = (args.brandCode || args.brand_code || '').toUpperCase();
+      const companyName = (args.companyName || args.company_name || '').trim();
+      if (!brandCode) return 'Error: brandCode is required.';
+      if (!companyName) return 'Error: companyName is required.';
+
+      const brand = await getDb().Brand.findOne({ where: { code: brandCode, active: true } });
+      if (!brand) return `Error: brand "${brandCode}" not active. Use list_brands to find a valid code.`;
+
+      // Uniqueness check WITHIN this brand. brandRelationships is a JSON
+      // array; SQLite can't query it efficiently, so we filter in JS.
+      const existing = await getDb().Customer.findAll({
+        where: { companyName },
+        attributes: ['id', 'companyName', 'brandRelationships'],
+      });
+      const dup = existing.find(c => Array.isArray(c.brandRelationships) && c.brandRelationships.includes(brandCode));
+      if (dup) return `Error: a customer named "${companyName}" already exists under brand ${brandCode} (id ${dup.id}).`;
+
+      // Primary address: spec gives an object, the model has flat
+      // address/city/country strings. Flatten the object into the
+      // typed columns and stash the full object in metadata for the
+      // AI / admin UI to render later.
+      const primaryAddress = args.primaryAddress || {};
+      const addressLines = [primaryAddress.line1, primaryAddress.line2].filter(Boolean).join('\n');
+
+      const metadata = {
+        industry:           args.industry || null,
+        yearFounded:        args.yearFounded || null,
+        website:            args.website || null,
+        source:             args.source || null,
+        legalName:          args.legalName || args.companyName,
+        primaryAddress:     Object.keys(primaryAddress).length ? primaryAddress : null,
+        additionalAddresses: Array.isArray(args.additionalAddresses) ? args.additionalAddresses : [],
+      };
+
+      // Email + phone are NOT NULL on the model. The spec doesn't list
+      // them as top-level — but the AI must supply them. Default to
+      // placeholders the admin can fix later if missing.
+      const customer = await getDb().Customer.create({
+        companyName,
+        contactPerson: args.contactPerson || null,
+        email:         args.email || 'unknown@unknown.local',
+        phone:         args.phone || 'unknown',
+        address:       addressLines || (args.address || null),
+        city:          primaryAddress.city || args.city || null,
+        country:       primaryAddress.country || args.country || null,
+        currency:      args.currency || 'USD',
+        paymentTerms:  args.paymentTerms || 'Net 30',
+        notes:         args.notes || null,
+        isActive:      args.active === undefined ? true : Boolean(args.active),
+        brandRelationships: [brandCode],
+        productBrandingMode: args.productBrandingMode || null,
+        metadata,
+      });
+
+      await auditAiWrite('create_customer', 'Customer', customer.id, {
+        companyName, brandCode, source: args.source || null,
+      }, requester.id);
+
+      return {
+        success: true,
+        id: customer.id,
+        companyName: customer.companyName,
+        brandCode,
+        message: `Customer "${companyName}" created under brand ${brandCode}. Add contacts via create_contact and open the first lead/quotation when ready.`,
+      };
+    }
+
+    case 'update_customer': {
+      const requester = await requireSuperAdmin();
+      const id = args.id || args.customerId;
+      if (!id) return 'Error: id is required.';
+      const customer = await getDb().Customer.findByPk(id);
+      if (!customer) return `Error: Customer ${id} not found.`;
+
+      const patch = {};
+      // Typed-column updates
+      for (const k of ['companyName', 'contactPerson', 'email', 'phone', 'currency', 'paymentTerms', 'notes', 'productBrandingMode']) {
+        if (args[k] !== undefined) patch[k] = args[k];
+      }
+      if (args.active !== undefined) patch.isActive = Boolean(args.active);
+
+      // Address: accept primaryAddress object OR flat address/city/country.
+      if (args.primaryAddress) {
+        const pa = args.primaryAddress;
+        const addressLines = [pa.line1, pa.line2].filter(Boolean).join('\n');
+        if (addressLines) patch.address = addressLines;
+        if (pa.city) patch.city = pa.city;
+        if (pa.country) patch.country = pa.country;
+      } else {
+        if (args.address !== undefined) patch.address = args.address;
+        if (args.city !== undefined) patch.city = args.city;
+        if (args.country !== undefined) patch.country = args.country;
+      }
+
+      // Brand: spec passes a single brandCode; we merge into the array.
+      if (args.brandCode || args.brand_code) {
+        const code = String(args.brandCode || args.brand_code).toUpperCase();
+        const b = await getDb().Brand.findOne({ where: { code, active: true } });
+        if (!b) return `Error: brand "${code}" not active.`;
+        const current = Array.isArray(customer.brandRelationships) ? customer.brandRelationships : [];
+        if (!current.includes(code)) patch.brandRelationships = [...current, code];
+      }
+
+      // Metadata: shallow-merge.
+      const metaUpdates = {};
+      for (const k of ['industry', 'yearFounded', 'website', 'source', 'legalName', 'primaryAddress', 'additionalAddresses']) {
+        if (args[k] !== undefined) metaUpdates[k] = args[k];
+      }
+      if (Object.keys(metaUpdates).length > 0) {
+        patch.metadata = { ...(customer.metadata || {}), ...metaUpdates };
+      }
+
+      if (Object.keys(patch).length === 0) return 'Error: no editable fields provided.';
+
+      const before = {};
+      for (const k of Object.keys(patch)) before[k] = customer[k];
+      await customer.update(patch);
+      await auditAiWrite('update_customer', 'Customer', customer.id, { before, after: patch }, requester.id);
+      return { success: true, id: customer.id, updated: Object.keys(patch), before, after: patch };
+    }
+
+    case 'get_customer': {
+      const id = args.id || args.customerId;
+      if (!id) return 'Error: id is required.';
+      const customer = await getDb().Customer.findByPk(id, {
+        attributes: ['id', 'companyName', 'contactPerson', 'email', 'phone', 'address', 'city', 'country',
+          'currency', 'paymentTerms', 'creditLimit', 'balance', 'rating', 'notes',
+          'isActive', 'brandRelationships', 'productBrandingMode', 'privateLabelProductName',
+          'screeningStatus', 'metadata', 'createdAt'],
+      });
+      if (!customer) return `Customer ${id} not found.`;
+      const [contactCount, leadCount] = await Promise.all([
+        getDb().Contact?.count({ where: { customerId: id } }) ?? 0,
+        getDb().Lead?.count({ where: { convertedCustomerId: id } }) ?? 0,
+      ]);
+      return { ...customer.toJSON(), _counts: { contacts: contactCount, leads: leadCount } };
+    }
+
+    case 'archive_customer': {
+      const requester = await requireSuperAdmin();
+      const id = args.id || args.customerId;
+      if (!id) return 'Error: id is required.';
+      const customer = await getDb().Customer.findByPk(id);
+      if (!customer) return `Error: Customer ${id} not found.`;
+      if (!customer.isActive) return `Customer "${customer.companyName}" is already inactive.`;
+
+      // Warn (but don't block) when open leads exist. Spec says warn.
+      let openLeadsNote = '';
+      if (getDb().Lead) {
+        const { Op } = require('sequelize');
+        const open = await getDb().Lead.count({
+          where: {
+            convertedCustomerId: id,
+            status: { [Op.notIn]: ['won', 'lost', 'archived'] },
+          },
+        });
+        if (open > 0) openLeadsNote = ` WARNING: ${open} open lead(s) still reference this customer; consider closing them too.`;
+      }
+
+      await customer.update({ isActive: false });
+      await auditAiWrite('archive_customer', 'Customer', customer.id, { companyName: customer.companyName }, requester.id);
+      return { success: true, id: customer.id, archived: true, note: `Customer "${customer.companyName}" set inactive.${openLeadsNote}` };
+    }
 
     case 'list_customers': {
       const { Op } = require('sequelize');
@@ -3514,25 +3888,81 @@ const TOOL_DEFS = [
   },
   {
     name: 'list_products',
-    description: 'List products in the ERP product catalog. Search by name or SKU.',
+    description: 'Phase 4.9.3a — List products in the ERP product catalog. Filter by brandCode, productCategoryId, active, ironliteBadged, searchTerm. Combine filters as needed.',
     inputSchema: {
       type: 'object',
       properties: {
-        search:      { type: 'string', description: 'Search by name or SKU' },
-        category_id: { type: 'string', description: 'Filter by category ID' },
-        factory_id:  { type: 'string', description: 'Filter by factory ID' },
-        limit:       { type: 'number', description: 'Max results (default: 20)' },
+        searchTerm:        { type: 'string', description: 'Search by name or SKU (alias: search).' },
+        search:            { type: 'string', description: 'Alias for searchTerm.' },
+        brandCode:         { type: 'string', description: 'Restrict to a single brand (e.g. "FW" for HanHua/FlorWay/IronLite).' },
+        productCategoryId: { type: 'string', description: 'ProductCategory UUID (alias: category_id).' },
+        category_id:       { type: 'string' },
+        factory_id:        { type: 'string', description: 'Factory UUID.' },
+        active:            { type: 'boolean', description: 'true = only active products, false = only inactive. Omit for both.' },
+        ironliteBadged:    { type: 'boolean', description: 'Filter by specifications.ironliteBadged. true = IronLite-branded only.' },
+        limit:             { type: 'number', description: 'Max results (default 20, cap 50).' },
       },
     },
   },
   {
     name: 'get_product',
-    description: 'Get full details of a product including category and factory.',
+    description: 'Phase 4.9.3a — Get a product with its currently-active ProductPrice rows attached at `_currentPrices`. Use this BEFORE quoting to confirm a floor exists.',
     inputSchema: {
       type: 'object',
       required: ['id'],
       properties: {
-        id: { type: 'string', description: 'Product ID' },
+        id: { type: 'string', description: 'Product ID (aliases: productId, product_id).' },
+      },
+    },
+  },
+  {
+    name: 'update_product',
+    description: 'Phase 4.9.3a — Update a Product row (super_admin only). Pass id + any subset of editable fields. ALWAYS show the diff first. Spec-bag fields (constructionType, plankWidthInches, ironliteBadged, etc.) merge into product.specifications JSON. Writes ai_assistant_update_product to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:                   { type: 'string' },
+        name:                 { type: 'string' },
+        sku:                  { type: 'string' },
+        brandCode:            { type: 'string' },
+        productCategoryId:    { type: 'string' },
+        category_id:          { type: 'string' },
+        factoryId:            { type: ['string', 'null'] },
+        productType:          { type: 'string', description: 'Free-form label; coerced to the strict ENUM (lvt/spc/wpc/hardwood/laminate/tile/ceramic/other) with the raw label stored in specifications.productTypeLabel on miss.' },
+        active:               { type: 'boolean' },
+        unitOfMeasure:        { type: 'string', description: 'm2 / sqft / piece / set; mapped to model moqUnit ENUM.' },
+        currency:             { type: 'string' },
+        baseFobPrice:         { type: 'number' },
+        description:          { type: 'string' },
+        salesDescription:     { type: 'string' },
+        // Spec-bag fields → specifications JSON
+        constructionType:     { type: 'string' },
+        fullBuildDescription: { type: 'string' },
+        plankWidthInches:     { type: 'number' },
+        plankLengthInches:    { type: 'number' },
+        totalThicknessMm:     { type: 'number' },
+        wearLayerMil:         { type: 'number' },
+        piecesPerBox:         { type: 'number' },
+        boxesPerPallet:       { type: 'number' },
+        palletsPerContainer:  { type: 'number' },
+        m2PerBox:             { type: 'number' },
+        m2PerPallet:          { type: 'number' },
+        m2PerContainer:       { type: 'number' },
+        ironliteBadged:       { type: 'boolean' },
+        defaultCommissionRate:{ type: 'number', description: 'Decimal 0..1.' },
+        specs:                { type: 'object', description: 'Free-form merge into specifications JSON.' },
+      },
+    },
+  },
+  {
+    name: 'archive_product',
+    description: 'Phase 4.9.3a — Soft-archive a Product (sets isActive=false). Existing quotation lines that reference the product are unaffected; the product just disappears from the catalog picker. Writes ai_assistant_archive_product to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string' },
       },
     },
   },
@@ -3626,6 +4056,94 @@ const TOOL_DEFS = [
         search:  { type: 'string', description: 'Free-text search across company name, country, city, email' },
         country: { type: 'string', description: 'Filter by country (exact match)' },
         limit:   { type: 'number', description: 'Max results (default 20, max 50)' },
+      },
+    },
+  },
+  {
+    name: 'create_customer',
+    description: 'Phase 4.9.3a — Create a Customer row (super_admin only). Required: brandCode (must match active Brand) and companyName (unique within that brand). Optional structured extras (industry, yearFounded, website, source, primaryAddress object, additionalAddresses array) land in Customer.metadata JSON. ALWAYS show Alex a preview (companyName, brandCode, country, source) and wait for explicit confirmation before calling. Writes ai_assistant_create_customer to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['brandCode', 'companyName'],
+      properties: {
+        brandCode:           { type: 'string', description: 'Brand context (e.g. "FW" for HanHua/FlorWay/IronLite, "SH" for Sovern House).' },
+        companyName:         { type: 'string' },
+        legalName:           { type: 'string', description: 'Defaults to companyName when omitted.' },
+        industry:            { type: 'string' },
+        yearFounded:         { type: 'number' },
+        website:             { type: 'string' },
+        contactPerson:       { type: 'string' },
+        email:               { type: 'string', description: 'Required by the underlying model. Defaults to "unknown@unknown.local" if omitted; ask Alex to fix later.' },
+        phone:               { type: 'string', description: 'Required by the underlying model. Defaults to "unknown" if omitted.' },
+        primaryAddress:      {
+          type: 'object',
+          properties: {
+            line1: { type: 'string' }, line2: { type: 'string' },
+            city:  { type: 'string' }, state: { type: 'string' },
+            postalCode: { type: 'string' }, country: { type: 'string' },
+          },
+          description: 'Flattened into the model\'s address/city/country columns; full object preserved in metadata.primaryAddress.',
+        },
+        additionalAddresses: { type: 'array', items: { type: 'object' }, description: 'Array of address objects with optional label/phone. Stored as metadata.additionalAddresses.' },
+        productBrandingMode: { type: 'string', enum: ['ironlite', 'generic', 'private_label'], description: 'FW-specific; how the buyer wants the product branded on PDFs.' },
+        source:              { type: 'string', description: 'How we got this buyer (e.g. "WeChat introduction", "Trade show — Domotex", "Inbound RFQ").' },
+        notes:               { type: 'string' },
+        currency:            { type: 'string', description: 'Default USD.' },
+        paymentTerms:        { type: 'string', description: 'Default "Net 30".' },
+        active:              { type: 'boolean', description: 'Default true.' },
+      },
+    },
+  },
+  {
+    name: 'update_customer',
+    description: 'Phase 4.9.3a — Update a Customer row (super_admin only). Pass id + any subset of editable fields. brandCode merges into the JSON brandRelationships array. Metadata fields shallow-merge. Address can be passed as a primaryAddress object or flat address/city/country. ALWAYS show the diff first.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:                   { type: 'string' },
+        companyName:          { type: 'string' },
+        legalName:            { type: 'string' },
+        industry:             { type: 'string' },
+        yearFounded:          { type: 'number' },
+        website:              { type: 'string' },
+        source:               { type: 'string' },
+        brandCode:            { type: 'string', description: 'Appended to brandRelationships if not already present.' },
+        contactPerson:        { type: 'string' },
+        email:                { type: 'string' },
+        phone:                { type: 'string' },
+        primaryAddress:       { type: 'object' },
+        additionalAddresses:  { type: 'array', items: { type: 'object' } },
+        address:              { type: 'string' },
+        city:                 { type: 'string' },
+        country:              { type: 'string' },
+        currency:             { type: 'string' },
+        paymentTerms:         { type: 'string' },
+        productBrandingMode:  { type: 'string', enum: ['ironlite', 'generic', 'private_label'] },
+        notes:                { type: 'string' },
+        active:               { type: 'boolean' },
+      },
+    },
+  },
+  {
+    name: 'get_customer',
+    description: 'Phase 4.9.3a — Return the full Customer record decorated with `_counts.contacts` + `_counts.leads`.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'archive_customer',
+    description: 'Phase 4.9.3a — Soft-archive a Customer (sets isActive=false). Open leads against the customer are NOT auto-closed; the response includes a warning when any exist. Writes ai_assistant_archive_customer to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string' },
       },
     },
   },
