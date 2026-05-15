@@ -60,6 +60,10 @@ db.Payment = require('./Payment')(sequelize);
 db.Notification = require('./Notification')(sequelize);
 db.AuditLog = require('./AuditLog')(sequelize);
 db.Brand = require('./Brand')(sequelize);
+// Phase 4.8, Commit 1: singleton row for company-wide settings. Replaces
+// the in-memory `let companySettings` literal in settingsRoutes.js that
+// was wiping Alex's edits on every backend boot.
+db.SystemSetting = require('./SystemSetting')(sequelize);
 db.FrontendError = require('./FrontendError')(sequelize);
 db.InventoryItem = require('./InventoryItem')(sequelize);
 db.InventoryTransaction = require('./InventoryTransaction')(sequelize);
