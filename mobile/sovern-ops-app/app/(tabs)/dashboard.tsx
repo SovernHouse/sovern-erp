@@ -2,8 +2,13 @@
 // Entry point for the app. Shows pipeline metrics at the top + a scrollable
 // grid of all modules below (Odoo-style app launcher).
 // Adding a new module: append a tile to MODULES and create the tab screen.
+//
+// Phase 4.6, dashboard memoization: MetricCard + ModuleTile wrapped in
+// React.memo so brand-filter changes only re-render the metric values that
+// actually changed. Module-tile press handlers are useMemo'd into a stable
+// route→handler map so onPress references don't churn between renders.
 
-import { useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
   RefreshControl, ActivityIndicator, TouchableOpacity,
@@ -39,7 +44,7 @@ const MODULES = [
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function MetricCard({
+const MetricCard = memo(function MetricCard({
   label, value, sub, accent, onPress,
 }: {
   label: string; value: string | number; sub?: string; accent?: string; onPress?: () => void;
@@ -59,16 +64,16 @@ function MetricCard({
     );
   }
   return <View style={{ flex: 1 }}>{card}</View>;
-}
+});
 
-function ModuleTile({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+const ModuleTile = memo(function ModuleTile({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.tile} onPress={onPress} activeOpacity={0.7}>
       <Text style={styles.tileIcon}>{icon}</Text>
       <Text style={styles.tileLabel} numberOfLines={2}>{label}</Text>
     </TouchableOpacity>
   );
-}
+});
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
@@ -99,6 +104,26 @@ export default function HomeScreen() {
   }
 
   useEffect(() => { load(); }, [brandFilter]);
+
+  // Phase 4.6: stable per-route handlers so memoized ModuleTile rows
+  // skip re-rendering when only metrics or the brand filter change.
+  const moduleHandlers = useMemo(() => {
+    const map: Record<string, () => void> = {};
+    for (const m of MODULES) map[m.route] = () => router.push(m.route as any);
+    return map;
+  }, [router]);
+
+  // Phase 4.6: stable per-metric handlers for the same reason.
+  const goLeads      = useCallback(() => router.push('/(tabs)/leads'), [router]);
+  const goApprovals  = useCallback(() => router.push('/(tabs)/approvals'), [router]);
+  const goActivities = useCallback(() => router.push('/(tabs)/activities'), [router]);
+
+  // Phase 4.6: memoize the timestamp render so it doesn't reformat on every
+  // re-render of the parent. Refreshes naturally when data.lastUpdated changes.
+  const updatedLabel = useMemo(() => {
+    if (!data?.lastUpdated) return null;
+    return new Date(data.lastUpdated).toLocaleTimeString('en-US', { timeZone: 'Asia/Taipei' });
+  }, [data?.lastUpdated]);
 
   if (loading) {
     return (
@@ -140,14 +165,14 @@ export default function HomeScreen() {
           label="Open Leads"
           value={data?.openLeads ?? '--'}
           accent={COLORS.statusNew}
-          onPress={() => router.push('/(tabs)/leads')}
+          onPress={goLeads}
         />
         <MetricCard
           label="Pending Approvals"
           value={data?.pendingApprovals ?? '--'}
           accent={COLORS.warning}
           sub={data?.pendingApprovals ? 'Needs review' : undefined}
-          onPress={() => router.push('/(tabs)/approvals')}
+          onPress={goApprovals}
         />
       </View>
       <View style={styles.metricGrid}>
@@ -155,7 +180,7 @@ export default function HomeScreen() {
           label="Open Activities"
           value={data?.pendingActivities ?? '--'}
           accent={COLORS.statusQualified}
-          onPress={() => router.push('/(tabs)/activities')}
+          onPress={goActivities}
         />
         <MetricCard
           label="Pipeline Value"
@@ -165,10 +190,8 @@ export default function HomeScreen() {
         />
       </View>
 
-      {data?.lastUpdated ? (
-        <Text style={styles.updated}>
-          Updated {new Date(data.lastUpdated).toLocaleTimeString('en-US', { timeZone: 'Asia/Taipei' })}
-        </Text>
+      {updatedLabel ? (
+        <Text style={styles.updated}>Updated {updatedLabel}</Text>
       ) : null}
 
       {/* Module grid */}
@@ -179,7 +202,7 @@ export default function HomeScreen() {
             key={m.route}
             icon={m.icon}
             label={m.label}
-            onPress={() => router.push(m.route as any)}
+            onPress={moduleHandlers[m.route]}
           />
         ))}
       </View>
