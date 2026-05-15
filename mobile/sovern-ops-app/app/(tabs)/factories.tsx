@@ -240,6 +240,8 @@ export default function FactoriesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch]       = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Phase 4.8 Commit 3c — Active/Inactive filter pill. '' means All.
+  const [activeFilter, setActiveFilter] = useState<'' | 'active' | 'inactive'>('');
 
   async function load(isRefresh = false) {
     try {
@@ -263,11 +265,15 @@ export default function FactoriesScreen() {
     }
   }, [openId]);
 
-  // Phase 4.6 part 3: derived filter via useMemo.
+  // Phase 4.6 part 3 + Phase 4.8 Commit 3c: composite filter combines
+  // text search + Active/Inactive pill state.
   const filtered = useMemo(() => {
+    let list = factories;
+    if (activeFilter === 'active')   list = list.filter((f) => f.isActive !== false);
+    if (activeFilter === 'inactive') list = list.filter((f) => f.isActive === false);
     const q = search.toLowerCase();
-    if (!q) return factories;
-    return factories.filter(
+    if (!q) return list;
+    return list.filter(
       (f) =>
         f.companyName.toLowerCase().includes(q) ||
         (f.contactPerson ?? '').toLowerCase().includes(q) ||
@@ -275,7 +281,7 @@ export default function FactoriesScreen() {
         (f.email ?? '').toLowerCase().includes(q) ||
         (f.specializations ?? []).join(' ').toLowerCase().includes(q),
     );
-  }, [search, factories]);
+  }, [search, activeFilter, factories]);
 
   const renderItem = useCallback(({ item }: { item: Factory }) => (
     <FactoryRow factory={item} onPress={() => setSelectedId(item.id)} />
@@ -302,6 +308,28 @@ export default function FactoriesScreen() {
           onChangeText={setSearch}
           autoCorrect={false}
         />
+      </View>
+
+      {/* Phase 4.8 Commit 3c — Active/Inactive filter pills */}
+      <View style={styles.filterRow}>
+        {([
+          { key: '',         label: 'All' },
+          { key: 'active',   label: 'Active' },
+          { key: 'inactive', label: 'Inactive' },
+        ] as const).map((f) => {
+          const active = activeFilter === f.key;
+          return (
+            <TouchableOpacity
+              key={f.key || 'all'}
+              style={[styles.filterPill, active && styles.filterPillActive]}
+              onPress={() => setActiveFilter(f.key)}
+            >
+              <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {/* Count */}
@@ -358,6 +386,19 @@ const styles = StyleSheet.create({
   searchBar:    { margin: 12, backgroundColor: COLORS.white, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 12 },
   searchInput:  { height: 40, color: COLORS.ink, fontSize: 14 },
   count:        { paddingHorizontal: 16, paddingBottom: 4, fontSize: 12, color: COLORS.muted },
+  // Phase 4.8 Commit 3c — Active/Inactive filter pill bar.
+  filterRow:    { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 8, gap: 6 },
+  filterPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  filterPillActive:     { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
+  filterPillText:       { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
+  filterPillTextActive: { color: COLORS.white },
 
   row: {
     flexDirection: 'row',

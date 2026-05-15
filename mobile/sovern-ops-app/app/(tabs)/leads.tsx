@@ -6,7 +6,7 @@
 // pass is not redone on every keystroke render.
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView,
   RefreshControl, ActivityIndicator, TextInput, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -14,17 +14,47 @@ import { getLeads, type Lead } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
 import { BrandBadge } from '../../src/components/BrandBadge';
 
-const STATUS_COLORS: Record<string, string> = {
-  new:         COLORS.statusNew,
-  contacted:   COLORS.statusContacted,
-  qualified:   COLORS.statusQualified,
-  proposal:    COLORS.statusProposal,
-  negotiation: COLORS.statusNegotiation,
-  closed:      COLORS.statusClosed,
-};
+// Phase 4.8 Commit 3c — bucket-based palette per the audit doc.
+// top-of-funnel (new, contacted) -> steel
+// open pipeline (qualified, proposal, negotiation) -> brand accent
+//   (forest for SH, iron for FW). Resolved per-row via stageColorForLead.
+// terminal positive (won) -> green
+// terminal negative (lost) -> bronze
+function stageColorForLead(status: string, brandCode?: string | null): string {
+  switch (status) {
+    case 'new':
+    case 'contacted':
+      return COLORS.steel;
+    case 'qualified':
+    case 'proposal':
+    case 'negotiation':
+      return brandCode === 'FW' ? COLORS.iron : COLORS.forest;
+    case 'won':
+      return COLORS.won;
+    case 'lost':
+      return COLORS.bronze;
+    default:
+      return COLORS.muted;
+  }
+}
+
+// Filter pill bar config. 'All' key is the empty string so === comparison
+// against state's null/empty value matches without a special case.
+const STATUS_FILTERS = [
+  { key: '',            label: 'All' },
+  { key: 'new',         label: 'New' },
+  { key: 'contacted',   label: 'Contacted' },
+  { key: 'qualified',   label: 'Qualified' },
+  { key: 'proposal',    label: 'Proposal' },
+  { key: 'negotiation', label: 'Negotiation' },
+  { key: 'won',         label: 'Won' },
+  { key: 'lost',        label: 'Lost' },
+] as const;
 
 const LeadRow = memo(function LeadRow({ lead, onPress }: { lead: Lead; onPress: () => void }) {
-  const color = STATUS_COLORS[lead.status.toLowerCase()] ?? COLORS.muted;
+  // Phase 4.8 Commit 3c — bucket-based color, brand-accent for open
+  // pipeline stages so SH and FW Leads are visually distinct at-a-glance.
+  const color = stageColorForLead(lead.status.toLowerCase(), lead.brandCode);
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
       <View style={[styles.statusDot, { backgroundColor: color }]} />
@@ -56,6 +86,8 @@ export default function LeadsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  // Phase 4.8 Commit 3c — status filter pill bar at top of list.
+  const [statusFilter, setStatusFilter] = useState<string>('');
 
   async function load(isRefresh = false) {
     try {
@@ -72,17 +104,22 @@ export default function LeadsScreen() {
 
   useEffect(() => { load(); }, []);
 
-  // Phase 4.5, C22: filter is a pure derived value, so useMemo avoids the
-  // double-render the old setFiltered effect caused on every keystroke.
+  // Phase 4.5, C22 + Phase 4.8 Commit 3c: derived filter combines status
+  // pill + search query. useMemo avoids the double-render the old
+  // setFiltered effect caused.
   const filtered = useMemo(() => {
-    if (!search) return leads;
-    const q = search.toLowerCase();
-    return leads.filter((l) =>
-      l.companyName.toLowerCase().includes(q) ||
-      l.contactName.toLowerCase().includes(q) ||
-      (l.productInterests ?? '').toLowerCase().includes(q)
-    );
-  }, [search, leads]);
+    let list = leads;
+    if (statusFilter) list = list.filter((l) => l.status === statusFilter);
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter((l) =>
+        l.companyName.toLowerCase().includes(q) ||
+        l.contactName.toLowerCase().includes(q) ||
+        (l.productInterests ?? '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [search, statusFilter, leads]);
 
   // Phase 4.5, C22: stable renderItem + keyExtractor so memoized rows can
   // skip re-rendering when only siblings change.
@@ -117,6 +154,29 @@ export default function LeadsScreen() {
           </TouchableOpacity>
         ) : null}
       </View>
+
+      {/* Phase 4.8 Commit 3c — status filter pill bar. Horizontal scroll
+          so the 8 stages fit on narrow screens. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
+        {STATUS_FILTERS.map((f) => {
+          const active = statusFilter === f.key;
+          return (
+            <TouchableOpacity
+              key={f.key || 'all'}
+              style={[styles.filterPill, active && styles.filterPillActive]}
+              onPress={() => setStatusFilter(f.key)}
+            >
+              <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
       <FlatList
         data={filtered}
@@ -165,6 +225,19 @@ const styles = StyleSheet.create({
     color: COLORS.ink,
   },
   clearBtn: { fontSize: 16, color: COLORS.muted, padding: 4 },
+  // Phase 4.8 Commit 3c — filter pill bar
+  filterRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 6 },
+  filterPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  filterPillActive:     { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
+  filterPillText:       { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
+  filterPillTextActive: { color: COLORS.white },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

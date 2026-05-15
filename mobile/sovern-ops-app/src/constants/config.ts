@@ -25,13 +25,31 @@ export const COLORS = {
   warning:   '#D97706',
   success:   '#16A34A',
 
-  // Status chip colours
+  // Status chip colours (legacy palette, kept for screens not yet
+  // migrated to the Phase 4.8 bucket palette below).
   statusNew:         '#3B82F6',
   statusContacted:   '#8B5CF6',
   statusQualified:   '#10B981',
   statusProposal:    '#F59E0B',
   statusNegotiation: '#EF4444',
   statusClosed:      '#6B7280',
+
+  // Phase 4.8 Commit 3c — bucket palette per the audit doc's
+  // recommendation. Used on the Lead row chip + filter pills, and
+  // available for other screens to migrate onto.
+  // steel  = top-of-funnel (new, contacted) — neutral, no commitment
+  // forest = open pipeline, SH brand-accent (qualified, proposal,
+  //          negotiation) — existing COLORS.forest above
+  // iron   = open pipeline, FW brand-accent — same per-row mapping but
+  //          for FW Leads
+  // won    = terminal positive (won) — bright green, distinct from
+  //          forest
+  // bronze = terminal negative (lost) — warm amber matching the
+  //          sanctions warning palette from C18
+  bronze:            '#9A6F3E',
+  steel:             '#475569',
+  iron:              '#1F2933',
+  won:               '#16A34A',
 };
 
 export const FONTS = {
