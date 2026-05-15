@@ -71,7 +71,13 @@ const Pipeline = () => {
     try {
       setLoading(true);
       const response = await api.get('/crm/pipeline');
-      setPipeline(response.data?.data || {});
+      // The axios instance's response interceptor auto-unwraps the
+      // { success, data } envelope on every backend response (see
+      // services/api.js). So response.data is already the pipeline
+      // bucket object here — not the full envelope. The earlier
+      // response.data?.data was a double-unwrap that always returned
+      // undefined -> empty {} -> "No leads in this stage" everywhere.
+      setPipeline(response.data || {});
       setError(null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load pipeline');
