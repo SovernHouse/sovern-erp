@@ -1,8 +1,12 @@
 // ─── Quotations Screen ────────────────────────────────────────────────────
-import { useEffect, useState } from 'react';
+// Phase 4.6 part 3: same perf pass as customers + leads. Row memoized,
+// search/status filter derived via useMemo (was double-render via
+// setFiltered effect), renderItem + keyExtractor stable via useCallback,
+// FlatList virtualization tuned.
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput,
+  RefreshControl, ActivityIndicator, TextInput, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getQuotations, type Quotation } from '../../src/services/api';
@@ -25,7 +29,7 @@ function formatCurrency(value?: number, currency = 'USD') {
   }).format(Number(value));
 }
 
-function QuotationRow({ q, onPress }: { q: Quotation; onPress: () => void }) {
+const QuotationRow = memo(function QuotationRow({ q, onPress }: { q: Quotation; onPress: () => void }) {
   const cfg = STATUS_CONFIG[q.status] ?? { label: q.status, color: COLORS.muted };
   const amount = formatCurrency(q.total, q.currency);
 
@@ -51,12 +55,11 @@ function QuotationRow({ q, onPress }: { q: Quotation; onPress: () => void }) {
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 export default function QuotationsScreen() {
   const router = useRouter();
   const [quotations, setQuotations] = useState<Quotation[]>([]);
-  const [filtered, setFiltered] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -67,7 +70,6 @@ export default function QuotationsScreen() {
       isRefresh ? setRefreshing(true) : setLoading(true);
       const res = await getQuotations({ page: 1, limit: 50 });
       setQuotations(res.data);
-      setFiltered(res.data);
     } catch (err: any) {
       console.error(err.message);
     } finally {
@@ -78,7 +80,8 @@ export default function QuotationsScreen() {
 
   useEffect(() => { load(); }, []);
 
-  useEffect(() => {
+  // Phase 4.6 part 3: composite filter via useMemo (was setFiltered effect).
+  const filtered = useMemo(() => {
     let list = quotations;
     if (statusFilter) list = list.filter((q) => q.status === statusFilter);
     if (search) {
@@ -89,8 +92,13 @@ export default function QuotationsScreen() {
         (item.factory?.companyName ?? '').toLowerCase().includes(q)
       );
     }
-    setFiltered(list);
+    return list;
   }, [search, statusFilter, quotations]);
+
+  const renderItem = useCallback(({ item }: { item: Quotation }) => (
+    <QuotationRow q={item} onPress={() => router.push(`/quotation/${item.id}`)} />
+  ), [router]);
+  const keyExtractor = useCallback((item: Quotation) => item.id, []);
 
   if (loading) {
     return (
@@ -149,13 +157,8 @@ export default function QuotationsScreen() {
 
       <FlatList
         data={filtered}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <QuotationRow
-            q={item}
-            onPress={() => router.push(`/quotation/${item.id}`)}
-          />
-        )}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={COLORS.forest} />
@@ -166,6 +169,11 @@ export default function QuotationsScreen() {
           </View>
         )}
         contentContainerStyle={filtered.length === 0 ? { flex: 1 } : { paddingBottom: 24 }}
+        // Phase 4.6 part 3 — virtualization tuning.
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={10}
       />
     </View>
   );

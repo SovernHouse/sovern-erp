@@ -1,10 +1,12 @@
 // ─── Factories Screen ─────────────────────────────────────────────────────
 // Supplier directory: search, browse, tap for details, delete via modal
 // header (server blocks deletion when open POs exist).
-import { useEffect, useState } from 'react';
+//
+// Phase 4.6 part 3: same memo/useMemo/useCallback pattern as customers.tsx.
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Linking, Alert,
+  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Linking, Alert, Platform,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { getFactories, getFactory, deleteFactory, type Factory } from '../../src/services/api';
@@ -12,7 +14,7 @@ import { COLORS } from '../../src/constants/config';
 
 // ─── Factory Row ──────────────────────────────────────────────────────────
 
-function FactoryRow({ factory, onPress }: { factory: Factory; onPress: () => void }) {
+const FactoryRow = memo(function FactoryRow({ factory, onPress }: { factory: Factory; onPress: () => void }) {
   const initials = (factory.companyName ?? '')
     .split(' ')
     .slice(0, 2)
@@ -53,7 +55,7 @@ function FactoryRow({ factory, onPress }: { factory: Factory; onPress: () => voi
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 // ─── Factory Detail Modal ─────────────────────────────────────────────────
 
@@ -234,7 +236,6 @@ export default function FactoriesScreen() {
   const { openId } = useLocalSearchParams<{ openId?: string }>();
 
   const [factories, setFactories] = useState<Factory[]>([]);
-  const [filtered, setFiltered]   = useState<Factory[]>([]);
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch]       = useState('');
@@ -245,7 +246,6 @@ export default function FactoriesScreen() {
       isRefresh ? setRefreshing(true) : setLoading(true);
       const res = await getFactories({ page: 1, limit: 100 });
       setFactories(res.data ?? []);
-      setFiltered(res.data ?? []);
     } catch (err: any) {
       console.error('[Factories]', err.message);
     } finally {
@@ -263,21 +263,24 @@ export default function FactoriesScreen() {
     }
   }, [openId]);
 
-  useEffect(() => {
+  // Phase 4.6 part 3: derived filter via useMemo.
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    setFiltered(
-      q
-        ? factories.filter(
-            (f) =>
-              f.companyName.toLowerCase().includes(q) ||
-              (f.contactPerson ?? '').toLowerCase().includes(q) ||
-              (f.country ?? '').toLowerCase().includes(q) ||
-              (f.email ?? '').toLowerCase().includes(q) ||
-              (f.specializations ?? []).join(' ').toLowerCase().includes(q),
-          )
-        : factories,
+    if (!q) return factories;
+    return factories.filter(
+      (f) =>
+        f.companyName.toLowerCase().includes(q) ||
+        (f.contactPerson ?? '').toLowerCase().includes(q) ||
+        (f.country ?? '').toLowerCase().includes(q) ||
+        (f.email ?? '').toLowerCase().includes(q) ||
+        (f.specializations ?? []).join(' ').toLowerCase().includes(q),
     );
   }, [search, factories]);
+
+  const renderItem = useCallback(({ item }: { item: Factory }) => (
+    <FactoryRow factory={item} onPress={() => setSelectedId(item.id)} />
+  ), []);
+  const keyExtractor = useCallback((item: Factory) => item.id, []);
 
   if (loading) {
     return (
@@ -306,13 +309,15 @@ export default function FactoriesScreen() {
         {filtered.length} {filtered.length === 1 ? 'factory' : 'factories'}
       </Text>
 
-      {/* List */}
+      {/* List — Phase 4.6 part 3 virtualization */}
       <FlatList
         data={filtered}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <FactoryRow factory={item} onPress={() => setSelectedId(item.id)} />
-        )}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={10}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
