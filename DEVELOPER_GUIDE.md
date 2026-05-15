@@ -2918,6 +2918,45 @@ Two connected Google accounts: `alex@sovernhouse.co` (SH context) and `alexflorw
 - Mobile: read-only Customer + Product lists pick up the schema cleanly (Customer.metadata is invisible to read paths that don't request it).
 - Docs: this section + `tooltipContent` entries (customerMetadata, outreachDraft, driveAccountFw) + `helpContent` AI section bullets + `USER_GUIDE` paragraph below.
 
+## Phase 4.9.3 (final) — Parts F + G + H
+
+### Part F — erp_describe_entity_db (PRAGMA ground truth)
+
+Root cause of the original Part F bug: the MCP server is a subprocess loaded once at startup, so a code-side model change (e.g. `Factory.brandCode` in Phase 4.9.2a) only appears in `erp_describe_entity` AFTER the subprocess restarts. The existing tool already reads `Model.rawAttributes` at call time — it just reads from the in-process Sequelize model registry, which is the stale cache.
+
+`erp_describe_entity_db` (new) queries `PRAGMA table_info` directly:
+- Returns physical columns (name, type, notnull, default, primaryKey).
+- Returns indexes.
+- Returns a **mismatch report**: `modelAttributesMissingFromDb` + `dbColumnsMissingFromModel`. Surfaces drift on the spot.
+
+Use `erp_describe_entity_db` whenever `erp_describe_entity` looks stale, or to debug DB-vs-model drift directly. `erp_describe_entity` tool description updated to point at `_db` when results look suspect.
+
+### Part G — ProductPrice column cleanup
+
+The Phase 4.9.2b migration added the new temporal-pricing columns ALONGSIDE the legacy ones instead of replacing the schema (the rename-and-recreate path skipped because `cost_price_usd_per_m2` was already present from a prior sync()). Net result on prod: 22 columns, 0 rows, legacy NOT NULL constraints on `cost_price` / `selling_price` / `factory_id` / `valid_from` blocking any insert that uses only the new columns.
+
+`backend/services/migrate493ProductPriceCleanup.js` (sentinel `phase4_9_3_g_product_price_cleanup`) does a SQLite table-rebuild inside a transaction:
+1. **Hard precondition**: refuses to run when `ProductPrice` has any rows. The 0-row state on prod was verified before writing this migration.
+2. Creates `ProductPrice_new` with the clean target schema: `factory_id` nullable, `cost_price_usd_per_m2` NOT NULL, no legacy columns.
+3. Drops old `ProductPrice` and renames `ProductPrice_new → ProductPrice`.
+4. Recreates the 3 indexes.
+
+Idempotent: also skips when `cost_price` is absent (cleanup already ran).
+
+After deploy: `PRAGMA table_info(ProductPrice)` shows 16 columns (id, product_id, factory_id, origin, cost_price_usd_per_m2, selling_price_usd_per_m2, markup_percent, currency, tariff_rate, tariff_destination, valid_from, valid_to, source_note, created_by, created_at, updated_at).
+
+### Part H — boot-time schema/model parity check
+
+`backend/services/checkSchemaParity.js`: walks every Sequelize model with `tableName` + `rawAttributes`, runs `PRAGMA table_info` on each table, and compares. Logs three categories of finding:
+
+- `inModelMissingFromDb`: model declares X but DB has no X. Probable cause: a schema migration didn't run, or sync() was supposed to alter and didn't.
+- `inDbMissingFromModel`: DB has X but model doesn't declare X. Probable cause: dead/legacy columns from a half-done migration, OR a column added via raw SQL without updating the model.
+- `tableMissing`: model exists but no table. Probable cause: sync() never ran for this model.
+
+Never throws. Single summary log line on success: `[parity] checked N model(s) clean, M with mismatch(es).` Each category emits its own warning so the deploy log surfaces specifics at a glance.
+
+Test coverage: `backend/__tests__/integration/describeEntity493.test.js` — 5 cases including `Factory.rawAttributes` includes `brandCode`, ProductPrice has the 4.9.2b temporal fields, `checkSchemaParity` returns a structured report.
+
 ## Part G — Verification (Alex runs these post-deploy, not in this PR)
 
 Chat-mode prompts to fire once deploy lands:

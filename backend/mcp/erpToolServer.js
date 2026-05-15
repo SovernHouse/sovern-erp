@@ -217,6 +217,11 @@ async function callTool(name, args) {
     }
 
     case 'erp_describe_entity': {
+      // Reads Model.rawAttributes at call time. CAVEAT: the MCP server
+      // is a subprocess loaded once at startup; a code-side model
+      // change (e.g. adding a new column to a model file) only takes
+      // effect after the subprocess restarts. If results look stale,
+      // use erp_describe_entity_db for PRAGMA-based ground truth.
       const Model = getEntityModel(args.entity);
       const attrs = safeAttributesFor(Model);
       const searchable = stringFieldsFor(Model);
@@ -229,6 +234,51 @@ async function callTool(name, args) {
         attributes: attrs,
         searchableFields: searchable,
         associations,
+        _note: 'Source: in-process Sequelize model registry. If you suspect staleness (e.g. a new column should exist but is missing), call erp_describe_entity_db to query the live DB via PRAGMA.',
+      };
+    }
+
+    case 'erp_describe_entity_db': {
+      // Phase 4.9.3 Part F: PRAGMA-based ground truth. Reads the live
+      // SQLite schema directly, bypassing the in-process Sequelize
+      // model registry. Use this to confirm DB state when the
+      // Sequelize-side view (erp_describe_entity) looks ambiguous,
+      // OR to surface DB columns that the model definition forgot,
+      // OR to surface model attributes that didn't make it to the DB.
+      const Model = getEntityModel(args.entity);
+      const tableName = Model.tableName || args.entity;
+      const [cols] = await getDb().sequelize.query(`PRAGMA table_info(${tableName})`);
+      const [idxs] = await getDb().sequelize.query(`PRAGMA index_list(${tableName})`);
+      const indexes = [];
+      for (const idx of idxs) {
+        const [details] = await getDb().sequelize.query(`PRAGMA index_info(${idx.name})`);
+        indexes.push({
+          name: idx.name,
+          unique: !!idx.unique,
+          columns: details.map(d => d.name),
+        });
+      }
+      // Mismatch detection — for caller convenience.
+      const modelAttrFields = new Set(Object.values(Model.rawAttributes).map(a => a.field || a.fieldName));
+      const dbColNames = new Set(cols.map(c => c.name));
+      const inModelMissingFromDb = [...modelAttrFields].filter(f => !dbColNames.has(f));
+      const inDbMissingFromModel = [...dbColNames].filter(c => !modelAttrFields.has(c));
+      return {
+        entity: args.entity,
+        tableName,
+        columns: cols.map(c => ({
+          cid: c.cid,
+          name: c.name,
+          type: c.type,
+          notnull: !!c.notnull,
+          defaultValue: c.dflt_value,
+          primaryKey: !!c.pk,
+        })),
+        indexes,
+        mismatch: {
+          modelAttributesMissingFromDb: inModelMissingFromDb,
+          dbColumnsMissingFromModel: inDbMissingFromModel,
+        },
       };
     }
 
@@ -3170,12 +3220,23 @@ const TOOL_DEFS = [
   },
   {
     name: 'erp_describe_entity',
-    description: 'Describe an ERP entity: list its attributes, the string fields that free-text search will match, and its associations. Use this before erp_query if you are unsure of the field names.',
+    description: 'Describe an ERP entity: list its attributes, the string fields that free-text search will match, and its associations. Source = in-process Sequelize model registry. CAVEAT (Phase 4.9.3): the MCP server is a subprocess loaded once; new code-side model fields only appear here AFTER the subprocess restarts. If you suspect staleness (a new column should exist but is missing), call erp_describe_entity_db for PRAGMA-based ground truth.',
     inputSchema: {
       type: 'object',
       required: ['entity'],
       properties: {
         entity: { type: 'string', description: 'Entity name from erp_list_entities, e.g. "Factory"' },
+      },
+    },
+  },
+  {
+    name: 'erp_describe_entity_db',
+    description: 'Phase 4.9.3 — Describe an ERP entity from the LIVE SQLite schema via PRAGMA, bypassing the in-process Sequelize model registry. Returns physical columns (name, type, notnull, default, primaryKey) + indexes + a mismatch report (model attributes missing from DB, DB columns missing from model). Use this when erp_describe_entity looks stale, or to debug DB-vs-model drift directly.',
+    inputSchema: {
+      type: 'object',
+      required: ['entity'],
+      properties: {
+        entity: { type: 'string', description: 'Entity name (same value space as erp_describe_entity).' },
       },
     },
   },

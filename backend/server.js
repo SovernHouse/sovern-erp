@@ -807,6 +807,27 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] migration framework bootstrap skipped:', e.message);
     }
+
+    // Phase 4.9.3 (final) Part G: rebuild ProductPrice to drop the
+    // legacy columns (cost_price/markup/selling_price/exw_price/
+    // price_type) and relax factory_id to nullable. Refuses to run
+    // against a populated table; sentinel-guarded.
+    try {
+      const { migrate493ProductPriceCleanup } = require('./services/migrate493ProductPriceCleanup');
+      await migrate493ProductPriceCleanup(db);
+    } catch (e) {
+      logger.warn('[boot] 4.9.3 ProductPrice cleanup skipped:', e.message);
+    }
+
+    // Phase 4.9.3 (final) Part H: parity check between Sequelize model
+    // attributes and live DB columns. Warns on mismatch (model has X
+    // but DB doesn't, or vice versa). Never crashes — visibility only.
+    try {
+      const { checkSchemaParity } = require('./services/checkSchemaParity');
+      await checkSchemaParity(db);
+    } catch (e) {
+      logger.warn('[boot] schema parity check skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {
