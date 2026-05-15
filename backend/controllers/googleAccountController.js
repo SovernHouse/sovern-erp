@@ -19,13 +19,26 @@ function getOAuth2Client() {
   );
 }
 
-// Scopes requested during consent — all in one flow so user only authenticates once
+// Scopes requested during consent — all in one flow so user only authenticates once.
+//
+// Phase 4.7 follow-up: drive.readonly alone is insufficient for the AI
+// attachment upload flow (POST /api/ai/attachments) and the new admin
+// Drive folder setup endpoint (POST /api/admin/drive-setup, C-3). Both
+// need to CREATE files / folders. drive.file grants per-app file
+// management (we can read/write/delete anything WE created) without
+// the broad consent of full drive scope. Pairing drive.readonly +
+// drive.file gives us: read everything Alex has in Drive (needed for
+// search_drive_files / read_drive_file) + write only inside the
+// Sovern ERP namespace we provision. Users with prior tokens issued
+// against the old scope set must reconnect via Settings -> Connected
+// Accounts; that re-OAuth picks up the new scopes.
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/gmail.modify',       // read + send + label emails
   'https://www.googleapis.com/auth/calendar.events',    // read + create/edit calendar events
-  'https://www.googleapis.com/auth/drive.readonly',     // browse Drive files
+  'https://www.googleapis.com/auth/drive.readonly',     // browse + read Drive files Alex already has
+  'https://www.googleapis.com/auth/drive.file',         // create + manage files the ERP creates
 ];
 
 // ── GET /api/google/oauth/init ────────────────────────────────────────────────

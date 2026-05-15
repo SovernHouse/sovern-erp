@@ -61,9 +61,17 @@ async function getDriveClientForUser(userId) {
     err.statusCode = 412; // precondition failed
     throw err;
   }
-  const hasDrive = (account.scopes || []).some(s => s.includes('drive'));
-  if (!hasDrive) {
-    const err = new Error('Connected Google account is missing Drive scope. Reconnect via Settings → Connected Accounts.');
+  // Phase 4.7 follow-up: write-capable Drive scope required for attachment
+  // upload (this controller) and folder setup (admin/drive-setup). The old
+  // loose check accepted drive.readonly which silently fails at create-time
+  // with "Insufficient Permission". Look for drive.file (per-app) or the
+  // broad drive scope.
+  const scopes = account.scopes || [];
+  const hasDriveWrite = scopes.some(s =>
+    s.includes('drive.file') || s === 'https://www.googleapis.com/auth/drive',
+  );
+  if (!hasDriveWrite) {
+    const err = new Error('Connected Google account is missing Drive write scope (drive.file or drive). Reconnect via Settings -> Connected Accounts to grant it.');
     err.statusCode = 412;
     throw err;
   }

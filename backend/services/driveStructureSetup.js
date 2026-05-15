@@ -110,10 +110,24 @@ async function setupDriveStructureForAllAccounts(db) {
   }
   const out = {};
   for (const acc of accounts) {
-    const hasDrive = (acc.scopes || []).some((s) => s.includes('drive'));
-    if (!hasDrive) {
-      logger.warn(`[driveSetup] ${acc.email} missing Drive scope; skipped`);
-      out[acc.email] = { skipped: true, reason: 'missing_drive_scope' };
+    // Phase 4.7 follow-up: folder creation needs drive.file or drive. The
+    // earlier readonly-passing check let setup attempts hit the Drive API
+    // and fail with "Insufficient Permission" only when we tried to
+    // actually create a folder. Surface the missing-scope condition
+    // before making the API call so the caller knows the account needs
+    // re-authorization, not that Drive itself is broken.
+    const scopes = acc.scopes || [];
+    const hasDriveWrite = scopes.some((s) =>
+      s.includes('drive.file') || s === 'https://www.googleapis.com/auth/drive',
+    );
+    if (!hasDriveWrite) {
+      logger.warn(`[driveSetup] ${acc.email} missing Drive write scope (drive.file); needs re-authorization`);
+      out[acc.email] = {
+        skipped: true,
+        reason: 'missing_drive_write_scope',
+        currentScopes: scopes,
+        fix: 'Reconnect this account via ERP Settings -> Connected Accounts. The OAuth consent will request drive.file as of Phase 4.7.',
+      };
       continue;
     }
     try {
