@@ -2868,4 +2868,25 @@ No mobile UI. Bulk operations are a desktop super-admin workflow; on-the-go mobi
 ## Tests
 
 `backend/__tests__/unit/tariffBulkImport.test.js`: 6 cases covering the seed sums, totalRate-only rows, empty-cell skip, otherN pair validation, non-numeric detection, and the "must supply at least one" rule.
+
+---
+
+# Tariff expiry warning UI (Phase 4.9 C-5)
+
+## Dashboard widget
+
+`frontend/admin-portal/src/components/DashboardWidgets/TariffExpiringWidget.jsx` queries `tariffRatesAPI.getAll({ includeExpired: true })`, flags rows whose `effectiveUntil` is within ≤7 days or ≤30 days expired, sorts by days remaining ascending. Self-hides when nothing is at risk so the dashboard stays clean for users who don't touch US imports.
+
+Mobile mirror: `mobile/sovern-ops-app/src/components/TariffExpiringWidget.tsx`, wired into `app/(tabs)/dashboard.tsx`. Same self-hide rule. Tapping the card navigates to `/tariff-rates` (read-only on mobile; edits are desktop super-admin).
+
+## Send-confirm warning (desktop only)
+
+`QuotationDetail.openSendDialog` pre-fetches all tariff rates and runs a per-line check against (origin, destination=US):
+
+- **Hard block**: line has `originCountry` set, no active tariff row exists. Confirm button is disabled. Banner reads "Cannot send: missing tariff rate" with the line label + origin + reason. User must add the row in `Settings → Tariff rates` first.
+- **Soft warn**: active tariff exists but `effectiveUntil ≤ 7 days away` (or already expired). Amber banner inside the same dialog with per-line breakdown. Confirm still allowed (user judgment call after confirming with factory).
+
+The `ConfirmDialog` component gained two new props: `children` (rendered below the message) and `disableConfirm` (hard-blocks the confirm button). Other call sites unchanged.
+
+Mobile: no equivalent yet. The mobile quotation create flow only stages a draft — sending happens from desktop, where the hard-block applies. Re-evaluate if a mobile send action lands later.
 | CN | US | 40.7714

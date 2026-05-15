@@ -11,6 +11,10 @@ export default function ConfirmDialog({
   cancelText = 'Cancel',
   isLoading = false,
   isDangerous = false,
+  // Phase 4.9 C-5: extra content rendered below the message (warnings,
+  // line breakdowns, etc.). `disableConfirm` hard-blocks the action.
+  children = null,
+  disableConfirm = false,
 }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
@@ -21,6 +25,7 @@ export default function ConfirmDialog({
           )}
           <p className="text-slate-700">{message}</p>
         </div>
+        {children}
         <div className="flex justify-end space-x-3 pt-4">
           <button
             onClick={onClose}
@@ -31,8 +36,8 @@ export default function ConfirmDialog({
           </button>
           <button
             onClick={onConfirm}
-            disabled={isLoading}
-            className={`px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 ${
+            disabled={isLoading || disableConfirm}
+            className={`px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
               isDangerous
                 ? 'bg-red-600 hover:bg-red-700'
                 : 'bg-primary-600 hover:bg-primary-700'

@@ -33,6 +33,7 @@ import StatusBadge from '../components/StatusBadge'
 import BrandFilterPicker from '../components/BrandFilterPicker'
 import CommissionWidget from '../components/DashboardWidgets/CommissionWidget'
 import BrandRevenueComparison from '../components/DashboardWidgets/BrandRevenueComparison'
+import TariffExpiringWidget from '../components/DashboardWidgets/TariffExpiringWidget'
 import { dashboardAPI } from '../services/api'
 import { formatCurrency, formatDate } from '../utils/formatters'
 
@@ -230,6 +231,10 @@ export default function Dashboard() {
         <CommissionWidget />
         <BrandRevenueComparison />
       </div>
+
+      {/* Phase 4.9 C-5: tariff expiry warning. Self-hiding when no rows
+          are at risk so single-domestic-brand users don't see noise. */}
+      <TariffExpiringWidget />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">

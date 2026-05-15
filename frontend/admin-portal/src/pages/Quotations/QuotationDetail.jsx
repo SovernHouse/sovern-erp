@@ -13,7 +13,7 @@ import {
   CalendarClock,
   Truck,
 } from 'lucide-react'
-import { quotationsAPI, ordersAPI, factoriesAPI } from '../../services/api'
+import { quotationsAPI, ordersAPI, factoriesAPI, tariffRatesAPI } from '../../services/api'
 import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import { useBrands } from '../../contexts/BrandsContext'
 import BrandBadge from '../../components/BrandBadge'
@@ -56,6 +56,10 @@ export default function QuotationDetail() {
   const [soShippingMethod, setSoShippingMethod] = useState('')
   const [soNotes, setSoNotes] = useState('')
 
+  // Phase 4.9 C-5: tariff snapshot status per line, computed when the
+  // send dialog opens. { hardBlocks: [{line, reason}], warnings: [{...}] }
+  const [tariffPreflight, setTariffPreflight] = useState({ hardBlocks: [], warnings: [], checked: false })
+
   useEffect(() => {
     const fetchQuotation = async () => {
       try {
@@ -89,6 +93,52 @@ export default function QuotationDetail() {
     } finally {
       setIsSending(false)
     }
+  }
+
+  // Phase 4.9 C-5: pre-flight the tariff state before opening the send
+  // dialog. Hard-block when a line has an origin but no active tariff
+  // for (origin -> US). Warn when an active tariff expires within 7 days
+  // or is already expired. Non-US destinations are no-op.
+  const openSendDialog = async () => {
+    const dest = (quotation?.customer?.country || '').toUpperCase()
+    const isUS = dest === 'US' || dest === 'USA'
+    if (!isUS) {
+      setTariffPreflight({ hardBlocks: [], warnings: [], checked: true })
+      setShowSendConfirm(true)
+      return
+    }
+    try {
+      const res = await tariffRatesAPI.getAll({ includeExpired: true })
+      const all = Array.isArray(res.data) ? res.data : []
+      const today = new Date().toISOString().slice(0, 10)
+      const hardBlocks = []
+      const warnings = []
+      for (const item of (quotation.items || [])) {
+        const origin = (item.originCountry || '').toUpperCase()
+        if (!origin) continue
+        const candidates = all.filter(r =>
+          r.originCountry === origin &&
+          r.destinationCountry === dest &&
+          r.effectiveFrom <= today &&
+          r.effectiveUntil >= today
+        )
+        const brandHit = candidates.find(r => r.brandCode === quotation.brandCode)
+        const tariff = brandHit || candidates.find(r => !r.brandCode) || candidates[0]
+        const lineLabel = item.description || item.product?.name || item.productId
+        if (!tariff) {
+          hardBlocks.push({ line: lineLabel, origin, reason: 'No active tariff' })
+          continue
+        }
+        const daysLeft = Math.round((new Date(tariff.effectiveUntil).getTime() - new Date(today).getTime()) / 86400000)
+        if (daysLeft <= 7) {
+          warnings.push({ line: lineLabel, origin, ratePercent: Number(tariff.ratePercent), expires: tariff.effectiveUntil, daysLeft })
+        }
+      }
+      setTariffPreflight({ hardBlocks, warnings, checked: true })
+    } catch (e) {
+      setTariffPreflight({ hardBlocks: [], warnings: [], checked: true })
+    }
+    setShowSendConfirm(true)
   }
 
   const handleConvertToPI = async () => {
@@ -302,7 +352,7 @@ export default function QuotationDetail() {
           </button>
           {canSend && (
             <button
-              onClick={() => setShowSendConfirm(true)}
+              onClick={openSendDialog}
               disabled={isSending}
               className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
@@ -608,7 +658,9 @@ export default function QuotationDetail() {
       {/* Chatter */}
       <Chatter entityType="Quotation" entityId={quotation.id} className="mt-6" />
 
-      {/* Send Confirmation Dialog */}
+      {/* Send Confirmation Dialog. Phase 4.9 C-5: extra tariff warnings
+          surface inside the dialog when destination is US. Hard-block when
+          a line has an origin but no active tariff. */}
       <ConfirmDialog
         isOpen={showSendConfirm}
         onClose={() => setShowSendConfirm(false)}
@@ -618,7 +670,33 @@ export default function QuotationDetail() {
         confirmText="Send"
         cancelText="Cancel"
         isLoading={isSending}
-      />
+        disableConfirm={tariffPreflight.hardBlocks.length > 0}
+      >
+        {tariffPreflight.hardBlocks.length > 0 && (
+          <div className="p-3 bg-red-50 border border-red-300 rounded text-sm text-red-900">
+            <p className="font-semibold mb-2">Cannot send: missing tariff rate</p>
+            {tariffPreflight.hardBlocks.map((b, i) => (
+              <div key={i} className="text-xs mb-1">
+                · <span className="font-medium">{b.line}</span> ({b.origin} → US): {b.reason}
+              </div>
+            ))}
+            <p className="text-xs mt-2">
+              Add the missing rate in <span className="font-mono">Settings → Tariff rates</span> first.
+            </p>
+          </div>
+        )}
+        {tariffPreflight.warnings.length > 0 && (
+          <div className="p-3 bg-amber-50 border border-amber-300 rounded text-sm text-amber-900">
+            <p className="font-semibold mb-2">Tariff rate(s) expiring soon — confirm with factory before sending</p>
+            {tariffPreflight.warnings.map((w, i) => (
+              <div key={i} className="text-xs mb-1">
+                · <span className="font-medium">{w.line}</span> ({w.origin} → US, <span className="font-mono">{w.ratePercent.toFixed(4)}%</span>):{' '}
+                {w.daysLeft < 0 ? `expired ${-w.daysLeft}d ago` : `expires in ${w.daysLeft}d (${w.expires})`}
+              </div>
+            ))}
+          </div>
+        )}
+      </ConfirmDialog>
 
       {/* Convert to PI Confirmation Dialog */}
       <ConfirmDialog

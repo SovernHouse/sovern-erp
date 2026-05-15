@@ -19,6 +19,7 @@ import { COLORS } from '../../src/constants/config';
 import { useAuthStore } from '../../src/store/authStore';
 import BrandFilterPicker from '../../src/components/BrandFilterPicker';
 import CommissionWidget from '../../src/components/CommissionWidget';
+import TariffExpiringWidget from '../../src/components/TariffExpiringWidget';
 
 // ─── Module grid definition ───────────────────────────────────────────────────
 // To add a module: append here + register a Tabs.Screen in _layout.tsx.
@@ -157,6 +158,9 @@ export default function HomeScreen() {
 
       {/* Phase 3, C11: FW commission summary (hidden if user has no FW access) */}
       <CommissionWidget />
+
+      {/* Phase 4.9 C-5: tariff expiry warning (self-hides when no rows at risk) */}
+      <TariffExpiringWidget />
 
       {/* Pipeline metrics */}
       <Text style={styles.sectionTitle}>Pipeline</Text>
