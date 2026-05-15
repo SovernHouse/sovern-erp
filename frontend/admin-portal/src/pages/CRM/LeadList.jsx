@@ -239,6 +239,8 @@ const LeadList = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  {/* Phase 4.8 Commit 3a: human-readable Lead ID column */}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Lead #</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Company</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Brand</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Contact</th>
@@ -257,6 +259,7 @@ const LeadList = () => {
                     className="hover:bg-gray-50 transition cursor-pointer"
                     onClick={() => navigate(`/crm/leads/${lead.id}`)}
                   >
+                    <td className="px-6 py-4 text-xs font-mono text-gray-700">{lead.leadNumber || '—'}</td>
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{lead.companyName}</td>
                     <td className="px-6 py-4"><BrandBadge code={lead.brandCode || 'SH'} size="sm" /></td>
                     <td className="px-6 py-4 text-sm text-gray-600">{lead.contactName}</td>

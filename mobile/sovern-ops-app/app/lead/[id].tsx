@@ -336,6 +336,8 @@ export default function LeadDetailScreen() {
                 <Text style={styles.companyName}>{lead.companyName}</Text>
                 <BrandBadge code={lead.brandCode || 'SH'} size="sm" showLabel={false} />
               </View>
+              {/* Phase 4.8 Commit 3a: human-readable LD-YYYYMMDD-NNN under the company name */}
+              {lead.leadNumber ? <Text style={styles.leadNumber}>{lead.leadNumber}</Text> : null}
               <Text style={styles.contactName}>{lead.contactName}</Text>
               {lead.country ? <Text style={styles.country}>{lead.country}</Text> : null}
             </View>
@@ -760,6 +762,7 @@ const styles = StyleSheet.create({
   initialsText: { color: COLORS.white, fontSize: 22, fontWeight: '700' },
   headerMeta: { flex: 1 },
   companyName: { fontSize: 18, fontWeight: '700', color: COLORS.ink },
+  leadNumber:  { fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: COLORS.muted, marginTop: 2 },
   contactName: { fontSize: 14, color: COLORS.muted, marginTop: 2 },
   country:     { fontSize: 13, color: COLORS.forest, marginTop: 3 },
 

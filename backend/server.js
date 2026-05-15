@@ -639,6 +639,17 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] C20 seed-data archival skipped:', e.message);
     }
+
+    // Phase 4.8 Commit 3a: backfill Lead.leadNumber on existing rows so
+    // every Lead has an LD-YYYYMMDD-NNN identifier the UI can display.
+    // Idempotent via AuditLog sentinel; future Leads are stamped at
+    // create time by the controller.
+    try {
+      const { migrateLeadNumberC3a } = require('./services/migrateLeadNumberC3a');
+      await migrateLeadNumberC3a(db);
+    } catch (e) {
+      logger.warn('[boot] C3a leadNumber backfill skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {

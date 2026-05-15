@@ -206,9 +206,15 @@ const LeadForm = () => {
         </div>
 
         <div className="flex items-start justify-between mb-8 gap-4">
-          <h1 className="text-3xl font-bold text-gray-900">
-            {id ? (formData.companyName || 'Lead') : 'New Lead'}
-          </h1>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {id ? (formData.companyName || 'Lead') : 'New Lead'}
+            </h1>
+            {/* Phase 4.8 Commit 3a: show LD-YYYYMMDD-NNN under the company name */}
+            {id && formData.leadNumber && (
+              <p className="mt-1 text-sm font-mono text-gray-500">{formData.leadNumber}</p>
+            )}
+          </div>
           {id && (
             <div className="flex items-center gap-2">
               {!canEdit ? (

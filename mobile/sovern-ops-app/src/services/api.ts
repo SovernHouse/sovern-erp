@@ -397,6 +397,9 @@ export interface DashboardSummary {
 
 export interface Lead {
   id: string;
+  // Phase 4.8 Commit 3a: human-readable LD-YYYYMMDD-NNN. Nullable until
+  // the C3a backfill migration has stamped existing rows.
+  leadNumber?: string | null;
   companyName: string;
   contactName: string;
   email: string;

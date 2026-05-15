@@ -33,6 +33,8 @@ const LeadRow = memo(function LeadRow({ lead, onPress }: { lead: Lead; onPress: 
           <Text style={styles.company}>{lead.companyName}</Text>
           <BrandBadge code={lead.brandCode || 'SH'} size="sm" showLabel={false} />
         </View>
+        {/* Phase 4.8 Commit 3a: human-readable LD-YYYYMMDD-NNN under the company name */}
+        {lead.leadNumber ? <Text style={styles.leadNumber}>{lead.leadNumber}</Text> : null}
         <Text style={styles.contact}>{lead.contactName}</Text>
         {lead.productInterests
           ? <Text style={styles.product}>{lead.productInterests}</Text>
@@ -178,6 +180,7 @@ const styles = StyleSheet.create({
   },
   rowBody: { flex: 1 },
   company: { fontSize: 15, fontWeight: '700', color: COLORS.ink },
+  leadNumber: { fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: COLORS.muted, marginTop: 2 },
   contact: { fontSize: 13, color: COLORS.muted, marginTop: 1 },
   product: { fontSize: 12, color: COLORS.forest, marginTop: 3 },
   statusChip: {

@@ -175,6 +175,17 @@ exports.createLead = async (req, res) => {
       });
     }
 
+    // Phase 4.8 Commit 3a: stamp the human-readable LD-YYYYMMDD-NNN
+    // before persist. If the client supplied a leadNumber for an import
+    // flow, respect it; otherwise generate. Collisions on the UNIQUE
+    // column are extremely unlikely (the counter scans existing today-
+    // prefixed rows) but if they happen Sequelize throws, the catch
+    // block returns 500, and the next attempt picks max+1 cleanly.
+    if (!payload.leadNumber) {
+      const { generateLeadNumber } = require('../services/leadNumberGenerator');
+      payload.leadNumber = await generateLeadNumber(db);
+    }
+
     const lead = await db.Lead.create(payload);
 
     // Phase 3, C13: if this lead was created against an existing customer
