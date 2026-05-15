@@ -11,17 +11,18 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `d7340b6` feat(quotations): landed-cost + display-unit toggle (Phase 4.9c) — CI in progress at session note time
-  - `6f4421b` feat(mcp): list_brands + create_brand so AI can self-serve brand setup — green, deployed
-  - `5c80429` feat(tariffs): TariffRate model + admin CRUD + mobile read view (Phase 4.9b) — green, deployed
-  - `fe29ea4` fix(ai): dev-mode chat + dev-runs list double-unwrap — green
-  - `bb22fdd` feat(catalog): Product.originVariants multi-origin pricing (Phase 4.9a) — green
+  - `88a5e66` feat(tariffs): expiry warning UI — dashboard + send-confirm (Phase 4.9e) — CI in progress at session note time
+  - `4c379b0` feat(tariffs): bulk import + CSV template (Phase 4.9d)
+  - `3a15141` feat(tariffs): named component breakdown (Phase 4.9 C-3 follow-up)
+  - `d7340b6` feat(quotations): landed-cost + display-unit toggle (Phase 4.9c)
+  - `6f4421b` feat(mcp): list_brands + create_brand (Brand MCP)
+  - `5c80429` feat(tariffs): TariffRate model + admin CRUD + mobile read view (Phase 4.9b)
+  - `bb22fdd` feat(catalog): Product.originVariants multi-origin pricing (Phase 4.9a)
 - **Working tree:** clean (SESSION.md modified only).
-- **Most recent deploy:** `6f4421b` green. `d7340b6` deploy follows after CI passes.
+- **Tests:** 240/240 passing locally pre-push. New suites: unitConversion (11), tariffRateComponents (4), tariffBulkImport (6).
 - **Backend health:** live at `https://erp.sovernhouse.co/api`.
-- **Tests:** 230/230 passing locally pre-push (added 11 unitConversion cases in C-3).
-- **Mobile parity:** READY. New mobile surfaces shipped in same commits: `app/tariff-rates.tsx` (4.9b), expanded `app/quotation/create.tsx` with origin pills + unit toggles + USA landed-cost preview (4.9c). Alex still needs to run `eas update --branch main --platform ios --environment production` from Windows for users to see it.
-- **Brands on prod:** SH, FW (verified via sqlite3 on VM). HH not yet created. AI assistant can now call `list_brands` then `create_brand` to provision it.
+- **Mobile parity:** READY. All new mobile surfaces shipped in same commits per L-035. Alex still needs to run `eas update --branch main --platform ios --environment production` from Windows for users to see it.
+- **Brands on prod:** SH, FW. HH not yet created. AI assistant can now call `list_brands` then `create_brand` to provision it.
 
 ---
 
@@ -61,7 +62,19 @@ Multi-origin products + tariff rates + landed-cost quotations. Ordered as 4.9a �
 - Tool descriptions instruct the assistant to call list_brands BEFORE any brandCode-referencing tool and to preview+confirm with Alex before create_brand fires.
 - Unblocks the HanHua / HH workflow: AI assistant can now provision HH inline before calling create_product.
 
-### Next: 4.9d (bulk import) → 4.9e (expiry warning UI) → Phase 5 (offline mode).
+### 4.9c follow-up — TariffRate.components breakdown — SHIPPED (`3a15141`)
+
+Single opaque ratePercent replaced with components JSON `[{name, ratePercent, note?}]`. Sum auto-computes ratePercent. Backfill migration converts existing rows. PDF + desktop preview + mobile preview + admin CRUD all show the breakdown ("MFN base 3.2%, Section 301 25.0%, IEEPA reciprocal 10.0%, IEEPA fentanyl 2.15%, MPF 0.3464%, HMF 0.075% → 40.7714%"). Sentinel `phase4_9_c3_2_tariff_rate_components_backfilled`.
+
+### 4.9d — Bulk import + CSV template — SHIPPED (`4c379b0`)
+
+`GET /api/tariff-rates/template.csv` + `POST /api/tariff-rates/bulk-import`. Multipart file or JSON body. Each row is one tariff entry; named component columns (mfnBase, section301, section232, ieepaReciprocal, ieepaFentanyl, adCvd, mpf, hmf) plus two free-form pairs (otherNameN/otherRateN) become the components breakdown. Upsert key (origin, destination, effectiveFrom). Per-row errors don't abort; response carries inserted/updated/errors with CSV line numbers. Desktop toolbar Template + Bulk import buttons added. No mobile UI (super-admin desktop workflow).
+
+### 4.9e — Tariff expiry warning UI — SHIPPED (`88a5e66`)
+
+Dashboard widget (desktop + mobile, L-035 parity): self-hiding amber card listing tariffs in the [-30, +7] day window. Send-confirm warning on QuotationDetail: pre-flight per-line tariff check for US destinations. **Hard-block** when a line has origin but no active tariff (confirm button disabled). **Soft warn** when an active tariff expires within 7 days. ConfirmDialog gained `children` + `disableConfirm` props.
+
+### Phase 4.9 is COMPLETE. Phase 5 (offline mode) is unblocked.
 
 ---
 
