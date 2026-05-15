@@ -18,7 +18,7 @@ const path = require('path');
 
 const SERVER_PATH = path.join(__dirname, '..', '..', 'mcp', 'erpToolServer.js');
 const STARTUP_TIMEOUT_MS = 8000;
-const CALL_TIMEOUT_MS    = 8000;
+const CALL_TIMEOUT_MS    = 30000; // first tools/call may trigger lazy model load (~4s) in MCP subprocess
 
 async function startMcp({ env = {} } = {}) {
   const child = spawn('node', [SERVER_PATH], {

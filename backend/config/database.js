@@ -84,7 +84,10 @@ function getConfig() {
     return {
       ...baseConfig,
       dialect: 'sqlite',
-      storage: ':memory:',
+      // Phase 4.9.3.1: honor SQLITE_STORAGE in test so MCP cross-process
+      // integration tests can route both the jest process and the
+      // spawned MCP subprocess to a shared file DB. Default stays :memory:.
+      storage: process.env.SQLITE_STORAGE || ':memory:',
       logging: false
     };
   }

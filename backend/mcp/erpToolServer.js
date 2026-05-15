@@ -3735,19 +3735,20 @@ const TOOL_DEFS = [
   },
   {
     name: 'send_outreach_email',
-    description: 'Send (or draft) a tracked outreach email to a lead. ALWAYS show the full draft (subject + body + recipient) to Alex and wait for explicit confirmation before calling this tool — never auto-send. Two modes: (1) DEFAULT — sends immediately via SMTP, creates an OutreachEmail row with status=sent, bumps lead status new→contacted, uses the Sovern House signature. (2) draftOnly=true (Phase 4.9.3b) — skips SMTP entirely, creates the same OutreachEmail row with status=draft so it appears in the outreach UI at /crm/leads/{leadId} for review before manual send. Use draftOnly=true whenever the user asks to "stage" / "draft" / "queue for review" an outreach email; use the default mode only when the user has explicitly approved the content for immediate send. For untracked one-off Gmail use send_email instead.',
+    description: 'Send (or draft) a tracked outreach email to a lead. ALWAYS show the full draft (subject + body + recipient) to Alex and wait for explicit confirmation before calling this tool — never auto-send. Two modes: (1) DEFAULT — sends immediately via SMTP, creates an OutreachEmail row with status=sent, bumps lead status new→contacted, uses the brand signature. (2) draftOnly=true (Phase 4.9.3b) — skips SMTP entirely, creates the same OutreachEmail row with status=draft so it appears in the outreach UI at /crm/leads/{leadId} for review before manual send. Use draftOnly=true whenever the user asks to "stage" / "draft" / "queue for review" an outreach email; use the default mode only when the user has explicitly approved the content for immediate send. The sender address (fromAddress) is resolved from lead.brandCode -> Brand.senderEmail (Phase 4.9.3.1). For untracked one-off Gmail use send_email instead.',
     inputSchema: {
       type: 'object',
       required: ['lead_id', 'subject', 'body_text'],
       properties: {
         lead_id:        { type: 'string', description: 'Lead ID (from list_leads or create_lead)' },
         subject:        { type: 'string', description: 'Email subject' },
-        body_text:      { type: 'string', description: 'Plain-text body (will be wrapped in HTML with the Sovern signature)' },
+        body_text:      { type: 'string', description: 'Plain-text body (will be wrapped in HTML with the brand signature)' },
         touch_number:   { type: 'number', description: 'Sequence step (1=initial, 2=first follow-up, etc.). Default 1.' },
         follow_up_days: { type: 'number', description: 'Days until follow-up is due. Default: touch1=3, touch2=5, touch3+=7' },
         cc:             { type: 'string', description: 'CC address(es), comma-separated' },
         bcc:            { type: 'string', description: 'BCC address(es), comma-separated' },
         draftOnly:      { type: 'boolean', description: 'Phase 4.9.3b: when true, persist the row with status=draft (no SMTP send). Default false (= immediate send). Use draft mode when the user wants to stage for review.' },
+        fromAddress:    { type: 'string', description: 'Phase 4.9.3.1: explicit sender override. If omitted, resolved from lead.brandCode -> Brand.senderEmail (FW -> alexflorway@gmail.com, SH -> alex@sovernhouse.co). Use only when the AI assistant has reason to override the brand default.' },
       },
     },
   },
