@@ -87,6 +87,14 @@ Every timestamp surfaced to Alex (or to any user of any Sovern surface) must be 
 - **Fix:** Default formatter for any user-facing timestamp is `date.toLocaleString('en-GB', { timeZone: 'Asia/Taipei' })`, or an equivalent that explicitly passes `timeZone: 'Asia/Taipei'`. Never call `.toISOString()` for display. Never concatenate `'UTC'` as a suffix. The AI chat assistant's system prompt now carries a global timezone rule covering every field returned by ERP tools.
 - **Rule:** No raw UTC, no `Z` ISO suffix, no `UTC` label in any user-visible string. Audit before merging: search the diff for `toISOString()`, `'UTC'`, and naked `Date.toString()` calls in render paths. If you find one in code you are touching, fix it.
 
+**L-043 — Literal backticks inside a JS template literal must be escaped, even in the middle of a "string" of markdown copy**
+
+When editing a long template literal (e.g. the AI assistant system prompt in `backend/services/aiContextService.js`, which starts with `` return ` `` and runs hundreds of lines), any unescaped backtick inside the body terminates the outer string. The rest of the file then parses as code, the parser throws a confusing error on the first identifier after the rogue backtick, and Jest fails ALL test suites that import the file. CI on `a6fc36f6` failed with 148/219 tests broken; symptom was a `SyntaxError: Unexpected identifier 'ai_assistant_'` 30 lines below the actual bug.
+
+- **Root cause:** Phase 4.5 C19 v2 added a markdown bullet that styled a tool name with backticks: `` `ai_assistant_<tool_name>` ``. Inside a template literal, those backticks closed the literal early. The author saw the markdown reading correctly and missed that the surrounding code context was already a template literal, not a regular Markdown file.
+- **Fix:** Use the file's existing convention: escape the literal backtick with a leading backslash, `` \` ``. The existing prompt at lines 507 and elsewhere already shows the pattern: `` \`/new-clients <brief>\` ``. After the hotfix at commit `c71eb25`, backend tests are 219/219 pass.
+- **Rule:** Before editing any large template literal (look for `` return ` `` or `const X = ` `` near the top of the file), check whether the inner content uses backticks. If you add backtick-styled tokens inside, escape with `` \` ``. Same hazard applies to `$` (template interpolation) and unescaped `${...}` blocks: prefix with `\` if literal. After ANY edit to such a file, run `node -e "require('./path/to/file.js')"` locally before pushing. Jest will catch it eventually, but the round-trip through CI burns a minute and a hotfix commit.
+
 ---
 
 ## Verification Checklist (Before Marking Any Task Done)
