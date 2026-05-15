@@ -2689,19 +2689,19 @@ const TOOL_DEFS = [
   },
   {
     name: 'search_drive_files',
-    description: 'Search Google Drive for files. Use to find supplier quotations, spec sheets, or price lists stored in Drive.',
+    description: 'Search Alex\'s connected Google Drive for a file. Phase 4.5, C19: USE THIS whenever Alex asks for a document by name or topic — brand decks (IronLite Branding deck, FlorWay Brand Guidelines), presentations, spec sheets, supplier quotations, price lists, contracts, slides, references, drafts, anything stored in Drive. Search by name= for file-name match and/or query= for full-text content match (these compose with AND). Returns up to 10 files with id, name, mimeType, size, modifiedTime, and webViewLink (a clickable URL Alex can open in the browser). Always surface the webViewLink in your reply so Alex can open the file directly. Falls back to "No Drive files found" if nothing matches; in that case offer to widen the search or ask whether the file lives outside Drive.',
     inputSchema: {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Full-text search term (searches inside file content)' },
-        name:  { type: 'string', description: 'Search by file name' },
-        limit: { type: 'number', description: 'Max results (default: 10)' },
+        name:  { type: 'string', description: 'Search by file name. Partial matches work — e.g. "IronLite" finds "IronLite Branding deck.pptx".' },
+        limit: { type: 'number', description: 'Max results (default: 10, max: 20)' },
       },
     },
   },
   {
     name: 'read_drive_file',
-    description: 'Read the text content of a Google Drive file (Google Docs, Sheets, plain text, CSV). Use to extract product specs, pricing tables, or quotation details from a file Alex has shared.',
+    description: 'Read the text content of a Google Drive file (Google Docs, Sheets, plain text, CSV). Use to extract product specs, pricing tables, quotation details, or content from any text-bearing file Alex has shared. PDFs and PowerPoint decks return a note explaining text cannot be extracted via this API — in that case, share the webViewLink from search_drive_files instead.',
     inputSchema: {
       type: 'object',
       required: ['file_id'],

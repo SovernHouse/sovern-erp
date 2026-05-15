@@ -790,7 +790,31 @@ export const HELP_CONTENT = {
           'Upcoming activities: scheduled follow-ups and meetings due within 7 days.',
           'Connected Google accounts: which mailboxes are synced.',
           'Company context: Sovern House business model, Incoterms rules, margin formula, key contacts.',
-          'The AI does NOT have access to individual emails, documents, or financial records.',
+          'Google Drive: when you ask for a file by name or topic, the assistant searches your connected Drive and returns a clickable link. Phase 4.5, C19.',
+          'Gmail threads and inbox: the assistant can list and read your email threads from connected Google accounts.',
+          'Web search: live lookups for flights, weather, news, factory and supplier background checks, and other quick research. Phase 4.5, C19.',
+        ],
+      },
+      {
+        heading: 'Finding documents in Drive (Phase 4.5, C19)',
+        body: 'Ask for any file by name or topic and the assistant searches your connected Google Drive. It returns up to 10 matches with a clickable link you can open in the browser. PDFs and PowerPoint decks are listed with their link (the API cannot extract their text); Google Docs, Sheets, plain text, and CSV files can also be read inline into the conversation.',
+        items: [
+          '"Share the IronLite Branding deck" or "find the FlorWay brand guidelines"',
+          '"Pull up the HanHua supplier quotation from April"',
+          '"Where is the Egypt commercial invoice I drafted last week?"',
+          '"Read the SPC price list I uploaded yesterday"',
+          'If a file is not in Drive, the assistant says so and offers to widen the search; it does not invent links.',
+        ],
+      },
+      {
+        heading: 'External research (Phase 4.5, C19)',
+        body: 'For anything outside the ERP and Drive, the assistant can run a quick web lookup. Use this for time-sensitive or public-record facts — not for trade compliance decisions, which always need a licensed broker.',
+        items: [
+          'Flights: "Find flights TPE to LAX next Tuesday"',
+          'Weather: "Weather in Cairo on the 22nd"',
+          'Factory background: "What can you find about Anhui HanHua Building Materials online?"',
+          'News: "Latest on Section 301 tariffs"',
+          'Heavy multi-step sourcing belongs in the Tier 2 background runner (Slash command /new-suppliers), not the synchronous chat.',
         ],
       },
       {
@@ -831,9 +855,11 @@ export const HELP_CONTENT = {
       'Use it to sense-check Incoterm choices, payment term risks, or landed cost estimates before a deal.',
     ],
     warnings: [
-      'The AI cannot make changes to the ERP — it is read-only. All edits must be done in the relevant module.',
+      'The AI cannot make changes to the ERP unless you have super-admin Dev Mode on. All standard edits must be done in the relevant module.',
       'Always verify AI-generated pricing and compliance advice against current rates and regulations before using it in a live deal.',
       'Conversation history is stored in the ERP database. Do not paste sensitive credentials or personal data into the chat.',
+      'Drive search only sees files visible to your connected Google account. If a file is in a different Drive, share it with that account first.',
+      'Web search results are public-internet data. Treat them as a starting point, not authoritative compliance or financial sources.',
     ],
   },
 
