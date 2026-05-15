@@ -211,10 +211,14 @@ export default function LeadsScreen() {
       </View>
 
       {/* Phase 4.8 Commit 3c — status filter pill bar. Horizontal scroll
-          so the 8 stages fit on narrow screens. */}
+          so the 8 stages fit on narrow screens. flexGrow:0 / flexShrink:0
+          on the ScrollView style is non-negotiable: without it the
+          ScrollView fights the FlatList below for vertical space and the
+          pills get bottom-clipped (rendered behind the list). See L-044. */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={{ flexGrow: 0, flexShrink: 0 }}
         contentContainerStyle={styles.filterRow}
       >
         {STATUS_FILTERS.map((f) => {
@@ -280,25 +284,30 @@ const styles = StyleSheet.create({
     color: COLORS.ink,
   },
   clearBtn: { fontSize: 16, color: COLORS.muted, padding: 4 },
-  // Phase 4.8 Commit 3c hotfix — sort toggle row
+  // Phase 4.8 Commit 3c hotfix + pill-contrast bugfix — sort toggle row.
+  // Same darker border/text tokens as filterPill for consistency.
   sortRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
-  sortLabel: { fontSize: 11, fontWeight: '700', color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
-  sortPill: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
+  sortLabel: { fontSize: 11, fontWeight: '700', color: COLORS.steel, textTransform: 'uppercase', letterSpacing: 0.6 },
+  sortPill: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: COLORS.muted, backgroundColor: COLORS.white },
   sortPillActive: { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
-  sortPillText: { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
+  sortPillText: { fontSize: 12, color: COLORS.steel, fontWeight: '600' },
   sortPillTextActive: { color: COLORS.white },
-  // Phase 4.8 Commit 3c — filter pill bar
-  filterRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 6 },
+  // Phase 4.8 Commit 3c + pill-contrast bugfix — filter pill bar.
+  // Inactive pills now use the steel token for text (was muted) and the
+  // muted token for the border (was the near-invisible cream border).
+  // paddingVertical 8 (was 6) gives the text room and makes the clipping
+  // bug far less visible if it ever recurs.
+  filterRow: { paddingHorizontal: 16, paddingBottom: 10, paddingTop: 2, gap: 6 },
   filterPill: {
     paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.muted,
     backgroundColor: COLORS.white,
   },
   filterPillActive:     { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
-  filterPillText:       { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
+  filterPillText:       { fontSize: 12, color: COLORS.steel, fontWeight: '600' },
   filterPillTextActive: { color: COLORS.white },
   row: {
     flexDirection: 'row',

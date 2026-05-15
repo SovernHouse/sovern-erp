@@ -232,10 +232,10 @@ const styles = StyleSheet.create({
   clearBtn:    { fontSize: 16, color: COLORS.muted, padding: 4 },
   // Phase 4.8 Commit 3d — sort toggle row
   sortRow:           { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
-  sortLabel:         { fontSize: 11, fontWeight: '700', color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
-  sortPill:          { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
+  sortLabel:         { fontSize: 11, fontWeight: '700', color: COLORS.steel, textTransform: 'uppercase', letterSpacing: 0.6 },
+  sortPill:          { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: COLORS.muted, backgroundColor: COLORS.white },
   sortPillActive:    { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
-  sortPillText:      { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
+  sortPillText:      { fontSize: 12, color: COLORS.steel, fontWeight: '600' },
   sortPillTextActive:{ color: COLORS.white },
 
   filterRow: {
@@ -245,16 +245,17 @@ const styles = StyleSheet.create({
     gap: 6,
     flexWrap: 'wrap',
   },
+  // Pill-contrast bugfix — darker border + text on inactive chips.
   filterChip: {
     paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.muted,
     backgroundColor: COLORS.white,
   },
   filterChipActive: { borderColor: COLORS.forest, backgroundColor: COLORS.forest + '18' },
-  filterChipText:   { fontSize: 12, color: COLORS.muted },
+  filterChipText:   { fontSize: 12, color: COLORS.steel, fontWeight: '600' },
   filterChipTextActive: { color: COLORS.forest, fontWeight: '700' },
 
   row: {

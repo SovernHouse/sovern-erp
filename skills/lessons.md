@@ -95,6 +95,14 @@ When editing a long template literal (e.g. the AI assistant system prompt in `ba
 - **Fix:** Use the file's existing convention: escape the literal backtick with a leading backslash, `` \` ``. The existing prompt at lines 507 and elsewhere already shows the pattern: `` \`/new-clients <brief>\` ``. After the hotfix at commit `c71eb25`, backend tests are 219/219 pass.
 - **Rule:** Before editing any large template literal (look for `` return ` `` or `const X = ` `` near the top of the file), check whether the inner content uses backticks. If you add backtick-styled tokens inside, escape with `` \` ``. Same hazard applies to `$` (template interpolation) and unescaped `${...}` blocks: prefix with `\` if literal. After ANY edit to such a file, run `node -e "require('./path/to/file.js')"` locally before pushing. Jest will catch it eventually, but the round-trip through CI burns a minute and a hotfix commit.
 
+**L-044 — React Native horizontal ScrollView clips its children unless flexGrow is pinned to zero**
+
+When a React Native horizontal `<ScrollView>` sits between two flex children (e.g. a sort-toggle row above and a `<FlatList>` below), the ScrollView inherits the parent's flex distribution behavior. Without `style={{ flexGrow: 0, flexShrink: 0 }}`, RN allots it a vertical height that does not include the pills' full padding+border, and the bottom half of the pills (and bottom of their text) renders behind the FlatList that follows. Reads to the user as "washed out" or "low contrast" because only the top half of each pill is visible. Confirmed visually on iOS in Phase 4.8 Commit 3c.
+
+- **Root cause:** RN ScrollView's default flex behavior in a flex column container assumes vertical scrolling. Setting `horizontal={true}` does not also imply `flexGrow: 0`. The ScrollView claims more vertical space than its content's intrinsic height, then renders content at the top and lets the FlatList beneath cover the remainder.
+- **Fix:** Always set `style={{ flexGrow: 0, flexShrink: 0 }}` on horizontal ScrollViews used as a row inside a column-flex parent. `contentContainerStyle` alone does NOT pin height; the outer `style` does.
+- **Rule:** Any horizontal `<ScrollView>` between flex siblings gets `style={{ flexGrow: 0, flexShrink: 0 }}`. Verify on an actual iOS device, not just the simulator — iOS sometimes renders this differently between the two.
+
 ---
 
 ## Verification Checklist (Before Marking Any Task Done)

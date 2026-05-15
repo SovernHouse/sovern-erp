@@ -386,18 +386,18 @@ const styles = StyleSheet.create({
   searchBar:    { margin: 12, backgroundColor: COLORS.white, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 12 },
   searchInput:  { height: 40, color: COLORS.ink, fontSize: 14 },
   count:        { paddingHorizontal: 16, paddingBottom: 4, fontSize: 12, color: COLORS.muted },
-  // Phase 4.8 Commit 3c — Active/Inactive filter pill bar.
+  // Phase 4.8 Commit 3c + pill-contrast bugfix — Active/Inactive filter pill bar.
   filterRow:    { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 8, gap: 6 },
   filterPill: {
     paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.muted,
     backgroundColor: COLORS.white,
   },
   filterPillActive:     { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
-  filterPillText:       { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
+  filterPillText:       { fontSize: 12, color: COLORS.steel, fontWeight: '600' },
   filterPillTextActive: { color: COLORS.white },
 
   row: {

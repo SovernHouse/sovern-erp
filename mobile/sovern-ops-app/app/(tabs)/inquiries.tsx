@@ -494,19 +494,21 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
     flexWrap: 'wrap',
   },
+  // Pill-contrast bugfix — darker border + text on inactive pills.
   filterPill: {
-    paddingVertical: 6, paddingHorizontal: 12,
-    borderRadius: 16, backgroundColor: COLORS.cream,
+    paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: 16, backgroundColor: COLORS.white,
+    borderWidth: 1, borderColor: COLORS.muted,
   },
-  filterPillActive:    { backgroundColor: COLORS.forest },
-  filterPillText:      { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
+  filterPillActive:    { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
+  filterPillText:      { fontSize: 12, color: COLORS.steel, fontWeight: '600' },
   filterPillTextActive:{ color: COLORS.white },
   // Phase 4.8 Commit 3d — sort toggle row
   sortRow:           { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, gap: 8 },
-  sortLabel:         { fontSize: 11, fontWeight: '700', color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
-  sortPill:          { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
+  sortLabel:         { fontSize: 11, fontWeight: '700', color: COLORS.steel, textTransform: 'uppercase', letterSpacing: 0.6 },
+  sortPill:          { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: COLORS.muted, backgroundColor: COLORS.white },
   sortPillActive:    { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
-  sortPillText:      { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
+  sortPillText:      { fontSize: 12, color: COLORS.steel, fontWeight: '600' },
   sortPillTextActive:{ color: COLORS.white },
   row: {
     backgroundColor: COLORS.white,
