@@ -727,6 +727,16 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] 4.9.1 recovery migration skipped:', e.message);
     }
+
+    // Phase 4.9.1 cleanup: rename the orphan ProductCategory (singular)
+    // table to ProductCategory_orphan_20260515 so it is visibly dead
+    // but data is preserved for one retention window. See L-048.
+    try {
+      const { migrate491CleanupOrphan } = require('./services/migrate491CleanupOrphan');
+      await migrate491CleanupOrphan(db);
+    } catch (e) {
+      logger.warn('[boot] 4.9.1 orphan cleanup skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {

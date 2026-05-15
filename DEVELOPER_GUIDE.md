@@ -2665,6 +2665,19 @@ The other 9 non-flooring rows (Apparel, Sanitary Ware, etc.) stay as top-level o
 
 **Formalize ERP migration framework — stop relying on `sync({alter:true})`.** Today's defensive `ALTER TABLE ... ADD COLUMN` worked, but every prior schema change has been invisible to ops: the ProductCategory thin-table situation that triggered this commit had been latent since the original C21 follow-up shipped. Recommend Sequelize-cli migrations in a `migrations/` directory with a `meta_migrations` tracking table. Estimate: one focused window. **Do not investigate `sync({alter:true})` in this commit; that is a separate phase.**
 
+## Data hygiene log
+
+Each row below is a known-orphan or known-noisy artefact and what was done about it. Future cleanup passes should consult this list before running any DROP TABLE — half of the suspicious names in `.tables` are intentional and load-bearing.
+
+| Table | Status | Action taken | Retention |
+|---|---|---|---|
+| `ProductCategory` (singular) | Orphan. Created 2026-04-11 by an early build; never wired. The live model writes to `ProductCategories` (plural). | RENAMED to `ProductCategory_orphan_20260515` by `migrate491CleanupOrphan.js` (sentinel `phase4_9_1_orphan_table_renamed`). 18 rows preserved. | Drop after 30 days if no regressions surface. |
+| `ArchivedSeed_Product` / `_ProductPrice` / `_ProductSpecification` / `_Quotation` / `_SalesOrder` / `_PurchaseOrder` / `_Invoice` / `_ProformaInvoice` / `_CommissionTracking` | **KEEP — load-bearing.** Created by `migrateSeedDataC20.js` as recoverable backups before the Phase 4.5 fake-seed wipe. Restore via `INSERT INTO <Source> SELECT (cols except archived_at_utc) FROM ArchivedSeed_<Source>`. | Indefinite. Do not DROP without explicit Alex sign-off. |
+| `CategoryTemplates` | Wired (`backend/models/CategoryTemplate.js`); currently empty. Used by the bulk-template flow when populated. | KEEP. |
+| `customer_addresses`, `document_versions`, `spec_templates`, `sustainability_records` | All wired models in snake_case. Mixed naming convention (legacy from an early ORM round-trip). | KEEP. Rename to PascalCase would be a separate refactor with FK rewiring; not worth the blast radius today. |
+
+**Rule for future cleanups:** before any DROP/RENAME on a table whose name is unusual or duplicated, `grep -rn "<TableName>" backend/models backend/controllers backend/services backend/routes` first. Zero hits AND no rows added in the last 90 days → eligible for the orphan rename pipeline. Any hits → leave alone, document why if puzzling.
+
 ## Bulk content upload
 
 The ERP backend runs on a Linux VM and cannot read Alex's Windows filesystem. The setup endpoint only creates folders. To populate a folder (e.g. drop the local IronLite Branding contents into `Brand Assets/IronLite Branding/`):
