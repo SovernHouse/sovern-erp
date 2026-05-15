@@ -90,7 +90,11 @@ router.get('/campaigns/:campaignId/performance', crmController.getCampaignPerfor
 
 // DASHBOARD & PIPELINE ROUTES
 router.get('/dashboard', crmController.getCRMDashboard);
+// Phase 4.8 Commit 3b: both URLs hit the same handler. /pipeline kept as
+// alias for one release per the audit doc; /lead-pipeline is the
+// preferred name for new code referring to the Lead-grouped data.
 router.get('/pipeline', crmController.getPipelineView);
+router.get('/lead-pipeline', crmController.getPipelineView);
 
 // OUTREACH EMAIL ROUTES
 router.get('/outreach/followups', outreachController.getFollowups);

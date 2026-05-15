@@ -525,6 +525,34 @@ export const HELP_CONTENT = {
   },
 
   // ── CRM ───────────────────────────────────────────────────────────────────
+  '/crm/pipeline': {
+    title: 'Pipeline',
+    summary: 'Kanban view of every Lead grouped by stage. Drag a card between columns to update its status. Phase 4.8 collapsed the previous separate Deal model into this Lead-based view; see the audit doc for the rationale.',
+    sections: [
+      {
+        heading: 'How to use',
+        steps: [
+          'Each column is a Lead status. Cards in a column are Leads currently at that stage.',
+          'Drag a card to a different column to bump the Lead\'s status. The drop fires PUT /leads/:id and updates the row.',
+          'Click a card to open the Lead detail page in full edit mode.',
+          'Use the New Lead button to create a new prospect; it lands in the New column by default.',
+        ],
+      },
+      {
+        heading: 'Pipeline metrics',
+        items: [
+          'Per-column count and dollar total (sum of estimatedValue) shown in the column header.',
+          'Open pipeline = Qualified + Proposal + Negotiation columns. Top-of-funnel = New + Contacted. Terminal = Won + Lost.',
+          'Filter by assignee narrows every column to that user\'s Leads.',
+        ],
+      },
+    ],
+    tips: [
+      'Lead numbers (LD-YYYYMMDD-NNN) are shown on each card for fast reference in conversations.',
+      'Brand badge on each card distinguishes SH from FW Leads.',
+    ],
+  },
+
   '/leads': {
     title: 'Leads',
     summary: 'Potential buyers who have not yet made a purchase. Leads move through pipeline stages as you qualify them.',

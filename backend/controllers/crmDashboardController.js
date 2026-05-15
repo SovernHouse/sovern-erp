@@ -118,28 +118,44 @@ exports.getCRMDashboard = async (req, res) => {
 };
 
 // PIPELINE VIEW
+// Phase 4.8 Commit 3b (5a rewire): the Pipeline view now groups Leads by
+// Lead.status instead of Deals by Deal.stage. The audit doc at
+// docs/phase-4.8-leads-pipeline-audit.md explains why — Deal table is
+// empty on prod, Lead carries the full lifecycle, Quotations link to
+// leadId, so Lead is the canonical pipeline record.
+//
+// URL stays /api/crm/pipeline (callable history preserved per the
+// "keep alias" decision). A second URL /api/crm/lead-pipeline is wired
+// to the same handler in routes/crm.js so new code can use the explicit
+// name. Old callers continue to see /api/crm/pipeline; the shape
+// changes (Lead status keys instead of Deal stage keys), but the
+// frontend that consumes this URL (DealPipeline.jsx) is rewritten in
+// the same commit.
 exports.getPipelineView = async (req, res) => {
   try {
-    const deals = await db.Deal.findAll({
+    const where = { ...(req.brandScope?.where || {}) };
+    const leads = await db.Lead.findAll({
+      where,
       include: [
-        { model: db.Customer, attributes: ['id', 'companyName'] },
         { model: db.User, as: 'assignedTo', attributes: ['id', 'firstName', 'lastName', 'email'] },
       ],
-      order: [['stage', 'ASC'], ['value', 'DESC']],
+      order: [['estimatedValue', 'DESC'], ['createdAt', 'DESC']],
     });
 
     const pipeline = {
-      prospecting: [],
-      qualification: [],
+      new: [],
+      contacted: [],
+      qualified: [],
       proposal: [],
       negotiation: [],
-      closed_won: [],
-      closed_lost: [],
+      won: [],
+      lost: [],
     };
 
-    deals.forEach(deal => {
-      pipeline[deal.stage].push(deal);
-    });
+    for (const lead of leads) {
+      const bucket = pipeline[lead.status];
+      if (bucket) bucket.push(lead);
+    }
 
     res.json({ success: true, data: pipeline });
   } catch (error) {
