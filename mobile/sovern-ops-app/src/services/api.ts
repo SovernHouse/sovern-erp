@@ -128,7 +128,7 @@ export function getDashboard(params?: { brandCode?: string }) {
 
 // ─── Leads ────────────────────────────────────────────────────────────────
 
-export function getLeads(params?: { status?: string; page?: number }) {
+export function getLeads(params?: { status?: string; page?: number; limit?: number }) {
   const qs = new URLSearchParams(
     Object.entries(params ?? {}).filter(([, v]) => v !== undefined) as [string, string][]
   ).toString();

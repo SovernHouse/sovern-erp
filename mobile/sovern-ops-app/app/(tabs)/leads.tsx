@@ -51,6 +51,21 @@ const STATUS_FILTERS = [
   { key: 'lost',        label: 'Lost' },
 ] as const;
 
+// Phase 4.8 Commit 3c hotfix — "Sort by stage" reorders the list to
+// pipeline order so every stage is visible at a glance even when the
+// most-recent cohort is all the same stage. "Recent" is the legacy
+// createdAt-DESC behaviour. Default = stage so Alex sees the full
+// stage breakdown the first time he opens the screen.
+const STAGE_ORDER: Record<string, number> = {
+  new: 0,
+  contacted: 1,
+  qualified: 2,
+  proposal: 3,
+  negotiation: 4,
+  won: 5,
+  lost: 6,
+};
+
 const LeadRow = memo(function LeadRow({ lead, onPress }: { lead: Lead; onPress: () => void }) {
   // Phase 4.8 Commit 3c — bucket-based color, brand-accent for open
   // pipeline stages so SH and FW Leads are visually distinct at-a-glance.
@@ -88,11 +103,19 @@ export default function LeadsScreen() {
   const [search, setSearch] = useState('');
   // Phase 4.8 Commit 3c — status filter pill bar at top of list.
   const [statusFilter, setStatusFilter] = useState<string>('');
+  // Phase 4.8 Commit 3c hotfix — sort mode. Default 'stage' surfaces
+  // every stage at once instead of only the newest cohort.
+  const [sortMode, setSortMode] = useState<'stage' | 'recent'>('stage');
 
   async function load(isRefresh = false) {
     try {
       isRefresh ? setRefreshing(true) : setLoading(true);
-      const res = await getLeads({ page: 1 });
+      // Phase 4.8 Commit 3c hotfix — backend defaults to limit=10 and
+      // sorts createdAt DESC. With 112 prod rows and the most-recent
+      // batch all at status='new', that hid every other stage at the
+      // network layer regardless of what the UI did. limit=200 covers
+      // current scale comfortably; onEndReached pagination is Phase 5.
+      const res = await getLeads({ page: 1, limit: 200 });
       setLeads(res.data);
     } catch (err: any) {
       console.error(err.message);
@@ -104,9 +127,9 @@ export default function LeadsScreen() {
 
   useEffect(() => { load(); }, []);
 
-  // Phase 4.5, C22 + Phase 4.8 Commit 3c: derived filter combines status
-  // pill + search query. useMemo avoids the double-render the old
-  // setFiltered effect caused.
+  // Phase 4.5, C22 + Phase 4.8 Commit 3c (+hotfix): derived filter
+  // combines status pill + search query, then sorts by the active
+  // sortMode. useMemo so each keystroke is one render.
   const filtered = useMemo(() => {
     let list = leads;
     if (statusFilter) list = list.filter((l) => l.status === statusFilter);
@@ -118,8 +141,21 @@ export default function LeadsScreen() {
         (l.productInterests ?? '').toLowerCase().includes(q)
       );
     }
+    if (sortMode === 'stage') {
+      // Sort by pipeline order (new -> lost). Within a stage, keep
+      // createdAt DESC so the newest in each bucket bubbles up.
+      list = [...list].sort((a, b) => {
+        const oa = STAGE_ORDER[a.status] ?? 99;
+        const ob = STAGE_ORDER[b.status] ?? 99;
+        if (oa !== ob) return oa - ob;
+        const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return db - da;
+      });
+    }
+    // sortMode === 'recent' keeps the upstream createdAt DESC order.
     return list;
-  }, [search, statusFilter, leads]);
+  }, [search, statusFilter, sortMode, leads]);
 
   // Phase 4.5, C22: stable renderItem + keyExtractor so memoized rows can
   // skip re-rendering when only siblings change.
@@ -153,6 +189,25 @@ export default function LeadsScreen() {
             <Text style={styles.clearBtn}>✕</Text>
           </TouchableOpacity>
         ) : null}
+      </View>
+
+      {/* Phase 4.8 Commit 3c hotfix — sort toggle. "By stage" is the
+          default so opening the screen shows the full stage breakdown
+          instead of only the newest cohort (which on prod is all 'new'). */}
+      <View style={styles.sortRow}>
+        <Text style={styles.sortLabel}>Sort:</Text>
+        <TouchableOpacity
+          style={[styles.sortPill, sortMode === 'stage' && styles.sortPillActive]}
+          onPress={() => setSortMode('stage')}
+        >
+          <Text style={[styles.sortPillText, sortMode === 'stage' && styles.sortPillTextActive]}>By stage</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.sortPill, sortMode === 'recent' && styles.sortPillActive]}
+          onPress={() => setSortMode('recent')}
+        >
+          <Text style={[styles.sortPillText, sortMode === 'recent' && styles.sortPillTextActive]}>Recent</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Phase 4.8 Commit 3c — status filter pill bar. Horizontal scroll
@@ -225,6 +280,13 @@ const styles = StyleSheet.create({
     color: COLORS.ink,
   },
   clearBtn: { fontSize: 16, color: COLORS.muted, padding: 4 },
+  // Phase 4.8 Commit 3c hotfix — sort toggle row
+  sortRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
+  sortLabel: { fontSize: 11, fontWeight: '700', color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
+  sortPill: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
+  sortPillActive: { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
+  sortPillText: { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
+  sortPillTextActive: { color: COLORS.white },
   // Phase 4.8 Commit 3c — filter pill bar
   filterRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 6 },
   filterPill: {
