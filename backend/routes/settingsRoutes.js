@@ -17,23 +17,39 @@ const { NotFoundError, ValidationError } = require('../middleware/errorHandler')
 const auditService = require('../services/auditService');
 
 /**
- * In-memory store for settings
- * @todo In production, use a dedicated Settings model
+ * Phase 4.8, Commit 1 — company settings now persist to db.SystemSetting.
+ *
+ * Previously this file held a module-scoped `let companySettings` literal
+ * (line 23 of the pre-fix version). Mutations from PUT /company lasted only
+ * until the next backend boot; on restart the literal re-initialised to the
+ * hardcoded "Trading ERP" defaults and wiped every user edit. This was the
+ * root cause of Alex's "Settings General does not persist" bug.
+ *
+ * Singleton helper. Reads the single SystemSetting row; creates it on first
+ * call with the model-level defaults (which match the legacy in-memory
+ * shape: companyName='Trading ERP', currency='USD', taxRate=0, etc., but
+ * timezone='Asia/Taipei' per L-042). Seed-only-if-empty: subsequent boots
+ * find the existing row and never overwrite values Alex has saved.
+ *
+ * Field whitelist for PUT below intentionally omits id, key, createdAt,
+ * updatedAt so the route can `update(req.body)` without sanitising.
  */
-let companySettings = {
-  companyName: 'Trading ERP',
-  companyEmail: 'info@tradingerp.com',
-  companyPhone: '+1-800-000-0000',
-  companyAddress: '',
-  companyCity: '',
-  companyCountry: '',
-  companyLogo: '',
-  currency: 'USD',
-  timezone: 'UTC',
-  language: 'en',
-  taxRate: 0,
-  defaultPaymentTerms: 'Net 30'
-};
+const COMPANY_WRITABLE_FIELDS = [
+  'companyName', 'companyEmail', 'companyPhone',
+  'companyAddress', 'companyCity', 'companyCountry', 'companyLogo',
+  'currency', 'timezone', 'language', 'taxRate', 'defaultPaymentTerms',
+];
+
+async function getOrCreateCompanySettings() {
+  if (!db.SystemSetting) {
+    throw new Error('SystemSetting model not registered');
+  }
+  const [row] = await db.SystemSetting.findOrCreate({
+    where: { key: 'company' },
+    defaults: { key: 'company' },
+  });
+  return row;
+}
 
 let emailTemplates = [
   {
@@ -68,36 +84,39 @@ let emailTemplates = [
   }
 ];
 
-// GET /company - Get company settings
+// GET /company — fetch the singleton SystemSetting row (creates it with
+// model defaults on first call after the table is provisioned).
 router.get('/company', requireAuth, async (req, res, next) => {
   try {
-    res.json(getSuccessResponse(companySettings, 'Company settings retrieved successfully'));
+    const row = await getOrCreateCompanySettings();
+    res.json(getSuccessResponse(row.toJSON(), 'Company settings retrieved successfully'));
   } catch (error) {
     next(error);
   }
 });
 
-// PUT /company - Update company settings (admin only)
+// PUT /company — persist edits to the SystemSetting row. admin role (NOT
+// super_admin) to match the existing surface; tightening to super_admin is
+// a Phase 5 conversation. Pre-edit snapshot is captured for the AuditLog
+// trail.
 router.put('/company', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
-    const { companyName, companyEmail, companyPhone, companyAddress, companyCity, companyCountry, companyLogo, currency, timezone, language, taxRate, defaultPaymentTerms } = req.body;
+    const row = await getOrCreateCompanySettings();
+    const before = row.toJSON();
 
-    const previousSettings = { ...companySettings };
+    // Apply only whitelisted fields. Coerce taxRate to number; the rest are
+    // strings already. Undefined fields stay untouched so PATCH semantics
+    // work even on a PUT-shaped client.
+    const updates = {};
+    for (const k of COMPANY_WRITABLE_FIELDS) {
+      if (req.body[k] !== undefined) {
+        updates[k] = k === 'taxRate' ? parseFloat(req.body[k]) : req.body[k];
+      }
+    }
+    await row.update(updates);
+    const after = row.toJSON();
 
-    if (companyName !== undefined) companySettings.companyName = companyName;
-    if (companyEmail !== undefined) companySettings.companyEmail = companyEmail;
-    if (companyPhone !== undefined) companySettings.companyPhone = companyPhone;
-    if (companyAddress !== undefined) companySettings.companyAddress = companyAddress;
-    if (companyCity !== undefined) companySettings.companyCity = companyCity;
-    if (companyCountry !== undefined) companySettings.companyCountry = companyCountry;
-    if (companyLogo !== undefined) companySettings.companyLogo = companyLogo;
-    if (currency !== undefined) companySettings.currency = currency;
-    if (timezone !== undefined) companySettings.timezone = timezone;
-    if (language !== undefined) companySettings.language = language;
-    if (taxRate !== undefined) companySettings.taxRate = parseFloat(taxRate);
-    if (defaultPaymentTerms !== undefined) companySettings.defaultPaymentTerms = defaultPaymentTerms;
-
-    res.json(getSuccessResponse(companySettings, 'Company settings updated successfully'));
+    res.json(getSuccessResponse(after, 'Company settings updated successfully'));
 
     // Fire-and-forget audit log
     auditService.logAction(
@@ -105,8 +124,8 @@ router.put('/company', requireAuth, requireRole('admin'), async (req, res, next)
       'UPDATE',
       'CompanySettings',
       'company',
-      { before: previousSettings, after: companySettings },
-      req.ip
+      { before, after, updatedFields: Object.keys(updates) },
+      req.ip,
     ).catch(() => {});
   } catch (error) {
     next(error);
