@@ -11,17 +11,17 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `5c80429` feat(tariffs): TariffRate model + admin CRUD + mobile read view (Phase 4.9b) — CI in progress at session note time
-  - `fe29ea4` fix(ai): dev-mode chat + dev-runs list double-unwrap (two bugs, one root) — green
+  - `d7340b6` feat(quotations): landed-cost + display-unit toggle (Phase 4.9c) — CI in progress at session note time
+  - `6f4421b` feat(mcp): list_brands + create_brand so AI can self-serve brand setup — green, deployed
+  - `5c80429` feat(tariffs): TariffRate model + admin CRUD + mobile read view (Phase 4.9b) — green, deployed
+  - `fe29ea4` fix(ai): dev-mode chat + dev-runs list double-unwrap — green
   - `bb22fdd` feat(catalog): Product.originVariants multi-origin pricing (Phase 4.9a) — green
-  - `bcd682c` feat(mobile): quotation create flow — L-035 parity catch-up (Pre-4.9) — green
-  - `e8ad4e7` fix(pipeline): unwrap envelope correctly so columns are populated (hotfix) — green
-  - `97a493d` feat(taxonomy): archive non-flooring product categories (C21 follow-up) — green
-- **Working tree:** clean
-- **Most recent deploy:** `fe29ea4` deploy green. `5c80429` deploy will follow after CI passes.
-- **Backend health:** live at `https://erp.sovernhouse.co/api`
-- **Tests:** 219/219 passing locally pre-push.
-- **Mobile parity:** READY. Tariff rates read screen `mobile/sovern-ops-app/app/tariff-rates.tsx` shipped same commit per L-035. Alex still needs to run `eas update --branch main --platform ios --environment production` from Windows for users to see it.
+- **Working tree:** clean (SESSION.md modified only).
+- **Most recent deploy:** `6f4421b` green. `d7340b6` deploy follows after CI passes.
+- **Backend health:** live at `https://erp.sovernhouse.co/api`.
+- **Tests:** 230/230 passing locally pre-push (added 11 unitConversion cases in C-3).
+- **Mobile parity:** READY. New mobile surfaces shipped in same commits: `app/tariff-rates.tsx` (4.9b), expanded `app/quotation/create.tsx` with origin pills + unit toggles + USA landed-cost preview (4.9c). Alex still needs to run `eas update --branch main --platform ios --environment production` from Windows for users to see it.
+- **Brands on prod:** SH, FW (verified via sqlite3 on VM). HH not yet created. AI assistant can now call `list_brands` then `create_brand` to provision it.
 
 ---
 
@@ -45,14 +45,23 @@ Multi-origin products + tariff rates + landed-cost quotations. Ordered as 4.9a �
 - Mobile (L-035): `app/tariff-rates.tsx` read-only list with same expiry badges + Show expired toggle. Mutations stay desktop-super-admin only by design.
 - DEVELOPER_GUIDE section added.
 
-### Next: 4.9c — Quotation builder origin-picker + landed-cost math + PDF columns (USA destinations)
+### 4.9c — Landed-cost + display-unit toggle — SHIPPED (`d7340b6`, CI running)
 
-- Per quotation line item, picker selects which `Product.originVariants[]` to use → sets FOB and origin country.
-- At save and at PDF render: call `getCurrentTariff(origin, 'US', brandCode)`. Compute `landedCostUnit = fob * (1 + ratePercent/100)`. Cache the snapshot (`tariffSnapshot: {ratePercent, effectiveUntil, sourceTariffRateId}`) on the QuotationItem so the quotation is immutable after send even if the live rate changes.
-- New PDF columns shown when destination is USA: Origin, FOB, Tariff %, Landed/unit, Landed total.
-- Mobile parity: line-item editor on `mobile/sovern-ops-app/app/quotation/create.tsx` gets the same origin picker + USA landed-cost preview.
+- Bundles per-line origin + tariff snapshot + landed-cost PDF (C-3) with the area/dimension unit-display toggle Alex requested (one commit because both touch the same surfaces).
+- Backend: QuotationItem gains originCountry / fobPriceUsd / tariffSnapshot / landedCostUnit / landedCostTotal. Quotation gains displayAreaUnit + displayDimensionUnit (lock at send via existing draft-only update guard). New `backend/utils/unitConversion.js` + mirror `frontend/shared/units.js`. Storage stays canonical (USD/m², mm); conversion at render boundary only — no backfill needed. Controller: create/update accept originCountry per line, resolve FOB from Product.originVariants. send(): for US destinations, snapshot per item via `getCurrentTariff` and persist landed-cost on the row.
+- PDF: `drawFwItemsTable` now reads quotation.displayAreaUnit and converts area-based qty + unit price; new `drawLandedCostBreakdown` 6-col table renders after totals when any item has a snapshot. Non-US quotations look identical.
+- Desktop UI: unit toggle pills, per-line origin select that auto-fills FOB, USA landed-cost preview per line with amber expiry warning, floor-hint converts to chosen area unit.
+- Mobile UI: same toggles + origin pills + USA preview block.
+- Tests: 11 new unitConversion cases (230/230 total).
 
-### Then: 4.9d (bulk import) → 4.9e (expiry warning UI) → Phase 5 (offline mode).
+### Brand MCP — SHIPPED (`6f4421b`, deployed green)
+
+- `list_brands` (any auth user, read-only).
+- `create_brand` (super_admin). Validates code 2-8 uppercase, valid senderEmail, both colors as 6-digit hex. commissionRate default 0.05. Refuses to overwrite an existing code.
+- Tool descriptions instruct the assistant to call list_brands BEFORE any brandCode-referencing tool and to preview+confirm with Alex before create_brand fires.
+- Unblocks the HanHua / HH workflow: AI assistant can now provision HH inline before calling create_product.
+
+### Next: 4.9d (bulk import) → 4.9e (expiry warning UI) → Phase 5 (offline mode).
 
 ---
 
