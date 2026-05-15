@@ -63,9 +63,14 @@ async function findOrCreateFolder(drive, name, parentId) {
   const q =
     `mimeType = 'application/vnd.google-apps.folder' and name = '${safe}' and trashed = false` +
     (parentId ? ` and '${parentId}' in parents` : ' and \'root\' in parents');
-  const list = await drive.files.list({ q, fields: 'files(id,name)', pageSize: 1 });
+  // Phase 4.7+ C-4: include webViewLink in the list fields so the
+  // found-not-created branch can return a clickable URL. Without this,
+  // the setup endpoint returned webViewLink:null for any existing
+  // folder, leaving the admin to dig through Drive manually.
+  const list = await drive.files.list({ q, fields: 'files(id,name,webViewLink)', pageSize: 1 });
   if (list.data.files && list.data.files.length > 0) {
-    return { id: list.data.files[0].id, created: false };
+    const hit = list.data.files[0];
+    return { id: hit.id, webViewLink: hit.webViewLink || null, created: false };
   }
   const created = await drive.files.create({
     requestBody: {

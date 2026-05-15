@@ -2599,7 +2599,7 @@ Response shape:
     "folderTree": ["Brand Assets", "Brand Assets/IronLite Branding", ...],
     "accounts": {
       "alex@sovernhouse.co": {
-        "Brand Assets": { "id": "1AbC...", "created": false, "webViewLink": null },
+        "Brand Assets": { "id": "1AbC...", "created": false, "webViewLink": "https://drive.google.com/..." },
         "Brand Assets/IronLite Branding": { "id": "1XyZ...", "created": true, "webViewLink": "https://drive.google.com/..." }
       },
       "alexflorway@gmail.com": { ... }
@@ -2609,6 +2609,8 @@ Response shape:
 ```
 
 Each successful per-account run writes an `admin_drive_setup` AuditLog row with `entity = 'ConnectedGoogleAccount'`, `entityId = account.email`, and `changes = { folderCount, createdCount, tree }`.
+
+**Phase 4.7+ C-4 fix:** the list query in `findOrCreateFolder` now requests `files(id,name,webViewLink)`. Previously found-not-created folders returned `webViewLink: null`, so the admin had to manually navigate Drive to find an existing folder. The change is one line in the Drive `files.list` fields parameter — no extra API call, no rate-limit impact.
 
 ## Bulk content upload
 
