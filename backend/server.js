@@ -680,6 +680,16 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] C-49a originVariants backfill skipped:', e.message);
     }
+
+    // Phase 4.9 C-2: seed initial tariff rates (CN->US, MY->US) per
+    // Alex's HanHua factory note. Idempotent on (origin, destination,
+    // effectiveFrom). Future rate changes are made via the admin UI.
+    try {
+      const { seedTariffRatesIfMissing } = require('./services/seedTariffRatesC49b');
+      await seedTariffRatesIfMissing(db);
+    } catch (e) {
+      logger.warn('[boot] C-49b tariff rate seed skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {

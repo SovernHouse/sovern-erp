@@ -1672,6 +1672,31 @@ export function createExpense(body: Partial<ExpenseRow>) {
   )
 }
 
+// ─── Phase 4.9 C-2: tariff rates ─────────────────────────────────────────
+export type TariffRate = {
+  id: string;
+  originCountry: string;
+  destinationCountry: string;
+  ratePercent: number;
+  effectiveFrom: string;
+  effectiveUntil: string;
+  sourceNote?: string | null;
+  brandCode?: string | null;
+};
+
+export async function listTariffRates(params?: { origin?: string; destination?: string; includeExpired?: boolean }) {
+  const qs = new URLSearchParams()
+  if (params?.origin) qs.set('origin', params.origin)
+  if (params?.destination) qs.set('destination', params.destination)
+  if (params?.includeExpired) qs.set('includeExpired', 'true')
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  return request<{ success: boolean; data: TariffRate[] }>(`/api/tariff-rates${suffix}`)
+}
+
+export async function listExpiringTariffRates(days = 7) {
+  return request<{ success: boolean; data: TariffRate[] }>(`/api/tariff-rates/expiring?days=${days}`)
+}
+
 export function updateExpense(id: string, body: Partial<ExpenseRow>) {
   return request<{ success: boolean; data: ExpenseRow }>(
     `/api/expenses/${id}`,

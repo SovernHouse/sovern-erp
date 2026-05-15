@@ -64,6 +64,9 @@ db.Brand = require('./Brand')(sequelize);
 // the in-memory `let companySettings` literal in settingsRoutes.js that
 // was wiping Alex's edits on every backend boot.
 db.SystemSetting = require('./SystemSetting')(sequelize);
+// Phase 4.9 C-2: import duty rates indexed by (origin, destination,
+// effectiveUntil). Quotation builder reads via getCurrentTariff().
+db.TariffRate = require('./TariffRate')(sequelize);
 db.FrontendError = require('./FrontendError')(sequelize);
 db.InventoryItem = require('./InventoryItem')(sequelize);
 db.InventoryTransaction = require('./InventoryTransaction')(sequelize);

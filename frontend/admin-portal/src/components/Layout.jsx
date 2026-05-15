@@ -586,6 +586,19 @@ export default function Layout({ children }) {
                     </Link>
                   )}
 
+                  {/* Phase 4.9 C-2: Tariff rates — super_admin only */}
+                  {user?.role === 'super_admin' && (
+                    <Link
+                      to="/settings/tariff-rates"
+                      onClick={() => setShowUserMenu(false)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', fontSize: 13, color: INK, textDecoration: 'none' }}
+                      onMouseEnter={e => e.currentTarget.style.background = c(INK, 0.04)}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Tag size={14} style={{ color: c(INK, 0.50) }} /> Tariff rates
+                    </Link>
+                  )}
+
                   {/* Phase 4, C14: Product catalog admin */}
                   <Link
                     to="/settings/products"

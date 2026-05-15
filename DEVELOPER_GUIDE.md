@@ -2669,3 +2669,56 @@ QuotationForm + ProductCatalog dropdowns: same auto-filter via the unmodified `/
 ## Mobile
 
 No mobile UI manages the taxonomy directly. Mobile's product list reads `product.category` as a denormalised string and is unaffected.
+
+---
+
+# TariffRate model + admin CRUD (Phase 4.9, C-2)
+
+## Why
+
+US tariff policy changes weekly. We need an authoritative per-(origin, destination) tariff rate that quotations can read at line-item time to compute landed-cost. Seed: CN to US 40.7714%, MY to US 15.5214%, per the 2026-05-14 HanHua factory note.
+
+## Schema (`backend/models/TariffRate.js`)
+
+- `id` UUID PK
+- `originCountry` STRING(2), ISO2
+- `destinationCountry` STRING(2), ISO2
+- `ratePercent` DECIMAL(7,4), percentage form (e.g. `40.7714`)
+- `effectiveFrom` DATEONLY
+- `effectiveUntil` DATEONLY, required so every row has an explicit expiry. Renew before it lapses.
+- `sourceNote` TEXT nullable, provenance.
+- `brandCode` STRING nullable. NULL = applies to all brands. A brand-specific row beats the NULL row in `getCurrentTariff()`.
+- `createdById` UUID nullable, set on writes for audit.
+
+Indexes on `(origin, destination, effective_until)`, `(effective_until)`, `(brand_code)`.
+
+## Lookup helper
+
+`tariffRateController.getCurrentTariff(origin, destination, brandCode, asOfDate=today)` returns the active row, preferring a brand match over the brand=NULL fallback. Phase 4.9c (quotation landed-cost) will call this per line item.
+
+## Endpoints
+
+- `GET /api/tariff-rates?origin=CN&destination=US&includeExpired=true`, any auth user (quotation builder needs it on every line).
+- `GET /api/tariff-rates/expiring?days=7`, any auth user. Powers the dashboard warning widget (Phase 4.9e).
+- `POST/PUT/DELETE /api/tariff-rates(/:id)`, super_admin only (L-031 bare-string `requireRole`). Each mutation writes an AuditLog action: `tariff_rate_created`, `tariff_rate_updated`, `tariff_rate_deleted`.
+
+## Seed
+
+`backend/services/seedTariffRatesC49b.js`. Runs on boot. Idempotent on `(originCountry, destinationCountry, effectiveFrom)`. Seeds CN to US 40.7714% and MY to US 15.5214%, both `effectiveFrom='2026-05-14'`, `effectiveUntil='2026-05-15'`. Alex explicitly directed "seed as stated, do not skip"; the short 1-day window is intentional so the Phase 4.9e date-warning UI fires immediately on the live system.
+
+## UI
+
+- Desktop: `frontend/admin-portal/src/pages/Settings/TariffRates.jsx` at `/settings/tariff-rates`. Super-admin sidebar entry. Grouped table by origin to destination, expiry badges (red expired, amber <= 7 days), inline draft-row editor, Show expired toggle.
+- Mobile: `mobile/sovern-ops-app/app/tariff-rates.tsx`. Read-only per the Three-Surface Rule: list with expiry badges + Show expired toggle. Mutations are desktop super-admin only by design (the on-the-go use case is "look up the current rate", not "edit it").
+
+## Brand isolation
+
+Read endpoints scope via `req.brandScope.where` plus the `brandCode IS NULL` fallback. A user with only `FW` access sees FW-specific rows + NULL global rows but not SH-specific rows.
+
+## AuditLog actions added
+
+- `tariff_rate_created`
+- `tariff_rate_updated`
+- `tariff_rate_deleted`
+- `phase4_9_c2_tariff_rates_seeded`, one-time sentinel.
+| CN | US | 40.7714

@@ -117,6 +117,7 @@ const ModulesManager    = React.lazy(() => import('./pages/Settings/ModulesManag
 const MobileApp         = React.lazy(() => import('./pages/Settings/MobileApp'))
 const ConnectedAccounts = React.lazy(() => import('./pages/Settings/ConnectedAccounts'))
 const BrandAdmin        = React.lazy(() => import('./pages/Settings/BrandAdmin'))
+const TariffRates       = React.lazy(() => import('./pages/Settings/TariffRates'))
 const ProductCatalog    = React.lazy(() => import('./pages/Settings/ProductCatalog'))
 const CommissionDashboard = React.lazy(() => import('./pages/Analytics/CommissionDashboard'))
 
@@ -364,6 +365,7 @@ function AppRoutes() {
       <Route path="/settings/connected-accounts"  element={<P roles={['admin']}><ConnectedAccounts /></P>} />
       <Route path="/settings/brands"             element={<P roles={['super_admin']}><BrandAdmin /></P>} />
       <Route path="/settings/products"           element={<P permission="products"><ProductCatalog /></P>} />
+      <Route path="/settings/tariff-rates"       element={<P roles={['super_admin']}><TariffRates /></P>} />
       <Route path="/commissions"                 element={<P><CommissionDashboard /></P>} />
 
       {/* ── AI Assistant ── */}
