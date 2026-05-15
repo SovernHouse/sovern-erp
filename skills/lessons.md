@@ -112,6 +112,16 @@ When a React Native horizontal `<ScrollView>` sits between two flex children (e.
 - **Root cause:** RN ScrollView's default flex behavior in a flex column container assumes vertical scrolling. Setting `horizontal={true}` does not also imply `flexGrow: 0`. The ScrollView claims more vertical space than its content's intrinsic height, then renders content at the top and lets the FlatList beneath cover the remainder.
 - **Fix:** Always set `style={{ flexGrow: 0, flexShrink: 0 }}` on horizontal ScrollViews used as a row inside a column-flex parent. `contentContainerStyle` alone does NOT pin height; the outer `style` does.
 
+**L-047 — Service workers can ship safely only when three guards are explicit**
+
+A previous PWA cache layer broke every deploy until users hard-refreshed: cached `index.html` referenced hashed bundle filenames that the new deploy no longer served (404 cascade on every asset), AND the fetch handler tried to cache POST requests and threw unhandled-rejection warnings. Killed with a self-unregistering SW; rebuilt in Phase 5b with these three rules baked in.
+
+- **Root cause #1 (stale HTML):** treating `index.html` like any other cacheable asset. The bundle filenames inside it are hashed and immutable, but `index.html` itself is mutable — a cached copy points at file names that no longer exist on the server.
+- **Root cause #2 (POST crash):** Cache Storage API only supports GET. Calling `cache.put` or `cache.match` on a POST request throws "Request method 'POST' is unsupported." A fetch handler without an early-return on non-GET will crash on every form submit.
+- **Root cause #3 (no cleanup):** without a versioned cache name + an activate-time eviction sweep, prior cache entries persist across deploys and accumulate forever.
+- **Fix (Phase 5b `public/sw.js`):** (a) `if (req.method !== 'GET') return;` at the top of the fetch handler — single-line POST guard. (b) Navigations and HTML go NetworkFirst with an offline-only cache fallback. (c) Static assets go StaleWhileRevalidate but only when hashed (browser cache pressure handles eviction of old hashes). (d) `/api/*` is passthrough so Phase 5c/5d's IndexedDB/AsyncStorage caches stay the single source of truth for data. (e) Versioned `CACHE_NAME`; activate handler deletes any cache whose name doesn't match.
+- **Rule:** Any future SW edit must preserve all three guards. The opening lines of `public/sw.js` document them inline. If a future change removes any guard, expect a deploy disaster and prepare a kill-switch SW (the prior one is in git history under commit before Phase 5b).
+
 **L-046 — Sequelize `indexes:` fields use the actual column name, not the JS attribute name, when `underscored: true` is on globally**
 
 `backend/config/database.js` sets `define: { underscored: true, freezeTableName: true }` for the whole connection. A model defined with `createdAt`/`updatedAt` writes to columns named `created_at`/`updated_at`. If a model adds `indexes: [{ fields: ['createdAt'] }]`, sequelize emits `CREATE INDEX ... ON Table (createdAt)` and SQLite errors with `no such column: createdAt`. Caught by 148 failing tests on first attempt at Phase 5 X-Client-Uuid dedupe (commit fixed before push).

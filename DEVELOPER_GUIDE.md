@@ -2909,9 +2909,26 @@ Sovern House operates across spotty mobile networks (factory floors, customs off
 | Inspector UI | `/settings/offline-queue` | `/offline-queue` route |
 | Replay audit | `POST /api/audit-logs/offline-replay` | same endpoint |
 
-## Phase 5b (asset cache) deliberately skipped
+## Phase 5b — Safe service worker (replaces prior kill-switch)
 
-`public/sw.js` is a kill-switch service worker that documents a prior PWA cache disaster (stale `index.html` + hashed bundle mismatch + POST-cache crash). Re-adding asset caching without a robust deploy-invalidation strategy would re-break every deploy. The shell is a SPA so it survives going offline mid-session; cold-load offline is not yet a real need. Revisit if a real use case appears, using a version-pinned cache key tied to the build hash.
+`frontend/admin-portal/public/sw.js`. Three explicit guards against the prior PWA cache disaster, each annotated inline in the SW source (see L-047 for failure-mode history):
+
+1. **GET-only fetch handler.** `if (req.method !== 'GET') return;` at the top. POST/PUT/PATCH/DELETE pass straight through to the network. Caching non-GET methods is the bug that crashed the prior SW.
+2. **NetworkFirst for HTML navigations.** Stale `index.html` referencing dead hashed bundles was the deploy-killer. Navigations always hit the network first; cache fallback only if network fails entirely (so the SPA can still boot offline if it was loaded once online before).
+3. **No precache manifest.** The SW doesn't know about specific hashed filenames at install time. It only caches what gets fetched at runtime. Cache name is versioned (`CACHE_NAME = 'sovern-erp-rt-v1'`); the activate handler deletes any cache whose name doesn't match, so a new SW deploy automatically evicts the prior cache.
+
+Layered strategy:
+
+- `/api/*` → passthrough. Phase 5c (Dexie/IndexedDB) and 5d (AsyncStorage) own data caching. SW would create competing caches with split-brain TTLs.
+- Cross-origin → passthrough. Browser default for Sentry, Resend webhooks, etc.
+- HTML navigations → NetworkFirst with cache fallback.
+- Same-origin static assets (JS/CSS/fonts/images, all hashed) → StaleWhileRevalidate. Hashed filenames are immutable so cached entries can never be wrong for the URL they're under; new deploys ship new hashes (cache miss → fetch fresh).
+
+Registration: `src/index.jsx` registers `/sw.js` only when `import.meta.env.PROD` is true. Dev never installs the SW so HMR isn't shadowed.
+
+Rollback: if 5b breaks, revert the `src/index.jsx` register block and restore the kill-switch version of `public/sw.js` from git history (one commit before this).
+
+Manual purge: any page can wipe the runtime cache with `navigator.serviceWorker.controller?.postMessage({ type: 'PURGE' })`. Useful for an emergency "clear cache" button if we ever need one.
 
 ## Read cache
 

@@ -64,15 +64,24 @@ const FallbackComponent = ({ error, resetError }) => (
 )
 
 
-// ── Service worker: disabled ──────────────────────────────────────────────
-// The previous SW was caching index.html + hashed bundles aggressively, which
-// caused every UI deploy to ship to users only after a manual cache clear.
-// Worse, it had a bug (POST cannot be cached) that threw on every POST.
-// We kept /sw.js on disk as a kill-switch (installs, deletes all caches,
-// unregisters itself, force-reloads clients) so existing browsers with the
-// old SW will self-heal on next visit. We do NOT register a new SW here.
-// If/when a real PWA cache strategy is needed, use vite-plugin-pwa with a
-// proper precache manifest, not a hand-rolled sw.js.
+// ── Service worker: Phase 5b (safe redesign) ──────────────────────────────
+// /sw.js was rewritten to address each prior failure mode:
+//   - GET-only fetch handler (prior SW crashed on POST)
+//   - NetworkFirst for HTML navigations (prior SW served stale index.html
+//     referencing dead hashed-bundle names after every deploy)
+//   - No precache manifest (no fixed filename list that can go stale)
+//   - Versioned CACHE_NAME; activate deletes any non-matching cache so a
+//     new SW deploy auto-evicts the prior runtime cache
+//   - Passthrough for /api/* (Phase 5c/5d handle data caching)
+//
+// Register only in production so dev HMR isn't shadowed.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('[sw] register failed:', err);
+    });
+  });
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
