@@ -187,9 +187,11 @@ const pushTokenRoutes = require('./routes/pushTokenRoutes');
 const researchRoutes = require('./routes/researchRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const brandRoutes = require('./routes/brandRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api', brandRoutes); // mounts /api/brands, /api/brands/me, /api/admin/brand-override
+app.use('/api', adminRoutes); // Phase 4.7, C-3: mounts /api/admin/drive-setup
 app.use('/api/auth/sso', ssoRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/factories', factoryRoutes);

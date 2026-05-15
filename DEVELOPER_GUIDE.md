@@ -2563,3 +2563,71 @@ Pre-fills from `useBrands().defaultBrand` on mount. Always visible (even for sin
 
 Added to Sales Order, Invoice, ProformaInvoice detail page headers (Customer, Lead, Quotation already had it from earlier phases). PurchaseOrder and Inquiry detail pages are stubs without real headers; deferred.
 
+
+
+# Drive folder structure setup (Phase 4.7, C-3)
+
+## Why
+
+The AI assistant's "find a file in Drive" path (Phase 4.5, C19) relies on Drive search. When a file isn't found, the assistant (Phase 4.7, C-4) suggests an upload destination. For that suggestion to be useful, the destination has to actually exist. C-3 provisions the canonical structure on every connected Drive account so the suggestion always lands somewhere real.
+
+## Structure
+
+Created on every ConnectedGoogleAccount that has Drive scope:
+
+```
+Brand Assets/
+  IronLite Branding/
+  Sovern House Branding/
+  Reference/
+
+Operations/
+  Contracts/
+  Factory Communications/
+  Templates/
+```
+
+## Endpoint
+
+`POST /api/admin/drive-setup` — super_admin only. Idempotent. Re-running returns the existing folder IDs for already-present folders.
+
+Response shape:
+```json
+{
+  "success": true,
+  "data": {
+    "folderTree": ["Brand Assets", "Brand Assets/IronLite Branding", ...],
+    "accounts": {
+      "alex@sovernhouse.co": {
+        "Brand Assets": { "id": "1AbC...", "created": false, "webViewLink": null },
+        "Brand Assets/IronLite Branding": { "id": "1XyZ...", "created": true, "webViewLink": "https://drive.google.com/..." }
+      },
+      "alexflorway@gmail.com": { ... }
+    }
+  }
+}
+```
+
+Each successful per-account run writes an `admin_drive_setup` AuditLog row with `entity = 'ConnectedGoogleAccount'`, `entityId = account.email`, and `changes = { folderCount, createdCount, tree }`.
+
+## Bulk content upload
+
+The ERP backend runs on a Linux VM and cannot read Alex's Windows filesystem. The setup endpoint only creates folders. To populate a folder (e.g. drop the local IronLite Branding contents into `Brand Assets/IronLite Branding/`):
+
+1. Run the endpoint once.
+2. The response includes a `webViewLink` for every newly-created folder.
+3. Open the link in a browser and drag-drop the local files into the Drive folder.
+
+This pattern is intentional. The Phase 4.7 spec deferred AI-initiated Drive upload because the ERP cannot reach Windows files directly; the assistant suggests upload destinations (C-4) and the user moves the bytes.
+
+## Files of interest
+
+| File | Role |
+|---|---|
+| `backend/services/driveStructureSetup.js` | `FOLDER_TREE` constant + `setupForAccount(account)` + `setupDriveStructureForAllAccounts(db)` |
+| `backend/routes/adminRoutes.js` | `POST /api/admin/drive-setup` wired with `requireAuth + requireRole('super_admin')` |
+| `backend/controllers/aiController.js` (existing) | `findOrCreateFolder()` pattern that the new service mirrors |
+
+## Audit action
+
+`admin_drive_setup` — entity=ConnectedGoogleAccount, entityId=account.email, changes={folderCount, createdCount, tree}.
