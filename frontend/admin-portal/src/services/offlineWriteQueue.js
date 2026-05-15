@@ -73,6 +73,28 @@ export async function failedCount() {
   return all.filter(r => r.status === 'failed_permanent').length
 }
 
+// Phase 5h: collect replay outcomes from one drain pass and POST them
+// to /audit-logs/offline-replay in a single batch. Server writes one
+// AuditLog row per outcome so cross-device offline history is queryable.
+async function flushOutcomesToAudit(api, outcomes) {
+  if (!outcomes || outcomes.length === 0) return
+  try {
+    await api.post('/audit-logs/offline-replay', {
+      entries: outcomes.map(o => ({
+        status: o.status,
+        method: o.row.method,
+        path:   o.row.url,
+        attempts: o.row.attempts,
+        clientUuid: o.row.clientUuid,
+        createdAt: o.row.createdAt,
+        replayedAt: o.row.replayedAt || Date.now(),
+        responseStatus: o.responseStatus,
+        lastError: o.lastError,
+      })),
+    }, { _skipQueue: true })
+  } catch (_) { /* never let audit logging break replay */ }
+}
+
 // Drains the queue FIFO. Calls the supplied `fetcher` (an already-
 // configured axios instance via dynamic import so we don't create a
 // circular dep with services/api.js).
@@ -85,6 +107,7 @@ export async function drainQueue() {
     const { default: api } = await import('./api')
     // Re-read each pass — replays can be interrupted by going offline.
     let processed = 0
+    const outcomes = []
     while (true) {
       const queued = (await queueList()).filter(r => r.status === 'queued' || r.status === 'failed_retryable').sort((a, b) => a.createdAt - b.createdAt)
       if (queued.length === 0) break
@@ -105,25 +128,28 @@ export async function drainQueue() {
           // fails with a network error — that's handled inline below.
           _skipQueue: true,
         })
-        await queueUpdate(row.id, {
+        const updated = await queueUpdate(row.id, {
           status: 'replayed',
           responseStatus: res.status,
           replayedAt: Date.now(),
           lastError: null,
         })
         notify({ type: 'replay_ok', id: row.id, responseStatus: res.status })
+        outcomes.push({ status: 'replayed', row: updated, responseStatus: res.status, lastError: null })
         processed++
       } catch (err) {
         const status = err?.response?.status
         if (status >= 400 && status < 500) {
           // Server-side rejection (validation, auth, conflict) — don't
-          // retry. Surfaced to user via 5g UI later.
-          await queueUpdate(row.id, {
+          // retry. Surfaced to user via 5g UI.
+          const msg = err.response?.data?.message || err.message || `HTTP ${status}`
+          const updated = await queueUpdate(row.id, {
             status: 'failed_permanent',
-            lastError: err.response?.data?.message || err.message || `HTTP ${status}`,
+            lastError: msg,
             responseStatus: status,
           })
-          notify({ type: 'replay_failed', id: row.id, status, message: err.response?.data?.message })
+          notify({ type: 'replay_failed', id: row.id, status, message: msg })
+          outcomes.push({ status: 'failed_permanent', row: updated, responseStatus: status, lastError: msg })
         } else if (!err?.response) {
           // Network/timeout — went offline mid-replay. Re-mark queued
           // and bail out of this loop pass; next online tick resumes.
@@ -135,9 +161,10 @@ export async function drainQueue() {
           break
         } else {
           // 5xx — retry next online tick.
+          const msg = `HTTP ${status}: ${err.response?.data?.message || ''}`
           await queueUpdate(row.id, {
             status: 'failed_retryable',
-            lastError: `HTTP ${status}: ${err.response?.data?.message || ''}`,
+            lastError: msg,
             responseStatus: status,
           })
           notify({ type: 'replay_deferred', id: row.id, status })
@@ -146,6 +173,8 @@ export async function drainQueue() {
         }
       }
     }
+    // Phase 5h: batch-flush replay outcomes to the backend audit log.
+    if (outcomes.length > 0) await flushOutcomesToAudit(api, outcomes)
     return { processed }
   } finally {
     draining = false

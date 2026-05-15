@@ -161,4 +161,57 @@ router.get('/export', requireAuth, async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/audit-logs/offline-replay
+ * Phase 5h: a client posts the outcomes of its offline write-queue
+ * replay so cross-device replay history is visible in the audit trail.
+ * Caller logs ONE row per write-queue entry it processed (success or
+ * fail). Body: { entries: [{ status, method, path, attempts,
+ * clientUuid, lastError?, responseStatus?, createdAt, replayedAt? }] }
+ *
+ * Each entry becomes an AuditLog row with action='offline_replay_{status}'.
+ * Cheap (sub-ms per write) and bounded: a typical batch is <10 entries.
+ */
+router.post('/offline-replay', requireAuth, async (req, res, next) => {
+  try {
+    const entries = Array.isArray(req.body?.entries) ? req.body.entries : [];
+    if (entries.length === 0) {
+      return res.json(getSuccessResponse({ written: 0 }, 'No entries'));
+    }
+    if (entries.length > 100) {
+      const err = new Error('Too many entries in a single batch (max 100)');
+      err.statusCode = 400;
+      throw err;
+    }
+    let written = 0;
+    for (const e of entries) {
+      const status = String(e?.status || 'unknown').toLowerCase();
+      const action = `offline_replay_${status}`;
+      try {
+        await auditService.logAction(
+          req.user.id,
+          action,
+          'OfflineQueue',
+          null,
+          {
+            method: e.method,
+            path: e.path || e.url,
+            attempts: e.attempts,
+            clientUuid: e.clientUuid,
+            createdAt: e.createdAt,
+            replayedAt: e.replayedAt,
+            responseStatus: e.responseStatus,
+            lastError: e.lastError,
+          },
+          req.ip,
+        );
+        written++;
+      } catch (_) { /* per-row failure doesn't abort the batch */ }
+    }
+    res.json(getSuccessResponse({ written, total: entries.length }, 'Offline replay logged'));
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

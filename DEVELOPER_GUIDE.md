@@ -2889,4 +2889,67 @@ Mobile mirror: `mobile/sovern-ops-app/src/components/TariffExpiringWidget.tsx`, 
 The `ConfirmDialog` component gained two new props: `children` (rendered below the message) and `disableConfirm` (hard-blocks the confirm button). Other call sites unchanged.
 
 Mobile: no equivalent yet. The mobile quotation create flow only stages a draft — sending happens from desktop, where the hard-block applies. Re-evaluate if a mobile send action lands later.
+
+---
+
+# Offline mode (Phase 5, shipped commits 5a + 5c-5h, 5b deliberately skipped)
+
+## Why
+
+Sovern House operates across spotty mobile networks (factory floors, customs offices, container yards). The ERP must let Alex read recent data and capture new leads/contacts/activities/expenses without a live connection, then resync cleanly when reconnected.
+
+## Architecture
+
+| Concern | Desktop | Mobile |
+|---|---|---|
+| Connectivity signal | `useConnectivity` (navigator.onLine + 15s `/api/health` ping) | `useConnectivity` (15s fetch ping; no NetInfo native dep) |
+| Offline banner | `OfflineBanner` mounted in `Layout.jsx` | `OfflineBanner` mounted in `app/_layout.tsx` |
+| Read cache (GETs) | `offlineCache.js` (IndexedDB, store `responses`) | `offlineCache.ts` (AsyncStorage with index key) |
+| Write queue (writes) | `offlineWriteQueue.js` + IDB store `writeQueue` | `offlineWriteQueue.ts` + AsyncStorage `__writeQueue__` |
+| Inspector UI | `/settings/offline-queue` | `/offline-queue` route |
+| Replay audit | `POST /api/audit-logs/offline-replay` | same endpoint |
+
+## Phase 5b (asset cache) deliberately skipped
+
+`public/sw.js` is a kill-switch service worker that documents a prior PWA cache disaster (stale `index.html` + hashed bundle mismatch + POST-cache crash). Re-adding asset caching without a robust deploy-invalidation strategy would re-break every deploy. The shell is a SPA so it survives going offline mid-session; cold-load offline is not yet a real need. Revisit if a real use case appears, using a version-pinned cache key tied to the build hash.
+
+## Read cache
+
+GETs on a small allow-list (`leads`, `customers`, `factories`, `products`, `quotations`, `tariff-rates`, `dashboard`, `inquiries`, `sales-orders`, `purchase-orders`, `invoices`, `expenses`, `brands`, `commissions`) are persisted with key `${userId}:${path}?${sortedQS}`. On a network error for an eligible GET, the interceptor serves the cached payload as if it were a fresh response (`fromCache: true`, `cachedAt: ISO` extra fields). 24h TTL. Cache wipes on logout to preserve brand-isolation across users on the same device.
+
+## Write queue
+
+Allow-list: `leads`, `contacts`, `activities`, `scheduled-activities`, `expenses`, `notes`. Out of scope intentionally: quotations, sales-orders, purchase-orders, invoices, products, brands, users. Those have downstream cascades (commissions, factory sync, PDF gen, audit ladders) and conflict surfaces that need real conflict-resolution UX before being safe to write offline.
+
+When offline + write hits the queue: synthetic 202 response with `{ data: { ...body, id: 'pending:N', _queued: true, _queuedAt }, queued: true }`. Callers that don't check the `queued` flag see a happy path. Each row carries a client-generated `clientUuid` sent as `X-Client-Uuid` on replay; backend dedupe on this header is deferred (the duplicate risk is the network-cut-after-send case, which is rare in practice; soft impact = duplicate lead).
+
+Replay loop: single setInterval(5s) checks the shared `useConnectivity` state. On offline→online edge, drains the queue FIFO. Outcomes:
+
+| Result | Row status | Notes |
+|---|---|---|
+| 2xx | `replayed` | `responseStatus` captured. |
+| 4xx | `failed_permanent` | No retry. Surface to user via the inspector for manual dismiss / re-create. |
+| 5xx | `failed_retryable` | Bail loop pass; next reconnect tick resumes. |
+| Network / abort | `failed_retryable` | Same. |
+
+## Inspector UI
+
+`/settings/offline-queue` (desktop, any auth user — the queue is per-device per-user) lists every row sorted newest-first with status pill, method, URL, created/replayed timestamps (TPE), attempts, last error, and a Dismiss action for failed/queued rows. Live-updates via `subscribeQueueEvents` plus a 5s poll. Manual "Drain now" button bypasses the auto-loop.
+
+Mobile mirror at `/offline-queue` with the same layout.
+
+## Replay audit (5h)
+
+After each successful drain pass, the client batches the outcomes and POSTs to `/api/audit-logs/offline-replay` (max 100 entries). The backend writes one `AuditLog` row per outcome with action `offline_replay_replayed` / `offline_replay_failed_permanent` and the metadata (method, path, attempts, clientUuid, timestamps, lastError). This makes cross-device offline history queryable from the central audit log.
+
+## Brand isolation safety net
+
+Cache key is `${userId}:...`. On logout, both `clearAll` (read cache) and `queueClearMobile` (mobile only — desktop queue keeps rows in IDB so a half-completed session can resume after re-login as the same user) fire. The browser/device is shared; the user is the boundary.
+
+## Known limitations
+
+- Duplicate on network-cut-after-send: documented above. Mitigation pending real complaint.
+- The 5s reconnect polling can lag a real-time reconnect by up to 5s. Acceptable for this use case.
+- AsyncStorage on mobile is fast enough for the response volume here (low hundreds of payloads). MMKV upgrade path noted; defer until cold-list latency complaints land.
+- No collaborative conflict resolution for offline writes. The allow-list is curated to avoid surfaces where that matters today.
 | CN | US | 40.7714

@@ -71,12 +71,42 @@ export async function pendingCountMobile(): Promise<number> {
   return all.filter(r => r.status === 'queued' || r.status === 'failed_retryable').length;
 }
 
+// Phase 5h: batch-POST replay outcomes to /api/audit-logs/offline-replay
+// so cross-device offline history is queryable in the central audit log.
+async function flushOutcomesToAuditMobile(outcomes: Array<any>) {
+  if (!outcomes || outcomes.length === 0) return;
+  try {
+    const token = await SecureStore.getItemAsync(CONFIG.TOKEN_KEY);
+    await fetch(`${CONFIG.SERVER_URL}/api/audit-logs/offline-replay`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        entries: outcomes.map(o => ({
+          status: o.status,
+          method: o.row.method,
+          path:   o.row.path,
+          attempts: o.row.attempts,
+          clientUuid: o.row.clientUuid,
+          createdAt: o.row.createdAt,
+          replayedAt: o.row.replayedAt || Date.now(),
+          responseStatus: o.responseStatus,
+          lastError: o.lastError,
+        })),
+      }),
+    });
+  } catch (_) { /* audit logging is best-effort */ }
+}
+
 export async function drainQueueMobile(): Promise<{ processed?: number; skipped?: string }> {
   if (draining) return { skipped: 'already draining' };
   if (!getConnectivity().isOnline) return { skipped: 'offline' };
   draining = true;
   try {
     let processed = 0;
+    const outcomes: Array<any> = [];
     while (true) {
       const all = await queueListMobile();
       const queued = all
@@ -105,12 +135,13 @@ export async function drainQueueMobile(): Promise<{ processed?: number; skipped?
           const body = await res.json().catch(() => ({}));
           const msg = body?.message || `HTTP ${res.status}`;
           if (res.status >= 400 && res.status < 500) {
-            await queueUpdateMobile(row.id, {
+            const updated = await queueUpdateMobile(row.id, {
               status: 'failed_permanent',
               lastError: msg,
               responseStatus: res.status,
             });
             notify({ type: 'replay_failed', id: row.id, status: res.status, message: msg });
+            outcomes.push({ status: 'failed_permanent', row: updated, responseStatus: res.status, lastError: msg });
           } else {
             await queueUpdateMobile(row.id, {
               status: 'failed_retryable',
@@ -121,13 +152,14 @@ export async function drainQueueMobile(): Promise<{ processed?: number; skipped?
             break;
           }
         } else {
-          await queueUpdateMobile(row.id, {
+          const updated = await queueUpdateMobile(row.id, {
             status: 'replayed',
             responseStatus: res.status,
             replayedAt: Date.now(),
             lastError: null,
           });
           notify({ type: 'replay_ok', id: row.id, responseStatus: res.status });
+          outcomes.push({ status: 'replayed', row: updated, responseStatus: res.status, lastError: null });
           processed++;
         }
       } catch (err: any) {
@@ -140,6 +172,7 @@ export async function drainQueueMobile(): Promise<{ processed?: number; skipped?
         break;
       }
     }
+    if (outcomes.length > 0) await flushOutcomesToAuditMobile(outcomes);
     return { processed };
   } finally {
     draining = false;
