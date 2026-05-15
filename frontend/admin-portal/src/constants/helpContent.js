@@ -860,7 +860,23 @@ export const HELP_CONTENT = {
           '"Archive the IronCore Flooring category" — assistant calls archive_product_category; refused server-side if any active products are still bound (Phase 4.9.1).',
           '"Add a HanHua price for product X at 5.80 USD per m² for China origin, valid from today" — assistant calls create_product_price (Phase 4.9.2c). The quotation floor reads from this row via getCurrentPrice.',
           '"Set HanHua factory to brand FW" — assistant calls update_factory with brand_code (Phase 4.9.2a). match_factories_for_product then prefers FW-tagged suppliers for FW products.',
+          '"Create a customer in FW context: Milliken Carpet, industry contract flooring, source trade show — Domotex 2026" — assistant calls create_customer with brandCode=FW and the structured extras (Phase 4.9.3a). Returns the new customer id; you can chain create_lead next.',
+          '"Draft an intro outreach to lead {id} for review before send" — assistant calls send_outreach_email with draftOnly=true (Phase 4.9.3b). The OutreachEmail row appears in /crm/leads/{id} with status=draft ready for one-click send.',
+          '"List the contents of my FW Drive\'s Brand Assets folder" — assistant calls search_drive_files with accountKey="fw" (Phase 4.9.3b). The fw account targets alexflorway@gmail.com; the sh account targets alex@sovernhouse.co. Default is sh.',
         ],
+      },
+      {
+        heading: 'How the AI assistant ingests factory quotes from Drive (Phase 4.9.3)',
+        body: 'Factory quotations sit in the FW Drive under Brand Assets / IronLite Branding / and similar paths. The assistant: (1) search_drive_files with accountKey="fw" (or brandCode="FW") to find the file, (2) read_drive_file with the same routing to extract spec + price tables from Google Sheets, (3) create_product for each SKU under the correct ProductCategory (Engineered SPC / SPC / WPC / etc.), (4) create_product_price for each origin (China = HanHua, Malaysia = FlorWay) capturing cost + tariff + validFrom. Every step audits under ai_assistant_*. Show Alex a preview before every write.',
+        items: [
+          'Drive account auto-routes by brandCode: FW → alexflorway@gmail.com, anything else → alex@sovernhouse.co.',
+          'create_product refuses to auto-create categories now — call create_product_category explicitly with preview + confirm.',
+          'ProductPrice writes go through the temporal layer (validFrom required, validTo optional). Past-dated rows are historical; future-dated rows queue.',
+        ],
+      },
+      {
+        heading: 'How to create a customer + lead via chat (Phase 4.9.3)',
+        body: 'Two MCP calls: create_customer (brandCode + companyName required; industry / website / source / primaryAddress object optional) → create_lead (uses the new customer id). Both audit; both expect preview + confirm. Email + phone default to placeholders if you do not provide them; admin can fix later. Companies are unique-within-brand: you can have one "Milliken" under SH and another under FW without collision.',
       },
       {
         heading: 'Hard refusals (Phase 4.5, C19 v2)',

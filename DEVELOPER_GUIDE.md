@@ -2812,6 +2812,71 @@ New admin endpoint `GET /api/admin/ratelimit-stats` (super_admin only). Returns 
 - Redis-backed limiter (current in-memory is fine for single-node; revisit when multi-node).
 - Reducing dashboard poll cadence (the fix makes polling free; the cadence is correct for UX).
 
+---
+
+# AI assistant chat-mode capability gaps closed (Phase 4.9.3)
+
+## Why
+
+Three concrete onboarding flows could not run end-to-end via chat: B2B customer creation, factory-quote ingestion, and brand-aware Drive access. Each blocked because the MCP surface was thin or wired to a stale schema.
+
+## Part A — Customer CRUD MCP
+
+- `backend/models/Customer.js` gains a `metadata` JSON column (NOT NULL, default `{}`). Catch-all for spec extras (industry, yearFounded, website, source, `primaryAddress` object, `additionalAddresses` array) that don't have typed columns yet. Adding new structured fields later doesn't require schema churn.
+- `migrate493aCustomerMetadata.js` (sentinel `phase4_9_3a_customer_metadata_added`) ALTER ADDs the column with the L-046 race guard.
+- 4 new tools (super_admin gated, all audit under `ai_assistant_<verb>_customer`):
+  - `create_customer` — `brandCode` + `companyName` required. Uniqueness within brand (scans `brandRelationships` JSON in JS since SQLite can't query inside the array). `primaryAddress` object flattens into the model's `address/city/country` columns AND persists in `metadata.primaryAddress`. Email + phone default to placeholders since the model requires them; spec doesn't list them.
+  - `update_customer` — any subset. `brandCode` appends to `brandRelationships` (does not replace). Metadata fields shallow-merge.
+  - `get_customer` — decorates with `_counts.contacts` and `_counts.leads`.
+  - `archive_customer` — `isActive=false`. Warns (does not block) on open leads.
+
+## Part B — Product CRUD MCP
+
+- `create_product` extended + fixed:
+  - `brandCode` now REQUIRED (validates against active Brand). Was implicit-default `SH` which made it too easy to ship products to the wrong brand.
+  - Refuses the implicit "create category on the fly" path — AI must call `create_product_category` explicitly (with its own preview + audit).
+  - `factoryId` now optional (was required); factory can be tagged later via `create_product_price`.
+  - **Critical schema-drift fix:** ProductPrice creation block rewritten to the Phase 4.9.2b shape (`costPriceUsdPerM2` / `sellingPriceUsdPerM2` / `markupPercent` / DATEONLY `validFrom`). Old code wrote `costPrice`/`markup`/`sellingPrice` to the new model and would crash on every call. Origin required when factoryId absent (per the at-least-one rule on ProductPrice).
+  - Typed spec fields (`productType`, `constructionType`, `fullBuildDescription`, dimensions, packaging, `ironliteBadged`, `defaultCommissionRate`) merge into `specifications` JSON per the locked schema decision. `productType` ENUM coerces free-form labels to `other` with the raw label stashed in `specifications.productTypeLabel`.
+  - `unitOfMeasure` normalised: `m2` → `sqm`, `set` → `piece`.
+- `get_product` replaced — now decorates with `_currentPrices` (active ProductPrice rows for today, ordered by `validFrom` DESC).
+- `list_products` extended — `brandCode`, `productCategoryId`, `active`, `ironliteBadged`, `searchTerm` filters.
+- New `update_product` (super_admin) — same field set as create; spec-bag fields merge into `specifications`; audits before/after.
+- New `archive_product` (super_admin) — `isActive=false`. Existing quotation lines unaffected.
+
+## Part C — Outreach draft path
+
+`send_outreach_email` gains `draftOnly` boolean (default false). When true, skips the SMTP call and creates the `OutreachEmail` row with `status='draft'` so it appears in the outreach UI at `/crm/leads/{leadId}` for manual review. Lead status bump (`new → contacted`) only fires on real send.
+
+Tool description rewritten to instruct the AI: use `draftOnly=true` whenever the user says "stage" / "draft" / "queue for review"; live-send mode only after explicit content approval.
+
+## Part D — Drive multi-account routing
+
+Two connected Google accounts: `alex@sovernhouse.co` (SH context) and `alexflorway@gmail.com` (FW context — HanHua, FlorWay, IronLite). `DRIVE_ACCOUNT_EMAILS` map at the top of `erpToolServer.js` hardcodes the two known accounts.
+
+`search_drive_files` + `read_drive_file` both accept `accountKey` (`'sh'` or `'fw'`) AND `brandCode` (alternative; auto-routes via the helper below). When neither is supplied, defaults to `'sh'` so existing callers are unchanged.
+
+`search_drive_files` response shape extended to `{ account: "fw (alexflorway@gmail.com)", files: [...] }` so the caller (and the chat UI) can see which account answered. Backward-compatible because callers already destructured `files`.
+
+## Part E — resolveDriveAccount helper
+
+`resolveDriveAccount(brandCode)` returns `'fw'` for FW brand, `'sh'` otherwise. Wired into both drive tools as the `brandCode → accountKey` fallback when `accountKey` isn't supplied. Available to any future MCP tool that needs to route Drive calls in a brand context.
+
+## Three-surface check
+
+- Admin portal: no UI work in this phase. Customer admin form keeps working against the new `metadata` column (it just doesn't render the field yet — separate UI commit if needed).
+- Mobile: read-only Customer + Product lists pick up the schema cleanly (Customer.metadata is invisible to read paths that don't request it).
+- Docs: this section + `tooltipContent` entries (customerMetadata, outreachDraft, driveAccountFw) + `helpContent` AI section bullets + `USER_GUIDE` paragraph below.
+
+## Part G — Verification (Alex runs these post-deploy, not in this PR)
+
+Chat-mode prompts to fire once deploy lands:
+
+1. `"Create a test customer in FW context: company name 'Phase 4.9.3 Test Co', industry 'Test', country United States, source 'integration test'."` — expect `create_customer` success. Cleanup via `archive_customer`.
+2. `"List the contents of my FW Drive's Brand Assets folder."` — expect file list. Verifies `accountKey='fw'`.
+3. `"Create a test product under FW context: sku 'TEST-PHASE493', category Engineered SPC, name 'Phase 4.9.3 integration test product'."` — expect `create_product` success. Cleanup via `archive_product`.
+4. `"Read the first row of data from the spreadsheet at 'Brand Assets/IronLite Branding/NEW IRONLITE CORE PACKAGE - MAY 14,2026 (with m2 + tariffs).xlsx' on the FW Drive."` — expect row data. Verifies brand-context Drive routing.
+
 -- Confirm taxonomy sortOrders
 SELECT name, sort_order FROM ProductCategories WHERE name IN ('Resilient','Engineered SPC','LVT (Luxury Vinyl Tile)','Vinyl Sheet') ORDER BY sort_order;
 

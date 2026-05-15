@@ -165,6 +165,17 @@ Open **Settings > Product catalog** to manage what shows up in the quotation pro
 
 **Price history (Phase 4.9.2b/c):** every Product has a Price History panel on its edit form (shown only after the product exists). Each price row pins a cost + selling combo to a (factory and/or origin) and a validity window. The quotation builder reads the current active row to set the floor price. Manual edits to the legacy `Base FOB price` field on the form are still honoured but the canonical source is now the Price History rows — the floor sees whichever you edited last. Future-dated rows are supported; the floor flips on `validFrom`. The AI assistant can create / update / get-current-price via natural-language chat under super-admin control.
 
+**AI assistant onboarding flows (Phase 4.9.3):** chat mode can now create customers and products end-to-end. Two examples:
+
+- `"Create a customer in FW context: Milliken Carpet, industry contract flooring, country US, source 'trade show — Domotex 2026'"` runs `create_customer` under brand FW with the structured extras (industry, source) saved to a Customer.metadata column. Returns the new id.
+- `"Create a new product: brand FW, SKU IL-EPC-5MM-OAK, category Engineered SPC, name 'IronLite Engineered SPC 5mm Oak'. Add a HanHua price at 5.80 USD/m² from China"` runs `create_product` + `create_product_price` in two calls, returns both IDs.
+
+Both flows show a preview before writing. All AI writes audit under the `ai_assistant_*` prefix in the audit trail.
+
+**Outreach drafting via chat:** ask the assistant to "draft an outreach to lead {id} for review" and it calls `send_outreach_email` with `draftOnly=true`. The row appears in the lead's outreach panel with status `draft` for one-click manual send. Default behavior is still live send — only triggered when you explicitly approve the content first.
+
+**Two Drive accounts:** the assistant routes Drive lookups by brand. Anything in FW context (HanHua, FlorWay, IronLite) automatically hits `alexflorway@gmail.com`; everything else hits `alex@sovernhouse.co`. You can also pass an explicit account selector if you need to override.
+
 **How the catalog feeds the quotation form:**
 
 When you create a quotation, the Product dropdown is filtered to the quotation's brand. Picking a product auto-fills the unit price with the base FOB. You can edit the price upward without approval. Editing below floor requires super-admin role plus a written reason (saved to the audit log).

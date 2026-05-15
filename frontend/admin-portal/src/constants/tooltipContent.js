@@ -239,6 +239,9 @@ export const SETTINGS = {
   engineeredSPC:  'Multi-layer rigid core flooring with SPC outer wear layers sandwiching a WPC middle for impact dampening. Sits under Flooring → Resilient.',
   productPrice:   'Temporal pricing row. Pins a cost + selling combo to a (factory and/or origin) and a validity window. The quotation floor reads the current active row via getCurrentPrice. Product.baseFobPrice is the denormalized cache; do not edit it manually.',
   factoryBrand:   'Optional brand context. Used by match_factories_for_product to prefer same-brand suppliers and by analytics for portfolio splits. Blank = unclassified.',
+  customerMetadata: 'Phase 4.9.3a: AI-tool-populated extras (industry, yearFounded, website, source, primaryAddress object, additionalAddresses array) that do not have their own typed column. Surfaced via the AI assistant get_customer call.',
+  outreachDraft:    'Draft outreach emails created via the AI assistant\'s send_outreach_email with draftOnly=true are staged here for review before send. status=draft means the row exists but no SMTP send has happened.',
+  driveAccountFw:   'FW brand context Google Drive (alexflorway@gmail.com). Used by the AI assistant for HanHua, FlorWay, and IronLite work via accountKey="fw" or by passing brandCode="FW".',
 }
 
 // ─── Brand (multi-brand data model, Phase 1) ──────────────────────────────────
