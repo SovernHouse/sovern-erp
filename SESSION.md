@@ -5,16 +5,77 @@
 ---
 
 ## Last Updated
-2026-05-15 Taiwan time. Phase 4.5 complete. C19 (v1 + v2) + C20 + C21 + C22 + C23 + C24 shipped + live.
+2026-05-15 Taiwan time. Phase 4.5 + 4.6 + 4.7 (C-1/C-3/C-4) shipped + live.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `1d0b290` (perf(phase-4.5): memoize list rows + virtualize customer/lead screens (C22))
+- **Latest commits on main:** Phase 4.7 chain `41b60a1` (C-1 gap-closer) → `6b81895` (C-3 Drive setup) → C-4 (this commit).
 - **Working tree:** clean
-- **Most recent deploy:** `c71eb25` (C19 v2 hotfix) — deploy green at 01:44 UTC. C22 (`1d0b290`) CI queued at session close.
+- **Most recent deploy:** `41b60a1` deploy green at 02:14 UTC. C-3 in CI at session continue point.
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
 - **C18 migration verified:** 5 Customers + 112 Leads at screening_status='pending'; sentinel `phase4_sanctions_backfilled` in AuditLog.
+
+---
+
+## Phase 4.7 — SHIPPED
+
+Three commits closing real gaps in Phase 4.5 and adding the Drive folder structure + proactive upload-suggestion behavior. C-2 (FW signature) and the bulk of C-1 (WRITE/ACTION tools) were already live from Phase 4.5; the spec items were verified rather than redone.
+
+### C-1 gap-closer (commit `41b60a1`, deploy green)
+- send_email tool accepts optional from_email. Routes to alex@sovernhouse.co for SH context, alexflorway@gmail.com for FW/IronLite/HanHua context. Both ConnectedGoogleAccounts are active so the previous "auto-pick first active" was non-deterministic.
+- getGoogleAuth(targetEmail) helper extended.
+- System prompt: tighter hard refusals adds explicit lines for "delete a Brand row, ever" and "change a User role / super_admin grants or revocations" beyond the broader categories already in place.
+- aiContextService system prompt: new "Sender account routing" subsection under email safety rule. Tells the model to always pass from_email explicitly and to ask Alex when the brand context is ambiguous rather than guess.
+
+### C-3 Drive folder structure setup (commit `6b81895`, CI in progress)
+- New backend/services/driveStructureSetup.js. FOLDER_TREE: 2 top-level + 6 nested folders. findOrCreateFolder helper mirrors the aiController.js pattern. setupForAccount + setupDriveStructureForAllAccounts.
+- New backend/routes/adminRoutes.js. POST /api/admin/drive-setup (super_admin only, L-031). Idempotent. Returns { folderTree, accounts: { email: { path: { id, created, webViewLink } } } }.
+- Server wires adminRoutes alongside brandRoutes at /api.
+- Each successful account run writes admin_drive_setup AuditLog row with folderCount, createdCount, tree.
+- DEVELOPER_GUIDE.md gets a new "Drive folder structure setup (Phase 4.7, C-3)" section.
+- Bulk upload of the local IronLite Branding folder is intentionally NOT in scope (the Linux VM can't see C:\). Alex opens the returned webViewLink and drags the 5 items in via drive.google.com.
+
+### C-4 Proactive upload suggestion (this commit)
+- aiContextService system prompt: new "Proactive upload suggestion when search returns empty" paragraph. When search_drive_files returns no matches, the AI proposes an upload destination based on filename heuristics (IronLite → Brand Assets/IronLite Branding/, contract → Operations/Contracts/, PI / factory / HanHua → Operations/Factory Communications/, template → Operations/Templates/, etc.). Tells Alex he can drag-drop via drive.google.com.
+- Reply template documented in the prompt so the AI is consistent.
+- Refusal: never invent a Drive link when search returned nothing.
+- This is pure prompt behaviour. No new tools. No mobile change required (mobile assistant uses the same /api/ai/chat backend).
+
+---
+
+## Phase 4.6 — SHIPPED (perf sweep)
+
+Mobile list-perf pattern applied across 13 tab + shared screens. Standard recipe per screen:
+- Row component wrapped in React.memo.
+- renderItem + keyExtractor extracted to useCallback for stable refs.
+- Search/status filter via useMemo (was useEffect+setFiltered double-render anti-pattern, where it applied).
+- FlatList virtualization tuned: removeClippedSubviews on Android, initialNumToRender=10-12, maxToRenderPerBatch=8-10, windowSize=10.
+
+| Commit | Files |
+|---|---|
+| `077b728` | dashboard.tsx (MetricCard + ModuleTile + stable handlers + memoized updated label) |
+| `c2a23ac` | BrandFilterPicker (memo'd Pill + outer React.memo) + CommissionWidget (memo'd Tile + memoized fmtMoney) |
+| `8f08b0c` | quotations.tsx + factories.tsx (worst setFiltered pattern, biggest win) |
+| `5bf5f3b` | sales-orders.tsx + purchase-orders.tsx + invoices.tsx + triage.tsx + approvals.tsx |
+
+Customers.tsx + leads.tsx are in `1d0b290` (originally C22 in Phase 4.5). Products.tsx already uses useMemo via C21.
+
+### Deferred perf (Phase 5 candidates)
+
+Lower-value tab screens with FlatList but without the worst patterns. Audit when Alex tells me perf still feels slow:
+- `mobile/sovern-ops-app/app/(tabs)/inquiries.tsx`
+- `mobile/sovern-ops-app/app/(tabs)/shipments.tsx`
+- `mobile/sovern-ops-app/app/(tabs)/expenses.tsx`
+- `mobile/sovern-ops-app/app/(tabs)/chat.tsx` (messages list)
+- `mobile/sovern-ops-app/app/(tabs)/research.tsx`
+
+Other Phase 5 perf items:
+- onEndReached pagination on long lists (current screens fetch page=1 only).
+- Image compression on factory / product image-bearing detail screens.
+- Bundle-size audit + code splitting if cold start grows.
+
+---
 
 ---
 
