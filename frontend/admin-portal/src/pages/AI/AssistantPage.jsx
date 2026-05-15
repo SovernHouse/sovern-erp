@@ -578,6 +578,7 @@ function DevRunCard({ runId, createdAt }) {
                 <textarea
                   value={answer}
                   onChange={e => setAnswer(e.target.value)}
+                  spellCheck="true"
                   placeholder="Your answer..."
                   rows={2}
                   style={{ width: '100%', marginTop: 6, padding: 6, border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, fontFamily: 'inherit' }}
@@ -1550,6 +1551,7 @@ export default function AssistantPage() {
               <textarea
                 ref={inputRef}
                 className="ai-input"
+                spellCheck="true"
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}

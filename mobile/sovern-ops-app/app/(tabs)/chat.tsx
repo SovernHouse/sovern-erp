@@ -310,6 +310,9 @@ export default function ChatScreen() {
           multiline
           maxLength={2000}
           returnKeyType="default"
+          autoCorrect
+          spellCheck
+          autoCapitalize="sentences"
         />
         <Pressable
           style={[styles.sendBtn, (!draft.trim() || sending) && styles.sendBtnDisabled]}

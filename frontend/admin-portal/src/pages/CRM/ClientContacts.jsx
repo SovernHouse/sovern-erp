@@ -393,6 +393,7 @@ function ComposePanel({ prospect, onClose, onSent }) {
             <label className="block text-xs font-medium text-slate-600 mb-1">Body (plain text)</label>
             <textarea
               rows={10}
+              spellCheck="true"
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-serif focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none"
               placeholder="Dear Mr. [Surname],&#10;&#10;..."
               value={form.bodyText}
@@ -1699,6 +1700,7 @@ function BulkSendModal({ selectedLeads, onClose, onComplete }) {
               <label className="block text-xs font-medium text-slate-600 mb-1">Body template (plain text)</label>
               <textarea
                 rows={9}
+                spellCheck="true"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-serif focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none"
                 placeholder={"Dear {{firstName}},\n\nI'm reaching out because..."}
                 value={form.bodyTemplate}

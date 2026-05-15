@@ -1,3 +1,10 @@
+// Phase 4.5, C23: shared form primitives drive spellcheck behavior for most
+// inputs. Prose-bearing fields default to spellCheck=true so the browser's
+// native squiggle catches typos in emails, notes, and descriptions; code-like
+// or strictly-formatted fields (email/password/number/date/currency) default
+// to spellCheck=false so the same squiggle doesn't flag legitimate addresses.
+// Callers can override per-instance by passing spellCheck explicitly.
+
 export const TextInput = ({
   label,
   error,
@@ -13,6 +20,7 @@ export const TextInput = ({
     )}
     <input
       type="text"
+      spellCheck="true"
       className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${
         error ? 'border-red-500' : 'border-slate-300'
       }`}
@@ -37,6 +45,7 @@ export const NumberInput = ({
     )}
     <input
       type="number"
+      spellCheck="false"
       className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${
         error ? 'border-red-500' : 'border-slate-300'
       }`}
@@ -61,6 +70,9 @@ export const EmailInput = ({
     )}
     <input
       type="email"
+      spellCheck="false"
+      autoCapitalize="off"
+      autoCorrect="off"
       className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${
         error ? 'border-red-500' : 'border-slate-300'
       }`}
@@ -85,6 +97,7 @@ export const PasswordInput = ({
     )}
     <input
       type="password"
+      spellCheck="false"
       className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${
         error ? 'border-red-500' : 'border-slate-300'
       }`}
@@ -189,6 +202,7 @@ export const TextArea = ({
     )}
     <textarea
       rows={rows}
+      spellCheck="true"
       className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none ${
         error ? 'border-red-500' : 'border-slate-300'
       }`}
@@ -294,6 +308,7 @@ export const CurrencyInput = ({
       <input
         type="number"
         step="0.01"
+        spellCheck="false"
         className={`flex-1 px-4 py-2 border rounded-r-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${
           error ? 'border-red-500' : 'border-slate-300'
         }`}

@@ -487,6 +487,9 @@ function DevRunCard({ runId, timestamp }: { runId: string; timestamp: string }) 
                   placeholderTextColor="#94a3b8"
                   multiline
                   editable={!submitting}
+                  autoCorrect
+                  spellCheck
+                  autoCapitalize="sentences"
                 />
                 <Pressable
                   style={[styles.devRunSubmit, (!answer.trim() || submitting) && { opacity: 0.5 }]}
@@ -1293,6 +1296,10 @@ export default function AssistantScreen() {
           maxLength={4000}
           returnKeyType="default"
           editable={!sending}
+          // Phase 4.5, C23: prose input. Keep native autocorrect + spellcheck on.
+          autoCorrect
+          spellCheck
+          autoCapitalize="sentences"
         />
         <Pressable
           style={[
