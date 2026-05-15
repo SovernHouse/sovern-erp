@@ -113,6 +113,17 @@ export default function TariffRatesScreen() {
             <Text style={styles.dates}>
               {item.effectiveFrom} → {item.effectiveUntil}
             </Text>
+            {Array.isArray(item.components) && item.components.length > 0 && (
+              <View style={styles.componentBlock}>
+                <Text style={styles.componentHeader}>BREAKDOWN</Text>
+                {item.components.map((comp, i) => (
+                  <View key={i} style={styles.componentRow}>
+                    <Text style={styles.componentName} numberOfLines={1}>· {comp.name}</Text>
+                    <Text style={styles.componentRate}>{Number(comp.ratePercent).toFixed(4)}%</Text>
+                  </View>
+                ))}
+              </View>
+            )}
             {item.sourceNote ? <Text style={styles.source} numberOfLines={2}>{item.sourceNote}</Text> : null}
           </View>
         )}
@@ -148,4 +159,9 @@ const styles = StyleSheet.create({
   source:    { fontSize: 11, color: COLORS.muted, fontStyle: 'italic' },
   badge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, borderWidth: 1 },
   badgeText: { fontSize: 10, fontWeight: '700' },
+  componentBlock:  { marginTop: 8, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: COLORS.border },
+  componentHeader: { fontSize: 9, fontWeight: '700', color: COLORS.muted, letterSpacing: 0.8, marginBottom: 4 },
+  componentRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
+  componentName:   { flex: 1, fontSize: 11, color: COLORS.steel },
+  componentRate:   { fontSize: 11, color: COLORS.ink, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
 });

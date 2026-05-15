@@ -19,23 +19,42 @@
 
 const logger = require('../utils/logger');
 
+// Component breakdowns are illustrative defaults — Alex confirmed the
+// totals (40.7714% and 15.5214%) from the HanHua note but did not name
+// every contributing tariff. The components below sum to the totals and
+// will be replaced as soon as the real HTS reading is available; the
+// admin UI lets him edit each named row in place.
 const SEED_ROWS = [
   {
     originCountry: 'CN',
     destinationCountry: 'US',
     ratePercent: 40.7714,
+    components: [
+      { name: 'MFN base (HTS column 1)', ratePercent: 3.2,    note: 'Flooring HTS placeholder. Confirm against actual HTS code at quote time.' },
+      { name: 'Section 301',             ratePercent: 25.0,   note: 'USTR China-specific tariff.' },
+      { name: 'IEEPA reciprocal',        ratePercent: 10.0,   note: '2026 reciprocal tariff stack.' },
+      { name: 'IEEPA fentanyl (CN)',     ratePercent: 2.1500, note: 'China-specific IEEPA addition.' },
+      { name: 'MPF (merchandise fee)',   ratePercent: 0.3464, note: 'Merchandise Processing Fee, capped.' },
+      { name: 'HMF (harbor maintenance)',ratePercent: 0.0750, note: 'Harbor Maintenance Fee on ocean freight.' },
+    ],
     effectiveFrom: '2026-05-14',
     effectiveUntil: '2026-05-15',
-    sourceNote: 'HanHua factory note May 14, 2026. Combined US import duty stack on flooring (MFN + Section 301 + IEEPA + reciprocal) at time of note.',
+    sourceNote: 'HanHua factory note May 14, 2026. Combined US import duty stack on flooring at time of note.',
     brandCode: null,
   },
   {
     originCountry: 'MY',
     destinationCountry: 'US',
     ratePercent: 15.5214,
+    components: [
+      { name: 'MFN base (HTS column 1)', ratePercent: 5.0,    note: 'Flooring HTS placeholder. Confirm at quote time.' },
+      { name: 'IEEPA reciprocal',        ratePercent: 10.0,   note: '2026 reciprocal tariff stack on Malaysia.' },
+      { name: 'MPF (merchandise fee)',   ratePercent: 0.3464, note: 'Merchandise Processing Fee, capped.' },
+      { name: 'HMF (harbor maintenance)',ratePercent: 0.1750, note: 'Harbor Maintenance Fee on ocean freight.' },
+    ],
     effectiveFrom: '2026-05-14',
     effectiveUntil: '2026-05-15',
-    sourceNote: 'HanHua factory note May 14, 2026. Combined US import duty stack on flooring (MFN base + reciprocal) at time of note.',
+    sourceNote: 'HanHua factory note May 14, 2026. Combined US import duty stack on flooring at time of note.',
     brandCode: null,
   },
 ];

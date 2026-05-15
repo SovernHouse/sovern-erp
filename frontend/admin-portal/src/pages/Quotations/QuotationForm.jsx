@@ -808,6 +808,24 @@ export default function QuotationForm() {
                         Landed/unit: <strong>{landedUnit.toFixed(2)} USD</strong> ·
                         Landed total: <strong>{landedTotal.toFixed(2)} USD</strong>
                       </div>
+                      {/* Phase 4.9 C-3 follow-up: named component breakdown. */}
+                      {Array.isArray(tariff.components) && tariff.components.length > 0 && (
+                        <div className="mt-2 pl-3 border-l-2 border-slate-300">
+                          <div className="text-xxs uppercase tracking-wide text-slate-500 mb-1" style={{ fontSize: 10 }}>
+                            Tariff breakdown
+                          </div>
+                          {tariff.components.map((comp, i) => (
+                            <div key={i} className="flex justify-between text-slate-700" style={{ fontSize: 11 }}>
+                              <span>{comp.name}{comp.note ? ` (${comp.note})` : ''}</span>
+                              <span className="font-mono">{Number(comp.ratePercent).toFixed(4)}%</span>
+                            </div>
+                          ))}
+                          <div className="flex justify-between border-t border-slate-300 mt-1 pt-1 font-semibold text-slate-900" style={{ fontSize: 11 }}>
+                            <span>Total</span>
+                            <span className="font-mono">{ratePct.toFixed(4)}%</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })()}

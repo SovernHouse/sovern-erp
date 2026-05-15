@@ -1679,11 +1679,18 @@ export function createExpense(body: Partial<ExpenseRow>) {
 }
 
 // ─── Phase 4.9 C-2: tariff rates ─────────────────────────────────────────
+export type TariffRateComponent = {
+  name: string;
+  ratePercent: number;
+  note?: string;
+};
+
 export type TariffRate = {
   id: string;
   originCountry: string;
   destinationCountry: string;
   ratePercent: number;
+  components?: TariffRateComponent[];
   effectiveFrom: string;
   effectiveUntil: string;
   sourceNote?: string | null;

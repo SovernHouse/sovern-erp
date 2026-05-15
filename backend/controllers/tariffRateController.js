@@ -116,17 +116,49 @@ exports.expiring = async (req, res, next) => {
   }
 };
 
+// Phase 4.9 C-3 follow-up: validate + normalize a components array.
+// Returns { components, ratePercent }: when components is non-empty,
+// ratePercent is auto-computed as the sum (rounded to 4 decimals).
+// When components is empty, falls back to the explicit ratePercent.
+function resolveComponentsAndRate(rawComponents, fallbackRate) {
+  if (!Array.isArray(rawComponents) || rawComponents.length === 0) {
+    if (fallbackRate == null) throw new Error('Either components[] (non-empty) or ratePercent must be provided');
+    return { components: [], ratePercent: Number(fallbackRate) };
+  }
+  const cleaned = rawComponents.map((c, i) => {
+    if (!c || typeof c !== 'object') throw new Error(`components[${i}] must be an object`);
+    const name = String(c.name || '').trim();
+    if (!name) throw new Error(`components[${i}].name is required`);
+    const rate = Number(c.ratePercent);
+    if (!Number.isFinite(rate)) throw new Error(`components[${i}].ratePercent must be a number`);
+    return {
+      name,
+      ratePercent: rate,
+      ...(c.note ? { note: String(c.note) } : {}),
+    };
+  });
+  const sum = cleaned.reduce((acc, c) => acc + c.ratePercent, 0);
+  return { components: cleaned, ratePercent: Math.round(sum * 10000) / 10000 };
+}
+
 // ─── Create ──────────────────────────────────────────────────────────────────
 exports.create = async (req, res, next) => {
   try {
-    const { originCountry, destinationCountry, ratePercent, effectiveFrom, effectiveUntil, sourceNote, brandCode } = req.body || {};
-    if (!originCountry || !destinationCountry || ratePercent == null || !effectiveFrom || !effectiveUntil) {
-      return res.status(400).json({ success: false, message: 'originCountry, destinationCountry, ratePercent, effectiveFrom, effectiveUntil are required' });
+    const { originCountry, destinationCountry, ratePercent, effectiveFrom, effectiveUntil, sourceNote, brandCode, components } = req.body || {};
+    if (!originCountry || !destinationCountry || !effectiveFrom || !effectiveUntil) {
+      return res.status(400).json({ success: false, message: 'originCountry, destinationCountry, effectiveFrom, effectiveUntil are required' });
+    }
+    let resolved;
+    try {
+      resolved = resolveComponentsAndRate(components, ratePercent);
+    } catch (e) {
+      return res.status(400).json({ success: false, message: e.message });
     }
     const row = await db.TariffRate.create({
       originCountry: String(originCountry).toUpperCase().slice(0, 2),
       destinationCountry: String(destinationCountry).toUpperCase().slice(0, 2),
-      ratePercent: Number(ratePercent),
+      ratePercent: resolved.ratePercent,
+      components: resolved.components,
       effectiveFrom,
       effectiveUntil,
       sourceNote: sourceNote || null,
@@ -148,12 +180,26 @@ exports.update = async (req, res, next) => {
     if (!row) return res.status(404).json({ success: false, message: 'Tariff rate not found' });
     const before = row.toJSON();
     const updates = {};
-    for (const k of ['originCountry', 'destinationCountry', 'ratePercent', 'effectiveFrom', 'effectiveUntil', 'sourceNote', 'brandCode']) {
+    for (const k of ['originCountry', 'destinationCountry', 'ratePercent', 'effectiveFrom', 'effectiveUntil', 'sourceNote', 'brandCode', 'components']) {
       if (req.body[k] !== undefined) updates[k] = req.body[k];
     }
     if (updates.originCountry) updates.originCountry = String(updates.originCountry).toUpperCase().slice(0, 2);
     if (updates.destinationCountry) updates.destinationCountry = String(updates.destinationCountry).toUpperCase().slice(0, 2);
-    if (updates.ratePercent != null) updates.ratePercent = Number(updates.ratePercent);
+    // Phase 4.9 C-3 follow-up: if components is updated (or already
+    // exists), auto-compute ratePercent from the components sum.
+    const nextComponents = updates.components !== undefined ? updates.components : before.components;
+    if (Array.isArray(nextComponents) && nextComponents.length > 0) {
+      let resolved;
+      try {
+        resolved = resolveComponentsAndRate(nextComponents, updates.ratePercent ?? before.ratePercent);
+      } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+      }
+      updates.components = resolved.components;
+      updates.ratePercent = resolved.ratePercent;
+    } else if (updates.ratePercent != null) {
+      updates.ratePercent = Number(updates.ratePercent);
+    }
     await row.update(updates);
     auditService.logAction(req.user?.id, 'tariff_rate_updated', 'TariffRate', id, { before, after: row.toJSON() }, req.ip).catch(() => {});
     res.json({ success: true, data: row });

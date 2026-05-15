@@ -690,6 +690,16 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] C-49b tariff rate seed skipped:', e.message);
     }
+
+    // Phase 4.9 C-3 follow-up: backfill TariffRate.components on existing
+    // rows so the new component-breakdown UI never renders an empty list.
+    // Idempotent via AuditLog sentinel; safe to re-run on every boot.
+    try {
+      const { migrateTariffRateComponentsC49c2 } = require('./services/migrateTariffRateComponentsC49c2');
+      await migrateTariffRateComponentsC49c2(db);
+    } catch (e) {
+      logger.warn('[boot] C-49c2 tariff rate components backfill skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {

@@ -2784,4 +2784,49 @@ Mobile `mobile/sovern-ops-app/app/quotation/create.tsx` (L-035 parity):
 
 - Product Catalog list-view unit toggle: same conversion helpers will plug in there in a sibling commit.
 - Tariff bulk import (C-4) and dashboard expiry widget (C-5).
+
+---
+
+# TariffRate.components — named breakdown (Phase 4.9 C-3 follow-up)
+
+## Why
+
+A single opaque `ratePercent` like 40.7714% looks like a guess to a US buyer. Real US tariffs are a stack: MFN base (HTS column 1) + Section 301 + IEEPA reciprocal + IEEPA fentanyl + AD/CVD if applicable + MPF + HMF. Storing the named parts makes the number defensible on the PDF and lets Alex edit one component without recomputing the headline rate by hand.
+
+## Schema
+
+`TariffRate.components` JSON NOT NULL DEFAULT `[]`. Each entry: `{ name: string, ratePercent: number, note?: string }`. Auto-sync via the existing alter pattern.
+
+`ratePercent` stays the canonical sum so every existing lookup (`getCurrentTariff`, the `expiring` endpoint, etc.) keeps working. The controller recomputes it from `components` on every write so the two cannot drift apart.
+
+## Controller
+
+`resolveComponentsAndRate(components, fallbackRate)` (controller-internal helper) validates the components array, returns `{ components, ratePercent }`. When components is non-empty, `ratePercent` is `sum(components[].ratePercent)` rounded to 4 decimals. When empty, the explicit `ratePercent` from the body is used. Reject codes: missing name (`components[i].name is required`), non-numeric rate (`components[i].ratePercent must be a number`).
+
+## Backfill
+
+`backend/services/migrateTariffRateComponentsC49c2.js`. Boot-time migration. For each row with empty `components`:
+1. If origin/destination/effectiveFrom matches a SEED_ROW, copy the seed's `components`.
+2. Otherwise write a single `{name: 'Total tariff', ratePercent: <existing ratePercent>}` row so the UI never renders an empty list.
+
+Sentinel: `phase4_9_c3_2_tariff_rate_components_backfilled`.
+
+## Seed update
+
+`seedTariffRatesC49b.SEED_ROWS` now carries the illustrative breakdown for the two seeded rows. Totals unchanged (40.7714% and 15.5214%). Component names are placeholders Alex should confirm at quote time against the actual HTS code.
+
+## Snapshot at send
+
+`QuotationItem.tariffSnapshot` gains a `components` field at `send()` time. The breakdown is frozen on the item — the PDF re-renders the same stack even if the live TariffRate row is edited later.
+
+## UI
+
+- **Tariff rates admin** (`/settings/tariff-rates`): the DraftRow editor now has an add/remove component grid (name + rate % + optional note) with a live sum. Read view shows each named component under the headline rate.
+- **Quotation builder USA preview** (desktop + mobile): the live preview drops a "Tariff breakdown" sub-section under landed cost, listing each component + the sum total.
+- **PDF landed-cost table**: each line is now a parent row + one sub-row per component (smaller text, indented). The total tariff % stays on the parent row.
+- **Mobile tariff-rates read view**: same breakdown shown under the headline rate.
+
+## Tests
+
+`backend/__tests__/unit/tariffRateComponents.test.js`: 4 cases including the exact seed sums (40.7714 and 15.5214) and floating-point cleanup (0.1+0.2 → 0.3).
 | CN | US | 40.7714

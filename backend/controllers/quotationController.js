@@ -654,6 +654,10 @@ const send = async (req, res, next) => {
             effectiveUntil: tariff.effectiveUntil,
             sourceTariffRateId: tariff.id,
             sourceNote: tariff.sourceNote || null,
+            // Phase 4.9 C-3 follow-up: persist the component breakdown so
+            // the PDF can render "here's the 40.7714% stack" instead of
+            // an opaque single number, immutable for the document's life.
+            components: Array.isArray(tariff.components) ? tariff.components : [],
             snapshottedAt: new Date().toISOString(),
           },
           landedCostUnit: landedUnit,

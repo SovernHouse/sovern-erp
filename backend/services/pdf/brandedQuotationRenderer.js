@@ -438,13 +438,22 @@ function drawLandedCostBreakdown(doc, t, fonts, items, currency, y) {
 
   doc.font(fonts.body).fontSize(9).fillColor(t.ink);
   tracked.forEach((item, idx) => {
+    const snap = item.tariffSnapshot || {};
+    const components = Array.isArray(snap.components) ? snap.components : [];
+    // Phase 4.9 C-3 follow-up: when components are present, render the
+    // line + a sub-row per named component so the buyer sees how the
+    // tariff stack adds up. The header row is the totals; sub-rows are
+    // smaller and lightly-colored.
+    const baseRowH = 20;
+    const subRowH  = 12;
+    const totalRowH = baseRowH + (components.length * subRowH);
+
     if (idx % 2 === 0) {
       doc.save();
-      doc.rect(x, y, tableWidth, 20).fill('#FAFAF7');
+      doc.rect(x, y, tableWidth, totalRowH).fill('#FAFAF7');
       doc.restore();
     }
     doc.fillColor(t.ink);
-    const snap = item.tariffSnapshot || {};
     const cells = [
       item.description || item.product?.name || '-',
       item.originCountry || '-',
@@ -456,7 +465,20 @@ function drawLandedCostBreakdown(doc, t, fonts, items, currency, y) {
     cells.forEach((c, i) => {
       doc.text(c, colX[i] + 6, y + 5, { width: colW[i] - 12, align: alignH[i] });
     });
-    y += 20;
+    let subY = y + baseRowH;
+    components.forEach(comp => {
+      doc.fillColor(t.steel || '#94A3B8').font(fonts.body).fontSize(7.5);
+      // Name spans Description+Origin columns; rate sits under Tariff column.
+      doc.text(`· ${comp.name}`, colX[0] + 14, subY + 2, {
+        width: colW[0] + colW[1] - 20, align: 'left',
+      });
+      doc.text(`${Number(comp.ratePercent).toFixed(4)}%`, colX[2] + 6, subY + 2, {
+        width: colW[2] - 12, align: 'right',
+      });
+      subY += subRowH;
+      doc.font(fonts.body).fontSize(9).fillColor(t.ink);
+    });
+    y += totalRowH;
   });
 
   // Footer note: tariff source + earliest expiry

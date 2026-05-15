@@ -41,7 +41,24 @@ module.exports = (sequelize) => {
       type: DataTypes.DECIMAL(7, 4),
       allowNull: false,
       validate: { min: 0, max: 999.9999 },
-      comment: 'Combined import duty as a percentage (40.7714 = 40.7714%, NOT 0.407714). Includes MFN base + Section 301 + IEEPA + reciprocal + any AD/CVD stacks if applicable. Source documented in sourceNote.',
+      comment: 'Combined import duty as a percentage (40.7714 = 40.7714%, NOT 0.407714). Sum of `components[].ratePercent`; auto-recomputed on write when components is non-empty. Source documented in sourceNote.',
+    },
+    // ── Phase 4.9 C-3 follow-up: named breakdown ──────────────────────
+    // The opaque single rate hides the policy stack from the buyer. We
+    // store every named contribution (MFN base, Section 301, IEEPA
+    // reciprocal, IEEPA fentanyl, AD/CVD, MPF, HMF, etc.) so the
+    // quotation PDF can show "here's the 40.7714% breakdown" instead of
+    // an unexplained number. Each element: { name, ratePercent, note? }.
+    //
+    // ratePercent (the field above) stays the canonical sum so existing
+    // lookups (getCurrentTariff) and joins keep working without code
+    // changes. On write: if components is non-empty, ratePercent is
+    // auto-recomputed in the controller.
+    components: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+      comment: 'Array of { name: string, ratePercent: number, note?: string }. Sum of ratePercent values must equal the canonical ratePercent column.',
     },
     effectiveFrom: {
       type: DataTypes.DATEONLY,

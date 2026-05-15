@@ -62,6 +62,7 @@ export default function TariffRates() {
       originCountry: '',
       destinationCountry: '',
       ratePercent: '',
+      components: [{ name: '', ratePercent: '', note: '' }],
       effectiveFrom: todayISO(),
       effectiveUntil: plusDaysISO(30),
       sourceNote: '',
@@ -77,6 +78,13 @@ export default function TariffRates() {
       originCountry: row.originCountry,
       destinationCountry: row.destinationCountry,
       ratePercent: String(row.ratePercent),
+      components: Array.isArray(row.components) && row.components.length > 0
+        ? row.components.map(c => ({
+            name: c.name || '',
+            ratePercent: String(c.ratePercent ?? ''),
+            note: c.note || '',
+          }))
+        : [{ name: 'Total tariff', ratePercent: String(row.ratePercent), note: '' }],
       effectiveFrom: row.effectiveFrom,
       effectiveUntil: row.effectiveUntil,
       sourceNote: row.sourceNote || '',
@@ -85,13 +93,34 @@ export default function TariffRates() {
   };
 
   const saveDraft = async () => {
-    if (!draft.originCountry || !draft.destinationCountry || !draft.ratePercent || !draft.effectiveFrom || !draft.effectiveUntil) {
-      toast.error('Origin, destination, rate %, and effective dates are required');
+    if (!draft.originCountry || !draft.destinationCountry || !draft.effectiveFrom || !draft.effectiveUntil) {
+      toast.error('Origin, destination, and effective dates are required');
       return;
     }
+    // Phase 4.9 C-3 follow-up: validate components when any row has a name.
+    const filledComponents = (draft.components || []).filter(c => (c.name || '').trim() !== '');
+    if (filledComponents.length === 0 && !draft.ratePercent) {
+      toast.error('Add at least one tariff component (name + rate %) or set a total rate.');
+      return;
+    }
+    for (const c of filledComponents) {
+      if (!Number.isFinite(Number(c.ratePercent))) {
+        toast.error(`Component "${c.name}" needs a numeric rate %.`);
+        return;
+      }
+    }
+    const components = filledComponents.map(c => ({
+      name: c.name.trim(),
+      ratePercent: Number(c.ratePercent),
+      ...(c.note ? { note: c.note } : {}),
+    }));
     const payload = {
       ...draft,
-      ratePercent: Number(draft.ratePercent),
+      components,
+      // Server will recompute ratePercent from components when non-empty.
+      ratePercent: components.length > 0
+        ? components.reduce((s, c) => s + c.ratePercent, 0)
+        : Number(draft.ratePercent),
       brandCode: draft.brandCode || null,
       sourceNote: draft.sourceNote || null,
     };
@@ -167,7 +196,7 @@ export default function TariffRates() {
       </div>
 
       {creating && draft && (
-        <DraftRow draft={draft} fieldDraft={fieldDraft} onSave={saveDraft} onCancel={cancelDraft} label="New rate" />
+        <DraftRow draft={draft} fieldDraft={fieldDraft} setDraft={setDraft} onSave={saveDraft} onCancel={cancelDraft} label="New rate" />
       )}
 
       {loading ? (
@@ -196,12 +225,24 @@ export default function TariffRates() {
                   {list.map((r) => editing === r.id && draft ? (
                     <tr key={r.id}>
                       <td colSpan={6} className="p-0">
-                        <DraftRow draft={draft} fieldDraft={fieldDraft} onSave={saveDraft} onCancel={cancelDraft} label="Edit rate" />
+                        <DraftRow draft={draft} fieldDraft={fieldDraft} setDraft={setDraft} onSave={saveDraft} onCancel={cancelDraft} label="Edit rate" />
                       </td>
                     </tr>
                   ) : (
-                    <tr key={r.id} className="border-b border-slate-100">
-                      <td className="px-4 py-3 font-mono font-semibold text-slate-900">{Number(r.ratePercent).toFixed(4)}%</td>
+                    <tr key={r.id} className="border-b border-slate-100 align-top">
+                      <td className="px-4 py-3 font-mono font-semibold text-slate-900">
+                        {Number(r.ratePercent).toFixed(4)}%
+                        {Array.isArray(r.components) && r.components.length > 0 && (
+                          <div className="mt-2 text-xs text-slate-500 font-normal font-sans">
+                            {r.components.map((c, i) => (
+                              <div key={i} className="flex justify-between gap-3 max-w-xs">
+                                <span className="truncate" title={c.note || ''}>· {c.name}</span>
+                                <span className="font-mono">{Number(c.ratePercent).toFixed(4)}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-slate-700">{r.effectiveFrom}</td>
                       <td className="px-4 py-3"><ExpiryBadge effectiveUntil={r.effectiveUntil} /> <span className="text-slate-600 ml-2">{r.effectiveUntil}</span></td>
                       <td className="px-4 py-3 text-slate-600">{r.brandCode || <span className="text-slate-400">all</span>}</td>
@@ -224,7 +265,32 @@ export default function TariffRates() {
   );
 }
 
-function DraftRow({ draft, fieldDraft, onSave, onCancel, label }) {
+function DraftRow({ draft, fieldDraft, setDraft, onSave, onCancel, label }) {
+  // Phase 4.9 C-3 follow-up: editable components list. Sum is shown
+  // read-only at the right so the user sees the auto-computed total
+  // while editing each named part.
+  const updateComponent = (idx, field, value) => {
+    setDraft(prev => ({
+      ...prev,
+      components: prev.components.map((c, i) => i === idx ? { ...c, [field]: value } : c),
+    }));
+  };
+  const addComponent = () => {
+    setDraft(prev => ({
+      ...prev,
+      components: [...(prev.components || []), { name: '', ratePercent: '', note: '' }],
+    }));
+  };
+  const removeComponent = (idx) => {
+    setDraft(prev => ({
+      ...prev,
+      components: prev.components.filter((_, i) => i !== idx),
+    }));
+  };
+  const sumPercent = (draft.components || []).reduce(
+    (s, c) => s + (Number(c.ratePercent) || 0), 0
+  );
+
   return (
     <div className="bg-emerald-50/30 border border-emerald-200 rounded-lg p-4">
       <p className="text-xs font-semibold text-emerald-900 mb-3 uppercase tracking-wide">{label}</p>
@@ -237,15 +303,11 @@ function DraftRow({ draft, fieldDraft, onSave, onCancel, label }) {
           <label className="block text-xs text-slate-600 mb-1">Dest</label>
           <input value={draft.destinationCountry} onChange={(e) => fieldDraft('destinationCountry')({ target: { value: e.target.value.toUpperCase() } })} maxLength={2} placeholder="US" className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm font-mono uppercase" />
         </div>
-        <div className="col-span-2">
-          <label className="block text-xs text-slate-600 mb-1">Rate %</label>
-          <input type="number" step="0.0001" value={draft.ratePercent} onChange={fieldDraft('ratePercent')} placeholder="40.7714" className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
-        </div>
-        <div className="col-span-2">
+        <div className="col-span-3">
           <label className="block text-xs text-slate-600 mb-1">Effective from</label>
           <input type="date" value={draft.effectiveFrom} onChange={fieldDraft('effectiveFrom')} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
         </div>
-        <div className="col-span-2">
+        <div className="col-span-3">
           <label className="block text-xs text-slate-600 mb-1">Effective until</label>
           <input type="date" value={draft.effectiveUntil} onChange={fieldDraft('effectiveUntil')} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
         </div>
@@ -262,6 +324,55 @@ function DraftRow({ draft, fieldDraft, onSave, onCancel, label }) {
           <input value={draft.sourceNote} onChange={fieldDraft('sourceNote')} placeholder="e.g. HanHua factory note May 14, 2026" className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" spellCheck="true" />
         </div>
       </div>
+
+      {/* Component breakdown editor — each named contribution (MFN base,
+          Section 301, IEEPA, MPF, HMF, etc.) with rate. Sum auto-computes. */}
+      <div className="mt-4 border-t border-emerald-200 pt-3">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-emerald-900 uppercase tracking-wide">Tariff component breakdown</p>
+          <button type="button" onClick={addComponent} className="text-xs text-emerald-700 hover:text-emerald-900 inline-flex items-center gap-1"><Plus size={12} /> Add component</button>
+        </div>
+        <div className="space-y-2">
+          {(draft.components || []).map((comp, idx) => (
+            <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+              <div className="col-span-4">
+                <input
+                  value={comp.name}
+                  onChange={(e) => updateComponent(idx, 'name', e.target.value)}
+                  placeholder="Component name (e.g. Section 301)"
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                />
+              </div>
+              <div className="col-span-2">
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={comp.ratePercent}
+                  onChange={(e) => updateComponent(idx, 'ratePercent', e.target.value)}
+                  placeholder="0.0000"
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm font-mono"
+                />
+              </div>
+              <div className="col-span-5">
+                <input
+                  value={comp.note || ''}
+                  onChange={(e) => updateComponent(idx, 'note', e.target.value)}
+                  placeholder="Optional note / provenance"
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                />
+              </div>
+              <div className="col-span-1 text-right">
+                <button type="button" onClick={() => removeComponent(idx)} className="p-1 hover:bg-red-50 rounded"><Trash2 size={14} className="text-red-600" /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex justify-end items-center gap-3 text-sm">
+          <span className="text-slate-600">Sum:</span>
+          <span className="font-mono font-semibold text-slate-900">{sumPercent.toFixed(4)}%</span>
+        </div>
+      </div>
+
       <div className="flex justify-end gap-2 mt-3">
         <button onClick={onCancel} className="px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded inline-flex items-center gap-1"><X size={14} /> Cancel</button>
         <button onClick={onSave} className="px-4 py-1.5 text-sm bg-emerald-600 text-white rounded hover:bg-emerald-700 inline-flex items-center gap-1"><Check size={14} /> Save</button>

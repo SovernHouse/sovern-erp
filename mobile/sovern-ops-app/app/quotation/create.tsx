@@ -554,6 +554,16 @@ export default function CreateQuotation() {
                       <Text style={styles.tariffLine}>
                         Landed/unit: ${landedUnit.toFixed(2)} · Total: ${landedTotal.toFixed(2)}
                       </Text>
+                      {Array.isArray(tariff.components) && tariff.components.length > 0 && (
+                        <View style={styles.tariffComponentBlock}>
+                          {tariff.components.map((comp, i) => (
+                            <View key={i} style={styles.tariffComponentRow}>
+                              <Text style={styles.tariffComponentName} numberOfLines={1}>· {comp.name}</Text>
+                              <Text style={styles.tariffComponentRate}>{Number(comp.ratePercent).toFixed(4)}%</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
                       <Text style={[styles.tariffMeta, expiresSoon && styles.tariffMetaWarn]}>
                         Source expires {tariff.effectiveUntil}
                       </Text>
@@ -817,4 +827,8 @@ const styles = StyleSheet.create({
   tariffMeta:    { fontSize: 10, color: COLORS.muted, marginTop: 3 },
   tariffMetaWarn:{ color: '#92400E', fontWeight: '600' },
   tariffMissing: { marginTop: 8, padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#FCA5A5', backgroundColor: '#FEE2E2', fontSize: 11, color: '#991B1B' },
+  tariffComponentBlock: { marginTop: 6, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: COLORS.border },
+  tariffComponentRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
+  tariffComponentName:  { flex: 1, fontSize: 10, color: COLORS.steel },
+  tariffComponentRate:  { fontSize: 10, color: COLORS.ink, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
 });
