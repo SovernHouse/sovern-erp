@@ -64,11 +64,16 @@ export default function QuotationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  // Phase 4.8 Commit 3d — sort-by-stage default so the full lifecycle
+  // breakdown is visible on open instead of only the newest cohort.
+  const [sortMode, setSortMode] = useState<'stage' | 'recent'>('stage');
 
   async function load(isRefresh = false) {
     try {
       isRefresh ? setRefreshing(true) : setLoading(true);
-      const res = await getQuotations({ page: 1, limit: 50 });
+      // Phase 4.8 Commit 3d — bumped from 50 so sort/filter operate on
+      // the full dataset, not the newest 50.
+      const res = await getQuotations({ page: 1, limit: 200 });
       setQuotations(res.data);
     } catch (err: any) {
       console.error(err.message);
@@ -92,8 +97,19 @@ export default function QuotationsScreen() {
         (item.factory?.companyName ?? '').toLowerCase().includes(q)
       );
     }
+    if (sortMode === 'stage') {
+      const order: Record<string, number> = { draft: 0, sent: 1, accepted: 2, rejected: 3, expired: 4 };
+      list = [...list].sort((a, b) => {
+        const oa = order[a.status] ?? 99;
+        const ob = order[b.status] ?? 99;
+        if (oa !== ob) return oa - ob;
+        const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return db - da;
+      });
+    }
     return list;
-  }, [search, statusFilter, quotations]);
+  }, [search, statusFilter, sortMode, quotations]);
 
   const renderItem = useCallback(({ item }: { item: Quotation }) => (
     <QuotationRow q={item} onPress={() => router.push(`/quotation/${item.id}`)} />
@@ -128,6 +144,23 @@ export default function QuotationsScreen() {
             <Text style={styles.clearBtn}>✕</Text>
           </TouchableOpacity>
         ) : null}
+      </View>
+
+      {/* Phase 4.8 Commit 3d — sort toggle */}
+      <View style={styles.sortRow}>
+        <Text style={styles.sortLabel}>Sort:</Text>
+        <TouchableOpacity
+          style={[styles.sortPill, sortMode === 'stage' && styles.sortPillActive]}
+          onPress={() => setSortMode('stage')}
+        >
+          <Text style={[styles.sortPillText, sortMode === 'stage' && styles.sortPillTextActive]}>By stage</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.sortPill, sortMode === 'recent' && styles.sortPillActive]}
+          onPress={() => setSortMode('recent')}
+        >
+          <Text style={[styles.sortPillText, sortMode === 'recent' && styles.sortPillTextActive]}>Recent</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Status filter chips */}
@@ -197,6 +230,13 @@ const styles = StyleSheet.create({
   searchIcon:  { fontSize: 16, marginRight: 8 },
   searchInput: { flex: 1, paddingVertical: 12, fontSize: 15, color: COLORS.ink },
   clearBtn:    { fontSize: 16, color: COLORS.muted, padding: 4 },
+  // Phase 4.8 Commit 3d — sort toggle row
+  sortRow:           { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
+  sortLabel:         { fontSize: 11, fontWeight: '700', color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
+  sortPill:          { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
+  sortPillActive:    { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
+  sortPillText:      { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
+  sortPillTextActive:{ color: COLORS.white },
 
   filterRow: {
     flexDirection: 'row',

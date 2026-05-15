@@ -4,7 +4,7 @@
 // approved the SO via the public sign link (signedAt + signedByClient).
 // Phase 4.6 part 4: SORow memoized + stable renderItem/keyExtractor +
 // virtualization tuning. Same pattern as customers + leads + quotations.
-import { memo, useCallback, useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Alert, Share, Linking, Platform,
@@ -263,6 +263,9 @@ export default function SalesOrdersScreen() {
   const [search, setSearch]         = useState('')
   const [status, setStatus]         = useState<string>('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Phase 4.8 Commit 3d — sort-by-stage default so every status is
+  // visible on open instead of only the newest cohort.
+  const [sortMode, setSortMode] = useState<'stage' | 'recent'>('stage')
 
   async function load(isRefresh = false) {
     try {
@@ -270,7 +273,9 @@ export default function SalesOrdersScreen() {
       const res = await getSalesOrders({
         search: search || undefined,
         status: status || undefined,
-        limit: 50,
+        // Phase 4.8 Commit 3d — bumped from 50 so sort/filter operates
+        // on the full dataset, not the newest 50.
+        limit: 200,
       })
       setItems(res.data ?? [])
     } catch (err: any) {
@@ -289,6 +294,23 @@ export default function SalesOrdersScreen() {
   ), [])
   const soKeyExtractor = useCallback((s: SalesOrder) => s.id, [])
 
+  // Phase 4.8 Commit 3d — client-side sort. Backend returns createdAt
+  // DESC; sort-by-stage reorders so every status is visible at-a-glance.
+  const sortedItems = useMemo(() => {
+    if (sortMode !== 'stage') return items
+    const order: Record<string, number> = {
+      draft: 0, confirmed: 1, in_production: 2, shipped: 3, delivered: 4, cancelled: 5,
+    }
+    return [...items].sort((a, b) => {
+      const oa = order[a.status] ?? 99
+      const ob = order[b.status] ?? 99
+      if (oa !== ob) return oa - ob
+      const da = a.createdAt ? new Date(a.createdAt).getTime() : 0
+      const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
+      return db - da
+    })
+  }, [items, sortMode])
+
   if (loading) {
     return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.forest} /></View>
   }
@@ -303,6 +325,17 @@ export default function SalesOrdersScreen() {
           value={search}
           onChangeText={setSearch}
         />
+      </View>
+
+      {/* Phase 4.8 Commit 3d — sort toggle */}
+      <View style={styles.sortRow}>
+        <Text style={styles.sortLabel}>Sort:</Text>
+        <TouchableOpacity style={[styles.sortPill, sortMode === 'stage' && styles.sortPillActive]} onPress={() => setSortMode('stage')}>
+          <Text style={[styles.sortPillText, sortMode === 'stage' && styles.sortPillTextActive]}>By stage</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.sortPill, sortMode === 'recent' && styles.sortPillActive]} onPress={() => setSortMode('recent')}>
+          <Text style={[styles.sortPillText, sortMode === 'recent' && styles.sortPillTextActive]}>Recent</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.filterRow}>
@@ -323,7 +356,7 @@ export default function SalesOrdersScreen() {
       </View>
 
       <FlatList
-        data={items}
+        data={sortedItems}
         keyExtractor={soKeyExtractor}
         renderItem={soRenderItem}
         removeClippedSubviews={Platform.OS === 'android'}
@@ -381,6 +414,13 @@ const styles = StyleSheet.create({
   filterPillActive:    { backgroundColor: COLORS.forest },
   filterPillText:      { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
   filterPillTextActive:{ color: COLORS.white },
+  // Phase 4.8 Commit 3d — sort toggle row
+  sortRow:           { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8, gap: 8 },
+  sortLabel:         { fontSize: 11, fontWeight: '700', color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
+  sortPill:          { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
+  sortPillActive:    { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
+  sortPillText:      { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
+  sortPillTextActive:{ color: COLORS.white },
   row: {
     backgroundColor: COLORS.white,
     borderRadius: 10, padding: 14,
