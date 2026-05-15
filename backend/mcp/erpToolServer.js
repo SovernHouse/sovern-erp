@@ -16,7 +16,17 @@
 
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
-const { google } = require('googleapis');
+// Phase 4.11: lazy-load googleapis. The eager require hangs inside
+// jest worker subprocesses on Linux (some interaction between
+// google-gax fetch setup and jest's fork stdio). It is also slow
+// (~600ms) — defer until the first Google-touching tool actually
+// runs. Tools that need it use `getGoogle()` instead.
+let _googleClient = null;
+function getGoogle() {
+  if (_googleClient) return _googleClient;
+  _googleClient = require('googleapis').google;
+  return _googleClient;
+}
 const { v4: uuidv4 } = require('uuid');
 
 // Phase 4.9.1: shared slug helper — matches the convention in
@@ -133,6 +143,10 @@ async function handleLine(line) {
     } else if (method === 'tools/list') {
       mcpSend({ jsonrpc: '2.0', id, result: { tools: TOOL_DEFS } });
     } else if (method === 'tools/call') {
+      // Phase 4.11: when MCP_FORCE_SYNC=true (test harness only), wait
+      // for the startup sync promise before dispatching so PRAGMA-backed
+      // tools see populated tables. No-op in production.
+      if (global.__MCP_READY) await global.__MCP_READY;
       const result = await callTool(params.name, params.arguments || {});
       // A tool can return raw MCP content (e.g. image type for vision) by
       // returning `{ __mcpContent: [{type, data, mimeType}, ...] }`. Anything
@@ -401,7 +415,7 @@ async function callTool(name, args) {
 
     case 'list_calendar_events': {
       const { auth } = await getGoogleAuth();
-      const cal = google.calendar({ version: 'v3', auth });
+      const cal = getGoogle().calendar({ version: 'v3', auth });
       const timeMin = args.days_ago
         ? new Date(Date.now() - args.days_ago * 86400000).toISOString()
         : new Date().toISOString();
@@ -434,7 +448,7 @@ async function callTool(name, args) {
 
     case 'create_calendar_event': {
       const { auth } = await getGoogleAuth();
-      const cal = google.calendar({ version: 'v3', auth });
+      const cal = getGoogle().calendar({ version: 'v3', auth });
 
       // Default duration: 45 min if end_time not given (and not all-day).
       let endTime = args.end_time;
@@ -491,7 +505,7 @@ async function callTool(name, args) {
 
     case 'delete_calendar_event': {
       const { auth } = await getGoogleAuth();
-      const cal = google.calendar({ version: 'v3', auth });
+      const cal = getGoogle().calendar({ version: 'v3', auth });
       await cal.events.delete({
         calendarId: 'primary',
         eventId: args.event_id,
@@ -504,7 +518,7 @@ async function callTool(name, args) {
 
     case 'list_emails': {
       const { auth } = await getGoogleAuth();
-      const gmail = google.gmail({ version: 'v1', auth });
+      const gmail = getGoogle().gmail({ version: 'v1', auth });
 
       const resp = await gmail.users.messages.list({
         userId: 'me',
@@ -541,7 +555,7 @@ async function callTool(name, args) {
 
     case 'read_email_thread': {
       const { auth } = await getGoogleAuth();
-      const gmail = google.gmail({ version: 'v1', auth });
+      const gmail = getGoogle().gmail({ version: 'v1', auth });
 
       const thread = await gmail.users.threads.get({
         userId: 'me',
@@ -580,7 +594,7 @@ async function callTool(name, args) {
       // model passes from_email (e.g. "alexflorway@gmail.com" for an FW
       // thread). Falls back to the default active account when omitted.
       const { auth, account } = await getGoogleAuth(args.from_email);
-      const gmail = google.gmail({ version: 'v1', auth });
+      const gmail = getGoogle().gmail({ version: 'v1', auth });
 
       const to = Array.isArray(args.to) ? args.to.join(', ') : args.to;
       const headers = [
@@ -1141,7 +1155,21 @@ async function callTool(name, args) {
       if (!lead) return `Lead ${lead_id} not found.`;
 
       const { sendOutreachEmail } = require('../services/emailService');
-      const fromAddress = process.env.SMTP_USER;
+
+      // Phase 4.9.3.1 hotfix (2026-05-15): brand-aware fromAddress resolution.
+      // Previously hardcoded to process.env.SMTP_USER which was undefined →
+      // notNull violation on OutreachEmail.fromAddress. Now mirrors
+      // outreachController.sendOutreachEmail: lead.brandCode → Brand.senderEmail,
+      // with explicit override + final fallback.
+      const _brandForFrom = lead.brandCode
+        ? await getDb().Brand.findOne({ where: { code: lead.brandCode, active: true } })
+        : null;
+      const fromAddress =
+        args.fromAddress ||
+        args.from_address ||
+        (_brandForFrom && _brandForFrom.senderEmail) ||
+        process.env.SMTP_USER ||
+        'alex@sovernhouse.co';
 
       // Resolve user's default signature, if any (mirrors triageController.sendEmail).
       let signatureHtml = null;
@@ -1655,7 +1683,7 @@ async function callTool(name, args) {
       const accountKey = args.accountKey || (args.brandCode ? resolveDriveAccount(args.brandCode) : 'sh');
       const targetEmail = emailForAccountKey(accountKey);
       const { auth } = await getGoogleAuth(targetEmail);
-      const drive = google.drive({ version: 'v3', auth });
+      const drive = getGoogle().drive({ version: 'v3', auth });
 
       const query = [
         args.query ? `fullText contains '${args.query.replace(/'/g, "\\'")}'` : null,
@@ -1680,7 +1708,7 @@ async function callTool(name, args) {
       const accountKey = args.accountKey || (args.brandCode ? resolveDriveAccount(args.brandCode) : 'sh');
       const targetEmail = emailForAccountKey(accountKey);
       const { auth } = await getGoogleAuth(targetEmail);
-      const drive = google.drive({ version: 'v3', auth });
+      const drive = getGoogle().drive({ version: 'v3', auth });
 
       // Get file metadata to determine type
       const meta = await drive.files.get({
@@ -1734,7 +1762,7 @@ async function callTool(name, args) {
       // arbitrary Drive file the user has access to.
       const TEXT_CAP = 16000;
       const { auth } = await getGoogleAuth();
-      const drive = google.drive({ version: 'v3', auth });
+      const drive = getGoogle().drive({ version: 'v3', auth });
 
       const meta = await drive.files.get({
         fileId: args.file_id,
@@ -4443,3 +4471,23 @@ const TOOL_DEFS = [
 // ── Startup ───────────────────────────────────────────────────────────────────
 // DB is lazy-loaded on first tool call — do not require('../models') here.
 process.stderr.write('[erp-mcp] Server listening on stdin\n');
+
+// Phase 4.11: test-only opt-in. When MCP_FORCE_SYNC=true, eagerly
+// load + sync models so PRAGMA-backed tools (erp_describe_entity_db)
+// have tables to introspect. Production NEVER sets this — model
+// loading stays lazy there so the MCP initialize handshake doesn't
+// pay the ~4s cost of loading 100+ models on every claude -p start.
+if (process.env.MCP_FORCE_SYNC === 'true') {
+  // Phase 4.11: assign the sync promise to global.__MCP_READY so the
+  // tools/call branch in handleLine can await it before dispatching.
+  // Otherwise the harness races startup and PRAGMA returns empty.
+  global.__MCP_READY = (async () => {
+    try {
+      const db = getDb();
+      await db.sequelize.sync({ force: false });
+      process.stderr.write('[erp-mcp] MCP_FORCE_SYNC=true: model registry + tables synced\n');
+    } catch (err) {
+      process.stderr.write(`[erp-mcp] MCP_FORCE_SYNC sync failed: ${err.message}\n`);
+    }
+  })();
+}
