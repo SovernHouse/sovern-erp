@@ -112,6 +112,24 @@ When a React Native horizontal `<ScrollView>` sits between two flex children (e.
 - **Root cause:** RN ScrollView's default flex behavior in a flex column container assumes vertical scrolling. Setting `horizontal={true}` does not also imply `flexGrow: 0`. The ScrollView claims more vertical space than its content's intrinsic height, then renders content at the top and lets the FlatList beneath cover the remainder.
 - **Fix:** Always set `style={{ flexGrow: 0, flexShrink: 0 }}` on horizontal ScrollViews used as a row inside a column-flex parent. `contentContainerStyle` alone does NOT pin height; the outer `style` does.
 
+**L-049 — AuditLog.entityId is NOT NULL; use the zero-UUID for System-scoped sentinel writes**
+
+The AuditLog model declares `entityId: { type: UUID, allowNull: false }`. A System-scoped migration sentinel (no real row to point at) that passes `entityId: null` throws `notNull Violation` at `AuditLog.create` time. If a `try/catch` wrapper swallows the throw to a warning (common in boot-time migration scaffolds), the sentinel never lands — the migration's own re-run guard never trips — but the work itself may already have been committed. The migration "skips" forever after, but in a half-finished state.
+
+Convention adopted by `migrateArchiveTaxonomyC21Followup.js`: pass `entityId: '00000000-0000-0000-0000-000000000000'` for any System-level entry. Caught by the 4.9.1 first-run debrief; cost a recovery commit. Always use this constant for System sentinels.
+
+- **Root cause:** AuditLog schema doesn't allow nulls in entityId, but the migration scaffold pattern silently catches AuditLog write failures so the broken sentinel is invisible from logs unless you actively grep the boot warnings.
+- **Fix:** All System sentinel writers in `backend/services/migrate*.js` should use `entityId: '00000000-0000-0000-0000-000000000000'`. Audit pass: confirmed all existing sentinel writers do; new ones added during 4.9.1 (`migrate491TaxonomyAndBrand`, `migrate491Recovery`) patched to match.
+- **Rule:** Never pass `entityId: null` to `AuditLog.create`. Use the zero-UUID constant. Optionally pull it into a shared `services/auditService.SYSTEM_ENTITY_ID` if more sentinel writers proliferate.
+
+**L-048 — Always confirm WHICH table a Sequelize model actually writes to before recon SQL**
+
+The ProductCategory model declares `tableName: 'ProductCategories'` (plural) but the database also has a `ProductCategory` (singular) table left over from an early build. When freezeTableName:true is set globally, an explicit `tableName` on the model still wins — so `db.ProductCategory.findAll()` queries `ProductCategories` (plural). Raw sqlite3 inspection of the wrong (singular) table led to a recon that thought prod had 18 flat orphan rows, when the real data had 59 rows with full hierarchy support, brand-friendly category names, and archive flags already populated. The 4.9.1 first-run migration was written against the wrong shape and partially broke the live hierarchy.
+
+- **Root cause:** Multiple tables can exist for what looks like the "same" model. SQL queries don't follow the model's `tableName`, they query whatever string you type. The model is what production reads; everything else may be orphan.
+- **Fix when doing recon for a migration:** `sqlite3 db .tables | grep -i <root>` first to enumerate ALL candidates. Then query each in turn. Cross-check by comparing row counts and column shapes against what the model file expects.
+- **Rule:** Before any migration touches data, list `.tables` and `PRAGMA table_info` on every candidate. If two exist for one logical entity, identify which the app uses (check the model's `tableName` setting + freezeTableName behavior) BEFORE proposing the migration plan. Recon errors at this layer are recoverable but expensive.
+
 **L-047 — Service workers can ship safely only when three guards are explicit**
 
 A previous PWA cache layer broke every deploy until users hard-refreshed: cached `index.html` referenced hashed bundle filenames that the new deploy no longer served (404 cascade on every asset), AND the fetch handler tried to cache POST requests and threw unhandled-rejection warnings. Killed with a self-unregistering SW; rebuilt in Phase 5b with these three rules baked in.
