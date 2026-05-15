@@ -153,6 +153,20 @@ async function seedProductsIfEmpty(db) {
     return;
   }
 
+  // Phase 4.5, C20: after the seed-data archival has run, never re-seed
+  // placeholder rows. Alex curates the catalog manually from here on. The
+  // sentinel survives across reboots, so this lock is permanent unless
+  // the AuditLog row is removed by hand.
+  if (db.AuditLog) {
+    const archived = await db.AuditLog.findOne({
+      where: { action: 'phase4_5_seed_data_archived', entity: 'System' },
+    });
+    if (archived) {
+      logger.info('[seedProducts] C20 archival sentinel present; skipping all seeding');
+      return;
+    }
+  }
+
   let inserted = 0;
   let skipped = 0;
 

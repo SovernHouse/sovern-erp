@@ -623,6 +623,20 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] C24 FW signature refresh skipped:', e.message);
     }
+
+    // Phase 4.5, C20: archive pre-populated seed Products + paired
+    // ProductPrice / ProductSpecification + the empty Quotation /
+    // SalesOrder / ProformaInvoice / Invoice / PurchaseOrder /
+    // CommissionTracking tables. Rows survive in ArchivedSeed_* mirrors.
+    // Idempotent via AuditLog sentinel. Runs BEFORE seedProducts so the
+    // catalog can re-seed with the Phase 4 placeholders against an empty
+    // table.
+    try {
+      const { migrateSeedDataC20 } = require('./services/migrateSeedDataC20');
+      await migrateSeedDataC20(db);
+    } catch (e) {
+      logger.warn('[boot] C20 seed-data archival skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {
