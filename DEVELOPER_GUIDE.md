@@ -2743,6 +2743,17 @@ Result: existing readers of `Product.baseFobPrice` (analytics, customer portal, 
 
 Critical write paths migrated: quotation create/update, product floor check. All other read paths stay on `Product.baseFobPrice` via the cache. Future phases migrate non-critical readers (analytics, dashboard, customer portal, mobile, reports, email templates) one at a time. Do NOT deprecate `baseFobPrice` in this phase.
 
+## Phase 4.9.5 — REST endpoint + admin form soft-deprecation
+
+- `GET /api/products/:id/current-price?origin=<iso>&asOfDate=<YYYY-MM-DD>` — wraps `productPriceService.getCurrentPrice`. Returns the decorated row (sqft conversions, resolved `sellingPriceUsdPerM2`, `landedPriceUsdPerM2` when tariff snapped). Returns `{success:true, data:null, message:"No active ProductPrice row for <sku>"}` when no row exists. Any auth user.
+- Admin Product form: the `Base FOB price` field is relabelled `Base FOB price (floor) — cache` with explicit hint copy: "Auto-synced from the current ProductPrice row (see Price History below). Edits here are honoured but get overwritten the next time a ProductPrice is added or boot-time reconcile runs. Prefer the Price History panel for new pricing entries." Field stays editable for the quick-fix case (Alex can flip a single number without opening the panel); the hint steers normal admin work to the canonical path.
+- Other read sites stay on `baseFobPrice` per the 4.9.2b decision. Specifically: customer portal product detail, mobile read-only product list, mobile quotation builder below-floor check, reports, email templates. The cache is the contract for these consumers.
+- Future commits can migrate individual readers to `current-price` one at a time as origin/tariff awareness becomes useful for each surface.
+
+## Tests
+
+`backend/__tests__/integration/currentPriceEndpoint495.test.js` — 5 cases: priced product returns decorated row, unpriced returns null, missing product 404, requires auth, explicit `origin` query param respected.
+
 ## REST endpoints
 
 `POST /api/products/:id/prices`, `PUT /api/products/:id/prices/:priceId`, `DELETE /api/products/:id/prices/:priceId`, `GET /api/products/:id/price-history`. All rewritten to use the new field names. `createdBy` stamped from `req.user.id`.

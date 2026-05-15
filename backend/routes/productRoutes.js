@@ -73,6 +73,11 @@ router.put('/:id', requireAuth, requireAny('products'),
 );
 
 router.get('/:id/price-history', requireAuth, productController.getPriceHistory);
+// Phase 4.9.5: canonical current-price read endpoint. Wraps
+// services/productPriceService.getCurrentPrice. Query params:
+//   origin (optional) — defaults to the product's originCountry
+//   asOfDate (optional, YYYY-MM-DD) — defaults to today
+router.get('/:id/current-price', requireAuth, productController.getCurrentPriceEndpoint);
 router.post('/:id/prices', requireAuth, requireAny('products'), productController.createPrice);
 router.put('/:id/prices/:priceId', requireAuth, requireAny('products'), productController.updatePrice);
 router.delete('/:id/prices/:priceId', requireAuth, requireAny('products'), productController.deletePrice);

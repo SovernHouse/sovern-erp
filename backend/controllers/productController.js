@@ -469,6 +469,28 @@ const softDelete = async (req, res, next) => {
   }
 };
 
+// Phase 4.9.5: REST wrapper around services/productPriceService.getCurrentPrice.
+// External callers (mobile, integrations, future read-side migrations) hit
+// this instead of reading the Product.baseFobPrice cache column directly.
+const getCurrentPriceEndpoint = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const product = await db.Product.findByPk(id);
+    if (!product || product.deletedAt) throw new NotFoundError('Product not found');
+
+    const { getCurrentPrice } = require('../services/productPriceService');
+    const origin = (req.query.origin || product.originCountry || null) || null;
+    const asOfDate = req.query.asOfDate || null;
+    const current = await getCurrentPrice(id, origin, asOfDate);
+    if (!current) {
+      return res.json(getSuccessResponse(null, `No active ProductPrice row for ${product.sku || product.name}${origin ? ` (origin=${origin})` : ''}.`));
+    }
+    res.json(getSuccessResponse(current, 'Current price'));
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   create,
   getAll,
@@ -481,5 +503,6 @@ module.exports = {
   getPriceHistory,
   search,
   bulkUpdate,
-  softDelete
+  softDelete,
+  getCurrentPriceEndpoint,
 };

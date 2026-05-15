@@ -322,9 +322,24 @@ function ProductForm({ editing, categories, factories, onClose, onSaved }) {
           </div>
 
           <div className="grid grid-cols-3 gap-4">
-            <Field label="Base FOB price (floor)" type="number" step="0.01" value={form.baseFobPrice} onChange={f('baseFobPrice')}
-              help="ALREADY includes commission. No system markup."
-            />
+            {/* Phase 4.9.5: baseFobPrice is now the denormalized read-side
+                cache of the current active ProductPrice row. Editing it
+                directly still works (afterSave hook on ProductPrice will
+                re-sync if any future price row is created), but admins
+                should manage prices via the Price History panel below.
+                Field stays editable for backward compat + the quick-fix
+                case; explicit hint steers new edits to the canonical
+                path. */}
+            <div>
+              <Field
+                label="Base FOB price (floor) — cache"
+                type="number"
+                step="0.01"
+                value={form.baseFobPrice}
+                onChange={f('baseFobPrice')}
+                help="Auto-synced from the current ProductPrice row (see Price History below). Edits here are honoured but get overwritten the next time a ProductPrice is added or boot-time reconcile runs. Prefer the Price History panel for new pricing entries."
+              />
+            </div>
             <SelectField label="Currency" value={form.currency} onChange={f('currency')}
               options={['USD', 'EUR', 'GBP', 'CNY', 'MYR'].map(c => ({ value: c, label: c }))}
             />
