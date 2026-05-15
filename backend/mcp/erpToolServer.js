@@ -144,12 +144,20 @@ async function handleLine(line) {
 
 // ── Google auth helper ────────────────────────────────────────────────────────
 
-async function getGoogleAuth() {
-  if (!USER_ID) throw new Error('ERP_USER_ID not set — cannot access Google services');
-  const account = await getDb().ConnectedGoogleAccount.findOne({
-    where: { connectedByUserId: USER_ID, isActive: true },
-  });
+async function getGoogleAuth(targetEmail) {
+  if (!USER_ID) throw new Error('ERP_USER_ID not set. cannot access Google services');
+  // Phase 4.7, C-1 gap-closer: when targetEmail is supplied (e.g. the AI wants
+  // to send from alexflorway@gmail.com specifically because the conversation
+  // is in an FW context), look up that account explicitly. Falls back to the
+  // first active account when no targetEmail is given so existing behavior is
+  // unchanged for callers that don't care which account is used.
+  const where = { connectedByUserId: USER_ID, isActive: true };
+  if (targetEmail) where.email = String(targetEmail).toLowerCase();
+  const account = await getDb().ConnectedGoogleAccount.findOne({ where });
   if (!account) {
+    if (targetEmail) {
+      throw new Error(`No active Google account matches "${targetEmail}". Available accounts can be listed via /api/google/accounts.`);
+    }
     throw new Error('No active Google account connected. Go to ERP Settings > Connected Accounts to connect your Google account.');
   }
   const auth = await getGoogleAccountController()(account);
@@ -480,7 +488,10 @@ async function callTool(name, args) {
     }
 
     case 'send_email': {
-      const { auth, account } = await getGoogleAuth();
+      // Phase 4.7, C-1: route via the brand-appropriate account when the
+      // model passes from_email (e.g. "alexflorway@gmail.com" for an FW
+      // thread). Falls back to the default active account when omitted.
+      const { auth, account } = await getGoogleAuth(args.from_email);
       const gmail = google.gmail({ version: 'v1', auth });
 
       const to = Array.isArray(args.to) ? args.to.join(', ') : args.to;
@@ -2447,11 +2458,12 @@ const TOOL_DEFS = [
   },
   {
     name: 'send_email',
-    description: 'Send an email via Gmail. IMPORTANT: Always show the complete draft (To / Subject / Body) to the user and get explicit confirmation before calling this tool. Never send autonomously.',
+    description: 'Send an email via Gmail. IMPORTANT: Always show the complete draft (From / To / Subject / Body) to the user and get explicit confirmation before calling this tool. Never send autonomously. Phase 4.7, C-1: pass from_email when the conversation has a brand context. Use alexflorway@gmail.com for any FlorWay / FW / IronLite / HanHua thread; use alex@sovernhouse.co for Sovern House / SH / general trading. The two accounts are both active, so without from_email the tool picks whichever was created first, which is not always what you want.',
     inputSchema: {
       type: 'object',
       required: ['to', 'subject', 'body'],
       properties: {
+        from_email:          { type: 'string', description: 'Sender account email. alexflorway@gmail.com (FW brand context) or alex@sovernhouse.co (SH brand context). Omit to use the default active account.' },
         to:                  { type: 'string', description: 'Recipient email (or comma-separated list)' },
         subject:             { type: 'string', description: 'Email subject' },
         body:                { type: 'string', description: 'Plain-text email body' },
