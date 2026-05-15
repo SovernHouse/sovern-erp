@@ -17,6 +17,20 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
 const { google } = require('googleapis');
+const { v4: uuidv4 } = require('uuid');
+
+// Phase 4.9.1: shared slug helper — matches the convention in
+// services/migrate491TaxonomyAndBrand.js so AI-created rows and
+// migration-created rows are indistinguishable.
+function slugifyMcp(name) {
+  return String(name || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-')
+    .slice(0, 80);
+}
 
 const USER_ID = process.env.ERP_USER_ID;
 
@@ -1728,12 +1742,33 @@ async function callTool(name, args) {
     // ── Products ────────────────────────────────────────────────────────────
 
     case 'list_product_categories': {
+      // Phase 4.9.1: accept parentId + includeArchived filters and a
+      // tree flag. tree=true returns a nested {id,name,children:[]}
+      // shape; otherwise a flat list ordered by sortOrder ASC.
+      const where = { isActive: true };
+      if (args.parentId !== undefined) where.parentId = args.parentId || null;
+      if (args.includeArchived !== true) where.isArchived = false;
       const cats = await getDb().ProductCategory.findAll({
-        where: { isActive: true },
+        where,
         order: [['sortOrder', 'ASC'], ['name', 'ASC']],
-        attributes: ['id', 'name', 'slug', 'description', 'parentId'],
+        attributes: ['id', 'name', 'slug', 'description', 'parentId', 'sortOrder', 'isArchived'],
       });
-      return cats.length ? cats.map(c => c.toJSON()) : 'No product categories found.';
+      if (!cats.length) return 'No product categories found.';
+      if (args.tree === true) {
+        const rows = cats.map(c => c.toJSON());
+        const byParent = {};
+        for (const r of rows) {
+          const key = r.parentId || 'ROOT';
+          if (!byParent[key]) byParent[key] = [];
+          byParent[key].push({ ...r });
+        }
+        const stitch = (parentId) => (byParent[parentId || 'ROOT'] || []).map(n => ({
+          ...n,
+          children: stitch(n.id),
+        }));
+        return stitch(null);
+      }
+      return cats.map(c => c.toJSON());
     }
 
     case 'list_products': {
@@ -2180,6 +2215,134 @@ async function callTool(name, args) {
       };
     }
 
+    // ── Phase 4.9.1: ProductCategory CRUD ─────────────────────────────────
+
+    case 'create_product_category': {
+      const requester = await requireSuperAdmin();
+      const name = (args.name || '').trim();
+      if (!name) return 'Error: name is required.';
+      const parentId = args.parentId || null;
+      if (parentId) {
+        const parent = await getDb().ProductCategory.findByPk(parentId);
+        if (!parent) return `Error: parent ${parentId} not found.`;
+      }
+      const slug = (args.slug && String(args.slug).trim()) || slugifyMcp(name);
+
+      // Conflict: same (parentId, slug) on a non-archived row would
+      // create ambiguity in lookups.
+      const collision = await getDb().ProductCategory.findOne({
+        where: { parentId: parentId || null, slug },
+      });
+      if (collision && !collision.isArchived) {
+        return `Error: a non-archived category with slug "${slug}" already exists under this parent (id ${collision.id}). Pick a different name or archive the existing row first.`;
+      }
+
+      const sortOrder = args.sortOrder != null ? parseInt(args.sortOrder, 10) : 99;
+      const isActive = args.active === undefined ? true : Boolean(args.active);
+
+      const row = await getDb().ProductCategory.create({
+        id: uuidv4(),
+        name,
+        slug,
+        description: args.description || null,
+        icon: args.icon || null,
+        image: args.image || null,
+        parentId: parentId || null,
+        sortOrder,
+        isActive,
+        isArchived: false,
+      });
+      await auditAiWrite('create_taxonomy_category', 'ProductCategory', row.id, {
+        name, slug, parentId, sortOrder, isActive,
+      }, requester.id);
+      return { success: true, id: row.id, name, slug, parentId, sortOrder };
+    }
+
+    case 'update_product_category': {
+      const requester = await requireSuperAdmin();
+      const id = args.id || args.categoryId;
+      if (!id) return 'Error: id is required.';
+      const row = await getDb().ProductCategory.findByPk(id);
+      if (!row) return `Error: ProductCategory ${id} not found.`;
+
+      const updates = {};
+      for (const k of ['name', 'slug', 'description', 'icon', 'image', 'sortOrder', 'isActive']) {
+        if (args[k] !== undefined) updates[k] = args[k];
+      }
+      // Accept `active` alias for isActive (matches Alex's 4.9.1 spec).
+      if (args.active !== undefined && updates.isActive === undefined) {
+        updates.isActive = Boolean(args.active);
+      }
+      // parentId change is the high-risk path. Spec: 5+ active products
+      // bound to the moving category require force:true.
+      if (args.parentId !== undefined && args.parentId !== row.parentId) {
+        const activeProductCount = await getDb().Product.count({
+          where: { categoryId: row.id, isActive: true },
+        });
+        if (activeProductCount >= 5 && args.force !== true) {
+          return `Error: "${row.name}" has ${activeProductCount} active products bound. Re-parenting could break filter URLs and reports. Pass force:true to override after manual review.`;
+        }
+        if (args.parentId) {
+          const parent = await getDb().ProductCategory.findByPk(args.parentId);
+          if (!parent) return `Error: new parent ${args.parentId} not found.`;
+          if (parent.id === row.id) return 'Error: a category cannot be its own parent.';
+        }
+        updates.parentId = args.parentId || null;
+      }
+      if (Object.keys(updates).length === 0) {
+        return 'Error: no editable fields provided. Allowed: name, slug, description, icon, image, parentId, sortOrder, isActive/active.';
+      }
+      if (updates.sortOrder !== undefined) updates.sortOrder = parseInt(updates.sortOrder, 10);
+      if (updates.isActive !== undefined) updates.isActive = Boolean(updates.isActive);
+
+      const before = {};
+      for (const k of Object.keys(updates)) before[k] = row[k];
+      await row.update(updates);
+      await auditAiWrite('update_taxonomy_category', 'ProductCategory', row.id, { name: row.name, before, after: updates }, requester.id);
+      return { success: true, id: row.id, name: row.name, updated: Object.keys(updates), before, after: updates };
+    }
+
+    case 'archive_product_category': {
+      const requester = await requireSuperAdmin();
+      const id = args.id || args.categoryId;
+      if (!id) return 'Error: id is required.';
+      const reason = String(args.reason || '').trim();
+      if (reason.length < 10) {
+        return 'Error: reason is required and must be at least 10 characters (e.g. "obsolete taxonomy from pre-Phase 4 import").';
+      }
+      const row = await getDb().ProductCategory.findByPk(id);
+      if (!row) return `Error: ProductCategory ${id} not found.`;
+      if (row.isArchived) return `Error: ${row.name} is already archived.`;
+
+      // Hard refusal: active products bound. Force move/archive first.
+      const activeProductCount = await getDb().Product.count({
+        where: { categoryId: row.id, isActive: true },
+      });
+      if (activeProductCount > 0) {
+        return `Error: ${row.name} has ${activeProductCount} active product(s) bound. Move or archive those products first; archive_product_category will not silently orphan inventory.`;
+      }
+
+      await row.update({ isArchived: true });
+      await auditAiWrite('archive_taxonomy_category', 'ProductCategory', row.id, { name: row.name, reason }, requester.id);
+      return { success: true, id: row.id, name: row.name, archived: true };
+    }
+
+    case 'restore_product_category': {
+      const requester = await requireSuperAdmin();
+      const id = args.id || args.categoryId;
+      if (!id) return 'Error: id is required.';
+      const reason = String(args.reason || '').trim();
+      if (reason.length < 10) {
+        return 'Error: reason is required and must be at least 10 characters.';
+      }
+      const row = await getDb().ProductCategory.findByPk(id);
+      if (!row) return `Error: ProductCategory ${id} not found.`;
+      if (!row.isArchived) return `Error: ${row.name} is not archived (nothing to restore).`;
+      await row.update({ isArchived: false });
+      await auditAiWrite('restore_taxonomy_category', 'ProductCategory', row.id, { name: row.name, reason }, requester.id);
+      return { success: true, id: row.id, name: row.name, archived: false };
+    }
+
     case 'update_brand': {
       const requester = await requireSuperAdmin();
       const { code } = args;
@@ -2191,6 +2354,21 @@ async function callTool(name, args) {
       if (Object.keys(updates).length === 0) {
         return `Error: no writable fields provided. Allowed: ${BRAND_WRITABLE_FIELDS.join(', ')}.`;
       }
+
+      // Phase 4.9.1 validation for the two new fields.
+      if (updates.active !== undefined) {
+        if (typeof updates.active !== 'boolean') {
+          return 'Error: active must be a boolean (true or false).';
+        }
+      }
+      if (updates.commissionRate !== undefined) {
+        const v = parseFloat(updates.commissionRate);
+        if (!Number.isFinite(v) || v < 0 || v > 1) {
+          return 'Error: commissionRate must be a decimal between 0 and 1 (e.g. 0.07 = 7%).';
+        }
+        updates.commissionRate = v;
+      }
+
       const before = pickWritable(brand.toJSON(), BRAND_WRITABLE_FIELDS);
       await brand.update(updates);
       await auditAiWrite('update_brand', 'Brand', brand.id, { code, before, after: updates }, requester.id);
@@ -2325,9 +2503,14 @@ async function callTool(name, args) {
 
 // Whitelists for the natural-language write tools. Anything outside these
 // lists is silently dropped even if the AI tries to set it.
+// Phase 4.9.1: add `active` + `commissionRate` so the AI can deactivate
+// an erroneous brand and adjust commission per agreement (e.g. HanHua
+// Sales Rep Agreement set FW to 7%). Validation happens inside the
+// update_brand handler — these are just allow-listed.
 const BRAND_WRITABLE_FIELDS = [
   'displayName', 'signatureHtml', 'signatureText',
   'primaryColor', 'accentColor', 'footerLegalText', 'logoUrl',
+  'active', 'commissionRate',
 ];
 
 const EMAIL_TEMPLATE_WRITABLE_FIELDS = [
@@ -3036,8 +3219,77 @@ const TOOL_DEFS = [
   },
   {
     name: 'list_product_categories',
-    description: 'List all product categories in the ERP. Use this to find the right category ID or name before creating a product.',
-    inputSchema: { type: 'object', properties: {} },
+    description: 'Phase 4.9.1 — List product categories. Filter by parentId (pass null to get root categories) or includeArchived (default false; pass true to see archived rows). Pass tree=true to get a nested {id,name,children:[]} shape instead of a flat list. Use this before create_product_category to find the right parentId, or before archive_product_category to confirm the row exists.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        parentId:        { type: ['string', 'null'], description: 'Restrict to direct children of this parent. Pass null for top-level categories. Omit to return all.' },
+        includeArchived: { type: 'boolean',          description: 'Default false. Pass true to include is_archived=true rows.' },
+        tree:            { type: 'boolean',          description: 'Default false. Pass true to get a nested tree instead of a flat list.' },
+      },
+    },
+  },
+  {
+    name: 'create_product_category',
+    description: 'Phase 4.9.1 — Create a ProductCategory row (super-admin only). Use to add a new top-level category or sub-category. ALWAYS show Alex a preview (name, parent name, sortOrder, description) and wait for explicit confirmation before calling. Slug auto-derived from name when omitted. Refuses if (parentId, slug) collides with an existing non-archived row. Writes ai_assistant_create_taxonomy_category to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['name'],
+      properties: {
+        name:        { type: 'string',          description: 'Category display name, e.g. "Engineered SPC".' },
+        slug:        { type: 'string',          description: 'Optional kebab-case slug. Auto-derived from name when omitted.' },
+        description: { type: 'string',          description: 'Optional short description shown in the catalog filter UI.' },
+        parentId:    { type: ['string', 'null'], description: 'UUID of the parent category. Null/omit = top-level. Use list_product_categories to find a parent id.' },
+        sortOrder:   { type: 'number',          description: 'Position among siblings under the same parent. Default 99 (sorts to the bottom).' },
+        active:      { type: 'boolean',         description: 'Default true. Pass false to create as inactive (legacy soft-delete).' },
+        icon:        { type: 'string',          description: 'Optional emoji or icon URL.' },
+        image:       { type: 'string',          description: 'Optional image URL.' },
+      },
+    },
+  },
+  {
+    name: 'update_product_category',
+    description: 'Phase 4.9.1 — Update a ProductCategory row (super-admin only). Pass id + any subset of: name, slug, description, parentId, sortOrder, active. ALWAYS show the diff first. Re-parenting a category that has 5+ active products bound requires force:true after manual review (URL/report breakage risk). Writes ai_assistant_update_taxonomy_category.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:          { type: 'string',          description: 'ProductCategory UUID.' },
+        name:        { type: 'string' },
+        slug:        { type: 'string' },
+        description: { type: 'string' },
+        parentId:    { type: ['string', 'null'], description: 'New parent UUID. Null = move to top level. Pass force:true alongside if the row has 5+ active products bound.' },
+        sortOrder:   { type: 'number' },
+        active:      { type: 'boolean' },
+        icon:        { type: 'string' },
+        image:       { type: 'string' },
+        force:       { type: 'boolean', description: 'Required when re-parenting a category with 5+ active products bound. Default false (refuse). Use only after the user has been warned about URL/report breakage.' },
+      },
+    },
+  },
+  {
+    name: 'archive_product_category',
+    description: 'Phase 4.9.1 — Soft-archive a ProductCategory (sets isArchived=true). Reversible via restore_product_category. HARD REFUSAL: blocked when any active products are still bound to this category — those must be re-categorised or archived first. Reason required (>= 10 chars). Writes ai_assistant_archive_taxonomy_category.',
+    inputSchema: {
+      type: 'object',
+      required: ['id', 'reason'],
+      properties: {
+        id:     { type: 'string', description: 'ProductCategory UUID.' },
+        reason: { type: 'string', description: 'Why this is being archived (>= 10 chars). Stored in the audit log.' },
+      },
+    },
+  },
+  {
+    name: 'restore_product_category',
+    description: 'Phase 4.9.1 — Reverse of archive_product_category. Sets isArchived=false. Reason required (>= 10 chars). Writes ai_assistant_restore_taxonomy_category.',
+    inputSchema: {
+      type: 'object',
+      required: ['id', 'reason'],
+      properties: {
+        id:     { type: 'string', description: 'ProductCategory UUID.' },
+        reason: { type: 'string', description: 'Why this is being restored (>= 10 chars). Stored in the audit log.' },
+      },
+    },
   },
   {
     name: 'list_products',
@@ -3224,19 +3476,21 @@ const TOOL_DEFS = [
   },
   {
     name: 'update_brand',
-    description: 'Phase 4.5, C19 — Update Brand fields (super-admin only). Use to refresh signature, change brand colors, edit footer legal text, etc. ALWAYS show Alex a preview/diff of the proposed change and wait for explicit confirmation ("yes, save" / "go ahead") before calling this tool. Writes an AuditLog row with action "ai_assistant_update_brand". Allowed fields: displayName, signatureHtml, signatureText, primaryColor, accentColor, footerLegalText, logoUrl. Anything else is silently dropped.',
+    description: 'Phase 4.5 / 4.9.1 — Update Brand fields (super-admin only). Use to refresh signature, change brand colors, edit footer legal text, deactivate a brand row that was created in error (active:false), or adjust commission per agreement (commissionRate, decimal 0..1). ALWAYS show Alex a preview/diff and wait for explicit confirmation ("yes, save" / "go ahead") before calling. Writes ai_assistant_update_brand to AuditLog. Allowed fields: displayName, signatureHtml, signatureText, primaryColor, accentColor, footerLegalText, logoUrl, active, commissionRate. Anything else is silently dropped.',
     inputSchema: {
       type: 'object',
       required: ['code'],
       properties: {
-        code:            { type: 'string', description: 'Brand code: "SH" or "FW".' },
-        displayName:     { type: 'string', description: 'Public-facing brand name.' },
-        signatureHtml:   { type: 'string', description: 'Full HTML for the email signature block. Inline styles only (no <style> tags) for email-client compatibility.' },
-        signatureText:   { type: 'string', description: 'Plain-text fallback for clients that strip HTML.' },
-        primaryColor:    { type: 'string', description: 'Primary brand color as hex (e.g. #1D5A32).' },
-        accentColor:     { type: 'string', description: 'Accent color as hex.' },
-        footerLegalText: { type: 'string', description: 'Footer legal / disclaimer line shown on PDFs and emails.' },
-        logoUrl:         { type: 'string', description: 'CDN URL for the brand logo PNG/SVG.' },
+        code:            { type: 'string',  description: 'Brand code: "SH", "FW", or other.' },
+        displayName:     { type: 'string',  description: 'Public-facing brand name.' },
+        signatureHtml:   { type: 'string',  description: 'Full HTML for the email signature block. Inline styles only (no <style> tags) for email-client compatibility.' },
+        signatureText:   { type: 'string',  description: 'Plain-text fallback for clients that strip HTML.' },
+        primaryColor:    { type: 'string',  description: 'Primary brand color as hex (e.g. #1D5A32).' },
+        accentColor:     { type: 'string',  description: 'Accent color as hex.' },
+        footerLegalText: { type: 'string',  description: 'Footer legal / disclaimer line shown on PDFs and emails.' },
+        logoUrl:         { type: 'string',  description: 'CDN URL for the brand logo PNG/SVG.' },
+        active:          { type: 'boolean', description: 'Phase 4.9.1: deactivate an erroneous brand row with false (hides it from quotation/product pickers without deleting historical data).' },
+        commissionRate:  { type: 'number',  description: 'Phase 4.9.1: brand-level commission rate as a decimal between 0 and 1 (e.g. 0.07 = 7%). Used by the commission accrual flow on sales-order confirmation.' },
       },
     },
   },

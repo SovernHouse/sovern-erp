@@ -53,7 +53,11 @@ router.put('/brands/:code',
       const brand = await db.Brand.findOne({ where: { code: req.params.code } });
       if (!brand) return res.status(404).json({ error: 'Brand not found' });
 
-      const ALLOWED = ['displayName', 'senderEmail', 'primaryColor', 'accentColor', 'logoUrl', 'signatureHtml', 'signatureText', 'footerLegalText'];
+      // Phase 4.9.1: add active + commissionRate so the admin UI can
+      // deactivate erroneous brands and edit commission per agreement.
+      // Validation below: active must be boolean, commissionRate must
+      // be a decimal in [0, 1].
+      const ALLOWED = ['displayName', 'senderEmail', 'primaryColor', 'accentColor', 'logoUrl', 'signatureHtml', 'signatureText', 'footerLegalText', 'active', 'commissionRate'];
       const updates = {};
       for (const field of ALLOWED) {
         if (req.body[field] !== undefined) updates[field] = req.body[field];
@@ -61,6 +65,18 @@ router.put('/brands/:code',
 
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: 'No updatable fields provided' });
+      }
+
+      // Phase 4.9.1 validation.
+      if (updates.active !== undefined && typeof updates.active !== 'boolean') {
+        return res.status(400).json({ error: 'active must be a boolean (true or false)' });
+      }
+      if (updates.commissionRate !== undefined) {
+        const v = parseFloat(updates.commissionRate);
+        if (!Number.isFinite(v) || v < 0 || v > 1) {
+          return res.status(400).json({ error: 'commissionRate must be a decimal between 0 and 1 (e.g. 0.07 = 7%)' });
+        }
+        updates.commissionRate = v;
       }
 
       await brand.update(updates);

@@ -705,6 +705,16 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] C-49c2 tariff rate components backfill skipped:', e.message);
     }
+
+    // Phase 4.9.1: ProductCategory schema gap fix + hierarchy build +
+    // brand HH deactivation + FW commission to 0.07. Sentinel-guarded
+    // so re-runs are a no-op once it succeeds.
+    try {
+      const { migrate491TaxonomyAndBrand } = require('./services/migrate491TaxonomyAndBrand');
+      await migrate491TaxonomyAndBrand(db);
+    } catch (e) {
+      logger.warn('[boot] 4.9.1 taxonomy+brand migration skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {
