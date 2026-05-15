@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { isCacheable, buildKey, getCached, setCached } from './offlineCache'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
@@ -6,6 +7,19 @@ const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
 })
+
+// Phase 5c: helper to read the current user id from the auth blob so
+// cache keys are user-scoped (brand isolation, multi-user-same-browser).
+function currentUserId() {
+  try {
+    const raw = localStorage.getItem('user')
+    if (!raw) return null
+    const u = JSON.parse(raw)
+    return u?.id || null
+  } catch (_) {
+    return null
+  }
+}
 
 // Request interceptor
 api.interceptors.request.use(
@@ -37,9 +51,27 @@ api.interceptors.response.use(
       }
       response.data = body.data
     }
+
+    // Phase 5c: cache successful GETs on whitelisted prefixes. Failure
+    // to cache is silent; never block the page on IDB hiccups.
+    try {
+      if (
+        response.config?.method?.toLowerCase() === 'get' &&
+        response.status >= 200 && response.status < 300 &&
+        isCacheable(response.config.url)
+      ) {
+        const key = buildKey(currentUserId(), response.config.url, response.config.params)
+        setCached(key, {
+          data: response.data,
+          pagination: response.pagination || null,
+          status: response.status,
+        }, { userId: currentUserId() })
+      }
+    } catch (_) { /* never let cache writes break the response path */ }
+
     return response
   },
-  (error) => {
+  async (error) => {
     // Only redirect to login on 401 if it's NOT a login/auth request itself
     if (error.response?.status === 401) {
       const requestUrl = error.config?.url || ''
@@ -50,6 +82,34 @@ api.interceptors.response.use(
         window.location.href = '/login'
       }
     }
+
+    // Phase 5c: network-level error (no response) on a cacheable GET →
+    // fall back to the cached payload, if any. The response object is
+    // shaped to look like a fresh axios success so callers don't care
+    // where it came from. `fromCache: true` + `cachedAt` are added for
+    // banners or "stale" hints.
+    try {
+      const cfg = error.config || {}
+      const isGet = (cfg.method || '').toLowerCase() === 'get'
+      const noResponse = !error.response
+      if (isGet && noResponse && isCacheable(cfg.url)) {
+        const key = buildKey(currentUserId(), cfg.url, cfg.params)
+        const cached = await getCached(key)
+        if (cached && cached.data) {
+          return {
+            data: cached.data.data,
+            pagination: cached.data.pagination || undefined,
+            status: 200,
+            statusText: 'OK (from cache)',
+            headers: {},
+            config: cfg,
+            fromCache: true,
+            cachedAt: new Date(cached.savedAt).toISOString(),
+          }
+        }
+      }
+    } catch (_) { /* fall through to normal reject */ }
+
     return Promise.reject(error)
   }
 )

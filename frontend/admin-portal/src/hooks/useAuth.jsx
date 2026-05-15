@@ -60,6 +60,13 @@ export const AuthProvider = ({ children }) => {
       disconnectSocket()
       setUser(null)
       setError(null)
+      // Phase 5c: wipe the offline read cache so a different user
+      // logging in on this browser can't see the previous user's data
+      // (brand isolation must hold across logout, online or offline).
+      try {
+        const { clearAll } = await import('../services/offlineCache')
+        await clearAll()
+      } catch (_) { /* never block logout on cache wipe */ }
     }
   }, [])
 
