@@ -5,29 +5,28 @@
 ---
 
 ## Last Updated
-2026-05-15 Taiwan time. Phase 4.9 complete + Phase 5 offline mode complete + Phase 4.7+ AI polish + Phase 4.9.1 taxonomy/brand cleanup + 4.9.1 recovery + orphan table cleanup.
+2026-05-15 Taiwan time. Through Phase 4.9.3 (AI assistant capability gaps closed) — also includes 4.9.2 (Factory.brandCode + ProductPrice temporal), 4.9.4 (rate-limiter self-DOS fix), 4.9.1 (taxonomy/brand cleanup + recovery + orphan rename), 4.7+ (AI polish), Phase 5 (offline mode), Phase 4.9 (tariffs + landed-cost).
 
 ---
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `f59f147` chore(hygiene): rename orphan ProductCategory + classify suspect tables (CI in progress at note time)
-  - `4ac0a62` docs(lessons): L-048 + L-049 from Phase 4.9.1 first-run debrief
-  - `9bf88de` fix(taxonomy): Phase 4.9.1 recovery — corrective re-parent + archive + sentinel
-  - `a2d19f1` feat(brand-admin+docs): Phase 4.9.1 Commit B — admin UI + docs
-  - `8819f3a` feat(taxonomy+ai): Phase 4.9.1 Commit A — migration + 5 PC tools + brand update extension
-  - `56a6d37` feat(mobile-ai): View-by-Run-ID search on dev-runs (Phase 4.7+ C-3 parity)
-  - `6c02cd8` feat(ai): shared assistant-response renderer (Phase 4.7+ C-2 follow-up)
-  - `2afd578` fix(drive): include webViewLink on found-not-created folders (Phase 4.7+ C-4)
-  - `1ea3903` feat(offline): safe service worker (Phase 5b proper)
-  - `9275a90` fix(offline): write-queue + dedupe paths matched no real routes
-  - …earlier: full Phase 4.9 + Phase 5 chain (see git log).
+  - `58f27af` docs(ai): Phase 4.9.3c — three-surface docs for 4.9.3a + 4.9.3b
+  - `7d046a3` feat(ai-mcp): Phase 4.9.3b — outreach draft mode + Drive multi-account routing
+  - `aadd92c` feat(ai-mcp): Phase 4.9.3a — Customer + Product CRUD MCP tools
+  - `11b47d3` fix(rate-limit): Phase 4.9.4 — stop self-DOS via poll exempt + auth-first ordering
+  - `1902edd` feat(pricing): Phase 4.9.2c — Price History panel + 4 MCP tools + docs
+  - `a50d6f5` feat(pricing): Phase 4.9.2b — ProductPrice temporal replace + getCurrentPrice
+  - `fd32688` feat(factory+taxonomy): Phase 4.9.2a — Factory.brandCode + match filter + MCP ext + sortOrder fix
+  - …earlier: full 4.9.1 + 4.7+ + Phase 5 + Phase 4.9 chain (see git log).
 - **Working tree:** clean (SESSION.md modified only).
-- **Tests:** 243/243 passing.
-- **Backend health:** live at `https://erp.sovernhouse.co/api`.
-- **Mobile parity:** READY. All new mobile surfaces shipped in same commits per L-035. Alex still needs to run `eas update --branch main --platform ios --environment production` from Windows for users to see it.
-- **Brands on prod:** SH active commission=0%, FW active commission=7% (HanHua Sales Rep Agreement), HH inactive (created in error).
-- **Taxonomy on prod:** Flooring → Resilient → SPC/WPC/Engineered SPC/LVT/Vinyl Sheet. Engineered Wood + remaining flooring rows direct children of Flooring. IronCore Flooring + WPC Hybrid Flooring archived. Orphan ProductCategory (singular) table renamed to ProductCategory_orphan_20260515; data preserved.
+- **Tests:** 247/247 passing locally pre-push. Includes 11 unitConversion + 4 tariffRateComponents + 6 tariffBulkImport + 3 offlineDedupe + 4 rateLimiter492 cases added across the recent phases.
+- **Backend health:** live at `https://erp.sovernhouse.co/api`. All boot-time migrations sentinel-recorded in AuditLog through `phase4_9_3a_customer_metadata_added`.
+- **Mobile parity:** READY. All new mobile surfaces shipped in the same commits per L-035. Alex still needs to run `cd "C:\Users\Alex\Desktop\International Trade Company\Trading ERP\mobile\sovern-ops-app"; npx eas-cli update --branch main --message "…"` from PowerShell (correct form per memory; old `--platform ios --environment production` flags fail).
+- **Brands on prod:** SH active commission=0%, FW active commission=7% (HanHua Sales Rep Agreement), HH inactive.
+- **Taxonomy on prod:** Flooring → Resilient → SPC/WPC/Engineered SPC/LVT/Vinyl Sheet (Resilient sortOrder=2, EngSPC=3, LVT=4, Vinyl Sheet=5). Engineered Wood + remaining flooring rows direct children of Flooring. IronCore Flooring + WPC Hybrid Flooring archived. Orphan `ProductCategory` (singular) renamed to `ProductCategory_orphan_20260515`; 18 rows preserved (~30 day retention; safe to DROP after 2026-06-15).
+- **Factories on prod:** Anhui HanHua + FlorWay SDN. BHD. both `brandCode='FW'`.
+- **Pricing on prod:** new temporal ProductPrice schema live. `Product.baseFobPrice` retained as denormalized cache (afterSave hook keeps it in sync). 0 ProductPrice rows because 0 priced Products on prod yet (IronLite SKU phase populates).
 
 ---
 
