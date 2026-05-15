@@ -20,13 +20,13 @@ const DEDUPE_TTL_MS = 24 * 60 * 60 * 1000;
 // PREFIXES list on the client (desktop + mobile). Reads cheap because
 // the routing layer already narrows by path; this list is the dedupe
 // scope guard.
+// Actual mounted route paths. Leads/contacts/activities live under /api/crm.
 const DEDUPABLE_PREFIXES = [
-  '/api/leads',
-  '/api/contacts',
-  '/api/activities',
+  '/api/crm/leads',
+  '/api/crm/contacts',
+  '/api/crm/activities',
   '/api/scheduled-activities',
   '/api/expenses',
-  '/api/notes',
 ];
 
 function isDedupablePath(path) {

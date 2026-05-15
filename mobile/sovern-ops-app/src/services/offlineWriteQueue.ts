@@ -14,13 +14,13 @@ import {
 } from './offlineCache';
 import { getConnectivity } from '../hooks/useConnectivity';
 
+// Actual mounted route paths. Leads/contacts/activities live under /api/crm.
 export const QUEUEABLE_PREFIXES = [
-  '/api/leads',
-  '/api/contacts',
-  '/api/activities',
+  '/api/crm/leads',
+  '/api/crm/contacts',
+  '/api/crm/activities',
   '/api/scheduled-activities',
   '/api/expenses',
-  '/api/notes',
 ];
 
 export const QUEUEABLE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

@@ -12,14 +12,14 @@ import { queueEnqueue, queueList, queueUpdate, queueRemove } from './offlineCach
 import { getConnectivity } from '../hooks/useConnectivity'
 
 // URL prefixes (admin-portal axios baseURL is /api, so paths here are
-// relative to /api — match the same shape used by the components).
+// relative to /api — match the actual mounted route paths, NOT the
+// model name. Leads/contacts/activities live under /api/crm.
 export const QUEUEABLE_PREFIXES = [
-  '/leads',
-  '/contacts',
-  '/activities',
+  '/crm/leads',
+  '/crm/contacts',
+  '/crm/activities',
   '/scheduled-activities',
   '/expenses',
-  '/notes',
 ]
 
 export const QUEUEABLE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])

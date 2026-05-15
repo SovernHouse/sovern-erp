@@ -2919,7 +2919,7 @@ GETs on a small allow-list (`leads`, `customers`, `factories`, `products`, `quot
 
 ## Write queue
 
-Allow-list: `leads`, `contacts`, `activities`, `scheduled-activities`, `expenses`, `notes`. Out of scope intentionally: quotations, sales-orders, purchase-orders, invoices, products, brands, users. Those have downstream cascades (commissions, factory sync, PDF gen, audit ladders) and conflict surfaces that need real conflict-resolution UX before being safe to write offline.
+Allow-list (paths relative to `/api`): `crm/leads`, `crm/contacts`, `crm/activities`, `scheduled-activities`, `expenses`. Out of scope intentionally: quotations, sales-orders, purchase-orders, invoices, products, brands, users. Those have downstream cascades (commissions, factory sync, PDF gen, audit ladders) and conflict surfaces that need real conflict-resolution UX before being safe to write offline.
 
 When offline + write hits the queue: synthetic 202 response with `{ data: { ...body, id: 'pending:N', _queued: true, _queuedAt }, queued: true }`. Callers that don't check the `queued` flag see a happy path. Each row carries a client-generated `clientUuid` sent as `X-Client-Uuid` on replay; backend dedupe on this header is deferred (the duplicate risk is the network-cut-after-send case, which is rare in practice; soft impact = duplicate lead).
 
