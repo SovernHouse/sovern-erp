@@ -5,7 +5,12 @@
 // accessibleBrands. Tap → opens commission detail screen with full
 // deals list. Per-order percentage edits happen on desktop.
 
-import { useEffect, useState } from 'react';
+// Phase 4.6 part 2: inner Tile wrapped in React.memo, navigation handler
+// useCallback'd, fmtMoney values useMemo'd so the formatter only runs when
+// the underlying number changes. The widget itself takes no props so the
+// outer React.memo is moot — the parent's re-render is already cheap.
+
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useBrands } from '../hooks/useBrands';
@@ -57,12 +62,17 @@ export default function CommissionWidget() {
     return () => { cancelled = true; };
   }, [hasFw]);
 
+  // Phase 4.6 part 2: stable handler + memoized formatted values.
+  const goCommission = useCallback(() => router.push('/commission'), [router]);
+  const mtdLabel = useMemo(() => fmtMoney(kpis?.mtdAccrued ?? 0), [kpis?.mtdAccrued]);
+  const pendingLabel = useMemo(() => fmtMoney(kpis?.pendingPayment ?? 0), [kpis?.pendingPayment]);
+
   if (!hasFw) return null;
 
   return (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => router.push('/commission')}
+      onPress={goCommission}
       activeOpacity={0.7}
     >
       <View style={styles.headerRow}>
@@ -74,22 +84,22 @@ export default function CommissionWidget() {
         <Text style={styles.error}>Unavailable: {error}</Text>
       ) : (
         <View style={styles.tilesRow}>
-          <Tile label="MTD Accrued" value={fmtMoney(kpis?.mtdAccrued ?? 0)} color="#1F2933" />
-          <Tile label="Pending payment" value={fmtMoney(kpis?.pendingPayment ?? 0)} color="#92400E" />
+          <Tile label="MTD Accrued" value={mtdLabel} color="#1F2933" />
+          <Tile label="Pending payment" value={pendingLabel} color="#92400E" />
         </View>
       )}
     </TouchableOpacity>
   );
 }
 
-function Tile({ label, value, color }: { label: string; value: string; color: string }) {
+const Tile = memo(function Tile({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <View style={[styles.tile, { borderLeftColor: color }]}>
       <Text style={styles.tileLabel}>{label}</Text>
       <Text style={styles.tileValue}>{value}</Text>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

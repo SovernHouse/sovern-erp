@@ -6,8 +6,15 @@
 //
 // Returns the selected brand code via onChange (or 'all' for aggregate).
 // Pass to dashboard API calls as a ?brandCode= query param.
+//
+// Phase 4.6 part 2: memoized Pill + memoized visible list + stable
+// per-pill onPress handlers via a useMemo'd Record<code, fn> so only
+// the previously-active and newly-active pills re-render on value
+// change. Wrapped in React.memo at the export so parents passing a
+// stable onChange (useCallback) get a free skip when their other
+// state changes.
 
-import { useEffect } from 'react';
+import { memo, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useBrands } from '../hooks/useBrands';
 import { COLORS } from '../constants/config';
@@ -17,10 +24,22 @@ type Props = {
   onChange: (next: string) => void;
 };
 
-export default function BrandFilterPicker({ value, onChange }: Props) {
+function BrandFilterPicker({ value, onChange }: Props) {
   const { accessibleBrands, brands, defaultBrand, isCrossBrand, loading } = useBrands();
-  const visible = brands.filter((b) => accessibleBrands.includes(b.code));
+  const visible = useMemo(
+    () => brands.filter((b) => accessibleBrands.includes(b.code)),
+    [brands, accessibleBrands],
+  );
   const showAll = isCrossBrand && visible.length > 1;
+
+  // Stable per-code onPress map so the Pill children see referentially
+  // equal handlers across re-renders. onAll is its own callback.
+  const onAll = useCallback(() => onChange('all'), [onChange]);
+  const codeHandlers = useMemo(() => {
+    const map: Record<string, () => void> = {};
+    for (const b of visible) map[b.code] = () => onChange(b.code);
+    return map;
+  }, [visible, onChange]);
 
   useEffect(() => {
     if (value || loading) return;
@@ -35,14 +54,14 @@ export default function BrandFilterPicker({ value, onChange }: Props) {
       <Text style={styles.label}>Brand</Text>
       <View style={styles.pillsRow}>
         {showAll && (
-          <Pill label="All" active={value === 'all'} onPress={() => onChange('all')} />
+          <Pill label="All" active={value === 'all'} onPress={onAll} />
         )}
         {visible.map((b) => (
           <Pill
             key={b.code}
             label={b.code}
             active={value === b.code}
-            onPress={() => onChange(b.code)}
+            onPress={codeHandlers[b.code]}
             color={b.primaryColor}
           />
         ))}
@@ -51,7 +70,9 @@ export default function BrandFilterPicker({ value, onChange }: Props) {
   );
 }
 
-function Pill({ label, active, onPress, color }: { label: string; active: boolean; onPress: () => void; color?: string }) {
+export default memo(BrandFilterPicker);
+
+const Pill = memo(function Pill({ label, active, onPress, color }: { label: string; active: boolean; onPress: () => void; color?: string }) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -67,7 +88,7 @@ function Pill({ label, active, onPress, color }: { label: string; active: boolea
       <Text style={[styles.pillText, active && { color: '#FFFFFF' }]}>{label}</Text>
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   row:        { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 },
