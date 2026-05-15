@@ -74,7 +74,27 @@ Single opaque ratePercent replaced with components JSON `[{name, ratePercent, no
 
 Dashboard widget (desktop + mobile, L-035 parity): self-hiding amber card listing tariffs in the [-30, +7] day window. Send-confirm warning on QuotationDetail: pre-flight per-line tariff check for US destinations. **Hard-block** when a line has origin but no active tariff (confirm button disabled). **Soft warn** when an active tariff expires within 7 days. ConfirmDialog gained `children` + `disableConfirm` props.
 
-### Phase 4.9 is COMPLETE. Phase 5 (offline mode) is unblocked.
+### Phase 4.9 is COMPLETE.
+
+---
+
+## Phase 5 — SHIPPED (offline mode)
+
+7 commits. 5b explicitly skipped per prior PWA-cache kill-switch history.
+
+| Commit | Phase | What |
+|---|---|---|
+| `e5b049d` | 5a | useConnectivity hook + OfflineBanner (desktop + mobile). 15s /api/health ping as the tiebreaker. |
+| n/a | 5b | SKIPPED — public/sw.js documents a prior cache disaster. Revisit only with version-pinned cache key. |
+| `bdc1319` | 5c | Desktop IndexedDB read-through cache for whitelisted GETs. Synthetic success on network failure. 24h TTL. Cache wipes on logout for brand isolation. |
+| `4b06105` | 5d | Mobile AsyncStorage mirror of 5c. authStore now persists user blob so the fetch wrapper can read the user id without a circular dep. |
+| `b38f878` | 5e | Desktop write queue (leads/contacts/activities/scheduled-activities/expenses/notes). FIFO replay on reconnect. Synthetic 202 with `_queued: true` on offline write. |
+| `eade02e` | 5f | Mobile mirror of 5e. AsyncStorage queue + same outcome categories. |
+| `5c71976` | 5g+5h | Inspector UI (`/settings/offline-queue` desktop, `/offline-queue` mobile) + `POST /api/audit-logs/offline-replay` for cross-device replay history. |
+
+Tests still 240/240. Mobile parity holds for every surface per L-035.
+
+Known limitations documented in DEVELOPER_GUIDE: duplicate on network-cut-after-send (mitigation deferred), 5s reconnect polling lag (acceptable), no collaborative conflict resolution (write allow-list is curated to avoid surfaces where it matters today).
 
 ---
 
