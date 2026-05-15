@@ -18,8 +18,9 @@
 // path cacheable; non-listed paths are passthrough.
 
 const DB_NAME    = 'sovern-erp-offline'
-const DB_VERSION = 1
+const DB_VERSION = 2 // bump: adds writeQueue store (Phase 5e)
 const STORE      = 'responses'
+const QUEUE      = 'writeQueue'
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000 // 24h
 
 // URL prefix allow-list. Conservative on purpose; widen as we verify
@@ -56,6 +57,15 @@ function openDb() {
       if (!db.objectStoreNames.contains(STORE)) {
         db.createObjectStore(STORE, { keyPath: 'key' })
       }
+      // Phase 5e: write queue. Auto-incrementing key so FIFO order is
+      // implicit. Rows: { id (auto), method, url, body, params, status,
+      // attempts, lastError, createdAt, replayedAt, responseStatus,
+      // userId, clientUuid }.
+      if (!db.objectStoreNames.contains(QUEUE)) {
+        const q = db.createObjectStore(QUEUE, { keyPath: 'id', autoIncrement: true })
+        q.createIndex('status', 'status', { unique: false })
+        q.createIndex('createdAt', 'createdAt', { unique: false })
+      }
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror   = () => reject(req.error || new Error('IDB open failed'))
@@ -65,6 +75,11 @@ function openDb() {
 
 function tx(mode) {
   return openDb().then(db => db.transaction(STORE, mode).objectStore(STORE))
+}
+
+// Phase 5e: separate tx helper for the writeQueue store.
+function qtx(mode) {
+  return openDb().then(db => db.transaction(QUEUE, mode).objectStore(QUEUE))
 }
 
 export function isCacheable(urlPath) {
@@ -127,6 +142,70 @@ export async function clearAll() {
     const store = await tx('readwrite')
     return await new Promise((resolve, reject) => {
       const req = store.clear()
+      req.onsuccess = () => resolve(true)
+      req.onerror   = () => reject(req.error)
+    })
+  } catch (_) {
+    return false
+  }
+}
+
+// ─── Phase 5e: write queue ─────────────────────────────────────────────
+
+export async function queueEnqueue(row) {
+  try {
+    const store = await qtx('readwrite')
+    return await new Promise((resolve, reject) => {
+      const req = store.add(row)
+      req.onsuccess = () => resolve(req.result)
+      req.onerror   = () => reject(req.error)
+    })
+  } catch (_) {
+    return null
+  }
+}
+
+export async function queueList(statusFilter = null) {
+  try {
+    const store = await qtx('readonly')
+    return await new Promise((resolve, reject) => {
+      const req = store.getAll()
+      req.onsuccess = () => {
+        const rows = req.result || []
+        resolve(statusFilter ? rows.filter(r => r.status === statusFilter) : rows)
+      }
+      req.onerror = () => reject(req.error)
+    })
+  } catch (_) {
+    return []
+  }
+}
+
+export async function queueUpdate(id, patch) {
+  try {
+    const store = await qtx('readwrite')
+    return await new Promise((resolve, reject) => {
+      const getReq = store.get(id)
+      getReq.onsuccess = () => {
+        const row = getReq.result
+        if (!row) return resolve(null)
+        const next = { ...row, ...patch }
+        const putReq = store.put(next)
+        putReq.onsuccess = () => resolve(next)
+        putReq.onerror   = () => reject(putReq.error)
+      }
+      getReq.onerror = () => reject(getReq.error)
+    })
+  } catch (_) {
+    return null
+  }
+}
+
+export async function queueRemove(id) {
+  try {
+    const store = await qtx('readwrite')
+    return await new Promise((resolve, reject) => {
+      const req = store.delete(id)
       req.onsuccess = () => resolve(true)
       req.onerror   = () => reject(req.error)
     })

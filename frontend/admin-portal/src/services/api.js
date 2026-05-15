@@ -1,5 +1,7 @@
 import axios from 'axios'
 import { isCacheable, buildKey, getCached, setCached } from './offlineCache'
+import { isQueueable, enqueueWrite, bootstrapAutoReplay } from './offlineWriteQueue'
+import { getConnectivity } from '../hooks/useConnectivity'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
@@ -23,18 +25,47 @@ function currentUserId() {
 
 // Request interceptor
 api.interceptors.request.use(
-  (config) => {
+  async (config) => {
     const token = localStorage.getItem('authToken')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
     config.headers['Content-Type'] = 'application/json'
+
+    // Phase 5e: when the connectivity hook reports offline AND this is
+    // a queueable write, short-circuit the request — enqueue it, then
+    // throw a special marker error so the response interceptor returns
+    // a synthetic "queued" response to the caller. `_skipQueue` (set
+    // by the replay loop) bypasses this so replays don't re-enqueue.
+    const isWrite = ['post', 'put', 'patch', 'delete'].includes((config.method || '').toLowerCase())
+    if (
+      isWrite &&
+      !config._skipQueue &&
+      !getConnectivity().isOnline &&
+      isQueueable(config.method, config.url)
+    ) {
+      const row = await enqueueWrite({
+        method: config.method,
+        url:    config.url,
+        body:   config.data,
+        params: config.params,
+        userId: currentUserId(),
+      })
+      const err = new Error('Queued for offline replay')
+      err._queued = row
+      err.config  = config
+      throw err
+    }
+
     return config
   },
   (error) => {
     return Promise.reject(error)
   }
 )
+
+// Phase 5e: start the auto-replay loop once the module loads.
+bootstrapAutoReplay()
 
 // Response interceptor — auto-unwrap backend { success, data } envelope
 api.interceptors.response.use(
@@ -72,6 +103,51 @@ api.interceptors.response.use(
     return response
   },
   async (error) => {
+    // Phase 5e: write was queued by the request interceptor. Synthesize
+    // a 202 success so the calling component sees a happy path. The
+    // returned body echoes the request body with a `_queued: true`
+    // marker so optimistic UI can distinguish queued from real rows.
+    if (error?._queued) {
+      const row = error._queued
+      return {
+        data: { ...(row.body || {}), id: `pending:${row.id}`, _queued: true, _queuedAt: row.createdAt },
+        status: 202,
+        statusText: 'Queued (offline)',
+        headers: {},
+        config: error.config,
+        queued: true,
+      }
+    }
+
+    // Phase 5e: a write went out, the server never responded (network
+    // dropped right after send). Enqueue the write so the replay loop
+    // picks it up when we come back online, and return the same kind
+    // of synthetic success.
+    try {
+      const cfg = error.config || {}
+      if (
+        !cfg._skipQueue &&
+        !error.response &&
+        isQueueable(cfg.method, cfg.url)
+      ) {
+        const row = await enqueueWrite({
+          method: cfg.method,
+          url:    cfg.url,
+          body:   cfg.data ? (typeof cfg.data === 'string' ? JSON.parse(cfg.data) : cfg.data) : null,
+          params: cfg.params,
+          userId: currentUserId(),
+        })
+        return {
+          data: { ...(row.body || {}), id: `pending:${row.id}`, _queued: true, _queuedAt: row.createdAt },
+          status: 202,
+          statusText: 'Queued (offline)',
+          headers: {},
+          config: cfg,
+          queued: true,
+        }
+      }
+    } catch (_) { /* fall through to normal reject */ }
+
     // Only redirect to login on 401 if it's NOT a login/auth request itself
     if (error.response?.status === 401) {
       const requestUrl = error.config?.url || ''
