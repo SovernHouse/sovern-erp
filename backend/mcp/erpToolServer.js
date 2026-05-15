@@ -868,7 +868,19 @@ async function callTool(name, args) {
       return quotations.length ? quotations.map(q => q.toJSON()) : 'No quotations found.';
     }
 
-    // ── Activities / notes ──────────────────────────────────────────────────
+    // ── Brands ──────────────────────────────────────────────────────────────
+
+    case 'list_brands': {
+      const brands = await getDb().Brand.findAll({
+        attributes: ['id', 'code', 'displayName', 'senderEmail', 'primaryColor', 'accentColor', 'active', 'commissionRate'],
+        order: [['code', 'ASC']],
+      });
+      return brands.length
+        ? brands.map(b => b.toJSON())
+        : 'No brands found. Use create_brand to provision one.';
+    }
+
+
 
     case 'log_activity': {
       const data = {
@@ -2097,6 +2109,77 @@ async function callTool(name, args) {
     // gate but still require an authenticated USER_ID.
     // ──────────────────────────────────────────────────────────────────────────
 
+    case 'create_brand': {
+      const requester = await requireSuperAdmin();
+      const code = (args.code || '').trim().toUpperCase();
+      const displayName = (args.displayName || '').trim();
+      const senderEmail = (args.senderEmail || '').trim();
+      const primaryColor = (args.primaryColor || '').trim();
+      const accentColor = (args.accentColor || '').trim();
+
+      if (!/^[A-Z]{2,8}$/.test(code)) {
+        return 'Error: code must be 2-8 uppercase letters (e.g. "HH", "SH", "FW").';
+      }
+      if (!displayName) return 'Error: displayName is required.';
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderEmail)) {
+        return 'Error: senderEmail must be a valid email (e.g. "ops@hanhua.example").';
+      }
+      if (!/^#[0-9A-Fa-f]{6}$/.test(primaryColor)) {
+        return 'Error: primaryColor must be a 6-digit hex color (e.g. "#1D5A32").';
+      }
+      if (!/^#[0-9A-Fa-f]{6}$/.test(accentColor)) {
+        return 'Error: accentColor must be a 6-digit hex color (e.g. "#C8A464").';
+      }
+
+      const existing = await getDb().Brand.findOne({ where: { code } });
+      if (existing) {
+        return `Error: brand ${code} already exists (id ${existing.id}). Use update_brand to modify it.`;
+      }
+
+      const commissionRateRaw = args.commissionRate;
+      let commissionRate = 0.05;
+      if (commissionRateRaw != null && commissionRateRaw !== '') {
+        const v = parseFloat(commissionRateRaw);
+        if (!Number.isFinite(v) || v < 0 || v > 1) {
+          return 'Error: commissionRate must be a decimal between 0 and 1 (e.g. 0.05 = 5%). Default is 0.05.';
+        }
+        commissionRate = v;
+      }
+
+      const brand = await getDb().Brand.create({
+        code,
+        displayName,
+        senderEmail,
+        primaryColor,
+        accentColor,
+        signatureHtml:   args.signatureHtml   || null,
+        signatureText:   args.signatureText   || null,
+        footerLegalText: args.footerLegalText || null,
+        logoUrl:         args.logoUrl         || null,
+        commissionRate,
+        active: true,
+      });
+
+      await auditAiWrite('create_brand', 'Brand', brand.id, {
+        code,
+        displayName,
+        senderEmail,
+        primaryColor,
+        accentColor,
+        commissionRate,
+      }, requester.id);
+
+      return {
+        success: true,
+        brandId: brand.id,
+        code: brand.code,
+        displayName: brand.displayName,
+        senderEmail: brand.senderEmail,
+        commissionRate: brand.commissionRate,
+        note: 'Brand is active by default. Products and quotations can now reference brandCode=' + code + '. Add signature/footer via update_brand when ready.',
+      };
+    }
+
     case 'update_brand': {
       const requester = await requireSuperAdmin();
       const { code } = args;
@@ -3111,6 +3194,34 @@ const TOOL_DEFS = [
   //   - user role / permissions / brand-access edits (use admin UI)
   // Super-admin gate is server-side; the prompt-level guard is defense in
   // depth.
+  {
+    name: 'list_brands',
+    description: 'Phase 4.9 — List all brands in the Brand table. Use this BEFORE create_product or any tool that references a brandCode to confirm the brand exists. Returns code, displayName, senderEmail, primaryColor, accentColor, active, commissionRate. Read-only; safe to call without confirmation.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'create_brand',
+    description: 'Phase 4.9 — Create a new Brand row (super-admin only). Use when a brand referenced by a product or quotation does not yet exist (e.g. "HH" for HanHua, "IL" for IronLite). ALWAYS show Alex a preview of the proposed brand (code, displayName, senderEmail, colors, commission rate) and wait for explicit confirmation ("yes, create" / "go ahead") before calling. Writes ai_assistant_create_brand to AuditLog. Validates: code 2-8 uppercase letters, displayName non-empty, senderEmail valid, both colors 6-digit hex. commissionRate default 0.05 (5%).',
+    inputSchema: {
+      type: 'object',
+      required: ['code', 'displayName', 'senderEmail', 'primaryColor', 'accentColor'],
+      properties: {
+        code:            { type: 'string', description: 'Brand code: 2-8 uppercase letters, used as the FK in Product/Quotation/etc. Examples: "HH" (HanHua), "IL" (IronLite), "FW" (FlorWay).' },
+        displayName:     { type: 'string', description: 'Public-facing brand name (e.g. "HanHua").' },
+        senderEmail:     { type: 'string', description: 'Outbound email sender for this brand (e.g. "ops@hanhua.example"). Must be a valid email.' },
+        primaryColor:    { type: 'string', description: 'Primary brand color as 6-digit hex (e.g. "#1D5A32").' },
+        accentColor:     { type: 'string', description: 'Accent color as 6-digit hex (e.g. "#C8A464").' },
+        commissionRate:  { type: 'number', description: 'Decimal 0..1. Default 0.05 (5%). For SH (Alex\'s own business) use 0.' },
+        signatureHtml:   { type: 'string', description: 'Optional email signature HTML. Can be added later via update_brand.' },
+        signatureText:   { type: 'string', description: 'Optional plain-text signature fallback.' },
+        footerLegalText: { type: 'string', description: 'Optional footer legal line for PDFs and emails.' },
+        logoUrl:         { type: 'string', description: 'Optional logo URL.' },
+      },
+    },
+  },
   {
     name: 'update_brand',
     description: 'Phase 4.5, C19 — Update Brand fields (super-admin only). Use to refresh signature, change brand colors, edit footer legal text, etc. ALWAYS show Alex a preview/diff of the proposed change and wait for explicit confirmation ("yes, save" / "go ahead") before calling this tool. Writes an AuditLog row with action "ai_assistant_update_brand". Allowed fields: displayName, signatureHtml, signatureText, primaryColor, accentColor, footerLegalText, logoUrl. Anything else is silently dropped.',
