@@ -16,6 +16,8 @@ const create = async (req, res, next) => {
       // Phase 4, C14: new brand-aware catalog fields
       productType, baseFobPrice, currency, moqUnit, leadTimeDays,
       certifications, originCountry,
+      // Phase 4.9 C-1: multi-origin pricing
+      originVariants,
     } = req.body;
 
     // Phase 4, C14: resolve brand (body wins, else user defaultBrand, else 'SH').
@@ -65,6 +67,7 @@ const create = async (req, res, next) => {
       leadTimeDays: leadTimeDays != null ? leadTimeDays : null,
       certifications: certifications || [],
       originCountry: originCountry || null,
+      originVariants: Array.isArray(originVariants) ? originVariants : [],
     });
 
     const result = await db.Product.findByPk(product.id, {
@@ -164,6 +167,8 @@ const update = async (req, res, next) => {
       // (use /admin/brand-override for that flow).
       productType, baseFobPrice, currency, moqUnit, leadTimeDays,
       certifications, originCountry,
+      // Phase 4.9 C-1
+      originVariants,
     } = req.body;
 
     const product = await db.Product.findByPk(id);
@@ -199,6 +204,7 @@ const update = async (req, res, next) => {
       leadTimeDays: leadTimeDays !== undefined ? leadTimeDays : product.leadTimeDays,
       certifications: certifications !== undefined ? certifications : product.certifications,
       originCountry: originCountry !== undefined ? originCountry : product.originCountry,
+      originVariants: Array.isArray(originVariants) ? originVariants : product.originVariants,
     });
 
     const result = await db.Product.findByPk(id, {

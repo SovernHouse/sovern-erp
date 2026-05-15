@@ -213,6 +213,27 @@ function ProductForm({ editing, categories, factories, onClose, onSaved }) {
     moqUnit: editing?.moqUnit || 'sqm',
     leadTimeDays: editing?.leadTimeDays ?? '',
     originCountry: editing?.originCountry || '',
+    // Phase 4.9 C-1: multi-origin pricing array. Each entry =
+    //   { originCountry, fobPriceUsd, priceUnit, moqOverride?, leadTimeOverride? }
+    // Empty array == backwards-compat (quotation builder reads from
+    // baseFobPrice + originCountry above). One entry == single-origin.
+    // Multi-entry == multi-origin pricing.
+    originVariants: Array.isArray(editing?.originVariants) ? editing.originVariants : [],
+  })
+
+  // Phase 4.9 C-1: variant editor helpers
+  const addVariant = () => setForm((prev) => ({
+    ...prev,
+    originVariants: [...prev.originVariants, { originCountry: '', fobPriceUsd: '', priceUnit: 'sqm' }],
+  }))
+  const removeVariant = (idx) => setForm((prev) => ({
+    ...prev,
+    originVariants: prev.originVariants.filter((_, i) => i !== idx),
+  }))
+  const updateVariant = (idx, patch) => setForm((prev) => {
+    const next = [...prev.originVariants]
+    next[idx] = { ...next[idx], ...patch }
+    return { ...prev, originVariants: next }
   })
 
   const handleSubmit = async (e) => {
@@ -228,6 +249,18 @@ function ProductForm({ editing, categories, factories, onClose, onSaved }) {
         baseFobPrice: form.baseFobPrice === '' ? null : Number(form.baseFobPrice),
         leadTimeDays: form.leadTimeDays === '' ? null : Number(form.leadTimeDays),
         minOrderQty: form.minOrderQty === '' ? null : Number(form.minOrderQty),
+        // Phase 4.9 C-1: normalize variant numbers + drop incomplete rows.
+        // A variant without originCountry OR fobPriceUsd is treated as a
+        // user-abandoned row and silently dropped.
+        originVariants: (form.originVariants || [])
+          .filter((v) => v.originCountry && v.fobPriceUsd !== '' && v.fobPriceUsd != null)
+          .map((v) => ({
+            originCountry: String(v.originCountry).toUpperCase().slice(0, 2),
+            fobPriceUsd: Number(v.fobPriceUsd),
+            priceUnit: v.priceUnit || 'sqm',
+            ...(v.moqOverride != null && v.moqOverride !== '' ? { moqOverride: Number(v.moqOverride) } : {}),
+            ...(v.leadTimeOverride != null && v.leadTimeOverride !== '' ? { leadTimeOverride: Number(v.leadTimeOverride) } : {}),
+          })),
       }
       if (isEdit) {
         // brandCode is immutable on update; the BrandPicker is disabled.
@@ -303,6 +336,97 @@ function ProductForm({ editing, categories, factories, onClose, onSaved }) {
               options={MOQ_UNITS.map(u => ({ value: u, label: u }))}
             />
             <div />
+          </div>
+
+          {/* Phase 4.9 C-1: multi-origin pricing editor */}
+          <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/50 space-y-3">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Origin variants</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Add one row per origin country when the same SKU is sourced from multiple factories at different prices (e.g. China vs Malaysia). Quotation builder reads from these variants when present. Leave empty to use the Base FOB price + Origin country above as the single origin.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addVariant}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700 flex-shrink-0"
+              >
+                + Add origin
+              </button>
+            </div>
+            {form.originVariants.length === 0 ? (
+              <p className="text-xs text-slate-400 italic py-2">No origin variants yet. Quotation builder will use the single-origin fields above.</p>
+            ) : (
+              <div className="space-y-2">
+                {form.originVariants.map((v, i) => (
+                  <div key={i} className="grid grid-cols-12 gap-2 items-end bg-white border border-slate-200 rounded p-2">
+                    <div className="col-span-2">
+                      <label className="block text-xs text-slate-600 mb-1">Origin (ISO-2)</label>
+                      <input
+                        type="text"
+                        maxLength={2}
+                        value={v.originCountry || ''}
+                        onChange={(e) => updateVariant(i, { originCountry: e.target.value.toUpperCase() })}
+                        placeholder="CN"
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm font-mono uppercase"
+                      />
+                    </div>
+                    <div className="col-span-3">
+                      <label className="block text-xs text-slate-600 mb-1">FOB price (USD)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={v.fobPriceUsd ?? ''}
+                        onChange={(e) => updateVariant(i, { fobPriceUsd: e.target.value })}
+                        placeholder="0.00"
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-slate-600 mb-1">Price unit</label>
+                      <select
+                        value={v.priceUnit || 'sqm'}
+                        onChange={(e) => updateVariant(i, { priceUnit: e.target.value })}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
+                      >
+                        {MOQ_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-slate-600 mb-1">MOQ override</label>
+                      <input
+                        type="number"
+                        value={v.moqOverride ?? ''}
+                        onChange={(e) => updateVariant(i, { moqOverride: e.target.value })}
+                        placeholder="(opt)"
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-slate-600 mb-1">Lead time (d)</label>
+                      <input
+                        type="number"
+                        value={v.leadTimeOverride ?? ''}
+                        onChange={(e) => updateVariant(i, { leadTimeOverride: e.target.value })}
+                        placeholder="(opt)"
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                      />
+                    </div>
+                    <div className="col-span-1 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => removeVariant(i)}
+                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                        title="Remove this origin"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <Field label="Description" value={form.description} onChange={f('description')} multiline />

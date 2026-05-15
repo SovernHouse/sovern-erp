@@ -670,6 +670,16 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] C21 follow-up taxonomy archive skipped:', e.message);
     }
+
+    // Phase 4.9 C-1: backfill Product.originVariants from legacy single-
+    // origin fields so existing Products are queryable via the new
+    // multi-origin shape. Idempotent via AuditLog sentinel.
+    try {
+      const { migrateProductOriginVariantsC49a } = require('./services/migrateProductOriginVariantsC49a');
+      await migrateProductOriginVariantsC49a(db);
+    } catch (e) {
+      logger.warn('[boot] C-49a originVariants backfill skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {

@@ -130,7 +130,19 @@ module.exports = (sequelize) => {
     originCountry: {
       type: DataTypes.STRING(2),
       allowNull: true,
-      comment: 'ISO-2 country code, e.g. MY, CN.',
+      comment: 'ISO-2 country code, e.g. MY, CN. Default/primary origin; the originVariants JSON below carries per-origin pricing when the same SKU is sourced from multiple countries (Phase 4.9 C-1).',
+    },
+    // Phase 4.9 C-1: multi-origin pricing. Each entry =
+    //   { originCountry, fobPriceUsd, priceUnit, moqOverride?, leadTimeOverride? }
+    // priceUnit is a single canonical unit (sqm | sqft | box | pallet | roll | piece).
+    // Quotation builder reads from here when present and falls back to
+    // baseFobPrice + originCountry on the row when empty (backwards compat).
+    // Backfilled for existing rows by migrateProductOriginVariantsC49a.
+    originVariants: {
+      type: DataTypes.JSON,
+      defaultValue: [],
+      allowNull: false,
+      comment: 'Array of per-origin pricing variants. Raw JSON per L-023 (no JSON.stringify).',
     }
   }, {
     indexes: [

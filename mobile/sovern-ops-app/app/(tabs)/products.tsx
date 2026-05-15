@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Switch,
+  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Switch, Platform,
 } from 'react-native';
 import { getProducts, getProduct, type Product, type ProductPrice } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
@@ -124,6 +124,31 @@ function ProductDetailModal({ productId, onClose }: { productId: string; onClose
             <DetailRow label="Unit" value={product.unit} />
             <DetailRow label="HS Code" value={product.hsCode} />
             <DetailRow label="Min Order Qty" value={product.minOrderQty != null ? `${product.minOrderQty} ${product.unit ?? ''}`.trim() : null} />
+
+            {/* Phase 4.9 C-1: multi-origin pricing (read-only on mobile;
+                editing happens in the desktop product form). */}
+            {Array.isArray(product.originVariants) && product.originVariants.length > 0 ? (
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Origin variants</Text>
+                {product.originVariants.map((v, i) => (
+                  <View key={`${v.originCountry}-${i}`} style={originVariantStyles.row}>
+                    <Text style={originVariantStyles.country}>{v.originCountry || '??'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={originVariantStyles.price}>
+                        ${Number(v.fobPriceUsd).toFixed(2)} <Text style={originVariantStyles.unit}>/ {v.priceUnit}</Text>
+                      </Text>
+                      {v.moqOverride != null || v.leadTimeOverride != null ? (
+                        <Text style={originVariantStyles.meta}>
+                          {v.moqOverride != null ? `MOQ ${v.moqOverride}` : ''}
+                          {v.moqOverride != null && v.leadTimeOverride != null ? ' · ' : ''}
+                          {v.leadTimeOverride != null ? `${v.leadTimeOverride}d lead` : ''}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+              </>
+            ) : null}
 
             {/* Pricing */}
             {prices.length > 0 && (
@@ -324,6 +349,15 @@ export default function ProductsScreen() {
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────
+
+// Phase 4.9 C-1: origin variants table styles (separate const for clarity).
+const originVariantStyles = StyleSheet.create({
+  row:     { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  country: { fontSize: 14, fontWeight: '700', color: COLORS.forest, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', width: 40 },
+  price:   { fontSize: 14, fontWeight: '700', color: COLORS.ink },
+  unit:    { fontSize: 12, fontWeight: '500', color: COLORS.muted },
+  meta:    { fontSize: 11, color: COLORS.muted, marginTop: 2 },
+});
 
 const styles = StyleSheet.create({
   container:   { flex: 1, backgroundColor: COLORS.cream },

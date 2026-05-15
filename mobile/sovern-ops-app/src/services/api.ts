@@ -395,6 +395,16 @@ export interface DashboardSummary {
   lastUpdated: string;
 }
 
+// Phase 4.9 C-1 — per-origin pricing variant. priceUnit is canonical:
+// sqm | sqft | box | pallet | roll | piece (mirrors the desktop form).
+export interface ProductOriginVariant {
+  originCountry: string;
+  fobPriceUsd: number;
+  priceUnit: 'sqm' | 'sqft' | 'box' | 'pallet' | 'roll' | 'piece';
+  moqOverride?: number;
+  leadTimeOverride?: number;
+}
+
 export interface Lead {
   id: string;
   // Phase 4.8 Commit 3a: human-readable LD-YYYYMMDD-NNN. Nullable until
@@ -530,6 +540,11 @@ export interface Product {
   baseFobPrice?: number | null;
   moqUnit?: string | null;
   leadTimeDays?: number | null;
+  currency?: string | null;
+  originCountry?: string | null;
+  // Phase 4.9 C-1: per-origin pricing variants. Empty array == legacy
+  // single-origin (read baseFobPrice + originCountry above).
+  originVariants?: ProductOriginVariant[];
   certifications?: Array<{ name: string; issuer?: string; expiresAt?: string | null }>;
   originCountry?: string | null;
   // legacy compat
