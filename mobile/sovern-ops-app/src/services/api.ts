@@ -10,6 +10,11 @@
 import * as SecureStore from 'expo-secure-store';
 import { CONFIG } from '../constants/config';
 import { isCacheable, buildKey, getCached, setCached } from './offlineCache';
+import { isQueueable, enqueueWriteMobile, bootstrapMobileAutoReplay } from './offlineWriteQueue';
+import { getConnectivity } from '../hooks/useConnectivity';
+
+// Phase 5f: start the auto-replay loop on module load.
+bootstrapMobileAutoReplay();
 
 // Phase 5d: pull the current user id from the auth store WITHOUT
 // importing the store directly (would create a circular dep — the
@@ -68,13 +73,28 @@ async function tryRefresh(): Promise<boolean> {
 
 async function request<T>(
   path: string,
-  options: RequestInit = {},
+  options: RequestInit & { _skipQueue?: boolean } = {},
   _retry = true,
 ): Promise<T> {
   const token = await getToken();
   const method = (options.method || 'GET').toUpperCase();
   const isGet = method === 'GET';
   const cacheEligible = isGet && isCacheable(path);
+  const writeEligible = !isGet && !options._skipQueue && isQueueable(method, path);
+
+  // Phase 5f: offline + queueable write -> enqueue + return synthetic
+  // 202 response. The body echoes the request payload with a fake
+  // pending id so optimistic UI flows have something to render.
+  if (writeEligible && !getConnectivity().isOnline) {
+    const uid = await currentUserId();
+    const body = options.body ? JSON.parse(options.body as string) : null;
+    const row = await enqueueWriteMobile({ method, path, body, userId: uid });
+    return {
+      success: true,
+      data: { ...(body || {}), id: `pending:${row.id}`, _queued: true, _queuedAt: row.createdAt },
+      message: 'Queued (offline)',
+    } as unknown as T;
+  }
 
   try {
     const res = await fetch(`${CONFIG.SERVER_URL}${path}`, {
@@ -108,19 +128,31 @@ async function request<T>(
 
     return payload;
   } catch (err: any) {
-    // Phase 5d: network-error fallback for GETs. TypeError "Network
-    // request failed" is the standard RN signal; AbortError when our
-    // own timeout fired. Either way, serve cached if we have it.
-    if (cacheEligible) {
-      const isNetworkErr = err?.name === 'TypeError' || err?.name === 'AbortError' || /Network/i.test(err?.message || '');
-      if (isNetworkErr) {
-        try {
-          const uid = await currentUserId();
-          const cached = await getCached<T>(buildKey(uid, path));
-          if (cached) return cached.data;
-        } catch (_) { /* fall through to throw */ }
-      }
+    const isNetworkErr = err?.name === 'TypeError' || err?.name === 'AbortError' || /Network/i.test(err?.message || '');
+
+    // Phase 5d: network-error fallback for GETs — serve from cache.
+    if (cacheEligible && isNetworkErr) {
+      try {
+        const uid = await currentUserId();
+        const cached = await getCached<T>(buildKey(uid, path));
+        if (cached) return cached.data;
+      } catch (_) { /* fall through to throw */ }
     }
+
+    // Phase 5f: network-error fallback for queueable writes — enqueue.
+    if (writeEligible && isNetworkErr) {
+      try {
+        const uid = await currentUserId();
+        const body = options.body ? JSON.parse(options.body as string) : null;
+        const row = await enqueueWriteMobile({ method, path, body, userId: uid });
+        return {
+          success: true,
+          data: { ...(body || {}), id: `pending:${row.id}`, _queued: true, _queuedAt: row.createdAt },
+          message: 'Queued (offline after send)',
+        } as unknown as T;
+      } catch (_) { /* fall through to throw */ }
+    }
+
     throw err;
   }
 }
