@@ -74,13 +74,19 @@ export default function DevRunsPage() {
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('')
   const [selected, setSelected] = useState(null)
+  // Phase 4.9 — View-by-ID search (Alex's ask alongside the list bugfix).
+  const [searchId, setSearchId] = useState('')
+  const [searchingById, setSearchingById] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const params = statusFilter ? { status: statusFilter, limit: 100 } : { limit: 100 }
       const res = await devModeAPI.listRuns(params)
-      setRuns(res.data?.data || [])
+      // services/api.js interceptor unwraps {success, data}; res.data IS
+      // the runs array. The previous res.data?.data double-unwrap was the
+      // root cause of "No dev-mode runs yet" despite runs existing.
+      setRuns(Array.isArray(res.data) ? res.data : [])
     } catch (e) {
       const msg = e.response?.data?.error || 'Failed to load dev runs'
       toast.error(msg)
@@ -88,6 +94,29 @@ export default function DevRunsPage() {
       setLoading(false)
     }
   }, [statusFilter])
+
+  // Phase 4.9 — Direct GET by id, opens the detail panel for any run the
+  // user knows the id of. Useful when the list query has issues OR when
+  // the user wants to jump to a specific run from a notification.
+  const handleSearchById = async () => {
+    const id = searchId.trim()
+    if (!id) return
+    setSearchingById(true)
+    try {
+      const res = await devModeAPI.getRun(id)
+      const run = res.data
+      if (run && run.id) {
+        setSelected(run)
+        setSearchId('')
+      } else {
+        toast.error('No run found for that id.')
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Run not found.')
+    } finally {
+      setSearchingById(false)
+    }
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -118,6 +147,44 @@ export default function DevRunsPage() {
         <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', margin: 0 }}>Dev Mode runs</h1>
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 12, color: '#94a3b8' }}>{runs.length} {runs.length === 1 ? 'run' : 'runs'}</span>
+      </div>
+
+      {/* Phase 4.9 — Direct view-by-id. Useful when the list view has a bug
+          or when jumping in from a notification. */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+        <input
+          type="text"
+          placeholder="Open run by id (UUID)…"
+          value={searchId}
+          onChange={(e) => setSearchId(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSearchById() }}
+          style={{
+            flex: 1, maxWidth: 420,
+            padding: '6px 10px', fontSize: 12, fontFamily: 'monospace',
+            border: '1px solid #cbd5e1', borderRadius: 6, color: '#0f172a',
+          }}
+        />
+        <button
+          onClick={handleSearchById}
+          disabled={searchingById || !searchId.trim()}
+          style={{
+            background: '#0f172a', color: '#fff', border: 'none', borderRadius: 6,
+            padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            opacity: searchingById || !searchId.trim() ? 0.6 : 1,
+          }}
+        >
+          {searchingById ? 'Opening…' : 'Open'}
+        </button>
+        <button
+          onClick={load}
+          title="Refresh list"
+          style={{
+            background: '#fff', color: '#475569', border: '1px solid #e2e8f0',
+            borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          Refresh
+        </button>
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>

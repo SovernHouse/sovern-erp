@@ -490,7 +490,10 @@ function DevRunCard({ runId, createdAt }) {
   const refresh = useCallback(async () => {
     try {
       const res = await devModeAPI.getRun(runId)
-      if (res.data?.data) setRun(res.data.data)
+      // services/api.js interceptor unwraps the envelope; res.data IS the
+      // run object. Earlier res.data?.data double-unwrap left run null
+      // forever and the card stuck on "Starting dev-mode run...".
+      if (res.data) setRun(res.data)
     } catch (e) {
       setError(e.response?.data?.error || e.message)
     }
@@ -1128,13 +1131,32 @@ export default function AssistantPage() {
       }])
       try {
         const res = await devModeAPI.startRun(text)
-        const run = res.data?.data
-        if (run) {
+        // The api.js axios interceptor auto-unwraps the { success, data }
+        // envelope (see services/api.js). So res.data IS the unwrapped run
+        // object — NOT the envelope. Reading res.data?.data here was the
+        // double-unwrap bug that left the chat with no confirmation
+        // message (or an "[object Object]" render path elsewhere).
+        const run = res.data
+        if (run && run.id) {
+          setMessages(prev => [...prev,
+            {
+              role: 'assistant',
+              content: `✅ Run queued. The dev-mode AI is now working in a sandboxed worktree. [Watch progress →](/ai/dev-runs/${run.id})`,
+              createdAt: new Date().toISOString(),
+            },
+            {
+              role: 'assistant',
+              kind: 'devRun',
+              runId: run.id,
+              content: '',
+              createdAt: new Date().toISOString(),
+            },
+          ])
+        } else {
+          // Defensive: backend returned 2xx but no usable run payload.
           setMessages(prev => [...prev, {
             role: 'assistant',
-            kind: 'devRun',
-            runId: run.id,
-            content: '',
+            content: '⚠️ Dev-mode run accepted but no run id returned. Check /ai/dev-runs for the most recent entry.',
             createdAt: new Date().toISOString(),
           }])
         }
