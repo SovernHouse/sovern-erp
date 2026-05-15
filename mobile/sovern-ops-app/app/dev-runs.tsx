@@ -87,6 +87,29 @@ export default function DevRunsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<DevModeRunStatus | ''>('');
   const [selected, setSelected] = useState<DevModeRun | null>(null);
+  // Phase 4.7+ C-3 mobile parity: View-by-Run-ID lookup.
+  const [searchId, setSearchId] = useState('');
+  const [searchingById, setSearchingById] = useState(false);
+
+  const handleSearchById = async () => {
+    const id = searchId.trim();
+    if (!id) return;
+    setSearchingById(true);
+    try {
+      const res = await getDevModeRun(id);
+      const run = res.data;
+      if (run && run.id) {
+        setSelected(run);
+        setSearchId('');
+      } else {
+        Alert.alert('Not found', 'No run for that id.');
+      }
+    } catch (e: any) {
+      Alert.alert('Not found', e?.message || 'Run lookup failed');
+    } finally {
+      setSearchingById(false);
+    }
+  };
 
   const load = useCallback(async (isRefresh = false) => {
     if (!isAuthorized) return;
@@ -132,6 +155,30 @@ export default function DevRunsScreen() {
         </TouchableOpacity>
         <Text style={styles.title}>Dev Mode runs</Text>
         <Text style={styles.count}>{runs.length}</Text>
+      </View>
+
+      {/* Phase 4.7+ C-3 mobile: paste a run UUID to jump straight to it,
+          mirroring the desktop View-by-ID box. Useful when the list view
+          has filtering issues or when jumping in from a notification. */}
+      <View style={styles.searchByIdRow}>
+        <TextInput
+          value={searchId}
+          onChangeText={setSearchId}
+          placeholder="Open run by id (UUID)…"
+          placeholderTextColor={COLORS.muted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={styles.searchByIdInput}
+          onSubmitEditing={handleSearchById}
+          returnKeyType="go"
+        />
+        <Pressable
+          onPress={handleSearchById}
+          disabled={searchingById || !searchId.trim()}
+          style={[styles.searchByIdBtn, (!searchId.trim() || searchingById) && styles.searchByIdBtnDisabled]}
+        >
+          <Text style={styles.searchByIdBtnText}>{searchingById ? '…' : 'Go'}</Text>
+        </Pressable>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters}>
@@ -391,6 +438,11 @@ const styles = StyleSheet.create({
   title:    { flex: 1, textAlign: 'center', color: '#fff', fontWeight: '700', fontSize: 16 },
   count:    { color: '#ffffffaa', width: 56, textAlign: 'right', fontSize: 13 },
 
+  searchByIdRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 },
+  searchByIdInput: { flex: 1, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12, color: COLORS.ink, fontFamily: undefined, backgroundColor: COLORS.white, borderRadius: 6, borderWidth: 1, borderColor: COLORS.border },
+  searchByIdBtn: { paddingHorizontal: 14, justifyContent: 'center', backgroundColor: COLORS.forest, borderRadius: 6 },
+  searchByIdBtnDisabled: { opacity: 0.4 },
+  searchByIdBtnText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
   filters: { paddingVertical: 8, paddingHorizontal: 12, maxHeight: 48 },
   filterChip: {
     paddingHorizontal: 12, paddingVertical: 6,
