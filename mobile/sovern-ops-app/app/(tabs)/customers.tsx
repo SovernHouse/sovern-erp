@@ -1,6 +1,10 @@
 // ─── Customers Screen ─────────────────────────────────────────────────────
 // Read-only customer directory: search, browse, tap for contact details.
-import { useEffect, useState } from 'react';
+//
+// Phase 4.5, C22: memoized CustomerRow, useCallback renderItem, useMemo
+// filtered list, FlatList virtualization tuning. Search no longer triggers
+// a double render (setFiltered effect dropped in favour of derived state).
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Linking, Alert,
@@ -155,7 +159,7 @@ function BreakdownLine({
 
 // ─── Customer Row ─────────────────────────────────────────────────────────
 
-function CustomerRow({ customer, onPress }: { customer: Customer; onPress: () => void }) {
+const CustomerRow = memo(function CustomerRow({ customer, onPress }: { customer: Customer; onPress: () => void }) {
   const displayName = customer.companyName ?? customer.name ?? '';
   const initials = displayName
     .split(' ')
@@ -212,7 +216,7 @@ function CustomerRow({ customer, onPress }: { customer: Customer; onPress: () =>
       ) : null}
     </TouchableOpacity>
   );
-}
+});
 
 // ─── Customer Detail Modal ────────────────────────────────────────────────
 
@@ -451,7 +455,6 @@ function CustomerDetailModal({
 
 export default function CustomersScreen() {
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [filtered, setFiltered] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -462,7 +465,6 @@ export default function CustomersScreen() {
       isRefresh ? setRefreshing(true) : setLoading(true);
       const res = await getCustomers({ page: 1 });
       setCustomers(res.data);
-      setFiltered(res.data);
     } catch (err: any) {
       console.error('Customers load error:', err.message);
     } finally {
@@ -473,20 +475,24 @@ export default function CustomersScreen() {
 
   useEffect(() => { load(); }, []);
 
-  useEffect(() => {
+  // Phase 4.5, C22: derived filter via useMemo (no double render).
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    setFiltered(
-      q
-        ? customers.filter(
-            (c) =>
-              (c.companyName ?? c.name ?? '').toLowerCase().includes(q) ||
-              (c.contactPerson ?? '').toLowerCase().includes(q) ||
-              (c.country ?? '').toLowerCase().includes(q) ||
-              (c.email ?? '').toLowerCase().includes(q)
-          )
-        : customers
+    if (!q) return customers;
+    return customers.filter(
+      (c) =>
+        (c.companyName ?? c.name ?? '').toLowerCase().includes(q) ||
+        (c.contactPerson ?? '').toLowerCase().includes(q) ||
+        (c.country ?? '').toLowerCase().includes(q) ||
+        (c.email ?? '').toLowerCase().includes(q),
     );
   }, [search, customers]);
+
+  // Phase 4.5, C22: stable renderItem + keyExtractor for memoized rows.
+  const renderItem = useCallback(({ item }: { item: Customer }) => (
+    <CustomerRow customer={item} onPress={() => setSelectedId(item.id)} />
+  ), []);
+  const keyExtractor = useCallback((item: Customer) => item.id, []);
 
   if (loading) {
     return (
@@ -515,13 +521,15 @@ export default function CustomersScreen() {
         {filtered.length} customer{filtered.length !== 1 ? 's' : ''}
       </Text>
 
-      {/* List */}
+      {/* List — Phase 4.5, C22 virtualization tuning */}
       <FlatList
         data={filtered}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <CustomerRow customer={item} onPress={() => setSelectedId(item.id)} />
-        )}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={10}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

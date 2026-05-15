@@ -1,8 +1,13 @@
 // ─── Leads Screen ─────────────────────────────────────────────────────────
-import { useEffect, useState } from 'react';
+// Phase 4.5, C22: row component is memoized + renderItem is stable via
+// useCallback so scrolling does not re-render unchanged rows. FlatList tuned
+// for ~hundreds of rows: removeClippedSubviews, smaller maxToRenderPerBatch,
+// windowSize=10 (defaults to 21). Search filter uses useMemo so the filter
+// pass is not redone on every keystroke render.
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput,
+  RefreshControl, ActivityIndicator, TextInput, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getLeads, type Lead } from '../../src/services/api';
@@ -18,7 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
   closed:      COLORS.statusClosed,
 };
 
-function LeadRow({ lead, onPress }: { lead: Lead; onPress: () => void }) {
+const LeadRow = memo(function LeadRow({ lead, onPress }: { lead: Lead; onPress: () => void }) {
   const color = STATUS_COLORS[lead.status.toLowerCase()] ?? COLORS.muted;
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
@@ -41,12 +46,11 @@ function LeadRow({ lead, onPress }: { lead: Lead; onPress: () => void }) {
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 export default function LeadsScreen() {
   const router = useRouter();
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [filtered, setFiltered] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -56,7 +60,6 @@ export default function LeadsScreen() {
       isRefresh ? setRefreshing(true) : setLoading(true);
       const res = await getLeads({ page: 1 });
       setLeads(res.data);
-      setFiltered(res.data);
     } catch (err: any) {
       console.error(err.message);
     } finally {
@@ -67,17 +70,24 @@ export default function LeadsScreen() {
 
   useEffect(() => { load(); }, []);
 
-  useEffect(() => {
-    if (!search) { setFiltered(leads); return; }
+  // Phase 4.5, C22: filter is a pure derived value, so useMemo avoids the
+  // double-render the old setFiltered effect caused on every keystroke.
+  const filtered = useMemo(() => {
+    if (!search) return leads;
     const q = search.toLowerCase();
-    setFiltered(
-      leads.filter((l) =>
-        l.companyName.toLowerCase().includes(q) ||
-        l.contactName.toLowerCase().includes(q) ||
-        (l.productInterests ?? '').toLowerCase().includes(q)
-      )
+    return leads.filter((l) =>
+      l.companyName.toLowerCase().includes(q) ||
+      l.contactName.toLowerCase().includes(q) ||
+      (l.productInterests ?? '').toLowerCase().includes(q)
     );
   }, [search, leads]);
+
+  // Phase 4.5, C22: stable renderItem + keyExtractor so memoized rows can
+  // skip re-rendering when only siblings change.
+  const renderItem = useCallback(({ item }: { item: Lead }) => (
+    <LeadRow lead={item} onPress={() => router.push(`/lead/${item.id}`)} />
+  ), [router]);
+  const keyExtractor = useCallback((item: Lead) => String(item.id), []);
 
   if (loading) {
     return (
@@ -108,13 +118,8 @@ export default function LeadsScreen() {
 
       <FlatList
         data={filtered}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <LeadRow
-            lead={item}
-            onPress={() => router.push(`/lead/${item.id}`)}
-          />
-        )}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={COLORS.forest} />
@@ -125,6 +130,13 @@ export default function LeadsScreen() {
           </View>
         )}
         contentContainerStyle={filtered.length === 0 ? { flex: 1 } : { paddingBottom: 24 }}
+        // Phase 4.5, C22 — virtualization tuning.
+        // removeClippedSubviews drops native views outside the viewport (Android
+        // wins more here than iOS, but it is safe on both).
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={10}
       />
     </View>
   );
