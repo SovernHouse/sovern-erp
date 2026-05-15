@@ -2067,8 +2067,237 @@ async function callTool(name, args) {
       };
     }
 
+    // ──────────────────────────────────────────────────────────────────────────
+    // Phase 4.5, C19 v2 — AI-assistant WRITE + ACTION capabilities
+    //
+    // These tools let Alex make configuration changes via natural-language
+    // chat. The model is instructed (via the system prompt) to ALWAYS show a
+    // preview/diff and wait for explicit confirmation before invoking these.
+    // Every successful write writes an AuditLog row with action prefix
+    // `ai_assistant_*` so we have a complete trail of AI-initiated changes.
+    //
+    // Hard refusals are enforced two ways:
+    //  1) Field denylist below blocks the model from touching User.role,
+    //     User.password, AuditLog rows, Customer.screeningStatus etc. even if
+    //     the prompt cracks.
+    //  2) Super-admin gate via requireSuperAdmin() on every WRITE/ACTION tool.
+    //
+    // Self-only writes (own profile, own dashboard) drop the super-admin
+    // gate but still require an authenticated USER_ID.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    case 'update_brand': {
+      const requester = await requireSuperAdmin();
+      const { code } = args;
+      if (!code) return 'Error: brand code is required (e.g. "SH" or "FW").';
+      const brand = await getDb().Brand.findOne({ where: { code } });
+      if (!brand) return `Brand ${code} not found.`;
+
+      const updates = pickWritable(args, BRAND_WRITABLE_FIELDS);
+      if (Object.keys(updates).length === 0) {
+        return `Error: no writable fields provided. Allowed: ${BRAND_WRITABLE_FIELDS.join(', ')}.`;
+      }
+      const before = pickWritable(brand.toJSON(), BRAND_WRITABLE_FIELDS);
+      await brand.update(updates);
+      await auditAiWrite('update_brand', 'Brand', brand.id, { code, before, after: updates }, requester.id);
+      return { success: true, brand: code, updated: Object.keys(updates), before, after: updates };
+    }
+
+    case 'update_email_template': {
+      const requester = await requireSuperAdmin();
+      const { id } = args;
+      if (!id) return 'Error: template id is required.';
+      const tpl = await getDb().EmailTemplate.findByPk(id);
+      if (!tpl) return `EmailTemplate ${id} not found.`;
+      const updates = pickWritable(args, EMAIL_TEMPLATE_WRITABLE_FIELDS);
+      if (Object.keys(updates).length === 0) {
+        return `Error: no writable fields provided. Allowed: ${EMAIL_TEMPLATE_WRITABLE_FIELDS.join(', ')}.`;
+      }
+      const before = pickWritable(tpl.toJSON(), EMAIL_TEMPLATE_WRITABLE_FIELDS);
+      await tpl.update(updates);
+      await auditAiWrite('update_email_template', 'EmailTemplate', tpl.id, { name: tpl.name, before, after: updates }, requester.id);
+      return { success: true, templateId: tpl.id, name: tpl.name, updated: Object.keys(updates), before, after: updates };
+    }
+
+    case 'update_user_profile_self': {
+      const requester = await getCurrentUserOrThrow();
+      const updates = pickWritable(args, USER_SELF_WRITABLE_FIELDS);
+      if (Object.keys(updates).length === 0) {
+        return `Error: no writable fields provided. Allowed (self-only): ${USER_SELF_WRITABLE_FIELDS.join(', ')}. Role, email, password, and brand access are not editable through the assistant.`;
+      }
+      const before = pickWritable(requester.toJSON(), USER_SELF_WRITABLE_FIELDS);
+      await requester.update(updates);
+      await auditAiWrite('update_user_profile_self', 'User', requester.id, { before, after: updates }, requester.id);
+      return { success: true, userId: requester.id, updated: Object.keys(updates), before, after: updates };
+    }
+
+    case 'update_dashboard_layout': {
+      const requester = await getCurrentUserOrThrow();
+      if (!Array.isArray(args.layout) && typeof args.layout !== 'object') {
+        return 'Error: layout must be an array or object of widget config.';
+      }
+      let row = await getDb().DashboardLayout.findOne({ where: { userId: requester.id, isDefault: true } });
+      if (!row) {
+        row = await getDb().DashboardLayout.findOne({ where: { userId: requester.id } });
+      }
+      if (!row) {
+        row = await getDb().DashboardLayout.create({
+          userId: requester.id,
+          role: requester.role,
+          layout: args.layout,
+          name: args.name || 'AI-configured',
+          isDefault: true,
+        });
+        await auditAiWrite('update_dashboard_layout', 'DashboardLayout', row.id, { created: true, layout: args.layout }, requester.id);
+        return { success: true, dashboardLayoutId: row.id, created: true };
+      }
+      const before = { layout: row.layout, name: row.name };
+      await row.update({ layout: args.layout, name: args.name || row.name });
+      await auditAiWrite('update_dashboard_layout', 'DashboardLayout', row.id, { before, after: { layout: args.layout, name: args.name || row.name } }, requester.id);
+      return { success: true, dashboardLayoutId: row.id, updated: true };
+    }
+
+    case 'create_scheduled_task': {
+      const requester = await getCurrentUserOrThrow();
+      const { entity_type, entity_id, entity_label, due_date, note, priority, type } = args;
+      if (!entity_type || !entity_id || !due_date) {
+        return 'Error: entity_type, entity_id, and due_date are required.';
+      }
+      const date = new Date(due_date);
+      if (isNaN(date.getTime())) return `Invalid due_date: ${due_date}`;
+      const row = await getDb().ScheduledActivity.create({
+        type:         type || 'follow_up',
+        entityType:   entity_type,
+        entityId:     String(entity_id),
+        entityLabel:  entity_label || null,
+        assignedToId: args.assigned_to_id || requester.id,
+        assignedById: requester.id,
+        dueDate:      date,
+        note:         note || null,
+        priority:     priority || 'normal',
+        status:       'pending',
+      });
+      await auditAiWrite('create_scheduled_task', 'ScheduledActivity', row.id, {
+        entityType: row.entityType, entityId: row.entityId, dueDate: date.toISOString(),
+        assignedToId: row.assignedToId,
+      }, requester.id);
+      return { success: true, scheduledActivityId: row.id, dueDate: date.toISOString(), entityType: row.entityType, entityId: row.entityId };
+    }
+
+    case 'mark_item_complete': {
+      const requester = await getCurrentUserOrThrow();
+      const { scheduled_activity_id, completed_note } = args;
+      if (!scheduled_activity_id) return 'Error: scheduled_activity_id is required.';
+      const row = await getDb().ScheduledActivity.findByPk(scheduled_activity_id);
+      if (!row) return `ScheduledActivity ${scheduled_activity_id} not found.`;
+      // Owner or super-admin only.
+      if (row.assignedToId !== requester.id && requester.role !== 'super_admin') {
+        return 'Error: only the assignee or a super-admin can mark this task complete.';
+      }
+      await row.update({ status: 'completed', completedAt: new Date(), completedNote: completed_note || null });
+      await auditAiWrite('mark_item_complete', 'ScheduledActivity', row.id, { completedAt: row.completedAt, completedNote: completed_note || null }, requester.id);
+      return { success: true, scheduledActivityId: row.id, status: 'completed', completedAt: row.completedAt.toISOString() };
+    }
+
+    case 'archive_item': {
+      const requester = await requireSuperAdmin();
+      const { entity, id } = args;
+      if (!entity || !id) return 'Error: entity and id are required.';
+      if (!ARCHIVABLE_ENTITIES.includes(entity)) {
+        return `Error: entity must be one of ${ARCHIVABLE_ENTITIES.join(', ')}. Got "${entity}".`;
+      }
+      const Model = getDb()[entity];
+      if (!Model) return `Entity ${entity} model not registered.`;
+      const row = await Model.findByPk(id);
+      if (!row) return `${entity} ${id} not found.`;
+      // TriageItem uses status='archived'; Activity has isArchived boolean.
+      if (entity === 'TriageItem') {
+        await row.update({ status: 'archived' });
+      } else if (entity === 'Activity') {
+        await row.update({ isArchived: true });
+      } else {
+        await row.update({ status: 'archived' });
+      }
+      await auditAiWrite('archive_item', entity, row.id, { archivedAt: new Date().toISOString() }, requester.id);
+      return { success: true, entity, id: row.id, archived: true };
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}. Available tools: ${TOOL_DEFS.map(t => t.name).join(', ')}`);
+  }
+}
+
+// ── Phase 4.5, C19 v2 — write helpers + denylists ─────────────────────────────
+
+// Whitelists for the natural-language write tools. Anything outside these
+// lists is silently dropped even if the AI tries to set it.
+const BRAND_WRITABLE_FIELDS = [
+  'displayName', 'signatureHtml', 'signatureText',
+  'primaryColor', 'accentColor', 'footerLegalText', 'logoUrl',
+];
+
+const EMAIL_TEMPLATE_WRITABLE_FIELDS = [
+  'name', 'subject', 'bodyText', 'category', 'brandCode',
+];
+
+// Self-edits only: role / email / password / brand access are NOT editable
+// here. Role + permissions changes go through the dedicated admin UI with
+// a different audit policy.
+const USER_SELF_WRITABLE_FIELDS = [
+  'firstName', 'lastName', 'phone', 'avatar', 'preferences',
+];
+
+const ARCHIVABLE_ENTITIES = ['TriageItem', 'Activity'];
+
+function pickWritable(obj, allowed) {
+  const out = {};
+  if (!obj) return out;
+  for (const k of allowed) {
+    if (Object.prototype.hasOwnProperty.call(obj, k) && obj[k] !== undefined) {
+      out[k] = obj[k];
+    }
+  }
+  return out;
+}
+
+async function getCurrentUserOrThrow() {
+  if (!USER_ID) {
+    const err = new Error('ERP_USER_ID not set. The assistant must be invoked through the ERP chat endpoint.');
+    err.code = 'ENOAUTH';
+    throw err;
+  }
+  const user = await getDb().User.findByPk(USER_ID);
+  if (!user) {
+    const err = new Error(`User ${USER_ID} not found.`);
+    err.code = 'ENOAUTH';
+    throw err;
+  }
+  return user;
+}
+
+async function requireSuperAdmin() {
+  const user = await getCurrentUserOrThrow();
+  if (user.role !== 'super_admin') {
+    const err = new Error(`This change requires super-admin. Your role: ${user.role}. Ask Alex to sign in if you need to apply this through the assistant.`);
+    err.code = 'EPERM';
+    throw err;
+  }
+  return user;
+}
+
+async function auditAiWrite(action, entity, entityId, changes, userId) {
+  if (!getDb().AuditLog) return;
+  try {
+    await getDb().AuditLog.create({
+      userId: userId || null,
+      action: 'ai_assistant_' + action,
+      entity,
+      entityId: String(entityId),
+      changes,
+      ipAddress: null,
+    });
+  } catch (e) {
+    process.stderr.write(`[erp-mcp] auditAiWrite failed for ${action}: ${e.message}\n`);
   }
 }
 
@@ -2856,6 +3085,119 @@ const TOOL_DEFS = [
         fix:        { type: 'string', description: 'What was done to resolve the immediate occurrence.' },
         rule:       { type: 'string', description: 'The going-forward rule. This is the bit future-AI reads at session start, so phrase it as an actionable directive.' },
         section:    { type: 'string', enum: ['process', 'trade', 'technical'], description: 'Which section to append under. Defaults to "technical".' },
+      },
+    },
+  },
+
+  // ── Phase 4.5, C19 v2 — WRITE + ACTION capabilities ─────────────────────────
+  // The model MUST always show a preview/diff and wait for explicit
+  // confirmation before invoking any of these. Hard refusals on:
+  //   - delete operations (none exposed here)
+  //   - payment / billing field edits
+  //   - sanctions screening status / details (Customer.screeningStatus etc.)
+  //   - AuditLog modifications
+  //   - user role / permissions / brand-access edits (use admin UI)
+  // Super-admin gate is server-side; the prompt-level guard is defense in
+  // depth.
+  {
+    name: 'update_brand',
+    description: 'Phase 4.5, C19 — Update Brand fields (super-admin only). Use to refresh signature, change brand colors, edit footer legal text, etc. ALWAYS show Alex a preview/diff of the proposed change and wait for explicit confirmation ("yes, save" / "go ahead") before calling this tool. Writes an AuditLog row with action "ai_assistant_update_brand". Allowed fields: displayName, signatureHtml, signatureText, primaryColor, accentColor, footerLegalText, logoUrl. Anything else is silently dropped.',
+    inputSchema: {
+      type: 'object',
+      required: ['code'],
+      properties: {
+        code:            { type: 'string', description: 'Brand code: "SH" or "FW".' },
+        displayName:     { type: 'string', description: 'Public-facing brand name.' },
+        signatureHtml:   { type: 'string', description: 'Full HTML for the email signature block. Inline styles only (no <style> tags) for email-client compatibility.' },
+        signatureText:   { type: 'string', description: 'Plain-text fallback for clients that strip HTML.' },
+        primaryColor:    { type: 'string', description: 'Primary brand color as hex (e.g. #1D5A32).' },
+        accentColor:     { type: 'string', description: 'Accent color as hex.' },
+        footerLegalText: { type: 'string', description: 'Footer legal / disclaimer line shown on PDFs and emails.' },
+        logoUrl:         { type: 'string', description: 'CDN URL for the brand logo PNG/SVG.' },
+      },
+    },
+  },
+  {
+    name: 'update_email_template',
+    description: 'Phase 4.5, C19 — Update an EmailTemplate row (super-admin only). Use to edit subject lines, body copy, brand assignment, or category. ALWAYS show the diff and wait for confirmation. Allowed fields: name, subject, bodyText, category, brandCode. Writes ai_assistant_update_email_template to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:        { type: 'string', description: 'EmailTemplate UUID.' },
+        name:      { type: 'string', description: 'Template name shown in the picker.' },
+        subject:   { type: 'string', description: 'Subject line. Supports {{firstName}} / {{companyName}} placeholders.' },
+        bodyText: { type: 'string', description: 'Plain-text body. Supports the same placeholders.' },
+        category:  { type: 'string', description: 'Category tag (e.g. "outreach", "follow-up", "quotation").' },
+        brandCode: { type: 'string', description: 'Brand assignment: "SH", "FW", or null for both.' },
+      },
+    },
+  },
+  {
+    name: 'update_user_profile_self',
+    description: 'Phase 4.5, C19 — Update YOUR OWN User profile fields. Self-only — cannot edit other users. Allowed: firstName, lastName, phone, avatar, preferences. NOT editable here: role, email, password, brand access (those go through the admin UI with stronger auth). Writes ai_assistant_update_user_profile_self to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        firstName:   { type: 'string', description: 'First / given name.' },
+        lastName:    { type: 'string', description: 'Last / family name.' },
+        phone:       { type: 'string', description: 'Phone number with country code, e.g. "+886 970 781 818".' },
+        avatar:      { type: 'string', description: 'Avatar image URL.' },
+        preferences: { type: 'object', description: 'JSON preferences blob (theme, language, notifications).' },
+      },
+    },
+  },
+  {
+    name: 'update_dashboard_layout',
+    description: 'Phase 4.5, C19 — Save or update the calling user\'s default dashboard layout. Layout is a JSON array of widget configs. Use when Alex says things like "hide the orders widget" or "put the commission widget at the top". Writes ai_assistant_update_dashboard_layout to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['layout'],
+      properties: {
+        layout: { type: 'array', description: 'Array of widget config objects: { id, size, position, hidden? }. Whole array replaces the saved layout.' },
+        name:   { type: 'string', description: 'Optional layout name (defaults to "AI-configured").' },
+      },
+    },
+  },
+  {
+    name: 'create_scheduled_task',
+    description: 'Phase 4.5, C19 — Create a ScheduledActivity row (reminder, follow-up, todo). Use when Alex says "remind me to follow up with Acme on Tuesday at 10am" or "schedule a task to call Mr. Lee next week". Always echo the resolved Taipei-time date back to Alex for confirmation. Writes ai_assistant_create_scheduled_task to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['entity_type', 'entity_id', 'due_date'],
+      properties: {
+        entity_type:     { type: 'string', description: 'Entity the task is about: "Lead", "Customer", "Factory", "Quotation", "SalesOrder", or "general" for free-form tasks.' },
+        entity_id:       { type: 'string', description: 'UUID of the entity, or a short slug like "general" if entity_type=general.' },
+        entity_label:    { type: 'string', description: 'Human-readable label shown on the task card.' },
+        due_date:        { type: 'string', description: 'ISO date or datetime in Taipei time (e.g. "2026-05-21" or "2026-05-21T10:00:00+08:00").' },
+        note:            { type: 'string', description: 'Task body / instructions.' },
+        priority:        { type: 'string', enum: ['low', 'normal', 'high', 'urgent'], description: 'Default: normal.' },
+        type:            { type: 'string', description: 'Task type: follow_up, call, email, meeting, review, etc. Default: follow_up.' },
+        assigned_to_id:  { type: 'string', description: 'User UUID to assign to. Defaults to the caller.' },
+      },
+    },
+  },
+  {
+    name: 'mark_item_complete',
+    description: 'Phase 4.5, C19 — Mark a ScheduledActivity as completed. Caller must be the assignee OR a super-admin. Writes ai_assistant_mark_item_complete to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['scheduled_activity_id'],
+      properties: {
+        scheduled_activity_id: { type: 'string', description: 'ScheduledActivity UUID.' },
+        completed_note:        { type: 'string', description: 'Optional note recording what was done / the outcome.' },
+      },
+    },
+  },
+  {
+    name: 'archive_item',
+    description: 'Phase 4.5, C19 — Archive a TriageItem or Activity row (super-admin only). Does NOT delete; the row stays in the DB with archived status. Use sparingly — most items should be left in their natural workflow. Writes ai_assistant_archive_item to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['entity', 'id'],
+      properties: {
+        entity: { type: 'string', enum: ['TriageItem', 'Activity'], description: 'Which model to archive.' },
+        id:     { type: 'string', description: 'Row UUID.' },
       },
     },
   },

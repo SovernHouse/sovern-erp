@@ -818,6 +818,28 @@ export const HELP_CONTENT = {
         ],
       },
       {
+        heading: 'Configuration changes via chat (Phase 4.5, C19 v2)',
+        body: 'The assistant can make configuration changes through natural-language chat: edit brand fields, email templates, your own profile, your dashboard, create reminders, mark tasks complete, and archive stray items. Every WRITE follows a preview-confirm-save pattern: the assistant shows the diff first, waits for "yes / save / go ahead", then applies and reports back. Every successful change writes an AuditLog row with action prefix ai_assistant_*.',
+        items: [
+          '"Update the FW signature to put HanHua first" — assistant shows the new HTML preview, asks confirm, saves.',
+          '"Hide the orders widget on my dashboard" — assistant reads your current layout, drops the widget, shows the new layout, asks confirm.',
+          '"Remind me to follow up with Acme Distribution next Tuesday at 10am" — creates a ScheduledActivity in your name, echoes the Taipei time back.',
+          '"Edit the FlorWay Touch 1 template subject to ..." — shows the before/after, asks confirm.',
+          '"Mark that follow-up task done" — completes the activity if you are the assignee.',
+        ],
+      },
+      {
+        heading: 'Hard refusals (Phase 4.5, C19 v2)',
+        body: 'The assistant will refuse certain requests and point you at the right surface, even if you insist:',
+        items: [
+          'Deleting any row — refuse. Use the admin UI delete flow with its own audit.',
+          'Editing payment / billing / invoice totals — refuse. Quotation totals are recalculated from line items; invoices are immutable once issued.',
+          'Disabling sanctions screening or overriding flagged customers — refuse. The override modal in /customers/:id is the only legitimate path.',
+          'Modifying user roles, permissions, brand access, or another user\'s profile — refuse. Admin UI only.',
+          'Modifying AuditLog rows — refuse. AuditLog is append-only.',
+        ],
+      },
+      {
         heading: 'Starting a conversation',
         steps: [
           'Click "New conversation" or tap a suggested prompt on the welcome screen.',
