@@ -156,6 +156,30 @@ async function handleLine(line) {
   }
 }
 
+// ── Phase 4.9.3b: Drive account routing ──────────────────────────────────────
+//
+// Two Google accounts are connected: alex@sovernhouse.co (SH brand
+// context) and alexflorway@gmail.com (FW brand context — HanHua /
+// FlorWay / IronLite). Drive tools accept an accountKey param
+// ('sh' or 'fw'); resolveDriveAccount(brandCode) does the brand →
+// accountKey mapping so callers operating in a brand context don't
+// have to remember it.
+
+const DRIVE_ACCOUNT_EMAILS = {
+  sh: 'alex@sovernhouse.co',
+  fw: 'alexflorway@gmail.com',
+};
+
+function resolveDriveAccount(brandCode) {
+  if (!brandCode) return 'sh';
+  return String(brandCode).toUpperCase() === 'FW' ? 'fw' : 'sh';
+}
+
+function emailForAccountKey(accountKey) {
+  const key = String(accountKey || 'sh').toLowerCase();
+  return DRIVE_ACCOUNT_EMAILS[key] || DRIVE_ACCOUNT_EMAILS.sh;
+}
+
 // ── Google auth helper ────────────────────────────────────────────────────────
 
 async function getGoogleAuth(targetEmail) {
@@ -1085,30 +1109,43 @@ async function callTool(name, args) {
         }
       } catch (_) { /* signature is non-critical */ }
 
+      // Phase 4.9.3b PART C: draft-only mode. When draftOnly=true,
+      // skip the SMTP call entirely; the OutreachEmail row is created
+      // with status='draft' so it appears in the outreach UI for review
+      // before send. The AI assistant should pass draftOnly=true any
+      // time the user asks to "stage" / "draft" / "queue for review"
+      // an outreach email, and only call without draftOnly when the
+      // user has explicitly approved the content.
+      const draftOnly = args.draftOnly === true || args.draft_only === true;
+
       let smtpResult = null;
       let sendError = null;
-      try {
-        smtpResult = await sendOutreachEmail({
-          fromAddress,
-          toAddress: lead.email,
-          toName: lead.contactName,
-          subject,
-          bodyText: body_text,
-          cc: args.cc || null,
-          bcc: args.bcc || null,
-          signatureHtml,
-          signatureText,
-        });
-      } catch (e) {
-        sendError = e.message || String(e);
+      if (!draftOnly) {
+        try {
+          smtpResult = await sendOutreachEmail({
+            fromAddress,
+            toAddress: lead.email,
+            toName: lead.contactName,
+            subject,
+            bodyText: body_text,
+            cc: args.cc || null,
+            bcc: args.bcc || null,
+            signatureHtml,
+            signatureText,
+          });
+        } catch (e) {
+          sendError = e.message || String(e);
+        }
       }
 
-      // Always create the OutreachEmail row, even on send failure, so we have
-      // an audit trail and can retry.
+      // Always create the OutreachEmail row — for drafts (status=draft),
+      // successful sends (status=sent), or send failures (status=failed)
+      // so we have an audit trail and can retry.
       const touchNumber = args.touch_number || 1;
       const followUpDays = args.follow_up_days || (touchNumber === 1 ? 3 : touchNumber === 2 ? 5 : 7);
       const followUpDueAt = new Date(Date.now() + followUpDays * 86400000);
 
+      const status = draftOnly ? 'draft' : (sendError ? 'failed' : 'sent');
       const row = await getDb().OutreachEmail.create({
         leadId: lead.id,
         sentByUserId: USER_ID || null,
@@ -1118,12 +1155,20 @@ async function callTool(name, args) {
         subject,
         bodyText: body_text,
         touchNumber,
-        status: sendError ? 'failed' : 'sent',
-        sentAt: sendError ? null : new Date(),
+        status,
+        sentAt: status === 'sent' ? new Date() : null,
         smtpMessageId: smtpResult?.messageId || null,
         followUpDueAt,
         errorMessage: sendError || null,
       });
+
+      if (draftOnly) {
+        return {
+          success: true,
+          outreachEmail: row.toJSON(),
+          message: `Drafted (not sent) for ${lead.email}. Review and send from the outreach UI at /crm/leads/${lead.id}.`,
+        };
+      }
 
       // Lead status: bump 'new' → 'contacted' on first successful send
       if (!sendError && lead.status === 'new') {
@@ -1553,7 +1598,13 @@ async function callTool(name, args) {
     // ── Google Drive ────────────────────────────────────────────────────────
 
     case 'search_drive_files': {
-      const { auth } = await getGoogleAuth();
+      // Phase 4.9.3b: accountKey routing. accountKey='fw' targets
+      // alexflorway@gmail.com (FW brand context); 'sh' or omitted
+      // targets alex@sovernhouse.co. brandCode alias also accepted
+      // for callers that already carry a brand context.
+      const accountKey = args.accountKey || (args.brandCode ? resolveDriveAccount(args.brandCode) : 'sh');
+      const targetEmail = emailForAccountKey(accountKey);
+      const { auth } = await getGoogleAuth(targetEmail);
       const drive = google.drive({ version: 'v3', auth });
 
       const query = [
@@ -1570,11 +1621,15 @@ async function callTool(name, args) {
       });
 
       const files = resp.data.files || [];
-      return files.length ? files : 'No Drive files found matching that query.';
+      const account = `${accountKey} (${targetEmail})`;
+      return files.length ? { account, files } : `No Drive files matching that query under account ${account}.`;
     }
 
     case 'read_drive_file': {
-      const { auth } = await getGoogleAuth();
+      // Phase 4.9.3b: accountKey routing — same rules as search_drive_files.
+      const accountKey = args.accountKey || (args.brandCode ? resolveDriveAccount(args.brandCode) : 'sh');
+      const targetEmail = emailForAccountKey(accountKey);
+      const { auth } = await getGoogleAuth(targetEmail);
       const drive = google.drive({ version: 'v3', auth });
 
       // Get file metadata to determine type
@@ -3591,7 +3646,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'send_outreach_email',
-    description: 'Send a tracked outreach email to a lead. Creates an OutreachEmail row (sequence step + follow-up due date), bumps lead status new→contacted on first send, and uses the Sovern House signature. ALWAYS show the full draft (subject + body + recipient) to Alex and wait for explicit confirmation before calling this tool — never auto-send. For untracked one-off Gmail use send_email instead.',
+    description: 'Send (or draft) a tracked outreach email to a lead. ALWAYS show the full draft (subject + body + recipient) to Alex and wait for explicit confirmation before calling this tool — never auto-send. Two modes: (1) DEFAULT — sends immediately via SMTP, creates an OutreachEmail row with status=sent, bumps lead status new→contacted, uses the Sovern House signature. (2) draftOnly=true (Phase 4.9.3b) — skips SMTP entirely, creates the same OutreachEmail row with status=draft so it appears in the outreach UI at /crm/leads/{leadId} for review before manual send. Use draftOnly=true whenever the user asks to "stage" / "draft" / "queue for review" an outreach email; use the default mode only when the user has explicitly approved the content for immediate send. For untracked one-off Gmail use send_email instead.',
     inputSchema: {
       type: 'object',
       required: ['lead_id', 'subject', 'body_text'],
@@ -3603,6 +3658,7 @@ const TOOL_DEFS = [
         follow_up_days: { type: 'number', description: 'Days until follow-up is due. Default: touch1=3, touch2=5, touch3+=7' },
         cc:             { type: 'string', description: 'CC address(es), comma-separated' },
         bcc:            { type: 'string', description: 'BCC address(es), comma-separated' },
+        draftOnly:      { type: 'boolean', description: 'Phase 4.9.3b: when true, persist the row with status=draft (no SMTP send). Default false (= immediate send). Use draft mode when the user wants to stage for review.' },
       },
     },
   },
@@ -3721,24 +3777,28 @@ const TOOL_DEFS = [
   },
   {
     name: 'search_drive_files',
-    description: 'Search Alex\'s connected Google Drive for a file. Phase 4.5, C19: USE THIS whenever Alex asks for a document by name or topic — brand decks (IronLite Branding deck, FlorWay Brand Guidelines), presentations, spec sheets, supplier quotations, price lists, contracts, slides, references, drafts, anything stored in Drive. Search by name= for file-name match and/or query= for full-text content match (these compose with AND). Returns up to 10 files with id, name, mimeType, size, modifiedTime, and webViewLink (a clickable URL Alex can open in the browser). Always surface the webViewLink in your reply so Alex can open the file directly. Falls back to "No Drive files found" if nothing matches; in that case offer to widen the search or ask whether the file lives outside Drive.',
+    description: 'Search a connected Google Drive for a file. Phase 4.9.3b: TWO accounts are connected — accountKey="sh" → alex@sovernhouse.co (SH brand context, default for backward compat) and accountKey="fw" → alexflorway@gmail.com (FW brand context: HanHua, FlorWay, IronLite, anything FW). Pass accountKey="fw" for any FW-brand work or pass brandCode and the tool resolves it. Search by name= and/or query= (compose with AND). Returns up to 10 files with id, name, mimeType, size, modifiedTime, webViewLink. Always surface the webViewLink in your reply.',
     inputSchema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Full-text search term (searches inside file content)' },
-        name:  { type: 'string', description: 'Search by file name. Partial matches work — e.g. "IronLite" finds "IronLite Branding deck.pptx".' },
-        limit: { type: 'number', description: 'Max results (default: 10, max: 20)' },
+        query:      { type: 'string', description: 'Full-text search term (searches inside file content).' },
+        name:       { type: 'string', description: 'Search by file name. Partial matches work.' },
+        limit:      { type: 'number', description: 'Max results (default 10, cap 20).' },
+        accountKey: { type: 'string', enum: ['sh', 'fw'], description: 'Phase 4.9.3b: which connected Google account to search. "sh" = alex@sovernhouse.co (default), "fw" = alexflorway@gmail.com.' },
+        brandCode:  { type: 'string', description: 'Phase 4.9.3b: alternative to accountKey. "FW" routes to fw account, anything else routes to sh.' },
       },
     },
   },
   {
     name: 'read_drive_file',
-    description: 'Read the text content of a Google Drive file (Google Docs, Sheets, plain text, CSV). Use to extract product specs, pricing tables, quotation details, or content from any text-bearing file Alex has shared. PDFs and PowerPoint decks return a note explaining text cannot be extracted via this API — in that case, share the webViewLink from search_drive_files instead.',
+    description: 'Read the text content of a Google Drive file (Google Docs, Sheets, plain text, CSV). Phase 4.9.3b: pass accountKey or brandCode the same way as search_drive_files; default "sh". PDFs and PowerPoint decks return a note explaining text cannot be extracted via this API — share the webViewLink from search_drive_files instead.',
     inputSchema: {
       type: 'object',
       required: ['file_id'],
       properties: {
-        file_id: { type: 'string', description: 'Google Drive file ID from search_drive_files' },
+        file_id:    { type: 'string', description: 'Google Drive file ID from search_drive_files.' },
+        accountKey: { type: 'string', enum: ['sh', 'fw'], description: 'Phase 4.9.3b: account routing. Default "sh".' },
+        brandCode:  { type: 'string', description: 'Phase 4.9.3b: alternative to accountKey. "FW" routes to fw account.' },
       },
     },
   },
