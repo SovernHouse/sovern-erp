@@ -9,7 +9,7 @@ import {
   Alert, RefreshControl, TouchableOpacity, Linking, Share,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { getQuotation, generateApprovalLink, sendQuotation, downloadQuotationPDF, createSalesOrderFromQuotation, type Quotation, type QuotationItem } from '../../src/services/api';
+import { getQuotation, generateApprovalLink, sendQuotation, downloadQuotationPDF, createSalesOrderFromQuotation, listTariffRates, type Quotation, type QuotationItem } from '../../src/services/api';
 import ChatterSection from '../../src/components/ChatterSection';
 import { BrandBadge } from '../../src/components/BrandBadge';
 import { useBrands } from '../../src/hooks/useBrands';
@@ -261,9 +261,61 @@ export default function QuotationDetailScreen() {
     const fromAddress = brand?.senderEmail || 'alex@sovernhouse.co';
     const brandName = brand?.displayName || 'Sovern House';
     const toAddress = quotation.customer?.email || '(no email on file)';
+
+    // L-035 parity with desktop 4.9e: pre-flight per-line tariff check
+    // when destination is US. Hard-block if a line has an origin but no
+    // active tariff; soft-warn (require confirm) when source rate is
+    // within 7 days of expiry or already expired.
+    const dest = (quotation.customer?.country || '').toUpperCase();
+    const isUS = dest === 'US' || dest === 'USA';
+    let preflightSummary = '';
+    let hardBlock = false;
+    if (isUS) {
+      try {
+        const res = await listTariffRates({ includeExpired: true });
+        const all = Array.isArray(res.data) ? res.data : [];
+        const today = new Date().toISOString().slice(0, 10);
+        const blocks: string[] = [];
+        const warns: string[] = [];
+        for (const it of (quotation.items || [])) {
+          const origin = (it.originCountry || '').toUpperCase();
+          if (!origin) continue;
+          const candidates = all.filter(r =>
+            (r.originCountry || '').toUpperCase() === origin &&
+            (r.destinationCountry || '').toUpperCase() === dest &&
+            r.effectiveFrom <= today &&
+            r.effectiveUntil >= today
+          );
+          const brandHit = candidates.find(r => r.brandCode === quotation.brandCode);
+          const tariff = brandHit || candidates.find(r => !r.brandCode) || candidates[0];
+          const lineLabel = it.description || (it as any).product?.name || it.productId;
+          if (!tariff) {
+            blocks.push(`· ${lineLabel} (${origin} → US): no active tariff`);
+          } else {
+            const daysLeft = Math.round((new Date(tariff.effectiveUntil).getTime() - new Date(today).getTime()) / 86400000);
+            if (daysLeft <= 7) {
+              const rate = Number(tariff.ratePercent).toFixed(4);
+              warns.push(`· ${lineLabel} (${origin} → US, ${rate}%): ${daysLeft < 0 ? `expired ${-daysLeft}d ago` : `expires in ${daysLeft}d`}`);
+            }
+          }
+        }
+        if (blocks.length > 0) {
+          hardBlock = true;
+          preflightSummary = `Cannot send — missing tariff rate:\n${blocks.join('\n')}\n\nAdd the missing row on desktop (Settings → Tariff rates) first.`;
+        } else if (warns.length > 0) {
+          preflightSummary = `Tariff(s) expiring soon — confirm with factory before sending:\n${warns.join('\n')}\n\n`;
+        }
+      } catch (_) { /* best-effort: don't block on lookup failure */ }
+    }
+
+    if (hardBlock) {
+      Alert.alert('Cannot send', preflightSummary, [{ text: 'OK' }]);
+      return;
+    }
+
     Alert.alert(
       'Send Quotation via ERP',
-      `Send ${quotation.quotationNumber} from ${fromAddress} (${brandName}) to ${quotation.customer?.companyName || 'customer'} at ${toAddress}?`,
+      `${preflightSummary}Send ${quotation.quotationNumber} from ${fromAddress} (${brandName}) to ${quotation.customer?.companyName || 'customer'} at ${toAddress}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
