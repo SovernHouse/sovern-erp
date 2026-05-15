@@ -660,6 +660,16 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] C3b prospect-status remap skipped:', e.message);
     }
+
+    // Phase 4.5 C21 follow-up: archive non-flooring ProductCategories
+    // so Settings -> Product Taxonomy + Product Attributes dropdowns
+    // show flooring-only by default. Idempotent via AuditLog sentinel.
+    try {
+      const { migrateArchiveTaxonomyC21Followup } = require('./services/migrateArchiveTaxonomyC21Followup');
+      await migrateArchiveTaxonomyC21Followup(db);
+    } catch (e) {
+      logger.warn('[boot] C21 follow-up taxonomy archive skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {

@@ -2631,3 +2631,41 @@ This pattern is intentional. The Phase 4.7 spec deferred AI-initiated Drive uplo
 ## Audit action
 
 `admin_drive_setup` — entity=ConnectedGoogleAccount, entityId=account.email, changes={folderCount, createdCount, tree}.
+
+
+# Product taxonomy archive/restore (Phase 4.5 C21 follow-up)
+
+## Why
+
+C21 hid non-flooring productType enum values on the catalog UI but did not touch the ProductCategory table. Settings -> Product Taxonomy and Product Attributes kept showing every vertical. C21 follow-up archives the non-flooring tree at the data layer.
+
+## Schema
+
+`ProductCategory.isArchived BOOLEAN NOT NULL DEFAULT false`. Distinct from `isActive` (legacy soft-delete). Auto-added by `sequelize.sync({ alter: true })` on boot.
+
+## Migration
+
+`backend/services/migrateArchiveTaxonomyC21Followup.js`. Runs on boot. Finds the Flooring parent + its direct children and archives every other category. Idempotent via AuditLog sentinel `phase4_5_c21_followup_taxonomy_archived`.
+
+## Endpoints
+
+- All read endpoints (`/products/categories/tree`, `/flat`, `/`, `/export`) filter `isArchived=false` by default.
+- Pass `?includeArchived=true` (used by the "Show archived" toggle on the Taxonomy page) to include them.
+- `PATCH /products/categories/:id/archive` — admin/manager. Cascades to direct children. Audit `taxonomy_archive`.
+- `PATCH /products/categories/:id/restore` — admin/manager. Cascades to direct children. Audit `taxonomy_restore`.
+
+## Seed behaviour
+
+`seedDefaultTemplate`, `loadTemplate`, `importCategories` all find-or-create by (slug, parentId). They never modify existing rows' `isArchived` flag. New rows default to `isArchived=false`. Re-running "Sovern Defaults" against an archived row leaves it archived.
+
+## UI
+
+Settings -> Product Taxonomy: amber banner explains the default filter; a "Show archived" checkbox toggles the full tree. Archived parent rows render with an amber "Archived" badge + a "Restore" action. Non-archived rows get an Archive action (parallel to the existing Delete; archive is reversible, delete is permanent).
+
+Settings -> Product Attributes category dropdown: receives only non-archived categories because it calls `GET /products/categories` without `includeArchived`.
+
+QuotationForm + ProductCatalog dropdowns: same auto-filter via the unmodified `/products/categories/flat` call.
+
+## Mobile
+
+No mobile UI manages the taxonomy directly. Mobile's product list reads `product.category` as a denormalised string and is unaffected.

@@ -147,7 +147,7 @@ function SubCategoryRow({ child, onUpdate, onDelete, onMoveUp, onMoveDown, isFir
 }
 
 // ─── Parent category card ─────────────────────────────────────────────────────
-function ParentCard({ category, onUpdate, onDelete, onMoveUp, onMoveDown, isFirst, isLast }) {
+function ParentCard({ category, onUpdate, onDelete, onMoveUp, onMoveDown, onArchive, onRestore, isFirst, isLast }) {
   const [expanded, setExpanded] = useState(true);
   const [editingName, setEditingName] = useState(false);
   const [editingIcon, setEditingIcon] = useState(false);
@@ -253,7 +253,10 @@ function ParentCard({ category, onUpdate, onDelete, onMoveUp, onMoveDown, isFirs
           <InlineEdit value={category.name} onSave={handleNameSave} onCancel={() => setEditingName(false)} />
         ) : (
           <>
-            <span className="flex-1 font-semibold text-slate-900">{category.name}</span>
+            <span className={`flex-1 font-semibold ${category.isArchived ? 'text-slate-500' : 'text-slate-900'}`}>{category.name}</span>
+            {category.isArchived && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 mr-2">Archived</span>
+            )}
             <span className="text-xs text-slate-400 mr-2">{children.length} sub-categories</span>
           </>
         )}
@@ -265,7 +268,13 @@ function ParentCard({ category, onUpdate, onDelete, onMoveUp, onMoveDown, isFirs
             <button onClick={onMoveDown} disabled={isLast} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-20 rounded hover:bg-slate-100"><ChevronDown size={14} /></button>
             <button onClick={() => setEditingName(true)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100"><Pencil size={14} /></button>
             <button onClick={() => { setAddingChild(true); setExpanded(true); }} className="p-1.5 text-slate-400 hover:text-emerald-600 rounded hover:bg-emerald-50" title="Add sub-category"><Plus size={14} /></button>
-            <button onClick={handleDelete} className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-red-50"><Trash2 size={14} /></button>
+            {/* Phase 4.5 C21 follow-up — archive vs restore vs delete */}
+            {category.isArchived ? (
+              <button onClick={onRestore} className="px-2 py-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900 rounded hover:bg-emerald-50" title="Restore this category and its sub-categories">Restore</button>
+            ) : (
+              <button onClick={onArchive} className="p-1.5 text-slate-400 hover:text-amber-600 rounded hover:bg-amber-50" title="Archive (hide but keep restorable)"><Layers size={14} /></button>
+            )}
+            <button onClick={handleDelete} className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-red-50" title="Delete permanently"><Trash2 size={14} /></button>
           </div>
         )}
       </div>
@@ -320,13 +329,18 @@ export default function ProductTaxonomy() {
   const [savingParent, setSavingParent] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [importing, setImporting] = useState(false);
+  // Phase 4.5 C21 follow-up — admin toggle to surface archived rows.
+  // Default false so the screen reads clean. When on, archived rows
+  // render with a badge + Restore action.
+  const [showArchived, setShowArchived] = useState(false);
   const fileInputRef = useRef(null);
 
   const showToast = (message, type = 'success') => setToast({ message, type });
 
   const loadTree = async () => {
     try {
-      const res = await api.get('/products/categories/tree');
+      const qs = showArchived ? '?includeArchived=true' : '';
+      const res = await api.get(`/products/categories/tree${qs}`);
       setCategories(res.data || []);
     } catch (err) {
       showToast('Failed to load categories', 'error');
@@ -335,7 +349,28 @@ export default function ProductTaxonomy() {
     }
   };
 
-  useEffect(() => { loadTree(); }, []);
+  useEffect(() => { loadTree(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [showArchived]);
+
+  // Phase 4.5 C21 follow-up — archive/restore handlers cascade to direct
+  // children server-side; we reload the tree on success.
+  const handleArchive = async (id, name) => {
+    try {
+      await api.patch(`/products/categories/${id}/archive`);
+      await loadTree();
+      showToast(`"${name}" archived (and its sub-categories)`);
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Archive failed', 'error');
+    }
+  };
+  const handleRestore = async (id, name) => {
+    try {
+      await api.patch(`/products/categories/${id}/restore`);
+      await loadTree();
+      showToast(`"${name}" restored`);
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Restore failed', 'error');
+    }
+  };
 
   // ── Add parent category ──
   const handleAddParent = async () => {
@@ -526,6 +561,22 @@ export default function ProductTaxonomy() {
         </div>
       </div>
 
+      {/* Phase 4.5 C21 follow-up — Show archived toggle */}
+      <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 mb-4">
+        <p className="text-xs text-amber-900">
+          Showing flooring categories only. Other verticals (garments, auto parts, bathroom, etc.) are archived and hidden by default. Toggle to manage them.
+        </p>
+        <label className="inline-flex items-center gap-2 text-xs font-semibold text-amber-900 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+            className="w-4 h-4 rounded border-amber-400"
+          />
+          Show archived
+        </label>
+      </div>
+
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map(i => (
@@ -542,6 +593,8 @@ export default function ProductTaxonomy() {
               onDelete={handleDelete}
               onMoveUp={() => moveParent(i, -1)}
               onMoveDown={() => moveParent(i, 1)}
+              onArchive={() => handleArchive(cat.id, cat.name)}
+              onRestore={() => handleRestore(cat.id, cat.name)}
               isFirst={i === 0}
               isLast={i === categories.length - 1}
             />

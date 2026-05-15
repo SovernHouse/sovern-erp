@@ -1,4 +1,11 @@
 const db = require('../models');
+const auditService = require('../services/auditService');
+
+// Phase 4.5 C21 follow-up — query-param parser. Default behaviour hides
+// archived rows; pass ?includeArchived=true to see them (used by the
+// admin "Show archived" toggle on the Product Taxonomy page).
+const shouldIncludeArchived = (req) => String(req.query.includeArchived || '').toLowerCase() === 'true';
+const archivedWhere = (req) => (shouldIncludeArchived(req) ? {} : { isArchived: false });
 
 // ─── Sovern House default taxonomy ────────────────────────────────────────────
 // No Logs category (dropped per 2026-04-21 decision)
@@ -116,7 +123,7 @@ const toSlug = (name) =>
 const getCategoryTree = async (req, res) => {
   try {
     const all = await db.ProductCategory.findAll({
-      where: { isActive: true },
+      where: { isActive: true, ...archivedWhere(req) },
       order: [
         ['sortOrder', 'ASC'],
         ['name', 'ASC'],
@@ -146,7 +153,7 @@ const getCategoryTree = async (req, res) => {
 const getCategoriesFlat = async (req, res) => {
   try {
     const categories = await db.ProductCategory.findAll({
-      where: { isActive: true },
+      where: { isActive: true, ...archivedWhere(req) },
       order: [['sortOrder', 'ASC'], ['name', 'ASC']],
     });
     res.json({ success: true, data: categories });
@@ -288,6 +295,8 @@ const seedDefaultTemplate = async (req, res) => {
 // Exports the full tree as downloadable JSON
 const exportCategories = async (req, res) => {
   try {
+    // Export ALWAYS includes archived rows so the snapshot is faithful.
+    // Callers can re-import + re-archive deterministically.
     const all = await db.ProductCategory.findAll({
       where: { isActive: true },
       order: [['sortOrder', 'ASC'], ['name', 'ASC']],
@@ -306,11 +315,13 @@ const exportCategories = async (req, res) => {
       icon: p.icon,
       description: p.description,
       sortOrder: p.sortOrder,
+      isArchived: p.isArchived,
       children: (childMap[p.id] || []).map(c => ({
         name: c.name,
         slug: c.slug,
         icon: c.icon,
         sortOrder: c.sortOrder,
+        isArchived: c.isArchived,
       })),
     }));
 
@@ -463,6 +474,64 @@ const deleteTemplate = async (req, res) => {
   }
 };
 
+// ─── PATCH /api/products/categories/:id/archive ────────────────────────────
+// Phase 4.5 C21 follow-up. Soft-hides a category from default UIs while
+// keeping the row queryable (and restorable). Cascades to direct children
+// since archiving a parent without its children leaves orphan rows visible
+// on the default filter.
+const archiveCategory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const category = await db.ProductCategory.findByPk(id);
+    if (!category) return res.status(404).json({ success: false, message: 'Category not found' });
+
+    const children = await db.ProductCategory.findAll({ where: { parentId: id } });
+    await category.update({ isArchived: true });
+    for (const c of children) await c.update({ isArchived: true });
+
+    auditService.logAction(
+      req.user?.id,
+      'taxonomy_archive',
+      'ProductCategory',
+      id,
+      { name: category.name, slug: category.slug, childrenArchived: children.length },
+      req.ip,
+    ).catch(() => {});
+
+    res.json({ success: true, data: { id, archivedChildren: children.length } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ─── PATCH /api/products/categories/:id/restore ────────────────────────────
+// Reverse of archive. Restores the category AND its direct children so
+// parent + subs reappear together.
+const restoreCategory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const category = await db.ProductCategory.findByPk(id);
+    if (!category) return res.status(404).json({ success: false, message: 'Category not found' });
+
+    const children = await db.ProductCategory.findAll({ where: { parentId: id } });
+    await category.update({ isArchived: false });
+    for (const c of children) await c.update({ isArchived: false });
+
+    auditService.logAction(
+      req.user?.id,
+      'taxonomy_restore',
+      'ProductCategory',
+      id,
+      { name: category.name, slug: category.slug, childrenRestored: children.length },
+      req.ip,
+    ).catch(() => {});
+
+    res.json({ success: true, data: { id, restoredChildren: children.length } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getCategoryTree,
   getCategoriesFlat,
@@ -476,4 +545,6 @@ module.exports = {
   saveAsTemplate,
   loadTemplate,
   deleteTemplate,
+  archiveCategory,
+  restoreCategory,
 };

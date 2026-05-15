@@ -56,6 +56,9 @@ router.delete('/categories/templates/:id', requireAuth, requireRole('admin'), ca
 router.post('/categories', requireAuth, requireRole('admin', 'manager'), categoryController.createCategory);
 router.put('/categories/:id', requireAuth, requireRole('admin', 'manager'), categoryController.updateCategory);
 router.delete('/categories/:id', requireAuth, requireRole('admin'), categoryController.deleteCategory);
+// Phase 4.5 C21 follow-up — archive/restore (admin/manager only, audited).
+router.patch('/categories/:id/archive', requireAuth, requireRole('admin', 'manager'), categoryController.archiveCategory);
+router.patch('/categories/:id/restore', requireAuth, requireRole('admin', 'manager'), categoryController.restoreCategory);
 
 // Legacy flat-list route — kept for backwards compatibility
 router.get('/categories', requireAuth, categoryController.getCategoriesFlat);

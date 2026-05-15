@@ -44,7 +44,18 @@ module.exports = (sequelize) => {
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true
-    }
+    },
+    // Phase 4.5 C21 follow-up: archived (hidden from default UI but
+    // restorable) vs isActive (legacy soft-delete). Distinct concepts;
+    // an archived row can still be `isActive=true` historically.
+    // Default false so newly-created rows show up; the boot-time
+    // migrateArchiveTaxonomyC21Followup flips this for the 5 non-
+    // flooring parents + their children on first deploy.
+    isArchived: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+    },
   }, {
     tableName: 'ProductCategories',
     timestamps: true,
