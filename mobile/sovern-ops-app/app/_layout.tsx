@@ -13,6 +13,7 @@ import { CONFIG, COLORS } from '../src/constants/config';
 import { getCurrentUser } from '../src/services/api';
 import type { User } from '../src/services/api';
 import { useDevModePushNotifications } from '../src/hooks/useDevModePushNotifications';
+import OfflineBanner from '../src/components/OfflineBanner';
 
 // ─── Error Boundary ───────────────────────────────────────────────────────────
 // Catches render errors in any screen and shows a readable message instead of
@@ -90,8 +91,10 @@ export default function RootLayout() {
   );
 
   return (
-    <>
+    <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
       <StatusBar style="light" />
+      {/* Phase 5a: offline banner, self-hides when online. */}
+      <OfflineBanner />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: COLORS.forest },
@@ -117,6 +120,6 @@ export default function RootLayout() {
           options={{ headerShown: false }}
         />
       </Stack>
-    </>
+    </View>
   );
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import OfflineBanner from './OfflineBanner'
 import {
   Menu,
   X,
@@ -412,6 +413,9 @@ export default function Layout({ children }) {
 
       {/* ── MAIN CONTENT ────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden">
+
+        {/* Phase 5a: offline banner. Self-hides when online. */}
+        <OfflineBanner />
 
         {/* Top bar */}
         <header style={{
