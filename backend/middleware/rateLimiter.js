@@ -8,13 +8,102 @@ const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV ||
 
 // ===== IP-based Rate Limiters =====
 
+// Phase 4.9.4: idempotent poll endpoints — dashboards and mobile
+// shells hit these every 15-30s before auth attaches, so they MUST
+// NOT count against the IP bucket. Adding a benign read here is
+// safe; do NOT add any write-side path.
+const POLL_EXEMPT_PATHS = ['/api/health', '/api/notifications', '/health'];
+
+function isPollPath(req) {
+  // express-rate-limit's req.path is the path AFTER the mount point
+  // (so `/health` when mounted at /api/, and `/api/health` if globally
+  // mounted). Compare both forms to be safe across mount-point changes.
+  const p = req.path || req.originalUrl?.split('?')[0] || '';
+  return POLL_EXEMPT_PATHS.some(ex => p === ex || (req.originalUrl || '').split('?')[0] === ex);
+}
+
+// Phase 4.9.4: in-memory snapshot of the most recent 429s and current
+// bucket counts. Exposed via /api/admin/ratelimit-stats so future
+// debugging doesn't need pm2 restart + log spelunking.
+const generalLimiter429Log = [];
+const generalLimiterBuckets = new Map(); // ip → { count, windowStart }
+
+function recordGeneralLimiter429(req) {
+  const entry = {
+    ip: req.ip,
+    path: req.path,
+    originalUrl: req.originalUrl,
+    userId: req.user?.id || null,
+    at: new Date().toISOString(),
+  };
+  generalLimiter429Log.push(entry);
+  // Cap the in-memory log so it doesn't grow unbounded.
+  if (generalLimiter429Log.length > 200) {
+    generalLimiter429Log.splice(0, generalLimiter429Log.length - 200);
+  }
+}
+
 const generalLimiter = rateLimit({
   windowMs: windowMs,
   max: maxRequests,
   message: 'Too many requests, please try again later',
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  // Phase 4.9.4 PART A + B:
+  //   1. Poll endpoints are skipped unconditionally (their cadence is
+  //      the desktop/mobile shell, not abuse traffic).
+  //   2. Authenticated requests skip the IP-based bucket entirely;
+  //      they go through userRateLimiter downstream. attachUserIfPresent
+  //      runs before this middleware so req.user is populated when a
+  //      valid bearer token is on the request.
+  skip: (req) => {
+    if (isPollPath(req)) return true;
+    if (req.user && req.user.id) return true;
+    return false;
+  },
+  handler: (req, res, _next, options) => {
+    // Phase 4.9.4 PART C: log the IP + path + bucket count so the next
+    // self-DOS surfaces as evidence in the logs, not a black box.
+    const bucket = generalLimiterBuckets.get(req.ip);
+    logger.warn(`[rateLimiter] 429 ip=${req.ip} path=${req.path} userId=${req.user?.id || 'anon'} bucketCount=${bucket?.count ?? '?'}`);
+    recordGeneralLimiter429(req);
+    res.status(options.statusCode).json({ error: options.message });
+  },
+  // Increment our visibility-only bucket each time the limiter sees
+  // a request. express-rate-limit's internal store is opaque; this
+  // keeps a parallel count we can show on the admin stats page.
+  // Note: skipped requests don't trigger this; that's intentional —
+  // we want the bucket count to reflect what would actually limit.
+  keyGenerator: (req) => {
+    const ip = req.ip || 'unknown';
+    const now = Date.now();
+    const existing = generalLimiterBuckets.get(ip);
+    if (!existing || now - existing.windowStart > windowMs) {
+      generalLimiterBuckets.set(ip, { count: 1, windowStart: now });
+    } else {
+      existing.count += 1;
+    }
+    return ip;
+  },
 });
+
+function getGeneralLimiterStats() {
+  // Cleanup expired buckets before returning.
+  const now = Date.now();
+  for (const [ip, entry] of generalLimiterBuckets.entries()) {
+    if (now - entry.windowStart > windowMs) generalLimiterBuckets.delete(ip);
+  }
+  return {
+    windowMs,
+    maxRequests,
+    bucketCount: generalLimiterBuckets.size,
+    buckets: Array.from(generalLimiterBuckets.entries()).map(([ip, b]) => ({
+      ip, count: b.count, windowStart: new Date(b.windowStart).toISOString(),
+    })),
+    recent429s: generalLimiter429Log.slice(-50),
+    pollExemptPaths: POLL_EXEMPT_PATHS,
+  };
+}
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -231,5 +320,9 @@ module.exports = {
   fileLimiter,
   userRateLimiter,
   userRateLimitMiddleware,
-  UserRateLimiter
+  UserRateLimiter,
+  // Phase 4.9.4
+  getGeneralLimiterStats,
+  POLL_EXEMPT_PATHS,
+  isPollPath,
 };

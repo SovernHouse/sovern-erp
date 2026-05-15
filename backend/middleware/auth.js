@@ -17,6 +17,25 @@ const requireAuth = (req, res, next) => {
   }
 };
 
+// Phase 4.9.4: non-throwing variant that attaches req.user when a
+// valid bearer token is present but does NOT 401 when absent or
+// invalid. Mounted globally BEFORE the rate limiter so authenticated
+// traffic can be identified and routed through the per-user limiter
+// instead of the IP bucket. Routes that need to enforce auth still
+// chain requireAuth as their own gate.
+const attachUserIfPresent = (req, _res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return next();
+  try {
+    req.user = jwt.verify(token, authConfig.jwt.secret);
+  } catch (_) {
+    // Silently ignore. The downstream requireAuth will 401 if the
+    // route requires auth. Invalid tokens here just mean the request
+    // is treated as anonymous for the rate-limiter bucket.
+  }
+  next();
+};
+
 // super_admin is founder/CEO level and is treated as a strict superset of
 // admin: any route that accepts 'admin' implicitly accepts 'super_admin' too.
 const SUPER_ADMIN = 'super_admin';
@@ -58,6 +77,7 @@ const requireAny = (...permissions) => {
 
 module.exports = {
   requireAuth,
+  attachUserIfPresent,
   requireRole,
   requireAny
 };

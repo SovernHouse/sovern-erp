@@ -18,7 +18,8 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const db = require('./models');
 const { errorHandler } = require('./middleware/errorHandler');
-const { authLimiter, generalLimiter } = require('./middleware/rateLimiter');
+const { authLimiter, generalLimiter, getGeneralLimiterStats } = require('./middleware/rateLimiter');
+const { attachUserIfPresent, requireAuth, requireRole } = require('./middleware/auth');
 const { requestId, sanitizeInput, securityHeaders } = require('./middleware/security');
 const { requestLogging } = require('./middleware/requestLogging');
 const notificationService = require('./services/notificationService');
@@ -117,6 +118,22 @@ app.use('/api/auth', express.json({ limit: '1mb' }), express.urlencoded({ limit:
 app.use('/api/documents', express.json({ limit: '10mb' }), express.urlencoded({ limit: '10mb', extended: true }));
 app.use('/api/exports', express.json({ limit: '10mb' }), express.urlencoded({ limit: '10mb', extended: true }));
 app.use('/api/pdf', express.json({ limit: '10mb' }), express.urlencoded({ limit: '10mb', extended: true }));
+
+// Phase 4.9.4: attach req.user (when a valid bearer token is on the
+// request) BEFORE the IP-based generalLimiter so authenticated traffic
+// can skip the IP bucket entirely. Never 401s — routes that need auth
+// still chain requireAuth as their own gate.
+app.use('/api/', attachUserIfPresent);
+
+// Phase 4.9.4: rate-limit stats — super_admin only. Returns the current
+// bucket state + the recent 429 log. Mounted BEFORE generalLimiter so
+// even when something else is being rate-limited, admins can still
+// inspect the limiter. attachUserIfPresent above populates req.user so
+// requireRole has what it needs.
+app.get('/api/admin/ratelimit-stats', requireAuth, requireRole('super_admin'), (req, res) => {
+  res.json({ success: true, data: getGeneralLimiterStats() });
+});
+
 app.use('/api/', generalLimiter);
 // Add request timeout middleware to prevent hanging requests.
 // AI chat is the one slow endpoint (claude -p subprocess + MCP tool chain

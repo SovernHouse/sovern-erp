@@ -2767,6 +2767,51 @@ Mobile: read-only price display continues to use `Product.baseFobPrice` (denorma
 -- Confirm factories tagged
 SELECT name, brand_code FROM Factory WHERE brand_code='FW';
 
+-- ⬆ (additional 4.9.2 queries unchanged) ⬇
+
+-- Phase 4.9.4: confirm the limiter stats endpoint and skip predicates
+-- are wired (auth check; no SQL).
+```
+
+---
+
+# Rate Limiting — auth-first, poll-exempt (Phase 4.9.4)
+
+## Problem this fixes
+
+Symptom: after 10-15 min of normal dashboard use, every endpoint started returning 429 until `pm2 restart`. Root cause: the IP-based `generalLimiter` capped at 100 req/15min (default for `express-rate-limit`), and the dashboard polls `/api/health` every ~15s + `/api/notifications` every ~30s, both BEFORE the per-route `requireAuth` attached `req.user`. The unauth IP bucket filled in ~10 minutes; every subsequent request — including authenticated ones from the same IP — got 429. Retries made it worse.
+
+## Three fixes in this phase
+
+### Part A — exempt poll endpoints unconditionally
+
+`backend/middleware/rateLimiter.js` `POLL_EXEMPT_PATHS = ['/api/health', '/api/notifications', '/health']`. The `generalLimiter` `skip:` predicate returns true for these. They are benign by design (idempotent reads, no write side-effects), are not abuse vectors, and should never count against any IP bucket.
+
+### Part B — auth-before-rate-limit ordering
+
+New `attachUserIfPresent` middleware in `backend/middleware/auth.js`. Non-throwing. Extracts the bearer token and sets `req.user` when it verifies; passes through (does not 401) when absent or invalid. Mounted globally at `/api/` BEFORE `generalLimiter`. Skip predicate on `generalLimiter` now also returns true for `req.user.id` present — authenticated users skip the IP bucket entirely and flow through the per-user `userRateLimiter` instead. Anonymous traffic still gets IP-limited at 100/15min for abuse protection.
+
+Routes that need to enforce auth still chain `requireAuth` as their own gate. `attachUserIfPresent` is a soft attach, not a gate.
+
+### Part C — logging + visibility
+
+The `generalLimiter` `handler:` now logs `[rateLimiter] 429 ip=X path=Y userId=Z bucketCount=N` on every limit hit. Previously the only signal was a generic 429 in the request log with `anonymous` user.
+
+New admin endpoint `GET /api/admin/ratelimit-stats` (super_admin only). Returns window/max config + current bucket state per IP + recent 429 log (capped at 200 entries). Useful for future debugging and for a planned Health Dashboard widget.
+
+## Tests
+
+`backend/__tests__/integration/rateLimiter492.test.js` — four cases:
+- Authenticated 150 hits on `/api/health` → all 200 (poll + auth skip).
+- Anonymous 150 hits on `/api/health` → all 200 (poll skip alone, no auth needed).
+- Authenticated 150 hits on `/api/customers` → no 429 (auth skip on non-poll endpoint).
+- `/api/admin/ratelimit-stats` requires super_admin (returns 403 for plain admin).
+
+## Out of scope
+
+- Redis-backed limiter (current in-memory is fine for single-node; revisit when multi-node).
+- Reducing dashboard poll cadence (the fix makes polling free; the cadence is correct for UX).
+
 -- Confirm taxonomy sortOrders
 SELECT name, sort_order FROM ProductCategories WHERE name IN ('Resilient','Engineered SPC','LVT (Luxury Vinyl Tile)','Vinyl Sheet') ORDER BY sort_order;
 
