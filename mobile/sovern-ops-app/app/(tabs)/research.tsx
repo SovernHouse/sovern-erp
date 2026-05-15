@@ -5,7 +5,9 @@
 // preview. Tap to view summary + draft list with deep-links to the
 // created Lead or Factory rows for review before outreach.
 
-import { useEffect, useState, useCallback } from 'react';
+// Phase 4.6 part 5: extracted inline renderItem to a memo'd
+// ResearchTaskCard; stable renderItem/keyExtractor; virtualization tuning.
+import { memo, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl,
   ActivityIndicator, ScrollView, Alert, Modal, Platform,
@@ -52,6 +54,34 @@ function ModeBadge({ mode }: { mode: 'clients' | 'suppliers' }) {
   );
 }
 
+// Phase 4.6 part 5: extracted row component. styles is module-scope so it
+// doesn't need to be a prop. onPress is stable from the parent's useCallback.
+const ResearchTaskCard = memo(function ResearchTaskCard({
+  task, onPress,
+}: {
+  task: ResearchTask;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity onPress={onPress} style={styles.card}>
+      <View style={styles.cardHeader}>
+        <ModeBadge mode={task.mode} />
+        <StatusPill status={task.status} />
+      </View>
+      <Text style={styles.briefText} numberOfLines={2}>{task.brief}</Text>
+      <View style={styles.cardFooter}>
+        <Text style={styles.metaText}>
+          {task.status === 'completed'
+            ? `${task.draftsCreated} draft${task.draftsCreated === 1 ? '' : 's'}` +
+              (task.duplicatesFound ? ` · ${task.duplicatesFound} dup${task.duplicatesFound === 1 ? '' : 's'}` : '')
+            : (task.errorMessage ? task.errorMessage.slice(0, 60) : '')}
+        </Text>
+        <Text style={styles.metaText}>{formatAge(task.completedAt || task.startedAt || task.createdAt)}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
 export default function ResearchScreen() {
   const [tasks, setTasks] = useState<ResearchTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +112,14 @@ export default function ResearchScreen() {
     const id = setInterval(() => { load(); }, 15000);
     return () => clearInterval(id);
   }, [tasks, load]);
+
+  // Phase 4.6 part 5: stable refs for the memoized ResearchTaskCard.
+  // openDetail is a function declaration so it's hoisted and the empty dep
+  // array is safe (the closure captures the live binding).
+  const researchKeyExtractor = useCallback((t: ResearchTask) => t.id, []);
+  const researchRenderItem = useCallback(({ item }: { item: ResearchTask }) => (
+    <ResearchTaskCard task={item} onPress={() => openDetail(item.id)} />
+  ), []);
 
   async function openDetail(id: string) {
     setOpenId(id);
@@ -157,27 +195,14 @@ export default function ResearchScreen() {
       ) : (
         <FlatList
           data={tasks}
-          keyExtractor={t => t.id}
+          keyExtractor={researchKeyExtractor}
           contentContainerStyle={{ padding: 12 }}
+          removeClippedSubviews={Platform.OS === 'android'}
+          initialNumToRender={10}
+          maxToRenderPerBatch={8}
+          windowSize={10}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
-          renderItem={({ item }) => (
-            <TouchableOpacity onPress={() => openDetail(item.id)} style={styles.card}>
-              <View style={styles.cardHeader}>
-                <ModeBadge mode={item.mode} />
-                <StatusPill status={item.status} />
-              </View>
-              <Text style={styles.briefText} numberOfLines={2}>{item.brief}</Text>
-              <View style={styles.cardFooter}>
-                <Text style={styles.metaText}>
-                  {item.status === 'completed'
-                    ? `${item.draftsCreated} draft${item.draftsCreated === 1 ? '' : 's'}` +
-                      (item.duplicatesFound ? ` · ${item.duplicatesFound} dup${item.duplicatesFound === 1 ? '' : 's'}` : '')
-                    : (item.errorMessage ? item.errorMessage.slice(0, 60) : '')}
-                </Text>
-                <Text style={styles.metaText}>{formatAge(item.completedAt || item.startedAt || item.createdAt)}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
+          renderItem={researchRenderItem}
         />
       )}
 

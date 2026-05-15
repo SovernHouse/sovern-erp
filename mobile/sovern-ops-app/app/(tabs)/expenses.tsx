@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react'
+// Phase 4.6 part 5: ExpenseRowComponent memo, filter useEffect migrated to
+// useMemo (was double-render setFiltered), stable renderItem/keyExtractor.
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   View,
   FlatList,
@@ -72,7 +74,7 @@ function todayString() {
   return d.toISOString().split('T')[0]
 }
 
-function ExpenseRowComponent({ expense, onPress }: { expense: ExpenseRow; onPress: () => void }) {
+const ExpenseRowComponent = memo(function ExpenseRowComponent({ expense, onPress }: { expense: ExpenseRow; onPress: () => void }) {
   const styles = useStyles()
   return (
     <TouchableOpacity style={styles.row} onPress={onPress}>
@@ -107,7 +109,7 @@ function ExpenseRowComponent({ expense, onPress }: { expense: ExpenseRow; onPres
       ) : null}
     </TouchableOpacity>
   )
-}
+})
 
 function ExpenseDetailModal({
   expense,
@@ -384,7 +386,6 @@ function ExpenseCreateModal({
 export default function ExpensesScreen() {
   const styles = useStyles()
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
-  const [filtered, setFiltered] = useState<ExpenseRow[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [search, setSearch] = useState('')
@@ -418,8 +419,9 @@ export default function ExpensesScreen() {
     load()
   }, [])
 
-  // Filter on search/status/paid changes
-  useEffect(() => {
+  // Phase 4.6 part 5: composite filter via useMemo. The old setFiltered
+  // effect forced a second render per keystroke and per filter toggle.
+  const filtered = useMemo(() => {
     let result = expenses
 
     if (search) {
@@ -443,8 +445,14 @@ export default function ExpensesScreen() {
       })
     }
 
-    setFiltered(result)
+    return result
   }, [search, statusFilter, paidFilter, expenses])
+
+  // Phase 4.6 part 5: stable refs for the memoized ExpenseRowComponent.
+  const expRenderItem = useCallback(({ item }: { item: ExpenseRow }) => (
+    <ExpenseRowComponent expense={item} onPress={() => setSelectedId(item.id)} />
+  ), [])
+  const expKeyExtractor = useCallback((item: ExpenseRow) => item.id, [])
 
   // Compute per-currency totals
   const totals: Record<string, number> = {}
@@ -704,13 +712,15 @@ export default function ExpensesScreen() {
         </View>
       ) : null}
 
-      {/* List */}
+      {/* List — Phase 4.6 part 5 virtualization */}
       <FlatList
         data={filtered}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <ExpenseRowComponent expense={item} onPress={() => setSelectedId(item.id)} />
-        )}
+        keyExtractor={expKeyExtractor}
+        renderItem={expRenderItem}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={10}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={COLORS.forest} />
         }

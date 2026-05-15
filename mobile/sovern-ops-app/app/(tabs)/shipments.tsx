@@ -1,10 +1,11 @@
 // ─── Shipments Screen ────────────────────────────────────────────────────
 // Read-only on-the-road visibility into outbound shipments. Search by
 // shipment/tracking number, filter by status, tap row for detail.
-import { useEffect, useState } from 'react'
+// Phase 4.6 part 5: ShipmentRow memo + stable renderItem/keyExtractor.
+import { memo, useCallback, useEffect, useState } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView,
+  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Platform,
 } from 'react-native'
 import { getShipments, getShipment, type Shipment } from '../../src/services/api'
 import { COLORS } from '../../src/constants/config'
@@ -43,7 +44,7 @@ function StatusBadge({ status }: { status?: string }) {
   )
 }
 
-function ShipmentRow({ shipment, onPress }: { shipment: Shipment; onPress: () => void }) {
+const ShipmentRow = memo(function ShipmentRow({ shipment, onPress }: { shipment: Shipment; onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.rowHeader}>
@@ -69,7 +70,7 @@ function ShipmentRow({ shipment, onPress }: { shipment: Shipment; onPress: () =>
       ) : null}
     </TouchableOpacity>
   )
-}
+})
 
 function ShipmentDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
   const [item, setItem] = useState<Shipment | null>(null)
@@ -164,6 +165,12 @@ export default function ShipmentsScreen() {
 
   useEffect(() => { load() }, [search, status])
 
+  // Phase 4.6 part 5: stable refs for the memoized ShipmentRow.
+  const shipRenderItem = useCallback(({ item }: { item: Shipment }) => (
+    <ShipmentRow shipment={item} onPress={() => setSelectedId(item.id)} />
+  ), [])
+  const shipKeyExtractor = useCallback((s: Shipment) => s.id, [])
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -203,10 +210,12 @@ export default function ShipmentsScreen() {
 
       <FlatList
         data={items}
-        keyExtractor={(s) => s.id}
-        renderItem={({ item }) => (
-          <ShipmentRow shipment={item} onPress={() => setSelectedId(item.id)} />
-        )}
+        keyExtractor={shipKeyExtractor}
+        renderItem={shipRenderItem}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={10}
         contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 40 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={COLORS.forest} />

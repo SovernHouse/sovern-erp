@@ -3,7 +3,9 @@
 // REST-based (polling on focus); socket.io integration can be added later.
 // Maps to /api/chat/rooms and /api/chat/rooms/:id/messages.
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+// Phase 4.6 part 5: RoomRow + MessageBubble memo'd, stable renderItem +
+// keyExtractor on both lists, virtualization tuning.
+import { memo, useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, KeyboardAvoidingView,
@@ -47,7 +49,7 @@ function initials(name: string): string {
 
 // ─── Room List ────────────────────────────────────────────────────────────────
 
-function RoomRow({ room, onPress }: { room: ChatRoom; onPress: () => void }) {
+const RoomRow = memo(function RoomRow({ room, onPress }: { room: ChatRoom; onPress: () => void }) {
   const displayName = room.type === 'dm' && room.dmUser
     ? room.dmUser.name
     : (room.name ?? 'Unnamed');
@@ -87,11 +89,11 @@ function RoomRow({ room, onPress }: { room: ChatRoom; onPress: () => void }) {
       )}
     </TouchableOpacity>
   );
-}
+});
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
-function MessageBubble({ msg, isMe }: { msg: ChatMessage; isMe: boolean }) {
+const MessageBubble = memo(function MessageBubble({ msg, isMe }: { msg: ChatMessage; isMe: boolean }) {
   if (msg.deletedAt) {
     return (
       <View style={[styles.bubbleWrap, isMe && styles.bubbleWrapMe]}>
@@ -114,7 +116,7 @@ function MessageBubble({ msg, isMe }: { msg: ChatMessage; isMe: boolean }) {
       </Text>
     </View>
   );
-}
+});
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
@@ -203,6 +205,16 @@ export default function ChatScreen() {
     }
   }
 
+  // Phase 4.6 part 5: stable refs for both FlatLists' renderItem/keyExtractor.
+  const roomKeyExtractor = useCallback((r: ChatRoom) => r.id, []);
+  const roomRenderItem = useCallback(({ item }: { item: ChatRoom }) => (
+    <RoomRow room={item} onPress={() => openRoom(item)} />
+  ), []);
+  const messageKeyExtractor = useCallback((m: ChatMessage) => m.id, []);
+  const messageRenderItem = useCallback(({ item }: { item: ChatMessage }) => (
+    <MessageBubble msg={item} isMe={item.isMe ?? false} />
+  ), []);
+
   // ── Render: rooms ──────────────────────────────────────────────────────────
 
   if (!activeRoom) {
@@ -218,10 +230,12 @@ export default function ChatScreen() {
       <View style={styles.container}>
         <FlatList
           data={rooms}
-          keyExtractor={r => r.id}
-          renderItem={({ item }) => (
-            <RoomRow room={item} onPress={() => openRoom(item)} />
-          )}
+          keyExtractor={roomKeyExtractor}
+          renderItem={roomRenderItem}
+          removeClippedSubviews={Platform.OS === 'android'}
+          initialNumToRender={15}
+          maxToRenderPerBatch={12}
+          windowSize={10}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           refreshControl={
             <RefreshControl
@@ -274,10 +288,12 @@ export default function ChatScreen() {
         <FlatList
           ref={listRef}
           data={messages}
-          keyExtractor={m => m.id}
-          renderItem={({ item }) => (
-            <MessageBubble msg={item} isMe={item.isMe ?? false} />
-          )}
+          keyExtractor={messageKeyExtractor}
+          renderItem={messageRenderItem}
+          removeClippedSubviews={Platform.OS === 'android'}
+          initialNumToRender={20}
+          maxToRenderPerBatch={15}
+          windowSize={12}
           refreshControl={
             <RefreshControl
               refreshing={refreshingMsgs}

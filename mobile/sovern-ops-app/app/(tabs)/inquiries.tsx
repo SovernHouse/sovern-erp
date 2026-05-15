@@ -2,10 +2,11 @@
 // RFQs landing in /api/inquiries. Triage from the road: read, see priority,
 // see source (web/email/phone/portal), bump status as the funnel moves
 // new → in_review → quoted → follow_up → converted/lost.
-import { useEffect, useState } from 'react'
+// Phase 4.6 part 5: InquiryRow memo + stable renderItem/keyExtractor.
+import { memo, useCallback, useEffect, useState } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Alert,
+  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Alert, Platform,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import {
@@ -89,7 +90,7 @@ function PriorityDot({ priority }: { priority?: string }) {
   )
 }
 
-function InquiryRow({ inquiry, onPress }: { inquiry: Inquiry; onPress: () => void }) {
+const InquiryRow = memo(function InquiryRow({ inquiry, onPress }: { inquiry: Inquiry; onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.rowHeader}>
@@ -114,7 +115,7 @@ function InquiryRow({ inquiry, onPress }: { inquiry: Inquiry; onPress: () => voi
       ) : null}
     </TouchableOpacity>
   )
-}
+})
 
 function InquiryDetailModal({
   id,
@@ -367,6 +368,12 @@ export default function InquiriesScreen() {
 
   useEffect(() => { load() }, [search, status])
 
+  // Phase 4.6 part 5: stable refs for the memoized InquiryRow.
+  const inqRenderItem = useCallback(({ item }: { item: Inquiry }) => (
+    <InquiryRow inquiry={item} onPress={() => setSelectedId(item.id)} />
+  ), [])
+  const inqKeyExtractor = useCallback((s: Inquiry) => s.id, [])
+
   if (loading) {
     return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.forest} /></View>
   }
@@ -402,10 +409,12 @@ export default function InquiriesScreen() {
 
       <FlatList
         data={items}
-        keyExtractor={(s) => s.id}
-        renderItem={({ item }) => (
-          <InquiryRow inquiry={item} onPress={() => setSelectedId(item.id)} />
-        )}
+        keyExtractor={inqKeyExtractor}
+        renderItem={inqRenderItem}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={10}
         contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 40 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={COLORS.forest} />
