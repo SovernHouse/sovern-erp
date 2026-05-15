@@ -1,14 +1,16 @@
 // ─── Products Screen ──────────────────────────────────────────────────────
 // Catalog with pricing breakdown, commercial specs, and supplier/client split.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView,
+  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Switch,
 } from 'react-native';
 import { getProducts, getProduct, type Product, type ProductPrice } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
 import { BrandBadge } from '../../src/components/BrandBadge';
 import BrandFilterPicker from '../../src/components/BrandFilterPicker';
+import { filterByFlooring, useShowAllCategories } from '../../src/utils/productCategoryFilter';
+import { useAuthStore } from '../../src/store/authStore';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -205,6 +207,11 @@ export default function ProductsScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Phase 4, C14: brand filter at top of catalog. Hidden for single-brand users.
   const [brandFilter, setBrandFilter] = useState<string | null>(null);
+  // Phase 4.5, C21: flooring-only by default. Super-admin toggle reveals
+  // auto parts, garments, services, and other lines that exist in schema.
+  const [showAllCategories, setShowAllCategories] = useShowAllCategories();
+  const user = useAuthStore(s => s.user);
+  const isSuperAdmin = user?.role === 'super_admin';
 
   async function load(isRefresh = false) {
     try {
@@ -227,19 +234,26 @@ export default function ProductsScreen() {
   useEffect(() => { load(); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brandFilter]);
 
+  // Phase 4.5, C21: composite filter is category filter then search filter.
+  // Both reactively recompute as their inputs change.
+  const categoryFiltered = useMemo(
+    () => filterByFlooring(products, showAllCategories),
+    [products, showAllCategories],
+  );
+
   useEffect(() => {
     const q = search.toLowerCase();
     setFiltered(
       q
-        ? products.filter(p =>
+        ? categoryFiltered.filter(p =>
             p.name.toLowerCase().includes(q) ||
             (p.sku ?? '').toLowerCase().includes(q) ||
             categoryName(p.category).toLowerCase().includes(q) ||
             (p.factory?.companyName ?? '').toLowerCase().includes(q)
           )
-        : products
+        : categoryFiltered
     );
-  }, [search, products]);
+  }, [search, categoryFiltered]);
 
   if (loading) {
     return (
@@ -255,6 +269,19 @@ export default function ProductsScreen() {
       <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
         <BrandFilterPicker value={brandFilter} onChange={setBrandFilter} />
       </View>
+
+      {/* Phase 4.5, C21: super-admin toggle for non-flooring categories. */}
+      {isSuperAdmin && (
+        <View style={styles.categoryToggleRow}>
+          <Text style={styles.categoryToggleLabel}>Show all categories</Text>
+          <Switch value={showAllCategories} onValueChange={setShowAllCategories} />
+        </View>
+      )}
+      {!showAllCategories && (
+        <Text style={styles.categoryToggleNote}>
+          Flooring only. {isSuperAdmin ? 'Toggle to see auto parts, garments, services.' : 'Hidden lines available on request.'}
+        </Text>
+      )}
 
       <View style={styles.searchBar}>
         <TextInput
@@ -301,6 +328,9 @@ export default function ProductsScreen() {
 const styles = StyleSheet.create({
   container:   { flex: 1, backgroundColor: COLORS.cream },
   centered:    { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.cream },
+  categoryToggleRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 6 },
+  categoryToggleLabel: { fontSize: 12, color: COLORS.muted, fontWeight: '500' },
+  categoryToggleNote:  { paddingHorizontal: 16, paddingTop: 4, fontSize: 11, color: COLORS.muted, fontStyle: 'italic' },
   searchBar:   { margin: 12, backgroundColor: COLORS.white, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 12 },
   searchInput: { height: 40, color: COLORS.ink, fontSize: 14 },
   count:       { paddingHorizontal: 16, paddingBottom: 4, fontSize: 12, color: COLORS.muted },

@@ -11,6 +11,8 @@ import {
 } from '../../components/FormFields'
 import { quotationsAPI, customersAPI, productsAPI, factoriesAPI, leadsAPI } from '../../services/api'
 import BrandPicker from '../../components/BrandPicker'
+import { filterByFlooring, useShowAllCategories } from '../../utils/productCategoryFilter'
+import { useAuth } from '../../hooks/useAuth'
 
 const UNITS = [
   { value: 'sqm', label: 'Square Meter (sqm)' },
@@ -34,6 +36,8 @@ export default function QuotationForm() {
   const isEditMode = Boolean(id)
 
   // State
+  const { user } = useAuth()
+  const isSuperAdmin = user?.role === 'super_admin'
   const [loading, setLoading] = useState(isEditMode)
   const [submitting, setSubmitting] = useState(false)
   const [customers, setCustomers] = useState([])
@@ -41,6 +45,10 @@ export default function QuotationForm() {
   const [factories, setFactories] = useState([])
   const [leads, setLeads] = useState([])
   const [errors, setErrors] = useState({})
+  // Phase 4.5, C21: line-item product picker is flooring-only by default.
+  // Super-admin can flip the toggle on (shared with the catalog page).
+  const [showAllCategories, setShowAllCategories] = useShowAllCategories()
+  const visibleProducts = filterByFlooring(products, showAllCategories)
 
   const [formData, setFormData] = useState({
     // Phase 3, C13: brand context. BrandPicker auto-fills from
@@ -494,9 +502,9 @@ export default function QuotationForm() {
                         ),
                       }))
                     }}
-                    options={products.map((p) => ({
+                    options={visibleProducts.map((p) => ({
                       value: p.id,
-                      label: `${p.sku ? p.sku + ' — ' : ''}${p.name}`,
+                      label: `${p.sku ? p.sku + ' · ' : ''}${p.name}`,
                     }))}
                     error={errors[`item_${index}_product`]}
                     required

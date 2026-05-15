@@ -25,6 +25,8 @@ import BrandPicker from '../../components/BrandPicker'
 import BrandBadge from '../../components/BrandBadge'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { formatCurrency } from '../../utils/formatters'
+import { useAuth } from '../../hooks/useAuth'
+import { filterByFlooring, useShowAllCategories, FLOORING_PRODUCT_TYPES } from '../../utils/productCategoryFilter'
 
 const PRODUCT_TYPES = [
   { value: 'lvt', label: 'LVT' },
@@ -40,6 +42,8 @@ const PRODUCT_TYPES = [
 const MOQ_UNITS = ['sqm', 'sqft', 'box', 'pallet', 'roll', 'piece', 'container']
 
 export default function ProductCatalog() {
+  const { user } = useAuth()
+  const isSuperAdmin = user?.role === 'super_admin'
   const [brandFilter, setBrandFilter] = useState(null)
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
@@ -47,6 +51,11 @@ export default function ProductCatalog() {
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
+  // Phase 4.5, C21: flooring-only filter is the default. Super-admin can
+  // flip on "Show all categories" to surface non-flooring rows that exist
+  // in schema (auto parts, garments, services). Persists per-browser.
+  const [showAllCategories, setShowAllCategories] = useShowAllCategories()
+  const visibleProducts = filterByFlooring(products, showAllCategories)
 
   const load = async () => {
     setLoading(true)
@@ -90,6 +99,17 @@ export default function ProductCatalog() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {isSuperAdmin && (
+            <label className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 cursor-pointer hover:bg-slate-50">
+              <input
+                type="checkbox"
+                checked={showAllCategories}
+                onChange={(e) => setShowAllCategories(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-300"
+              />
+              <span>Show all categories</span>
+            </label>
+          )}
           <BrandFilterPicker value={brandFilter} onChange={setBrandFilter} />
           <button
             onClick={() => { setEditing(null); setShowForm(true) }}
@@ -100,12 +120,20 @@ export default function ProductCatalog() {
         </div>
       </div>
 
+      {!showAllCategories && (
+        <div className="text-xs text-slate-500">
+          Showing flooring only ({FLOORING_PRODUCT_TYPES.join(', ')}). Toggle <em>Show all categories</em> to see auto parts, garments, services, and other lines.
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow overflow-hidden">
         {loading ? (
           <LoadingSpinner message="Loading catalog…" />
-        ) : products.length === 0 ? (
+        ) : visibleProducts.length === 0 ? (
           <div className="p-8 text-center text-slate-500">
-            No products yet. Click <strong>New Product</strong> to add one.
+            {products.length === 0
+              ? <>No products yet. Click <strong>New Product</strong> to add one.</>
+              : <>No flooring products in this brand. {isSuperAdmin && <>Toggle <em>Show all categories</em> to see hidden lines.</>}</>}
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -123,7 +151,7 @@ export default function ProductCatalog() {
               </tr>
             </thead>
             <tbody>
-              {products.map(p => (
+              {visibleProducts.map(p => (
                 <tr key={p.id} className={`border-b border-slate-100 hover:bg-slate-50 ${!p.isActive ? 'opacity-60' : ''}`}>
                   <td className="px-4 py-3 font-mono text-xs text-slate-700">{p.sku}</td>
                   <td className="px-4 py-3 text-slate-900">{p.name}</td>
