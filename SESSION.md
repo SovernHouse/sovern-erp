@@ -5,17 +5,114 @@
 ---
 
 ## Last Updated
-2026-05-14 Taiwan time. Phase 4 complete. C14 + C15 + C16 + C17 + C18 shipped + live.
+2026-05-15 Taiwan time. Phase 4.5 complete. C19 (v1 + v2) + C20 + C21 + C22 + C23 + C24 shipped + live.
 
 ---
 
 ## CI Status
-- **Latest commit on main:** `4744e8d` (fix(phase-4): sanctions migration uses model.getTableName() (C18 hotfix))
+- **Latest commit on main:** `1d0b290` (perf(phase-4.5): memoize list rows + virtualize customer/lead screens (C22))
 - **Working tree:** clean
-- **CI/CD Pipeline (4744e8d):** green
-- **Deploy (4744e8d):** green
+- **Most recent deploy:** `c71eb25` (C19 v2 hotfix) — deploy green at 01:44 UTC. C22 (`1d0b290`) CI queued at session close.
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
 - **C18 migration verified:** 5 Customers + 112 Leads at screening_status='pending'; sentinel `phase4_sanctions_backfilled` in AuditLog.
+
+---
+
+## Phase 4.5 — SHIPPED
+
+Six items shipped over seven commits (including one hotfix). All sentinels confirmed on live DB; real customer + lead data untouched.
+
+### C23 — spellcheck + autocorrect on prose inputs (commit `95ec627`, deploy green)
+- FormFields.jsx primitives carry explicit spellCheck defaults: TextInput + TextArea → true, EmailInput + PasswordInput + NumberInput + CurrencyInput → false. EmailInput also drops autoCapitalize + autoCorrect.
+- AI assistant chat textarea + dev-run answer textarea: spellCheck=true.
+- ClientContacts.jsx email composer body + template body: spellCheck=true.
+- Mobile assistant + chat composer: explicit autoCorrect + spellCheck + autoCapitalize="sentences".
+- Code-like fields (search, SKU, forgot-password email) intentionally keep autoCorrect={false}.
+
+### C21 — flooring-only catalog + super-admin toggle (commit `a9a6aac`, deploy green)
+- Shared util `productCategoryFilter.js` (desktop) + `.ts` (mobile) with FLOORING_PRODUCT_TYPES = [lvt, spc, wpc, hardwood, laminate, ceramic, tile, vinyl], filterByFlooring(), useShowAllCategories() hook (localStorage / AsyncStorage).
+- Settings/ProductCatalog.jsx: super-admin Show all categories checkbox + empty-state copy.
+- Quotations/QuotationForm.jsx: line-item product picker uses visibleProducts. Toggle shared via storage. Fixed pre-existing em dash in label.
+- Mobile app/(tabs)/products.tsx: Switch toggle (super-admin only) + composite filter via useMemo.
+
+### C24 — refreshed FW brand signature (commit `41c2a60`, deploy green, live-verified)
+- New migrateBrandSignaturesC24.js, idempotent via AuditLog sentinel `phase4_5_fw_signature_updated`. Updates Brand WHERE code='FW' signatureHtml + signatureText to Country Manager design surfacing both FlorWay (Malaysia) and Anhui HanHua (China). Calibri/Arial inline-style table.
+- seedBrands.js FW row updated to match so fresh installs are coherent.
+- server.js wires migration after migrateSanctionsC18.
+- SH brand intentionally untouched.
+- **Live verified:** FW.signatureHtml = 966 chars; AuditLog sentinel recorded at 2026-05-15 01:28:39 UTC.
+
+### C19 v1 — AI Drive retrieval + external search docs (commit `a0cbc9a`, deploy green)
+- erpToolServer.js TOOL_DEFS: rewritten search_drive_files + read_drive_file descriptions to cover brand decks, presentations, contracts, slide decks, references, drafts. Calls out name= vs query= trade-off and the requirement to surface webViewLink.
+- aiContextService.js: new C19 paragraph instructing the assistant to call search_drive_files on any named-document request BEFORE saying "I can't share that".
+- helpContent.js: /ai/assistant section gets "Finding documents in Drive" and "External research" subsections with trigger phrasing. Removes stale "does NOT have access to documents" line.
+
+### C19 v2 — AI assistant WRITE + ACTION capabilities (commits `a6fc36f` + hotfix `c71eb25`, deploy green)
+- 7 new MCP tools added to erpToolServer.js:
+  - WRITE: update_brand, update_email_template, update_user_profile_self, update_dashboard_layout.
+  - ACTION: create_scheduled_task, mark_item_complete, archive_item.
+- Permission helpers: getCurrentUserOrThrow + requireSuperAdmin.
+- Audit wrapper auditAiWrite writes rows with action prefix `ai_assistant_<tool_name>`, entity = affected model, entityId = row UUID, changes = before/after diff.
+- Field whitelists: BRAND_WRITABLE_FIELDS, EMAIL_TEMPLATE_WRITABLE_FIELDS, USER_SELF_WRITABLE_FIELDS, ARCHIVABLE_ENTITIES. Anything outside is silently dropped.
+- aiContextService.js system prompt: mandatory pre-write protocol (read current, show diff, wait for confirm, apply, report) + hard-refusal list (deletes, payment/billing edits, sanctions screening status, AuditLog mods, user roles/permissions).
+- helpContent.js: Configuration changes via chat + Hard refusals subsections.
+- **Hotfix `c71eb25`:** the v2 commit used literal backticks inside the system-prompt template literal, breaking parsing and failing 148 tests. Hotfix escaped them per the existing convention (\`\\\`tool\\\`\`). Backend tests now 219/219 pass.
+
+### C20 — archive seed data + lock catalog re-seeding (commit `b6a8d82`, deploy green, live-verified)
+- New migrateSeedDataC20.js. For each target (Product, ProductPrice, ProductSpecification, then 6 empty tables: Quotation/SO/PI/Invoice/PO/CommissionTracking): DROP IF EXISTS ArchivedSeed_<X>, CREATE TABLE ArchivedSeed_<X> AS SELECT *, datetime('now') AS archived_at_utc FROM <X>, then DELETE FROM <X> in FK-safe order.
+- Sentinel-guarded via AuditLog action `phase4_5_seed_data_archived`. Re-run is no-op.
+- seedProducts.js: short-circuits when the C20 sentinel exists, so the empty Product table never gets re-seeded with the 5 Phase 4 placeholder SKUs.
+- **Live verified:** Product=0, ArchivedSeed_Product=31 rows, ArchivedSeed_ProductPrice=31 rows. Customer=5, Leads=112 (real data preserved). Sentinel at 2026-05-15 01:45:09 UTC.
+- **Recovery path:** INSERT INTO Product SELECT (all columns except archived_at_utc) FROM ArchivedSeed_Product. Same shape for the other tables.
+
+### C22 — mobile perf pass (commit `1d0b290`, CI queued at session close)
+- customers.tsx + leads.tsx: row component wrapped in React.memo, search filter migrated from useEffect/setFiltered to useMemo (one render per keystroke instead of two), renderItem + keyExtractor extracted to useCallback for stable references, FlatList virtualization tuned (removeClippedSubviews on Android, initialNumToRender=12, maxToRenderPerBatch=10, windowSize=10).
+- No on-device TTI numbers per the agreed "code-level fixes with reasoned narrative" scope.
+- Dashboard widget memoization deferred to a follow-up commit (more widgets, deserves its own survey).
+
+---
+
+## What Alex still owes manually
+
+1. **Verify on phone after Expo OTA refresh** — pull the latest update on Expo Go, walk the customer + lead lists, and confirm scrolling feels smoother. C22 changes are JS-only so no native rebuild needed.
+
+2. **Walk the AI assistant verification checklist (Phase 4.5, C19):**
+   - "Show me the IronLite Branding deck" — should call search_drive_files name=, return a clickable webViewLink.
+   - "Update the FW signature to put HanHua first" — should show before/after, wait for "yes", call update_brand, write `ai_assistant_update_brand` to AuditLog.
+   - "Flights TPE to LAX next Friday morning" — WebSearch result.
+   - "Send Mr. Lee an email asking for the updated FOB list" — preview-confirm before send_email.
+   - "Remind me to follow up with Acme next Tuesday 10am" — echo Taipei time, wait for confirm, call create_scheduled_task, write `ai_assistant_create_scheduled_task`.
+
+3. **Empty product catalog is expected** — the 31 demo Products were archived in C20. Add real flooring products via /settings/products. The flooring-only filter from C21 is on by default; flip "Show all categories" to surface non-flooring schema fields.
+
+4. **AuditLog audit query** — to see every AI-initiated change, run:
+   ```sql
+   SELECT action, entity, entity_id, datetime(created_at) FROM AuditLog WHERE action LIKE 'ai_assistant_%' ORDER BY created_at DESC;
+   ```
+
+5. **Mobile app mobile follow-up** (deferred): dashboard widget memoization is the next Phase 4.6 perf pass. Long-list pagination (onEndReached) is a Phase 5 conversation since current screens fetch page=1 only.
+
+---
+
+## Phase 4.5 commit log
+
+| Hash | Scope |
+|---|---|
+| `95ec627` | C23 — spellcheck + autocorrect on prose inputs |
+| `a9a6aac` | C21 — flooring-only catalog + super-admin toggle |
+| `41c2a60` | C24 — refreshed FW brand signature |
+| `a0cbc9a` | C19 v1 — AI Drive retrieval + external search docs |
+| `a6fc36f` | C19 v2 — AI WRITE + ACTION tools (failed CI, see hotfix) |
+| `b6a8d82` | C20 — archive seed data + lock catalog re-seeding |
+| `c71eb25` | hotfix — escape backticks inside C19 v2 system prompt template literal |
+| `1d0b290` | C22 — memoize list rows + virtualize customer/lead screens |
+
+---
+
+## CI Status (legacy Phase 4)
+- **Latest Phase 4 commit:** `4744e8d` (fix(phase-4): sanctions migration uses model.getTableName() (C18 hotfix))
+- **CI/CD Pipeline (4744e8d):** green
+- **Deploy (4744e8d):** green
 - **C18 hotfix:** Customer.getTableName() returns 'Customer' (singular); migration UPDATE now uses model.getTableName() so the bug can't recur on a cold install.
 
 ---
