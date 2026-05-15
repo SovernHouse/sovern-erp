@@ -9,10 +9,15 @@ import {
   DateInput,
   TextArea,
 } from '../../components/FormFields'
-import { quotationsAPI, customersAPI, productsAPI, factoriesAPI, leadsAPI } from '../../services/api'
+import { quotationsAPI, customersAPI, productsAPI, factoriesAPI, leadsAPI, tariffRatesAPI } from '../../services/api'
 import BrandPicker from '../../components/BrandPicker'
 import { filterByFlooring, useShowAllCategories } from '../../utils/productCategoryFilter'
 import { useAuth } from '../../hooks/useAuth'
+import { displayPricePerArea, AREA_LABEL } from '../../../../shared/units'
+
+// Phase 4.9 C-3: countries we currently compute landed-cost / tariff for.
+// Mirror of backend/controllers/quotationController.js TARIFF_TRACKED_DESTINATIONS.
+const TARIFF_TRACKED_DESTINATIONS = new Set(['US', 'USA'])
 
 const UNITS = [
   { value: 'sqm', label: 'Square Meter (sqm)' },
@@ -76,7 +81,46 @@ export default function QuotationForm() {
     taxRate: 0,
     terms: '',
     notes: '',
+    // Phase 4.9 C-3: display-unit preference for this quotation. Locks
+    // on send (the backend rejects further updates after status='sent').
+    displayAreaUnit: 'sqm',
+    displayDimensionUnit: 'mm',
   })
+
+  // Phase 4.9 C-3: tariff lookup for live US landed-cost preview.
+  const [tariffRates, setTariffRates] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    async function loadTariffs() {
+      try {
+        const res = await tariffRatesAPI.getAll()
+        if (!cancelled) setTariffRates(Array.isArray(res.data) ? res.data : [])
+      } catch (e) {
+        if (!cancelled) setTariffRates([])
+      }
+    }
+    loadTariffs()
+    return () => { cancelled = true }
+  }, [])
+
+  const currentCustomer = customers.find(c => c.id === formData.customerId)
+  const destinationCountry = (currentCustomer?.country || '').toUpperCase()
+  const isUSDestination = TARIFF_TRACKED_DESTINATIONS.has(destinationCountry)
+
+  function lookupTariff(origin, destination, brandCode) {
+    if (!origin || !destination) return null
+    const today = new Date().toISOString().slice(0, 10)
+    const candidates = tariffRates.filter(r =>
+      (r.originCountry || '').toUpperCase() === origin.toUpperCase() &&
+      (r.destinationCountry || '').toUpperCase() === destination.toUpperCase() &&
+      r.effectiveFrom <= today &&
+      r.effectiveUntil >= today
+    )
+    if (!candidates.length) return null
+    // Prefer brand-specific over NULL (matches backend getCurrentTariff).
+    const brandHit = candidates.find(r => r.brandCode === brandCode)
+    return brandHit || candidates.find(r => !r.brandCode) || candidates[0]
+  }
 
   // Load customers and products on mount.
   // Phase 4, C14: products are filtered by current brand context so the
@@ -137,6 +181,7 @@ export default function QuotationForm() {
               unitPrice: item.unitPrice || 0,
               discount: item.discount || 0,
               notes: item.notes || '',
+              originCountry: item.originCountry || '',
             })),
             validUntil: quotation.validUntil
               ? quotation.validUntil.split('T')[0]
@@ -147,6 +192,8 @@ export default function QuotationForm() {
             taxRate: quotation.taxRate || 0,
             terms: quotation.terms || '',
             notes: quotation.notes || '',
+            displayAreaUnit: quotation.displayAreaUnit || 'sqm',
+            displayDimensionUnit: quotation.displayDimensionUnit || 'mm',
           })
         } catch (error) {
           toast.error('Failed to load quotation')
@@ -309,7 +356,12 @@ export default function QuotationForm() {
           // Phase 4, C14: super-admin below-floor override reason. Server
           // ignores the field when unitPrice is at or above floor.
           ...(item.belowFloorReason && { belowFloorReason: item.belowFloorReason }),
+          // Phase 4.9 C-3: origin country picker per line.
+          ...(item.originCountry && { originCountry: item.originCountry }),
         })),
+        // Phase 4.9 C-3: lock-on-send display-unit preference.
+        displayAreaUnit: formData.displayAreaUnit,
+        displayDimensionUnit: formData.displayDimensionUnit,
         ...(formData.validUntil && { validUntil: formData.validUntil }),
         currency: formData.currency,
         ...(formData.discount && { discount: formData.discount }),
@@ -383,6 +435,56 @@ export default function QuotationForm() {
             onChange={(v) => setFormData((prev) => ({ ...prev, brandCode: v }))}
             disabled={isEditMode}
           />
+        </div>
+
+        {/* Phase 4.9 C-3: display-unit toggles. Locks at send (backend
+            blocks updates once status='sent'). Conversion is display-only;
+            storage stays canonical (sqm + mm). */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-slate-900 mb-3">Quotation units</h2>
+          <p className="text-xs text-slate-500 mb-4">
+            Locks when the quotation is sent. Storage stays canonical (m² + mm); these only change how the quotation renders to the buyer.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Area unit</label>
+              <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
+                {['sqm', 'sqft'].map(u => (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, displayAreaUnit: u }))}
+                    className={`px-4 py-2 text-sm font-medium transition ${
+                      formData.displayAreaUnit === u
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {u === 'sqm' ? 'Square meter (m²)' : 'Square foot (ft²)'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Dimension unit</label>
+              <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
+                {['mm', 'inch'].map(u => (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, displayDimensionUnit: u }))}
+                    className={`px-4 py-2 text-sm font-medium transition ${
+                      formData.displayDimensionUnit === u
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {u === 'mm' ? 'Millimeter (mm)' : 'Inch (in)'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Customer Section */}
@@ -518,6 +620,46 @@ export default function QuotationForm() {
                     }
                   />
 
+                  {/* Phase 4.9 C-3: origin picker. Sourced from
+                      product.originVariants when present; otherwise hidden. */}
+                  {(() => {
+                    const product = products.find(p => p.id === item.productId)
+                    const variants = Array.isArray(product?.originVariants) ? product.originVariants : []
+                    if (!variants.length) return null
+                    return (
+                      <SelectInput
+                        label="Origin (country)"
+                        value={item.originCountry || ''}
+                        onChange={(e) => {
+                          const code = e.target.value
+                          // Auto-fill FOB from the chosen variant.
+                          const match = variants.find(v => (v.originCountry || '').toUpperCase() === code.toUpperCase())
+                          setFormData(prev => ({
+                            ...prev,
+                            items: prev.items.map(it =>
+                              it.id === item.id
+                                ? {
+                                    ...it,
+                                    originCountry: code,
+                                    unitPrice: match?.fobPriceUsd != null
+                                      ? parseFloat(match.fobPriceUsd)
+                                      : it.unitPrice,
+                                  }
+                                : it
+                            ),
+                          }))
+                        }}
+                        options={[
+                          { value: '', label: '— select origin —' },
+                          ...variants.map(v => ({
+                            value: (v.originCountry || '').toUpperCase(),
+                            label: `${(v.originCountry || '').toUpperCase()} · ${parseFloat(v.fobPriceUsd || 0).toFixed(2)} USD/${v.priceUnit || 'sqm'}`,
+                          })),
+                        ]}
+                      />
+                    )
+                  })()}
+
                   <NumberInput
                     label="Quantity"
                     value={item.quantity}
@@ -553,21 +695,30 @@ export default function QuotationForm() {
                       error={errors[`item_${index}_price`]}
                       required
                     />
-                    {/* Phase 4, C14: floor hint + below-floor warning */}
+                    {/* Phase 4, C14: floor hint + below-floor warning.
+                        Phase 4.9 C-3: when the line is area-based (sqm/sqft)
+                        the floor displays in the quotation's displayAreaUnit. */}
                     {(() => {
                       const product = products.find((p) => p.id === item.productId)
                       if (!product || product.baseFobPrice == null) return null
                       const floor = parseFloat(product.baseFobPrice)
+                      const isAreaLine = item.unit === 'sqm' || item.unit === 'sqft'
+                      const displayFloor = isAreaLine
+                        ? displayPricePerArea(floor, formData.displayAreaUnit)
+                        : floor
                       const isBelow = parseFloat(item.unitPrice || 0) < floor
+                      const unitSuffix = isAreaLine
+                        ? `/${AREA_LABEL[formData.displayAreaUnit]}`
+                        : ''
                       return (
                         <div className={`mt-1 text-xs ${isBelow ? 'text-amber-700' : 'text-slate-500'}`}>
                           {isBelow ? (
                             <>
-                              <strong>Below floor</strong> ({floor.toFixed(2)} {product.currency || 'USD'}).
+                              <strong>Below floor</strong> ({displayFloor.toFixed(2)} {product.currency || 'USD'}{unitSuffix}).
                               Super-admin can quote below with a written reason; otherwise raise to floor.
                             </>
                           ) : (
-                            <>Floor: {floor.toFixed(2)} {product.currency || 'USD'}. Editable upward without approval.</>
+                            <>Floor: {displayFloor.toFixed(2)} {product.currency || 'USD'}{unitSuffix}. Editable upward without approval.</>
                           )}
                         </div>
                       )
@@ -620,6 +771,46 @@ export default function QuotationForm() {
                     </p>
                   </div>
                 </div>
+
+                {/* Phase 4.9 C-3: live USA landed-cost preview. Shows when
+                    customer is in a tariff-tracked destination and the line
+                    has both an origin and an active tariff lookup. Display
+                    only — backend snapshots at send(). */}
+                {(() => {
+                  if (!isUSDestination || !item.originCountry) return null
+                  const tariff = lookupTariff(item.originCountry, destinationCountry, formData.brandCode)
+                  if (!tariff) {
+                    return (
+                      <div className="mt-3 p-3 border border-amber-300 bg-amber-50 rounded text-xs text-amber-800">
+                        <strong>No active tariff</strong> for {item.originCountry} → {destinationCountry}. Add one under Settings → Tariff rates before sending.
+                      </div>
+                    )
+                  }
+                  const ratePct = parseFloat(tariff.ratePercent)
+                  const fob = parseFloat(item.unitPrice || 0)
+                  const landedUnit = fob * (1 + ratePct / 100)
+                  const landedTotal = landedUnit * parseFloat(item.quantity || 0)
+                  const expires = new Date(tariff.effectiveUntil)
+                  const expiresSoon = (expires.getTime() - Date.now()) / 86400000 <= 7
+                  return (
+                    <div className={`mt-3 p-3 rounded text-xs border ${
+                      expiresSoon ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50'
+                    }`}>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <span className="font-medium text-slate-700">
+                          USA landed cost ({item.originCountry} → {destinationCountry}, tariff {ratePct.toFixed(4)}%)
+                        </span>
+                        <span className={expiresSoon ? 'text-amber-700 font-medium' : 'text-slate-500'}>
+                          source expires {tariff.effectiveUntil}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-slate-900">
+                        Landed/unit: <strong>{landedUnit.toFixed(2)} USD</strong> ·
+                        Landed total: <strong>{landedTotal.toFixed(2)} USD</strong>
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
             ))}
           </div>

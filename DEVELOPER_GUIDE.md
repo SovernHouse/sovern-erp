@@ -2721,4 +2721,67 @@ Read endpoints scope via `req.brandScope.where` plus the `brandCode IS NULL` fal
 - `tariff_rate_updated`
 - `tariff_rate_deleted`
 - `phase4_9_c2_tariff_rates_seeded`, one-time sentinel.
+
+---
+
+# Quotation landed cost + display-unit toggle (Phase 4.9, C-3)
+
+## Why
+
+US importers need a landed-cost number, not a FOB number. The C-3 work plumbs (a) origin per line item, (b) per-quotation display-unit preference for area + dimension that locks at send, and (c) a tariff snapshot persisted on the QuotationItem at send time so the document is reproducible long after the live TariffRate row changes.
+
+## Schema additions
+
+`QuotationItem` (new nullable fields, auto-sync via the existing alter pattern):
+- `originCountry` STRING(2)
+- `fobPriceUsd` DECIMAL(12,2), canonical FOB the buyer was quoted in USD
+- `tariffSnapshot` JSON: `{ ratePercent, effectiveUntil, sourceTariffRateId, sourceNote, snapshottedAt }`
+- `landedCostUnit` DECIMAL(12,2)
+- `landedCostTotal` DECIMAL(15,2)
+
+`Quotation`:
+- `displayAreaUnit` ENUM('sqm','sqft') NOT NULL DEFAULT 'sqm'
+- `displayDimensionUnit` ENUM('mm','inch') NOT NULL DEFAULT 'mm'
+
+Both `display*Unit` fields freeze automatically when status flips to `sent`, because `quotationController.update` already rejects all writes for non-draft quotations.
+
+## Conversion helpers
+
+Backend: `backend/utils/unitConversion.js`. Frontend mirror: `frontend/shared/units.js`. Both export the same names (`sqmToSqft`, `displayPricePerArea`, `AREA_LABEL`, etc.) so the two layers agree byte-for-byte. Storage is always canonical (`USD/m²` for prices, `mm` for dimensions). Conversion happens at the render boundary only.
+
+## Controller behaviour
+
+- `create` and `update`: accept `originCountry` per line. If the product has a matching `originVariants[]` entry, use that variant's `fobPriceUsd` as the canonical FOB. Otherwise the line's `unitPrice` is treated as FOB. Snapshot + landed-cost fields are left null at draft.
+- `update`: when items are sent, `tariffSnapshot/landedCostUnit/landedCostTotal` are explicitly cleared so a later send re-snapshots against the live rate.
+- `send`: if `customer.country` is in `TARIFF_TRACKED_DESTINATIONS` (currently `['US','USA']`), call `tariffRateController.getCurrentTariff(origin, destination, brandCode, today)` per item. Persist `tariffSnapshot`, `landedCostUnit = fob * (1 + ratePercent/100)`, `landedCostTotal = landedCostUnit * qty`. Items without `originCountry` are skipped silently.
+
+## PDF rendering
+
+`backend/services/pdf/brandedQuotationRenderer.js`:
+- `drawFwItemsTable` now takes the full `quotation` object (was `currency`) and converts area-based line qty + unit price via the canonical conversion helpers when `quotation.displayAreaUnit` differs from `item.unit`.
+- New `drawLandedCostBreakdown` helper draws a 6-column table (Description / Origin / Tariff / FOB/unit / Landed/unit / Landed total) AFTER totals when any item has a `tariffSnapshot`. No snapshot = no section, so non-US quotations look identical to before. Footer notes the earliest source-rate expiry.
+
+## UI
+
+Desktop `frontend/admin-portal/src/pages/Quotations/QuotationForm.jsx`:
+- Unit-toggle row near the top: `m²` vs `ft²`, `mm` vs `in`.
+- Per-line origin select that auto-fills `unitPrice` from the matching `Product.originVariants[]` row when chosen.
+- USA-destination landed-cost preview per line: shows tariff %, landed/unit, landed total, source-rate expiry. Amber tint when the source row expires within 7 days.
+- Floor hint converts to the chosen area unit when the line is `sqm`/`sqft`.
+
+Mobile `mobile/sovern-ops-app/app/quotation/create.tsx` (L-035 parity):
+- Same unit-toggle pills.
+- Origin pills under each line, sourced from `product.originVariants`.
+- Same USA landed-cost preview block with amber expiry warning.
+
+`mobile/sovern-ops-app/src/services/api.ts`: `listTariffRates`, `TariffRate` type, `displayAreaUnit`/`displayDimensionUnit` added to `CreateQuotationPayload`, `originCountry` added to `QuotationItemPayload`.
+
+## Tests
+
+`backend/__tests__/unit/unitConversion.test.js` covers round-trip identity, the exact constants, and null-passthrough in the display helpers. 11 cases. Integration coverage for the snapshot-at-send flow happens via the existing `documents.test.js` once a fixture quotation with a US customer is added (follow-up).
+
+## Out of scope (deferred)
+
+- Product Catalog list-view unit toggle: same conversion helpers will plug in there in a sibling commit.
+- Tariff bulk import (C-4) and dashboard expiry widget (C-5).
 | CN | US | 40.7714

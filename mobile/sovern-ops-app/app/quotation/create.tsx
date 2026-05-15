@@ -23,11 +23,16 @@ import { COLORS } from '../../src/constants/config';
 import { BrandBadge } from '../../src/components/BrandBadge';
 import {
   getCustomers, getFactories, getProducts, createQuotation,
+  listTariffRates,
   type Customer, type Factory, type Product, type QuotationItemPayload,
+  type TariffRate,
 } from '../../src/services/api';
 
 const UNITS = ['sqm', 'sqft', 'box', 'pallet', 'roll', 'piece'] as const;
 const CURRENCIES = ['USD', 'EUR', 'CNY', 'GBP'] as const;
+
+// Phase 4.9 C-3: countries we compute landed-cost / tariff for.
+const TARIFF_TRACKED_DESTINATIONS = new Set(['US', 'USA']);
 
 type LineItem = {
   uid: string; // local id for state
@@ -42,6 +47,9 @@ type LineItem = {
   discount: string;
   notes: string;
   belowFloorReason: string;
+  // Phase 4.9 C-3: origin country picker — cycles through product.originVariants.
+  originCountry: string;
+  originVariants: Array<{ originCountry: string; fobPriceUsd: number; priceUnit?: string }>;
 };
 
 // ─── Searchable Picker Modal ──────────────────────────────────────────────
@@ -129,6 +137,31 @@ export default function CreateQuotation() {
   const [taxRate, setTaxRate] = useState<string>('');
   const [terms, setTerms] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+  // Phase 4.9 C-3: display-unit preference (locks at send).
+  const [displayAreaUnit, setDisplayAreaUnit] = useState<'sqm' | 'sqft'>('sqm');
+  const [displayDimensionUnit, setDisplayDimensionUnit] = useState<'mm' | 'inch'>('mm');
+  // Phase 4.9 C-3: live USA landed-cost preview needs the tariff table.
+  const [tariffRates, setTariffRates] = useState<TariffRate[]>([]);
+
+  useEffect(() => {
+    listTariffRates().then(r => setTariffRates(Array.isArray(r.data) ? r.data : [])).catch(() => setTariffRates([]));
+  }, []);
+
+  const destinationCountry = (customer?.country || '').toUpperCase();
+  const isUSDestination = TARIFF_TRACKED_DESTINATIONS.has(destinationCountry);
+
+  function lookupTariff(origin: string, destination: string, brand: string): TariffRate | null {
+    if (!origin || !destination) return null;
+    const today = new Date().toISOString().slice(0, 10);
+    const candidates = tariffRates.filter(r =>
+      (r.originCountry || '').toUpperCase() === origin.toUpperCase() &&
+      (r.destinationCountry || '').toUpperCase() === destination.toUpperCase() &&
+      r.effectiveFrom <= today &&
+      r.effectiveUntil >= today
+    );
+    if (!candidates.length) return null;
+    return candidates.find(r => r.brandCode === brand) || candidates.find(r => !r.brandCode) || candidates[0];
+  }
 
   // UI modal state
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
@@ -188,6 +221,14 @@ export default function CreateQuotation() {
       discount: items[idx]?.discount || '',
       notes: items[idx]?.notes || '',
       belowFloorReason: items[idx]?.belowFloorReason || '',
+      originCountry: items[idx]?.originCountry || ((product as any).originCountry || '').toUpperCase(),
+      originVariants: Array.isArray((product as any).originVariants)
+        ? (product as any).originVariants.map((v: any) => ({
+            originCountry: (v.originCountry || '').toUpperCase(),
+            fobPriceUsd: Number(v.fobPriceUsd || 0),
+            priceUnit: v.priceUnit || 'sqm',
+          }))
+        : [],
     };
     const next = [...items];
     next[idx] = newItem;
@@ -236,6 +277,7 @@ export default function CreateQuotation() {
         ...(it.discount ? { discount: parseFloat(it.discount) } : {}),
         ...(it.notes ? { notes: it.notes } : {}),
         ...(it.belowFloorReason ? { belowFloorReason: it.belowFloorReason } : {}),
+        ...(it.originCountry ? { originCountry: it.originCountry } : {}),
       })),
       ...(validUntil ? { validUntil } : {}),
       currency,
@@ -244,6 +286,8 @@ export default function CreateQuotation() {
       ...(taxRate ? { taxRate: parseFloat(taxRate) } : {}),
       ...(terms ? { terms } : {}),
       ...(notes ? { notes } : {}),
+      displayAreaUnit,
+      displayDimensionUnit,
     };
 
     setSubmitting(true);
@@ -306,6 +350,45 @@ export default function CreateQuotation() {
               {customer ? (customer.companyName ?? customer.name ?? customer.id) : 'Select customer…'}
             </Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Phase 4.9 C-3: display-unit toggles. Locks at send. */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Units (locks on send)</Text>
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.fieldLabel}>Area</Text>
+              <View style={styles.unitToggleRow}>
+                {(['sqm', 'sqft'] as const).map(u => (
+                  <TouchableOpacity
+                    key={u}
+                    style={[styles.unitToggle, displayAreaUnit === u && styles.unitToggleActive]}
+                    onPress={() => setDisplayAreaUnit(u)}
+                  >
+                    <Text style={[styles.unitToggleText, displayAreaUnit === u && styles.unitToggleTextActive]}>
+                      {u === 'sqm' ? 'm²' : 'ft²'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.fieldLabel}>Dimension</Text>
+              <View style={styles.unitToggleRow}>
+                {(['mm', 'inch'] as const).map(u => (
+                  <TouchableOpacity
+                    key={u}
+                    style={[styles.unitToggle, displayDimensionUnit === u && styles.unitToggleActive]}
+                    onPress={() => setDisplayDimensionUnit(u)}
+                  >
+                    <Text style={[styles.unitToggleText, displayDimensionUnit === u && styles.unitToggleTextActive]}>
+                      {u}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
         </View>
 
         {/* Factory (optional) */}
@@ -379,6 +462,31 @@ export default function CreateQuotation() {
                   </View>
                 </View>
 
+                {/* Phase 4.9 C-3: origin picker. Only when product has variants. */}
+                {it.originVariants.length > 0 && (
+                  <View style={styles.originBlock}>
+                    <Text style={styles.fieldLabel}>Origin</Text>
+                    <View style={styles.originPillRow}>
+                      {it.originVariants.map(v => (
+                        <TouchableOpacity
+                          key={v.originCountry}
+                          style={[styles.originPill, it.originCountry === v.originCountry && styles.originPillActive]}
+                          onPress={() => {
+                            updateItem(idx, {
+                              originCountry: v.originCountry,
+                              unitPrice: String(v.fobPriceUsd),
+                            });
+                          }}
+                        >
+                          <Text style={[styles.originPillText, it.originCountry === v.originCountry && styles.originPillTextActive]}>
+                            {v.originCountry} · {v.fobPriceUsd.toFixed(2)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
                 {belowFloor && (
                   <View style={styles.belowFloorBox}>
                     <Text style={styles.belowFloorText}>
@@ -420,6 +528,38 @@ export default function CreateQuotation() {
                 </View>
 
                 <Text style={styles.lineTotal}>Line total: ${lineTotal.toFixed(2)}</Text>
+
+                {/* Phase 4.9 C-3: USA landed-cost preview per line. */}
+                {(() => {
+                  if (!isUSDestination || !it.originCountry) return null;
+                  const tariff = lookupTariff(it.originCountry, destinationCountry, brandCode);
+                  if (!tariff) {
+                    return (
+                      <Text style={styles.tariffMissing}>
+                        No active tariff for {it.originCountry} → {destinationCountry}. Add it on desktop before sending.
+                      </Text>
+                    );
+                  }
+                  const ratePct = Number(tariff.ratePercent);
+                  const fob = parseFloat(it.unitPrice || '0');
+                  const landedUnit = fob * (1 + ratePct / 100);
+                  const landedTotal = landedUnit * q;
+                  const expires = new Date(tariff.effectiveUntil);
+                  const expiresSoon = (expires.getTime() - Date.now()) / 86400000 <= 7;
+                  return (
+                    <View style={[styles.tariffBox, expiresSoon && styles.tariffBoxWarn]}>
+                      <Text style={styles.tariffHeader}>
+                        USA landed ({it.originCountry} → {destinationCountry}, {ratePct.toFixed(4)}%)
+                      </Text>
+                      <Text style={styles.tariffLine}>
+                        Landed/unit: ${landedUnit.toFixed(2)} · Total: ${landedTotal.toFixed(2)}
+                      </Text>
+                      <Text style={[styles.tariffMeta, expiresSoon && styles.tariffMetaWarn]}>
+                        Source expires {tariff.effectiveUntil}
+                      </Text>
+                    </View>
+                  );
+                })()}
               </View>
             );
           })}
@@ -653,4 +793,28 @@ const styles = StyleSheet.create({
   currencySheet: { backgroundColor: COLORS.white, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 36, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   currencyOption: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   currencyOptionText: { fontSize: 16, color: COLORS.ink, textAlign: 'center', fontWeight: '500' },
+
+  // Phase 4.9 C-3: unit toggles
+  unitToggleRow:  { flexDirection: 'row', borderWidth: 1, borderColor: COLORS.muted, borderRadius: 6, overflow: 'hidden', marginTop: 4 },
+  unitToggle:     { flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: COLORS.white },
+  unitToggleActive: { backgroundColor: COLORS.forest },
+  unitToggleText: { fontSize: 13, color: COLORS.steel, fontWeight: '600' },
+  unitToggleTextActive: { color: COLORS.white },
+
+  // Phase 4.9 C-3: per-line origin pills
+  originBlock:    { marginTop: 8 },
+  originPillRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  originPill:     { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: COLORS.muted, backgroundColor: COLORS.white },
+  originPillActive: { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
+  originPillText: { fontSize: 12, color: COLORS.steel, fontWeight: '600', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  originPillTextActive: { color: COLORS.white },
+
+  // Phase 4.9 C-3: USA landed-cost preview
+  tariffBox:     { marginTop: 8, padding: 10, borderRadius: 6, borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#F7F5F2' },
+  tariffBoxWarn: { borderColor: '#FCD34D', backgroundColor: '#FEF3C7' },
+  tariffHeader:  { fontSize: 11, fontWeight: '700', color: COLORS.ink },
+  tariffLine:    { fontSize: 13, fontWeight: '700', color: COLORS.forest, marginTop: 3 },
+  tariffMeta:    { fontSize: 10, color: COLORS.muted, marginTop: 3 },
+  tariffMetaWarn:{ color: '#92400E', fontWeight: '600' },
+  tariffMissing: { marginTop: 8, padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#FCA5A5', backgroundColor: '#FEE2E2', fontSize: 11, color: '#991B1B' },
 });

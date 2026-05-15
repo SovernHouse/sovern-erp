@@ -146,6 +146,15 @@ export const quotationsAPI = {
   getPDF: (id) => api.get(`/quotations/${id}/pdf`, { responseType: 'blob' }),
 }
 
+// Phase 4.9 C-2 / C-3: tariff rates API.
+export const tariffRatesAPI = {
+  getAll: (params) => api.get('/tariff-rates', { params }),
+  expiring: (days = 7) => api.get(`/tariff-rates/expiring?days=${days}`),
+  create: (data) => api.post('/tariff-rates', data),
+  update: (id, data) => api.put(`/tariff-rates/${id}`, data),
+  delete: (id) => api.delete(`/tariff-rates/${id}`),
+}
+
 // Proforma Invoices endpoints
 export const proformaAPI = {
   getAll: (params) => api.get('/proforma-invoices', { params }),

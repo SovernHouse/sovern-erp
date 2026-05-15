@@ -126,7 +126,23 @@ module.exports = (sequelize) => {
       type: DataTypes.DECIMAL(5, 4),
       allowNull: true,
       defaultValue: null,
-    }
+    },
+    // ── Phase 4.9 C-3: unit-display preference, locked on send ─────────
+    // Quotation is edited and rendered in these units. Storage on
+    // Product/QuotationItem stays canonical (sqm + mm). Conversion
+    // happens at the form layer and at PDF render. Once the quotation
+    // status flips to 'sent' the controller's draft-only guard prevents
+    // further mutation, freezing these for the lifetime of the document.
+    displayAreaUnit: {
+      type: DataTypes.ENUM('sqm', 'sqft'),
+      allowNull: false,
+      defaultValue: 'sqm',
+    },
+    displayDimensionUnit: {
+      type: DataTypes.ENUM('mm', 'inch'),
+      allowNull: false,
+      defaultValue: 'mm',
+    },
   }, {
     indexes: [
       { fields: ['quotation_number'] },

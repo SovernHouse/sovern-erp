@@ -10,10 +10,19 @@ const { generateNumberWithCounter, incrementCounter } = require('../services/num
 const auditService = require('../services/auditService');
 const { validateFinancials } = require('../utils/validateFinancials');
 
+// Phase 4.9 C-3: countries we currently track US-style import tariffs for.
+// Only USA today. Keeping it as a list so adding EU / UK / CA later is a
+// one-line change.
+const TARIFF_TRACKED_DESTINATIONS = new Set(['US', 'USA']);
+
 const create = async (req, res, next) => {
   try {
     validateFinancials(req.body);
-    const { customerId, inquiryId, salesPersonId, items, discount, discountType, taxRate, terms, factoryId, leadId, brandCode, commissionRateOverride } = req.body;
+    const {
+      customerId, inquiryId, salesPersonId, items, discount, discountType,
+      taxRate, terms, factoryId, leadId, brandCode, commissionRateOverride,
+      displayAreaUnit, displayDimensionUnit,
+    } = req.body;
 
     const customer = await db.Customer.findByPk(customerId);
     if (!customer) {
@@ -137,6 +146,30 @@ const create = async (req, res, next) => {
       const total = item.quantity * unitPrice;
       subtotal += total;
 
+      // Phase 4.9 C-3: resolve origin. If the line specifies originCountry
+      // and the product has a matching originVariants[] entry, prefer the
+      // variant's FOB. Otherwise fobPriceUsd falls back to unitPrice.
+      let resolvedOrigin = null;
+      let resolvedFobUsd = null;
+      const reqOrigin = (item.originCountry || '').toUpperCase().trim();
+      if (reqOrigin) {
+        const variants = Array.isArray(product.originVariants) ? product.originVariants : [];
+        const match = variants.find(v => (v.originCountry || '').toUpperCase() === reqOrigin);
+        if (match && match.fobPriceUsd != null) {
+          resolvedOrigin = reqOrigin;
+          resolvedFobUsd = parseFloat(match.fobPriceUsd);
+        } else {
+          // Origin was named but product has no variant for it. Don't fail —
+          // accept the origin label, snapshot the line's unitPrice as FOB.
+          resolvedOrigin = reqOrigin;
+          resolvedFobUsd = parseFloat(unitPrice);
+        }
+      } else {
+        // No origin chosen — default to product.originCountry if set.
+        resolvedOrigin = (product.originCountry || '').toUpperCase() || null;
+        resolvedFobUsd = parseFloat(unitPrice);
+      }
+
       createdItems.push({
         id: uuidv4(),
         productId: item.productId,
@@ -146,7 +179,15 @@ const create = async (req, res, next) => {
         unitPrice: unitPrice,
         discount: item.discount || 0,
         total,
-        notes: item.notes || ''
+        notes: item.notes || '',
+        originCountry: resolvedOrigin,
+        fobPriceUsd: resolvedFobUsd,
+        // Tariff snapshot + landed cost are populated on send() — left null
+        // at draft so a customer/origin/destination change before send still
+        // recomputes against the live rate.
+        tariffSnapshot: null,
+        landedCostUnit: null,
+        landedCostTotal: null,
       });
     }
 
@@ -154,6 +195,12 @@ const create = async (req, res, next) => {
     const afterDiscount = subtotal - discountAmount;
     const tax = (afterDiscount * taxRate) / 100;
     const total = afterDiscount + tax;
+
+    // Phase 4.9 C-3: validate display-unit toggles.
+    const validAreaUnits = new Set(['sqm', 'sqft']);
+    const validDimUnits  = new Set(['mm', 'inch']);
+    const resolvedAreaUnit = validAreaUnits.has(displayAreaUnit) ? displayAreaUnit : 'sqm';
+    const resolvedDimUnit  = validDimUnits.has(displayDimensionUnit) ? displayDimensionUnit : 'mm';
 
     const quotation = await db.Quotation.create({
       id: uuidv4(),
@@ -174,7 +221,9 @@ const create = async (req, res, next) => {
       total,
       currency: customer.currency || 'USD',
       validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      terms
+      terms,
+      displayAreaUnit: resolvedAreaUnit,
+      displayDimensionUnit: resolvedDimUnit,
     });
 
     await Promise.all(createdItems.map(item =>
@@ -280,7 +329,10 @@ const getById = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { items, discount, taxRate, terms, validUntil, factoryId, leadId, commissionRateOverride } = req.body;
+    const {
+      items, discount, taxRate, terms, validUntil, factoryId, leadId,
+      commissionRateOverride, displayAreaUnit, displayDimensionUnit,
+    } = req.body;
 
     const quotation = await db.Quotation.findByPk(id);
     if (!quotation || quotation.deletedAt) {
@@ -333,13 +385,45 @@ const update = async (req, res, next) => {
         const total = item.quantity * item.unitPrice;
         subtotal += total;
 
+        // Phase 4.9 C-3: resolve origin + fobPriceUsd per line on update too.
+        let resolvedOrigin = null;
+        let resolvedFobUsd = null;
+        const reqOrigin = (item.originCountry || '').toUpperCase().trim();
+        if (item.productId) {
+          const product = await db.Product.findByPk(item.productId);
+          if (product) {
+            if (reqOrigin) {
+              const variants = Array.isArray(product.originVariants) ? product.originVariants : [];
+              const match = variants.find(v => (v.originCountry || '').toUpperCase() === reqOrigin);
+              resolvedOrigin = reqOrigin;
+              resolvedFobUsd = match && match.fobPriceUsd != null
+                ? parseFloat(match.fobPriceUsd)
+                : parseFloat(item.unitPrice);
+            } else {
+              resolvedOrigin = (product.originCountry || '').toUpperCase() || null;
+              resolvedFobUsd = parseFloat(item.unitPrice);
+            }
+          }
+        }
+
+        const itemPatch = {
+          ...item,
+          total,
+          originCountry: resolvedOrigin,
+          fobPriceUsd: resolvedFobUsd,
+          // Clear any prior snapshot; it gets rewritten at send().
+          tariffSnapshot: null,
+          landedCostUnit: null,
+          landedCostTotal: null,
+        };
+
         if (item.id) {
-          await db.QuotationItem.update(item, { where: { id: item.id } });
+          await db.QuotationItem.update(itemPatch, { where: { id: item.id } });
         } else {
           await db.QuotationItem.create({
             id: uuidv4(),
             quotationId: id,
-            ...item
+            ...itemPatch,
           });
         }
       }
@@ -348,7 +432,10 @@ const update = async (req, res, next) => {
       const tax = ((subtotal - discountAmount) * taxRate) / 100;
       const total = subtotal - discountAmount + tax;
 
-      await quotation.update({
+      // Phase 4.9 C-3: allow toggling display units while still in draft.
+      const validAreaUnits = new Set(['sqm', 'sqft']);
+      const validDimUnits  = new Set(['mm', 'inch']);
+      const quotationPatch = {
         subtotal,
         discount: discountAmount,
         tax,
@@ -358,7 +445,14 @@ const update = async (req, res, next) => {
         validUntil,
         factoryId: factoryId !== undefined ? factoryId : quotation.factoryId,
         leadId: leadId !== undefined ? leadId : quotation.leadId,
-      });
+      };
+      if (displayAreaUnit !== undefined && validAreaUnits.has(displayAreaUnit)) {
+        quotationPatch.displayAreaUnit = displayAreaUnit;
+      }
+      if (displayDimensionUnit !== undefined && validDimUnits.has(displayDimensionUnit)) {
+        quotationPatch.displayDimensionUnit = displayDimensionUnit;
+      }
+      await quotation.update(quotationPatch);
     }
 
     // Allow editing factoryId/leadId/terms/validUntil even when items
@@ -536,6 +630,37 @@ const send = async (req, res, next) => {
       : null;
     const fromAddress = brand?.senderEmail || 'alex@sovernhouse.co';
     const fromDisplayName = brand ? `${brand.displayName} | Alex` : 'Sovern House | Alex';
+
+    // Phase 4.9 C-3: snapshot tariff per item when the destination is one we
+    // track. Persisted on the QuotationItem so the PDF re-renders identically
+    // even if the live TariffRate row is updated or expires after send.
+    const destCountry = (quotation.customer?.country || '').toUpperCase().trim();
+    if (TARIFF_TRACKED_DESTINATIONS.has(destCountry) && Array.isArray(quotation.items)) {
+      const { getCurrentTariff } = require('./tariffRateController');
+      const today = new Date().toISOString().slice(0, 10);
+      for (const it of quotation.items) {
+        const origin = (it.originCountry || '').toUpperCase().trim();
+        if (!origin) continue;
+        const tariff = await getCurrentTariff(origin, destCountry, quotation.brandCode, today);
+        if (!tariff) continue;
+        const ratePct = parseFloat(tariff.ratePercent);
+        const fob = it.fobPriceUsd != null ? parseFloat(it.fobPriceUsd) : parseFloat(it.unitPrice);
+        const qty = parseFloat(it.quantity || 0);
+        const landedUnit = +(fob * (1 + ratePct / 100)).toFixed(2);
+        const landedTotal = +(landedUnit * qty).toFixed(2);
+        await it.update({
+          tariffSnapshot: {
+            ratePercent: ratePct,
+            effectiveUntil: tariff.effectiveUntil,
+            sourceTariffRateId: tariff.id,
+            sourceNote: tariff.sourceNote || null,
+            snapshottedAt: new Date().toISOString(),
+          },
+          landedCostUnit: landedUnit,
+          landedCostTotal: landedTotal,
+        });
+      }
+    }
 
     // Phase 3, C9: pass the brand record we already fetched above into the
     // PDF generator so the rendered document matches the email theme.

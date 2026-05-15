@@ -29,6 +29,10 @@ const fs = require('fs');
 const path = require('path');
 const { formatCurrency } = require('../../utils/helpers');
 const tokens = require('./brandStyleTokens');
+const {
+  sqmToSqft, mmToInch, pricePerSqmToPricePerSqft,
+  AREA_LABEL, DIM_LABEL,
+} = require('../../utils/unitConversion');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 
@@ -126,10 +130,13 @@ function renderSovernHouseClassic(quotation, items, customer, salesPerson, brand
       y += doc.heightOfString(intro, { width: doc.page.width - 100, lineGap: 2 }) + 18;
 
       // ── Items table ─────────────────────────────────────────────────────
-      y = drawFwItemsTable(doc, t, fonts, items, quotation.currency || 'USD', y);
+      y = drawFwItemsTable(doc, t, fonts, items, quotation, y);
 
       // ── Totals ──────────────────────────────────────────────────────────
       y = drawFwTotals(doc, t, fonts, quotation, y + 6);
+
+      // ── Phase 4.9 C-3: USA landed-cost breakdown (no-op when no snapshot) ─
+      y = drawLandedCostBreakdown(doc, t, fonts, items, quotation.currency || 'USD', y + 4);
 
       // ── Terms ───────────────────────────────────────────────────────────
       y = drawFwTerms(doc, t, fonts, quotation.terms, y + 18);
@@ -279,11 +286,54 @@ function drawFwCustomerAndMeta(doc, t, fonts, quotation, customer, salesPerson, 
   return Math.max(leftY, rightY) + 12;
 }
 
+// Phase 4.9 C-3: convert a line's qty + unitPrice for display when the
+// quotation's displayAreaUnit differs from the line's stored unit. Only
+// applies to area-based units (sqm <-> sqft). Other units (box, piece,
+// pallet, etc.) pass through unchanged.
+function convertLineForDisplay(item, displayAreaUnit) {
+  const lineUnit = (item.unit || '').toLowerCase();
+  const isArea = lineUnit === 'sqm' || lineUnit === 'sqft';
+  if (!isArea || !displayAreaUnit || displayAreaUnit === lineUnit) {
+    return {
+      qty: Number(item.quantity || 0),
+      unitPrice: Number(item.unitPrice || 0),
+      unitLabel: item.unit || 'unit',
+    };
+  }
+  // Need to convert. Treat the stored values as canonical for `lineUnit`
+  // and emit them in `displayAreaUnit`.
+  if (lineUnit === 'sqm' && displayAreaUnit === 'sqft') {
+    return {
+      qty: sqmToSqft(item.quantity || 0),
+      unitPrice: pricePerSqmToPricePerSqft(item.unitPrice || 0),
+      unitLabel: 'sqft',
+    };
+  }
+  if (lineUnit === 'sqft' && displayAreaUnit === 'sqm') {
+    return {
+      qty: (Number(item.quantity || 0)) / 10.7639104167097,
+      unitPrice: (Number(item.unitPrice || 0)) * 10.7639104167097,
+      unitLabel: 'sqm',
+    };
+  }
+  return {
+    qty: Number(item.quantity || 0),
+    unitPrice: Number(item.unitPrice || 0),
+    unitLabel: item.unit || 'unit',
+  };
+}
+
 /**
  * Draw a minimal-grid line items table styled for FW. Returns the Y after
  * the last row.
+ *
+ * Phase 4.9 C-3: signature now takes the full `quotation` object so the
+ * renderer can read `displayAreaUnit` for in-place unit conversion. Old
+ * `currency` param is read from quotation.currency.
  */
-function drawFwItemsTable(doc, t, fonts, items, currency, y) {
+function drawFwItemsTable(doc, t, fonts, items, quotation, y) {
+  const currency = quotation?.currency || 'USD';
+  const displayAreaUnit = quotation?.displayAreaUnit || null;
   const x = 50, tableWidth = doc.page.width - 100;
   // Description, Qty, Unit, Unit Price, Total
   const colW = [tableWidth * 0.40, tableWidth * 0.10, tableWidth * 0.12,
@@ -316,11 +366,18 @@ function drawFwItemsTable(doc, t, fonts, items, currency, y) {
     }
     doc.fillColor(t.ink);
     const desc = item.description || item.product?.name || '-';
+    // Phase 4.9 C-3: convert qty + unit-price into the quotation's
+    // display area unit. Total stays in storage form (it's already in
+    // the document's currency, no area-conversion ambiguity).
+    const view = convertLineForDisplay(item, displayAreaUnit);
+    const qtyLabel = view.qty >= 100
+      ? view.qty.toFixed(0)
+      : view.qty.toFixed(2);
     const cells = [
       desc,
-      String(Number(item.quantity || 0)),
-      item.unit || 'unit',
-      fmtMoney(item.unitPrice, currency),
+      qtyLabel,
+      view.unitLabel,
+      fmtMoney(view.unitPrice, currency),
       fmtMoney(item.total, currency),
     ];
     cells.forEach((c, i) => {
@@ -332,6 +389,90 @@ function drawFwItemsTable(doc, t, fonts, items, currency, y) {
   });
 
   return y + 4;
+}
+
+/**
+ * Phase 4.9 C-3: landed-cost breakdown table. Drawn AFTER totals when one
+ * or more items has a tariffSnapshot (i.e. the destination was tariff-
+ * tracked and send() persisted the rate per line). Columns:
+ * Description / Origin / Tariff% / FOB/unit / Landed/unit / Landed total.
+ */
+function drawLandedCostBreakdown(doc, t, fonts, items, currency, y) {
+  const tracked = (items || []).filter(it => it.tariffSnapshot);
+  if (!tracked.length) return y;
+
+  const x = 50, tableWidth = doc.page.width - 100;
+
+  // Section heading
+  doc.fillColor(t.steel || '#94A3B8').font(fonts.bodyBold).fontSize(8.5)
+     .text('LANDED COST  ·  USA DESTINATION (TARIFF APPLIED)', x, y, { characterSpacing: 1.2 });
+  y += 14;
+
+  // Column widths sum to tableWidth
+  const colW = [
+    tableWidth * 0.32, // Description
+    tableWidth * 0.08, // Origin
+    tableWidth * 0.10, // Tariff %
+    tableWidth * 0.15, // FOB/unit
+    tableWidth * 0.15, // Landed/unit
+    tableWidth * 0.20, // Landed total
+  ];
+  const colX = colW.reduce((acc, w, i) => {
+    acc.push(i === 0 ? x : acc[i - 1] + colW[i - 1]);
+    return acc;
+  }, []);
+  const headers = ['DESCRIPTION', 'ORIGIN', 'TARIFF', 'FOB/UNIT', 'LANDED/UNIT', 'LANDED TOTAL'];
+  const alignH  = ['left', 'left', 'right', 'right', 'right', 'right'];
+
+  // Header row
+  doc.save();
+  doc.rect(x, y, tableWidth, 20).fill(t.primaryColor);
+  doc.fillColor('#FFFFFF').font(fonts.bodyBold).fontSize(7.5);
+  headers.forEach((h, i) => {
+    doc.text(h, colX[i] + 6, y + 6, {
+      width: colW[i] - 12, align: alignH[i], characterSpacing: 0.8,
+    });
+  });
+  doc.restore();
+  y += 20;
+
+  doc.font(fonts.body).fontSize(9).fillColor(t.ink);
+  tracked.forEach((item, idx) => {
+    if (idx % 2 === 0) {
+      doc.save();
+      doc.rect(x, y, tableWidth, 20).fill('#FAFAF7');
+      doc.restore();
+    }
+    doc.fillColor(t.ink);
+    const snap = item.tariffSnapshot || {};
+    const cells = [
+      item.description || item.product?.name || '-',
+      item.originCountry || '-',
+      `${Number(snap.ratePercent || 0).toFixed(2)}%`,
+      fmtMoney(item.fobPriceUsd, currency),
+      fmtMoney(item.landedCostUnit, currency),
+      fmtMoney(item.landedCostTotal, currency),
+    ];
+    cells.forEach((c, i) => {
+      doc.text(c, colX[i] + 6, y + 5, { width: colW[i] - 12, align: alignH[i] });
+    });
+    y += 20;
+  });
+
+  // Footer note: tariff source + earliest expiry
+  const earliestExpiry = tracked
+    .map(it => it.tariffSnapshot?.effectiveUntil)
+    .filter(Boolean)
+    .sort()[0];
+  if (earliestExpiry) {
+    y += 4;
+    doc.fillColor(t.steel || '#94A3B8').font(fonts.body).fontSize(7.5)
+       .text(`Tariff rates snapshotted at send. Earliest source expiry: ${earliestExpiry}.`,
+         x, y, { width: tableWidth, align: 'left' });
+    y += 10;
+  }
+
+  return y + 6;
 }
 
 /**
@@ -465,10 +606,13 @@ function renderFlorWayIronLite(quotation, items, customer, salesPerson, brand) {
         { width: doc.page.width - 100, lineGap: 2 }) + 18;
 
       // ── Items table ─────────────────────────────────────────────────────
-      y = drawFwItemsTable(doc, t, fonts, items, quotation.currency || 'USD', y);
+      y = drawFwItemsTable(doc, t, fonts, items, quotation, y);
 
       // ── Totals ──────────────────────────────────────────────────────────
       y = drawFwTotals(doc, t, fonts, quotation, y + 6);
+
+      // ── Phase 4.9 C-3: USA landed-cost breakdown (no-op when no snapshot) ─
+      y = drawLandedCostBreakdown(doc, t, fonts, items, quotation.currency || 'USD', y + 4);
 
       // ── Terms (if any) ──────────────────────────────────────────────────
       y = drawFwTerms(doc, t, fonts, quotation.terms, y + 18);
@@ -563,10 +707,13 @@ function renderFlorWayGeneric(quotation, items, customer, salesPerson, brand) {
         { width: doc.page.width - 100, lineGap: 2 }) + 18;
 
       // ── Items table ─────────────────────────────────────────────────────
-      y = drawFwItemsTable(doc, t, fonts, items, quotation.currency || 'USD', y);
+      y = drawFwItemsTable(doc, t, fonts, items, quotation, y);
 
       // ── Totals ──────────────────────────────────────────────────────────
       y = drawFwTotals(doc, t, fonts, quotation, y + 6);
+
+      // ── Phase 4.9 C-3: USA landed-cost breakdown (no-op when no snapshot) ─
+      y = drawLandedCostBreakdown(doc, t, fonts, items, quotation.currency || 'USD', y + 4);
 
       // ── Terms ───────────────────────────────────────────────────────────
       y = drawFwTerms(doc, t, fonts, quotation.terms, y + 18);
@@ -649,8 +796,9 @@ function renderFlorWayPrivateLabel(quotation, items, customer, salesPerson, bran
         { width: doc.page.width - 100, lineGap: 2 }) + 18;
 
       // ── Items / Totals / Terms / Sender (shared) ────────────────────────
-      y = drawFwItemsTable(doc, t, fonts, items, quotation.currency || 'USD', y);
+      y = drawFwItemsTable(doc, t, fonts, items, quotation, y);
       y = drawFwTotals(doc, t, fonts, quotation, y + 6);
+      y = drawLandedCostBreakdown(doc, t, fonts, items, quotation.currency || 'USD', y + 4);
       y = drawFwTerms(doc, t, fonts, quotation.terms, y + 18);
 
       if (y > doc.page.height - 180) {

@@ -1129,6 +1129,9 @@ export type QuotationItemPayload = {
   discount?: number
   notes?: string
   belowFloorReason?: string
+  // Phase 4.9 C-3: per-line origin country (ISO2). When set, backend
+  // resolves FOB from the matching Product.originVariants entry.
+  originCountry?: string
 }
 
 export type CreateQuotationPayload = {
@@ -1144,6 +1147,9 @@ export type CreateQuotationPayload = {
   taxRate?: number
   terms?: string
   notes?: string
+  // Phase 4.9 C-3: display-unit preference. Locks at send.
+  displayAreaUnit?: 'sqm' | 'sqft'
+  displayDimensionUnit?: 'mm' | 'inch'
 }
 
 export async function createQuotation(payload: CreateQuotationPayload) {
