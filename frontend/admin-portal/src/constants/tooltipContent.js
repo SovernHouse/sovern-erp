@@ -234,6 +234,9 @@ export const SETTINGS = {
   priceList:      'Customer or factory price lists. Link to a customer or factory to apply tiered pricing automatically.',
   productAttribute:'Custom specification attributes that appear on product spec sheets (e.g. Wear Layer, Surface Finish).',
   taxon:          'Product taxonomy node, categories and sub-categories used for filtering and reporting.',
+  commissionRate: 'Brand-level commission rate as a decimal between 0 and 1. 0.07 = 7%. Used by the commission accrual flow on sales-order confirmation. Per-quotation overrides via Quotation.commissionRateOverride still apply on top.',
+  brandActive:    'Inactive brands stay in history but disappear from quotation + product pickers and the AI assistant brand list. Use to deactivate a brand row that was created in error without losing the audit trail.',
+  engineeredSPC:  'Multi-layer rigid core flooring with SPC outer wear layers sandwiching a WPC middle for impact dampening. Sits under Flooring → Resilient.',
 }
 
 // ─── Brand (multi-brand data model, Phase 1) ──────────────────────────────────

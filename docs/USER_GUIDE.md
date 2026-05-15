@@ -157,6 +157,10 @@ Open **Settings > Product catalog** to manage what shows up in the quotation pro
 
 **Deactivating:** click the power icon. Buyers can't pick a deactivated product on new quotations. Existing quotations referencing the product still work. Reactivate any time by clicking the power icon again.
 
+**Product Taxonomy (Phase 4.9.1):** the flooring categories now sit under a `Flooring → Resilient` hierarchy. `Engineered SPC` is the newest sub-category, used for multi-layer rigid-core flooring with SPC outer wear layers sandwiching a WPC middle. The AI Assistant can create / update / archive / restore categories via natural-language chat under super-admin control (preview-confirm-save pattern, audited). Categories with active products bound cannot be archived from chat — those products must be re-categorised or archived first.
+
+**Brand admin (Phase 4.9.1):** the Brand card editor adds two fields, `Commission rate` (decimal between 0 and 1, e.g. 0.07 = 7%) and an `Active` status checkbox. Deactivating a brand keeps every historical row intact but hides the brand from product/quotation pickers and the AI brand list. Both fields can also be edited via the AI assistant.
+
 **How the catalog feeds the quotation form:**
 
 When you create a quotation, the Product dropdown is filtered to the quotation's brand. Picking a product auto-fills the unit price with the base FOB. You can edit the price upward without approval. Editing below floor requires super-admin role plus a written reason (saved to the audit log).

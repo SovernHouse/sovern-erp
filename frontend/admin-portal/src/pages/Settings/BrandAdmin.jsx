@@ -168,6 +168,45 @@ function BrandCard({ brand: initialBrand, onSaved }) {
             />
           </div>
 
+          {/* Phase 4.9.1: commissionRate + active editors. Both are super-
+              admin gated server-side. commissionRate is the brand-level
+              decimal used by the commission accrual flow on sales-order
+              confirmation. active=false hides a brand row from quotation
+              pickers without deleting historical data. */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Commission rate</label>
+              <p className="text-xs text-slate-400 mb-1.5">Decimal between 0 and 1. 0.07 = 7%. Used at sales-order confirmation.</p>
+              <input
+                type="number"
+                step="0.0001"
+                min="0"
+                max="1"
+                value={form.commissionRate ?? ''}
+                onChange={e => handleChange('commissionRate', e.target.value === '' ? null : parseFloat(e.target.value))}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {typeof form.commissionRate === 'number' && Number.isFinite(form.commissionRate) && (
+                <p className="text-xs text-slate-500 mt-1">= {(form.commissionRate * 100).toFixed(2)}%</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
+              <p className="text-xs text-slate-400 mb-1.5">Inactive brands stay in history but disappear from quotation + product pickers.</p>
+              <label className="flex items-center gap-2 cursor-pointer mt-1">
+                <input
+                  type="checkbox"
+                  checked={form.active !== false}
+                  onChange={e => handleChange('active', e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300"
+                />
+                <span className={`text-sm font-medium ${form.active === false ? 'text-red-600' : 'text-emerald-700'}`}>
+                  {form.active === false ? 'Inactive (hidden from pickers)' : 'Active'}
+                </span>
+              </label>
+            </div>
+          </div>
+
           <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
             <button
               onClick={handleSave}

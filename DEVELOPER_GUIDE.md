@@ -2612,6 +2612,59 @@ Each successful per-account run writes an `admin_drive_setup` AuditLog row with 
 
 **Phase 4.7+ C-4 fix:** the list query in `findOrCreateFolder` now requests `files(id,name,webViewLink)`. Previously found-not-created folders returned `webViewLink: null`, so the admin had to manually navigate Drive to find an existing folder. The change is one line in the Drive `files.list` fields parameter — no extra API call, no rate-limit impact.
 
+---
+
+# Taxonomy cleanup + ProductCategory MCP tools + Brand extension (Phase 4.9.1)
+
+## What shipped
+
+**Boot-time migration** (`backend/services/migrate491TaxonomyAndBrand.js`, sentinel `phase4_9_1_taxonomy_brand_migrated`):
+- ALTER ADD any missing `ProductCategory` columns (`sort_order`, `is_archived`, `slug`, `icon`). Per-column logging emits `ADDED column ...` or `SKIPPED ... (already exists)` so the deploy log reveals whether the prod schema gap was real on this run. Per-column try/catch swallows the SQLite "duplicate column" race.
+- Backfill: `sort_order=999` where null, `is_archived=0` where null, `slug=slugify(name)` where null. Logs the count of slugs filled.
+- Brand updates: `HH.active=false` (created in error earlier this week), `FW.commissionRate=0.07` (HanHua Sales Rep Agreement).
+- Hierarchy build: `Flooring` (top-level) + `Resilient` (under Flooring). Re-parent `SPC Flooring` / `WPC Flooring` / `LVT / Vinyl Plank` under Resilient. Re-parent `Laminate Flooring` / `Engineered Wood` / `Bamboo Flooring` / `Solid Wood` / `WPC Decking` / `Underlay & Accessories` under Flooring.
+- Create `Engineered SPC` under Resilient at `sortOrder=4`. Sibling order: SPC=1, WPC=2, Engineered SPC=4, LVT=5.
+- Spec rows that don't exist on prod (`IronCore Flooring`, `WPC Hybrid Flooring`, "duplicate SPC") are recorded as gaps in the audit log and **not invented**. The spec's expected taxonomy state had diverged from reality; confirmed via sqlite3 inspection before writing.
+
+**MCP tools** (`backend/mcp/erpToolServer.js`):
+- `list_product_categories` extended with `parentId`, `includeArchived`, `tree` filters.
+- `create_product_category` — super-admin; auto-slug from name; (parentId, slug) collision check on create.
+- `update_product_category` — super-admin; supports `name/slug/description/icon/image/parentId/sortOrder/active`. Re-parenting a category with `>= 5` active products bound requires `force: true` (URL/report breakage risk).
+- `archive_product_category` — super-admin; reason required (`>= 10` chars). **Hard refusal** when any active products are bound; the AI cannot silently orphan inventory.
+- `restore_product_category` — super-admin; reason required (`>= 10` chars).
+- All five audit under `ai_assistant_<verb>_taxonomy_category`.
+
+**Brand update extension:**
+- `BRAND_WRITABLE_FIELDS` (MCP) + `ALLOWED` (REST `PUT /api/brands/:code`) both gain `active` + `commissionRate`.
+- Validation in both layers: `active` must be boolean; `commissionRate` must parse to a finite decimal in `[0, 1]`.
+- Tool description for `update_brand` updated to advertise the new fields and the deactivation use case.
+
+**Admin UI** (`frontend/admin-portal/src/pages/Settings/BrandAdmin.jsx`):
+- Brand card editor gains a `commissionRate` number input (with a live `= X%` preview) and an `active` checkbox toggle. Both write through the existing PUT path.
+
+## Hierarchy outcome (post-migration)
+
+```
+Flooring (sortOrder=10)
+├── Resilient (sortOrder=10)
+│   ├── SPC Flooring (sortOrder=1)
+│   ├── WPC Flooring (sortOrder=2)
+│   ├── Engineered SPC (sortOrder=4) ← NEW
+│   └── LVT / Vinyl Plank (sortOrder=5)
+├── Laminate Flooring (sortOrder=20)
+├── Engineered Wood (sortOrder=30)
+├── Bamboo Flooring (sortOrder=40)
+├── Solid Wood (sortOrder=50)
+├── WPC Decking (sortOrder=60)
+└── Underlay & Accessories (sortOrder=70)
+```
+
+The other 9 non-flooring rows (Apparel, Sanitary Ware, etc.) stay as top-level orphans for now; future cleanup is a separate spec.
+
+## Known follow-up
+
+**Formalize ERP migration framework — stop relying on `sync({alter:true})`.** Today's defensive `ALTER TABLE ... ADD COLUMN` worked, but every prior schema change has been invisible to ops: the ProductCategory thin-table situation that triggered this commit had been latent since the original C21 follow-up shipped. Recommend Sequelize-cli migrations in a `migrations/` directory with a `meta_migrations` tracking table. Estimate: one focused window. **Do not investigate `sync({alter:true})` in this commit; that is a separate phase.**
+
 ## Bulk content upload
 
 The ERP backend runs on a Linux VM and cannot read Alex's Windows filesystem. The setup endpoint only creates folders. To populate a folder (e.g. drop the local IronLite Branding contents into `Brand Assets/IronLite Branding/`):

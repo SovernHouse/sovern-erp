@@ -854,6 +854,10 @@ export const HELP_CONTENT = {
           '"Remind me to follow up with Acme Distribution next Tuesday at 10am" — creates a ScheduledActivity in your name, echoes the Taipei time back.',
           '"Edit the FlorWay Touch 1 template subject to ..." — shows the before/after, asks confirm.',
           '"Mark that follow-up task done" — completes the activity if you are the assignee.',
+          '"Set FW commission to 6.5%" — assistant shows the before/after and saves to Brand.commissionRate (Phase 4.9.1).',
+          '"Deactivate the HH brand" — assistant flips Brand.active to false; the brand stays in history but disappears from pickers (Phase 4.9.1).',
+          '"Create an Engineered SPC sub-category under Flooring/Resilient" — assistant calls create_product_category with the right parentId after a preview (Phase 4.9.1).',
+          '"Archive the IronCore Flooring category" — assistant calls archive_product_category; refused server-side if any active products are still bound (Phase 4.9.1).',
         ],
       },
       {
