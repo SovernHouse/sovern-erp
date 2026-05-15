@@ -2,10 +2,12 @@
 // Read-only visibility into outbound POs to suppliers/factories. Useful in
 // the field when chatting with a supplier on WhatsApp and needing a quick
 // PO status check.
-import { useEffect, useState } from 'react'
+// Phase 4.6 part 4: PORow memoized + stable renderItem/keyExtractor +
+// virtualization tuning.
+import { memo, useCallback, useEffect, useState } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Alert, Share, Linking,
+  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Alert, Share, Linking, Platform,
 } from 'react-native'
 import {
   getPurchaseOrders, getPurchaseOrder, generateApprovalLink,
@@ -63,7 +65,7 @@ function StatusBadge({ status }: { status?: string }) {
   )
 }
 
-function PORow({ po, onPress }: { po: PurchaseOrder; onPress: () => void }) {
+const PORow = memo(function PORow({ po, onPress }: { po: PurchaseOrder; onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.rowHeader}>
@@ -85,7 +87,7 @@ function PORow({ po, onPress }: { po: PurchaseOrder; onPress: () => void }) {
       ) : null}
     </TouchableOpacity>
   )
-}
+})
 
 function PODetailModal({ id, onClose }: { id: string; onClose: () => void }) {
   const [item, setItem] = useState<PurchaseOrder | null>(null)
@@ -241,6 +243,12 @@ export default function PurchaseOrdersScreen() {
 
   useEffect(() => { load() }, [search, status])
 
+  // Phase 4.6 part 4: stable refs for the memoized PORow.
+  const poRenderItem = useCallback(({ item }: { item: PurchaseOrder }) => (
+    <PORow po={item} onPress={() => setSelectedId(item.id)} />
+  ), [])
+  const poKeyExtractor = useCallback((p: PurchaseOrder) => p.id, [])
+
   if (loading) {
     return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.forest} /></View>
   }
@@ -276,10 +284,12 @@ export default function PurchaseOrdersScreen() {
 
       <FlatList
         data={items}
-        keyExtractor={(p) => p.id}
-        renderItem={({ item }) => (
-          <PORow po={item} onPress={() => setSelectedId(item.id)} />
-        )}
+        keyExtractor={poKeyExtractor}
+        renderItem={poRenderItem}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={10}
         contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 40 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={COLORS.forest} />

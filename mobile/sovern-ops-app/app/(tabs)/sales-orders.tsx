@@ -2,10 +2,12 @@
 // Confirmed customer orders. Read-only on mobile; create/edit happens on
 // desktop. Detail modal shows the e-signature card when the customer has
 // approved the SO via the public sign link (signedAt + signedByClient).
-import { useEffect, useState } from 'react'
+// Phase 4.6 part 4: SORow memoized + stable renderItem/keyExtractor +
+// virtualization tuning. Same pattern as customers + leads + quotations.
+import { memo, useCallback, useEffect, useState } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Alert, Share, Linking,
+  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Alert, Share, Linking, Platform,
 } from 'react-native'
 import {
   getSalesOrders, getSalesOrder, generateApprovalLink,
@@ -62,7 +64,7 @@ function StatusBadge({ status }: { status?: string }) {
   )
 }
 
-function SORow({ so, onPress }: { so: SalesOrder; onPress: () => void }) {
+const SORow = memo(function SORow({ so, onPress }: { so: SalesOrder; onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.rowHeader}>
@@ -84,7 +86,7 @@ function SORow({ so, onPress }: { so: SalesOrder; onPress: () => void }) {
       ) : null}
     </TouchableOpacity>
   )
-}
+})
 
 function LineItemRow({ item, currency }: { item: SalesOrderItem; currency?: string }) {
   return (
@@ -281,6 +283,12 @@ export default function SalesOrdersScreen() {
 
   useEffect(() => { load() }, [search, status])
 
+  // Phase 4.6 part 4: stable refs so the memoized SORow can skip renders.
+  const soRenderItem = useCallback(({ item }: { item: SalesOrder }) => (
+    <SORow so={item} onPress={() => setSelectedId(item.id)} />
+  ), [])
+  const soKeyExtractor = useCallback((s: SalesOrder) => s.id, [])
+
   if (loading) {
     return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.forest} /></View>
   }
@@ -316,10 +324,12 @@ export default function SalesOrdersScreen() {
 
       <FlatList
         data={items}
-        keyExtractor={(s) => s.id}
-        renderItem={({ item }) => (
-          <SORow so={item} onPress={() => setSelectedId(item.id)} />
-        )}
+        keyExtractor={soKeyExtractor}
+        renderItem={soRenderItem}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={10}
         contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 40 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={COLORS.forest} />

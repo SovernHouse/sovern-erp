@@ -3,10 +3,11 @@
 // Coordinators submit Quotations/PIs/SOs for review; Alex approves or rejects
 // from this screen. Maps to /api/internal-approvals.
 
-import { useEffect, useState } from 'react';
+// Phase 4.6 part 4: both card types memoized + stable renderItem/keyExtractor.
+import { memo, useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, Alert, TextInput, Modal,
+  RefreshControl, ActivityIndicator, Alert, TextInput, Modal, Platform,
 } from 'react-native';
 import {
   getPendingApprovals, approveDocument, rejectDocument,
@@ -42,7 +43,7 @@ function requesterName(item: InternalApproval) {
   return `User #${item.requesterId}`;
 }
 
-function InternalApprovalCard({
+const InternalApprovalCard = memo(function InternalApprovalCard({
   item, onApprove, onReject,
 }: {
   item: InternalApproval;
@@ -98,9 +99,9 @@ function InternalApprovalCard({
       </View>
     </View>
   );
-}
+});
 
-function ActivityApprovalCard({
+const ActivityApprovalCard = memo(function ActivityApprovalCard({
   item, onDone,
 }: {
   item: ScheduledActivity;
@@ -155,7 +156,7 @@ function ActivityApprovalCard({
       </View>
     </View>
   );
-}
+});
 
 export default function ApprovalsScreen() {
   const [items, setItems]           = useState<AnyApproval[]>([]);
@@ -272,6 +273,29 @@ export default function ApprovalsScreen() {
     }
   }
 
+  // Phase 4.6 part 4: stable refs for the two memoized approval cards.
+  // onReject is a closure over setRejectModal, so wrap once via useCallback.
+  const onReject = useCallback((id: number) => setRejectModal({ id }), []);
+  const approvalRenderItem = useCallback(({ item }: { item: AnyApproval }) => (
+    item.kind === 'internal' ? (
+      <InternalApprovalCard
+        item={item.data}
+        onApprove={handleApprove}
+        onReject={onReject}
+      />
+    ) : (
+      <ActivityApprovalCard
+        item={item.data}
+        onDone={handleMarkActivityDone}
+      />
+    )
+  ), [handleApprove, handleMarkActivityDone, onReject]);
+  const approvalKeyExtractor = useCallback((item: AnyApproval) => (
+    item.kind === 'internal'
+      ? `internal-${item.data.id}`
+      : `activity-${item.data.id}`
+  ), []);
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -292,25 +316,12 @@ export default function ApprovalsScreen() {
 
       <FlatList
         data={items}
-        keyExtractor={(item) =>
-          item.kind === 'internal'
-            ? `internal-${item.data.id}`
-            : `activity-${item.data.id}`
-        }
-        renderItem={({ item }) =>
-          item.kind === 'internal' ? (
-            <InternalApprovalCard
-              item={item.data}
-              onApprove={handleApprove}
-              onReject={(id) => setRejectModal({ id })}
-            />
-          ) : (
-            <ActivityApprovalCard
-              item={item.data}
-              onDone={handleMarkActivityDone}
-            />
-          )
-        }
+        keyExtractor={approvalKeyExtractor}
+        renderItem={approvalRenderItem}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={10}
+        maxToRenderPerBatch={8}
+        windowSize={10}
         contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }}
         refreshControl={
           <RefreshControl

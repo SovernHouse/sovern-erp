@@ -4,10 +4,11 @@
 // decide quickly: promote → lead, forward to Fanzey (Egypt manager),
 // mark spam, dismiss, or archive. Pull-to-refresh + manual sync request.
 
-import { useCallback, useEffect, useState } from 'react';
+// Phase 4.6 part 4: TriageCard memoized + stable renderItem/keyExtractor.
+import { memo, useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, Alert, Modal, TextInput, ScrollView,
+  RefreshControl, ActivityIndicator, Alert, Modal, TextInput, ScrollView, Platform,
 } from 'react-native';
 import {
   getTriageItems, promoteTriageToLead, forwardTriageToFanzey,
@@ -41,7 +42,7 @@ function senderDisplay(item: TriageItem) {
   return item.senderName || item.senderCompany || item.senderEmail;
 }
 
-function TriageCard({
+const TriageCard = memo(function TriageCard({
   item, onAction, onReply, busyId,
 }: {
   item: TriageItem;
@@ -158,7 +159,7 @@ function TriageCard({
       )}
     </View>
   );
-}
+});
 
 export default function TriageScreen() {
   const [tab, setTab]               = useState<TabKey>('pending');
@@ -320,6 +321,12 @@ export default function TriageScreen() {
     }
   }
 
+  // Phase 4.6 part 4: stable refs for the memoized TriageCard.
+  const triageRenderItem = useCallback(({ item }: { item: TriageItem }) => (
+    <TriageCard item={item} onAction={handleAction} onReply={openReply} busyId={busyId} />
+  ), [handleAction, openReply, busyId]);
+  const triageKeyExtractor = useCallback((item: TriageItem) => item.id, []);
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -377,13 +384,15 @@ export default function TriageScreen() {
         </View>
       )}
 
-      {/* List */}
+      {/* List — Phase 4.6 part 4 virtualization + stable refs */}
       <FlatList
         data={items}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <TriageCard item={item} onAction={handleAction} onReply={openReply} busyId={busyId} />
-        )}
+        keyExtractor={triageKeyExtractor}
+        renderItem={triageRenderItem}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={10}
+        maxToRenderPerBatch={8}
+        windowSize={10}
         contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }}
         refreshControl={
           <RefreshControl

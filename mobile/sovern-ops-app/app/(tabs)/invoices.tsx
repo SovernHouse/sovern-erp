@@ -1,10 +1,11 @@
 // ─── Invoices Screen ─────────────────────────────────────────────────────
 // Read-only money-flow visibility. Filter by paid/unpaid/overdue, search by
 // invoice number, tap row for line-item detail.
-import { useEffect, useState } from 'react'
+// Phase 4.6 part 4: InvoiceRow memoized + stable renderItem/keyExtractor.
+import { memo, useCallback, useEffect, useState } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView,
+  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Platform,
 } from 'react-native'
 import { getInvoices, getInvoice, type Invoice } from '../../src/services/api'
 import { COLORS } from '../../src/constants/config'
@@ -45,7 +46,7 @@ function StatusBadge({ status }: { status?: string }) {
   )
 }
 
-function InvoiceRow({ invoice, onPress }: { invoice: Invoice; onPress: () => void }) {
+const InvoiceRow = memo(function InvoiceRow({ invoice, onPress }: { invoice: Invoice; onPress: () => void }) {
   const balance =
     invoice.totalAmount != null && invoice.paidAmount != null
       ? Number(invoice.totalAmount) - Number(invoice.paidAmount)
@@ -85,7 +86,7 @@ function InvoiceRow({ invoice, onPress }: { invoice: Invoice; onPress: () => voi
       ) : null}
     </TouchableOpacity>
   )
-}
+})
 
 function InvoiceDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
   const [item, setItem] = useState<Invoice | null>(null)
@@ -176,6 +177,12 @@ export default function InvoicesScreen() {
 
   useEffect(() => { load() }, [search, status])
 
+  // Phase 4.6 part 4: stable refs for the memoized InvoiceRow.
+  const invRenderItem = useCallback(({ item }: { item: Invoice }) => (
+    <InvoiceRow invoice={item} onPress={() => setSelectedId(item.id)} />
+  ), [])
+  const invKeyExtractor = useCallback((s: Invoice) => s.id, [])
+
   if (loading) {
     return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.forest} /></View>
   }
@@ -211,10 +218,12 @@ export default function InvoicesScreen() {
 
       <FlatList
         data={items}
-        keyExtractor={(s) => s.id}
-        renderItem={({ item }) => (
-          <InvoiceRow invoice={item} onPress={() => setSelectedId(item.id)} />
-        )}
+        keyExtractor={invKeyExtractor}
+        renderItem={invRenderItem}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={10}
         contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 40 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={COLORS.forest} />
