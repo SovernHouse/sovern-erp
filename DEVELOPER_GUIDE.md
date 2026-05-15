@@ -2678,6 +2678,105 @@ Each row below is a known-orphan or known-noisy artefact and what was done about
 
 **Rule for future cleanups:** before any DROP/RENAME on a table whose name is unusual or duplicated, `grep -rn "<TableName>" backend/models backend/controllers backend/services backend/routes` first. Zero hits AND no rows added in the last 90 days → eligible for the orphan rename pipeline. Any hits → leave alone, document why if puzzling.
 
+---
+
+# Factory.brandCode + match_factories filter + taxonomy sortOrder fix (Phase 4.9.2a)
+
+`Factory.brandCode` STRING(8) nullable. FK to `Brand.code` declared in `models/index.js` BRAND_TX_MODELS list per L-034 (constraints:false). Boot-time migration `migrate492aFactoryBrandAndTaxonomy.js` ALTER ADDs the column with the L-046 duplicate-column race guard, then backfills `brandCode='FW'` on Anhui HanHua + FlorWay rows (matched via LIKE patterns). Other factories stay null per spec.
+
+REST `PUT/POST /api/factories` accepts `brandCode` with validation against the Brand table. Null/empty clears.
+
+Factory admin UI gains a Brand selector dropdown (blank = unclassified). MCP `erp_create_factory` + `erp_update_factory` accept `brand_code`.
+
+`match_factories_for_product` MCP tool: optional `brand_code` arg. When both sides set, matching brand adds +15 to the score with "brand match" reason; mismatch subtracts 5. Not a filter — cross-brand sourcing stays allowed.
+
+Same migration also fixes taxonomy sortOrder collisions: Resilient 10→2, EngSPC 4→3, LVT 5→4, Vinyl Sheet 6→5. SPC stays 1, WPC stays 2.
+
+Sentinel: `phase4_9_2a_completed`.
+
+---
+
+# ProductPrice temporal pricing + getCurrentPrice + denormalized cache (Phase 4.9.2b)
+
+## Why
+
+The previous `ProductPrice` was factory-only and never wired into the quotation flow (which read `Product.baseFobPrice` directly). The 4.9.2b shape supports temporal pricing per the spec: every row pins a cost + selling combo to a (factory and/or origin) and a validity window. The quotation floor reads from here.
+
+## Schema
+
+`backend/models/ProductPrice.js`:
+- `id` UUID PK, `productId` UUID req FK Product.
+- `factoryId` UUID nullable FK Factory, `origin` STRING nullable. **At least one must be set** (enforced in `beforeValidate` hook).
+- `costPriceUsdPerM2` DECIMAL(10,4) req — canonical storage; sqft is computed at render time via `frontend/shared/units.js`.
+- `sellingPriceUsdPerM2` DECIMAL(10,4) nullable — null = compute from `cost * (1 + markupPercent)`.
+- `markupPercent` DECIMAL(5,4) nullable — decimal 0..1 (0.07 = 7%).
+- `tariffRate` + `tariffDestination` nullable — optional landed-cost snapshot.
+- `validFrom` DATEONLY req (default today), `validTo` DATEONLY nullable (null = open).
+- `sourceNote` TEXT nullable, `createdBy` UUID nullable FK User, timestamps.
+
+Indexes: `(product_id, origin, valid_from)`, `(product_id, factory_id, valid_from)`, `(valid_to)`.
+
+## Denormalized cache
+
+`afterSave` hook on `ProductPrice` writes the resolved `sellingPriceUsdPerM2` back to `Product.baseFobPrice` when the row is the current active row for `(productId, origin)`. Resolution rule: explicit selling wins, else `cost * (1 + markup)`, else cost (assume already includes commission per NO-MARKUP INVARIANT). Hook failure never breaks the write.
+
+Result: existing readers of `Product.baseFobPrice` (analytics, customer portal, mobile, reports, email templates) keep working unchanged. New code that needs origin/tariff awareness should call `services/productPriceService.getCurrentPrice` instead.
+
+## getCurrentPrice helper
+
+`services/productPriceService.js`:
+- `getCurrentPrice(productId, origin=null, asOfDate=today)` — returns the active row decorated with `costPriceUsdPerSqft`, resolved `sellingPriceUsdPerM2`, `sellingPriceUsdPerSqft`, `landedPriceUsdPerM2`. Lookup order: exact-origin → open-price (origin=null) → any-row fallback when origin supplied but missed.
+- `reconcileBaseFobPrices()` — boot-time reconcile pass. Walks every Product, calls `getCurrentPrice` for the product's preferred origin, updates `Product.baseFobPrice` if it differs. Catches drift from manual SQL edits.
+
+## Migration + backfill
+
+`services/migrate492bProductPrice.js` (sentinel `phase4_9_2b_product_price_replaced`):
+1. Rename existing `ProductPrice` → `ProductPrice_legacy_20260515` (orphan-rename pattern; 0 rows preserved).
+2. `CREATE TABLE ProductPrice` with new shape + 3 indexes via raw SQL.
+3. Backfill: for every Product with `baseFobPrice` non-null, insert one ProductPrice row per `originVariants` entry (or one fallback row using `product.originCountry`). Skips products with no baseFobPrice OR no origin/factory.
+
+## Quotation read migration
+
+`quotationController.create` + `update` floor check rewritten to call `getCurrentPrice(product.id, lineOrigin)`. Falls back to `product.baseFobPrice` when no ProductPrice row exists yet (safety net). Below-floor override audit row now records which source the floor came from (`ProductPrice` vs `baseFobPriceFallback`).
+
+## Read-scope decision
+
+Critical write paths migrated: quotation create/update, product floor check. All other read paths stay on `Product.baseFobPrice` via the cache. Future phases migrate non-critical readers (analytics, dashboard, customer portal, mobile, reports, email templates) one at a time. Do NOT deprecate `baseFobPrice` in this phase.
+
+## REST endpoints
+
+`POST /api/products/:id/prices`, `PUT /api/products/:id/prices/:priceId`, `DELETE /api/products/:id/prices/:priceId`, `GET /api/products/:id/price-history`. All rewritten to use the new field names. `createdBy` stamped from `req.user.id`.
+
+## MCP tools (Phase 4.9.2c)
+
+- `create_product_price` (super_admin): productId + costPriceUsdPerM2 req; origin or factoryId req. Optional selling/markup/tariff/validTo/sourceNote.
+- `list_product_prices`: filter by productId, optional origin, `includeExpired` (default false).
+- `update_product_price` (super_admin): id + any subset of editable fields. Before/after diff in audit.
+- `get_current_price`: returns the decorated current row for (productId, origin, asOfDate).
+- All audit under `ai_assistant_<verb>_product_price`.
+
+## UI
+
+Admin: `ProductPriceHistory` panel on the Product edit form. Lists rows with status pill (Active/Future/Expired), inline "Add price" editor (factory + origin + cost + optional selling/markup/tariff/validTo/sourceNote), delete action. Shown only when editing an existing product.
+
+Mobile: read-only price display continues to use `Product.baseFobPrice` (denormalized cache).
+
+## Verification queries
+
+```sql
+-- Confirm factories tagged
+SELECT name, brand_code FROM Factory WHERE brand_code='FW';
+
+-- Confirm taxonomy sortOrders
+SELECT name, sort_order FROM ProductCategories WHERE name IN ('Resilient','Engineered SPC','LVT (Luxury Vinyl Tile)','Vinyl Sheet') ORDER BY sort_order;
+
+-- Confirm ProductPrice backfill
+SELECT COUNT(*) AS rows, COUNT(DISTINCT product_id) AS products_priced FROM ProductPrice;
+
+-- Confirm sentinels
+SELECT action, datetime(timestamp,'localtime') FROM AuditLog WHERE action IN ('phase4_9_2a_completed','phase4_9_2b_product_price_replaced') ORDER BY timestamp DESC;
+```
+
 ## Bulk content upload
 
 The ERP backend runs on a Linux VM and cannot read Alex's Windows filesystem. The setup endpoint only creates folders. To populate a folder (e.g. drop the local IronLite Branding contents into `Brand Assets/IronLite Branding/`):

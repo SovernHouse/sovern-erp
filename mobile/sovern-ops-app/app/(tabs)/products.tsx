@@ -33,6 +33,11 @@ function ProductRow({ product, onPress }: { product: Product; onPress: () => voi
   // Phase 4, C14: prefer baseFobPrice (the buyer-facing floor) over the
   // legacy ProductPrice.sellingPrice. baseFobPrice ALREADY INCLUDES the
   // commission baked in by the factory; ERP never adds a markup on top.
+  // Phase 4.9.2b: baseFobPrice is now a denormalized cache of the current
+  // active ProductPrice row (afterSave hook keeps it in sync). Reading
+  // baseFobPrice here returns the same value getCurrentPrice would; the
+  // mobile read path stays on the cache per the 4.9.2b read-scope
+  // decision (only critical write paths migrated to getCurrentPrice).
   const showBaseFob = product.baseFobPrice != null;
 
   return (

@@ -858,6 +858,8 @@ export const HELP_CONTENT = {
           '"Deactivate the HH brand" — assistant flips Brand.active to false; the brand stays in history but disappears from pickers (Phase 4.9.1).',
           '"Create an Engineered SPC sub-category under Flooring/Resilient" — assistant calls create_product_category with the right parentId after a preview (Phase 4.9.1).',
           '"Archive the IronCore Flooring category" — assistant calls archive_product_category; refused server-side if any active products are still bound (Phase 4.9.1).',
+          '"Add a HanHua price for product X at 5.80 USD per m² for China origin, valid from today" — assistant calls create_product_price (Phase 4.9.2c). The quotation floor reads from this row via getCurrentPrice.',
+          '"Set HanHua factory to brand FW" — assistant calls update_factory with brand_code (Phase 4.9.2a). match_factories_for_product then prefers FW-tagged suppliers for FW products.',
         ],
       },
       {

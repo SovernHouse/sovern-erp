@@ -237,6 +237,8 @@ export const SETTINGS = {
   commissionRate: 'Brand-level commission rate as a decimal between 0 and 1. 0.07 = 7%. Used by the commission accrual flow on sales-order confirmation. Per-quotation overrides via Quotation.commissionRateOverride still apply on top.',
   brandActive:    'Inactive brands stay in history but disappear from quotation + product pickers and the AI assistant brand list. Use to deactivate a brand row that was created in error without losing the audit trail.',
   engineeredSPC:  'Multi-layer rigid core flooring with SPC outer wear layers sandwiching a WPC middle for impact dampening. Sits under Flooring → Resilient.',
+  productPrice:   'Temporal pricing row. Pins a cost + selling combo to a (factory and/or origin) and a validity window. The quotation floor reads the current active row via getCurrentPrice. Product.baseFobPrice is the denormalized cache; do not edit it manually.',
+  factoryBrand:   'Optional brand context. Used by match_factories_for_product to prefer same-brand suppliers and by analytics for portfolio splits. Blank = unclassified.',
 }
 
 // ─── Brand (multi-brand data model, Phase 1) ──────────────────────────────────

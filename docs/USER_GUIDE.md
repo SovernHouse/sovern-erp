@@ -161,6 +161,10 @@ Open **Settings > Product catalog** to manage what shows up in the quotation pro
 
 **Brand admin (Phase 4.9.1):** the Brand card editor adds two fields, `Commission rate` (decimal between 0 and 1, e.g. 0.07 = 7%) and an `Active` status checkbox. Deactivating a brand keeps every historical row intact but hides the brand from product/quotation pickers and the AI brand list. Both fields can also be edited via the AI assistant.
 
+**Factory brand (Phase 4.9.2a):** factories now carry an optional brand context. Set it on the Factory form. Used by the AI assistant's match_factories_for_product tool to prefer same-brand suppliers when ranking matches, and by analytics to split portfolios. Leave blank for genuinely cross-brand suppliers.
+
+**Price history (Phase 4.9.2b/c):** every Product has a Price History panel on its edit form (shown only after the product exists). Each price row pins a cost + selling combo to a (factory and/or origin) and a validity window. The quotation builder reads the current active row to set the floor price. Manual edits to the legacy `Base FOB price` field on the form are still honoured but the canonical source is now the Price History rows — the floor sees whichever you edited last. Future-dated rows are supported; the floor flips on `validFrom`. The AI assistant can create / update / get-current-price via natural-language chat under super-admin control.
+
 **How the catalog feeds the quotation form:**
 
 When you create a quotation, the Product dropdown is filtered to the quotation's brand. Picking a product auto-fills the unit price with the base FOB. You can edit the price upward without approval. Editing below floor requires super-admin role plus a written reason (saved to the audit log).

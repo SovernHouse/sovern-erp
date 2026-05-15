@@ -2252,6 +2252,119 @@ async function callTool(name, args) {
 
     // ── Phase 4.9.1: ProductCategory CRUD ─────────────────────────────────
 
+    // ── Phase 4.9.2c: ProductPrice (temporal pricing) tools ─────────────
+
+    case 'create_product_price': {
+      const requester = await requireSuperAdmin();
+      const productId = args.productId || args.product_id;
+      if (!productId) return 'Error: productId is required.';
+      const product = await getDb().Product.findByPk(productId);
+      if (!product) return `Error: Product ${productId} not found.`;
+      const origin = (args.origin || '').trim() || null;
+      const factoryId = args.factoryId || args.factory_id || null;
+      if (!origin && !factoryId) {
+        return 'Error: at least one of origin or factoryId is required.';
+      }
+      if (factoryId) {
+        const f = await getDb().Factory.findByPk(factoryId);
+        if (!f) return `Error: Factory ${factoryId} not found.`;
+      }
+      const cost = parseFloat(args.costPriceUsdPerM2 ?? args.cost_price_usd_per_m2);
+      if (!Number.isFinite(cost)) return 'Error: costPriceUsdPerM2 is required and must be numeric.';
+
+      const row = await getDb().ProductPrice.create({
+        id: uuidv4(),
+        productId,
+        factoryId,
+        origin,
+        costPriceUsdPerM2: cost,
+        sellingPriceUsdPerM2: args.sellingPriceUsdPerM2 != null ? parseFloat(args.sellingPriceUsdPerM2) : (args.selling_price_usd_per_m2 != null ? parseFloat(args.selling_price_usd_per_m2) : null),
+        markupPercent: args.markupPercent != null ? parseFloat(args.markupPercent) : (args.markup_percent != null ? parseFloat(args.markup_percent) : null),
+        currency: args.currency || 'USD',
+        tariffRate: args.tariffRate != null ? parseFloat(args.tariffRate) : (args.tariff_rate != null ? parseFloat(args.tariff_rate) : null),
+        tariffDestination: args.tariffDestination || args.tariff_destination || null,
+        validFrom: args.validFrom || args.valid_from || new Date().toISOString().slice(0, 10),
+        validTo: args.validTo || args.valid_to || null,
+        sourceNote: args.sourceNote || args.source_note || null,
+        createdBy: requester.id,
+      });
+      await auditAiWrite('create_product_price', 'ProductPrice', row.id, {
+        productId, origin, factoryId,
+        costPriceUsdPerM2: cost,
+        validFrom: row.validFrom, validTo: row.validTo,
+      }, requester.id);
+      return { success: true, id: row.id, productId, origin, factoryId, costPriceUsdPerM2: cost, validFrom: row.validFrom };
+    }
+
+    case 'list_product_prices': {
+      const productId = args.productId || args.product_id;
+      if (!productId) return 'Error: productId is required.';
+      const where = { productId };
+      if (args.origin) where.origin = args.origin;
+      const today = new Date().toISOString().slice(0, 10);
+      const { Op } = require('sequelize');
+      if (args.includeExpired !== true) {
+        where[Op.or] = [{ validTo: null }, { validTo: { [Op.gte]: today } }];
+      }
+      const rows = await getDb().ProductPrice.findAll({
+        where,
+        order: [['validFrom', 'DESC']],
+        attributes: ['id', 'productId', 'factoryId', 'origin', 'costPriceUsdPerM2', 'sellingPriceUsdPerM2', 'markupPercent', 'currency', 'tariffRate', 'tariffDestination', 'validFrom', 'validTo', 'sourceNote', 'createdBy'],
+      });
+      return rows.length ? rows.map(r => r.toJSON()) : 'No prices found.';
+    }
+
+    case 'update_product_price': {
+      const requester = await requireSuperAdmin();
+      const id = args.id;
+      if (!id) return 'Error: id is required.';
+      const row = await getDb().ProductPrice.findByPk(id);
+      if (!row) return `Error: ProductPrice ${id} not found.`;
+      const patch = {};
+      const map = {
+        origin: 'origin',
+        factoryId: 'factoryId', factory_id: 'factoryId',
+        costPriceUsdPerM2: 'costPriceUsdPerM2', cost_price_usd_per_m2: 'costPriceUsdPerM2',
+        sellingPriceUsdPerM2: 'sellingPriceUsdPerM2', selling_price_usd_per_m2: 'sellingPriceUsdPerM2',
+        markupPercent: 'markupPercent', markup_percent: 'markupPercent',
+        currency: 'currency',
+        tariffRate: 'tariffRate', tariff_rate: 'tariffRate',
+        tariffDestination: 'tariffDestination', tariff_destination: 'tariffDestination',
+        validFrom: 'validFrom', valid_from: 'validFrom',
+        validTo: 'validTo', valid_to: 'validTo',
+        sourceNote: 'sourceNote', source_note: 'sourceNote',
+      };
+      for (const [k, field] of Object.entries(map)) {
+        if (args[k] !== undefined) {
+          let v = args[k];
+          if (['costPriceUsdPerM2', 'sellingPriceUsdPerM2', 'markupPercent', 'tariffRate'].includes(field)) {
+            v = v == null || v === '' ? null : parseFloat(v);
+          }
+          if (['origin', 'factoryId', 'tariffDestination', 'validTo', 'sourceNote'].includes(field) && (v === '' || v === null)) {
+            v = null;
+          }
+          patch[field] = v;
+        }
+      }
+      if (Object.keys(patch).length === 0) return 'Error: no editable fields provided.';
+      const before = {};
+      for (const k of Object.keys(patch)) before[k] = row[k];
+      await row.update(patch);
+      await auditAiWrite('update_product_price', 'ProductPrice', row.id, { before, after: patch }, requester.id);
+      return { success: true, id: row.id, updated: Object.keys(patch), before, after: patch };
+    }
+
+    case 'get_current_price': {
+      const productId = args.productId || args.product_id;
+      if (!productId) return 'Error: productId is required.';
+      const origin = (args.origin || '').trim() || null;
+      const asOf = args.asOfDate || args.as_of_date || null;
+      const { getCurrentPrice } = require('../services/productPriceService');
+      const current = await getCurrentPrice(productId, origin, asOf);
+      if (!current) return `No active price for product ${productId}${origin ? ` (origin=${origin})` : ''} as of ${asOf || 'today'}.`;
+      return current;
+    }
+
     case 'create_product_category': {
       const requester = await requireSuperAdmin();
       const name = (args.name || '').trim();
@@ -3264,6 +3377,76 @@ const TOOL_DEFS = [
         parentId:        { type: ['string', 'null'], description: 'Restrict to direct children of this parent. Pass null for top-level categories. Omit to return all.' },
         includeArchived: { type: 'boolean',          description: 'Default false. Pass true to include is_archived=true rows.' },
         tree:            { type: 'boolean',          description: 'Default false. Pass true to get a nested tree instead of a flat list.' },
+      },
+    },
+  },
+  {
+    name: 'create_product_price',
+    description: 'Phase 4.9.2c — Create a temporal ProductPrice row (super-admin only). Pins a cost + selling combo to a (factory and/or origin) and a validity window. Used by the quotation builder via getCurrentPrice for the floor check. At least one of origin or factoryId is required. ALWAYS show Alex a preview (origin/factory, cost, selling, markup, tariff, valid window) and wait for explicit confirmation before calling. Writes ai_assistant_create_product_price to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['productId', 'costPriceUsdPerM2'],
+      properties: {
+        productId:           { type: 'string',  description: 'Product UUID.' },
+        origin:              { type: 'string',  description: 'Origin country label (e.g. "China", "Malaysia"). At least one of origin or factoryId is required.' },
+        factoryId:           { type: 'string',  description: 'Factory UUID. At least one of origin or factoryId is required.' },
+        costPriceUsdPerM2:   { type: 'number',  description: 'Factory cost in USD per m². Required.' },
+        sellingPriceUsdPerM2:{ type: 'number',  description: 'Buyer-facing price in USD per m². Omit to compute from cost * (1 + markupPercent).' },
+        markupPercent:       { type: 'number',  description: 'Decimal 0..1 (0.07 = 7%). Used when sellingPriceUsdPerM2 is null.' },
+        currency:            { type: 'string',  description: 'Default USD.' },
+        tariffRate:          { type: 'number',  description: 'Decimal 0..1 (0.407714 = 40.7714%). Optional landed-cost snapshot.' },
+        tariffDestination:   { type: 'string',  description: 'ISO2 destination for the tariff snapshot (e.g. "US").' },
+        validFrom:           { type: 'string',  description: 'YYYY-MM-DD. Defaults to today.' },
+        validTo:             { type: 'string',  description: 'YYYY-MM-DD. Null/omit = open-ended.' },
+        sourceNote:          { type: 'string',  description: 'Provenance (e.g. "Per HanHua factory quotation 2026-05-14").' },
+      },
+    },
+  },
+  {
+    name: 'list_product_prices',
+    description: 'Phase 4.9.2c — List ProductPrice rows for a product. Filter by origin or includeExpired (default false). Use BEFORE create_product_price to confirm an active row doesn\'t already exist for the same (origin, validFrom).',
+    inputSchema: {
+      type: 'object',
+      required: ['productId'],
+      properties: {
+        productId:       { type: 'string' },
+        origin:          { type: 'string' },
+        includeExpired:  { type: 'boolean', description: 'Default false. Pass true to also return rows with validTo past today.' },
+      },
+    },
+  },
+  {
+    name: 'update_product_price',
+    description: 'Phase 4.9.2c — Update a ProductPrice row (super-admin only). Pass id + any subset of editable fields. ALWAYS show the before/after diff first. Writes ai_assistant_update_product_price to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:                  { type: 'string' },
+        origin:              { type: ['string', 'null'] },
+        factoryId:           { type: ['string', 'null'] },
+        costPriceUsdPerM2:   { type: 'number' },
+        sellingPriceUsdPerM2:{ type: ['number', 'null'] },
+        markupPercent:       { type: ['number', 'null'] },
+        currency:            { type: 'string' },
+        tariffRate:          { type: ['number', 'null'] },
+        tariffDestination:   { type: ['string', 'null'] },
+        validFrom:           { type: 'string' },
+        validTo:             { type: ['string', 'null'] },
+        sourceNote:          { type: ['string', 'null'] },
+      },
+    },
+  },
+  {
+    name: 'get_current_price',
+    description: 'Phase 4.9.2c — Return the currently-effective ProductPrice row for a (productId, origin) as of asOfDate (defaults to today). Includes derived fields: sqft conversions, resolved sellingPriceUsdPerM2 (cost * (1 + markup) when null), landedPriceUsdPerM2 (selling * (1 + tariffRate)) when tariff is set. Lookup order: exact origin → open-price (origin=null) → any-row fallback for the product.',
+    inputSchema: {
+      type: 'object',
+      required: ['productId'],
+      properties: {
+        productId: { type: 'string' },
+        origin:    { type: 'string', description: 'Optional. Omit to return the open price (origin=null) if one exists.' },
+        asOfDate:  { type: 'string', description: 'YYYY-MM-DD. Defaults to today.' },
       },
     },
   },

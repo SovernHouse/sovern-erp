@@ -23,6 +23,7 @@ import api from '../../services/api'
 import BrandFilterPicker from '../../components/BrandFilterPicker'
 import BrandPicker from '../../components/BrandPicker'
 import BrandBadge from '../../components/BrandBadge'
+import ProductPriceHistory from '../../components/ProductPriceHistory'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { formatCurrency } from '../../utils/formatters'
 import { useAuth } from '../../hooks/useAuth'
@@ -428,6 +429,13 @@ function ProductForm({ editing, categories, factories, onClose, onSaved }) {
               </div>
             )}
           </div>
+
+          {/* Phase 4.9.2c: temporal Price History panel. Only shows when
+              editing an existing product (new rows can't attach a
+              price before the productId exists). */}
+          {editing?.id && (
+            <ProductPriceHistory productId={editing.id} factories={factories} />
+          )}
 
           <Field label="Description" value={form.description} onChange={f('description')} multiline />
           <Field label="Sales description (buyer-facing)" value={form.salesDescription} onChange={f('salesDescription')} multiline />
