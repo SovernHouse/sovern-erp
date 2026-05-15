@@ -224,3 +224,163 @@ exports.remove = async (req, res, next) => {
 };
 
 module.exports.getCurrentTariff = getCurrentTariff;
+
+// ─── Phase 4.9 C-4: bulk import + template ───────────────────────────────────
+
+// CSV column names. One row per tariff entry. Each named component
+// column ("mfnBase", "section301", etc.) becomes a {name, ratePercent}
+// entry in the components array when filled in. The two "otherN"
+// pairs handle rare additions without bloating the header.
+const COMPONENT_COLUMNS = [
+  { col: 'mfnBase',         name: 'MFN base (HTS column 1)' },
+  { col: 'section301',      name: 'Section 301' },
+  { col: 'section232',      name: 'Section 232' },
+  { col: 'ieepaReciprocal', name: 'IEEPA reciprocal' },
+  { col: 'ieepaFentanyl',   name: 'IEEPA fentanyl' },
+  { col: 'adCvd',           name: 'AD/CVD' },
+  { col: 'mpf',             name: 'MPF (merchandise fee)' },
+  { col: 'hmf',             name: 'HMF (harbor maintenance)' },
+];
+
+const CSV_HEADER = [
+  'originCountry', 'destinationCountry', 'effectiveFrom', 'effectiveUntil',
+  ...COMPONENT_COLUMNS.map(c => c.col),
+  'otherName1', 'otherRate1', 'otherName2', 'otherRate2',
+  'totalRate', 'sourceNote', 'brandCode',
+];
+
+const CSV_EXAMPLE_ROWS = [
+  // CN -> US matches the seed (sums to 40.7714).
+  ['CN', 'US', '2026-05-14', '2026-06-14', '3.2', '25.0', '', '10.0', '2.15', '', '0.3464', '0.075', '', '', '', '', '', 'HanHua factory note 2026-05-14', ''],
+  // MY -> US matches the seed (sums to 15.5214).
+  ['MY', 'US', '2026-05-14', '2026-06-14', '5.0', '', '', '10.0', '', '', '0.3464', '0.175', '', '', '', '', '', 'HanHua factory note 2026-05-14', ''],
+];
+
+// GET /api/tariff-rates/template.csv
+exports.template = (req, res) => {
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="tariff-rates-template.csv"');
+  const lines = [
+    CSV_HEADER.join(','),
+    ...CSV_EXAMPLE_ROWS.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
+  ];
+  res.send(lines.join('\n'));
+};
+
+function csvRowToTariffPayload(row) {
+  const components = [];
+  for (const { col, name } of COMPONENT_COLUMNS) {
+    const raw = (row[col] || '').trim();
+    if (!raw) continue;
+    const v = Number(raw);
+    if (!Number.isFinite(v)) throw new Error(`${col}=${raw} is not numeric`);
+    if (v === 0) continue; // skip zero-rate components — they add nothing
+    components.push({ name, ratePercent: v });
+  }
+  // Handle the two free-form pairs.
+  for (let i = 1; i <= 2; i++) {
+    const name = (row[`otherName${i}`] || '').trim();
+    const rateRaw = (row[`otherRate${i}`] || '').trim();
+    if (!name && !rateRaw) continue;
+    if (!name || !rateRaw) throw new Error(`otherName${i} and otherRate${i} must both be filled when used`);
+    const v = Number(rateRaw);
+    if (!Number.isFinite(v)) throw new Error(`otherRate${i}=${rateRaw} is not numeric`);
+    components.push({ name, ratePercent: v });
+  }
+
+  const origin = (row.originCountry || '').toUpperCase().trim();
+  const dest = (row.destinationCountry || '').toUpperCase().trim();
+  if (origin.length !== 2 || dest.length !== 2) {
+    throw new Error('originCountry and destinationCountry must each be 2-letter ISO codes');
+  }
+  const effectiveFrom = (row.effectiveFrom || '').trim();
+  const effectiveUntil = (row.effectiveUntil || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveUntil)) {
+    throw new Error('effectiveFrom and effectiveUntil must be YYYY-MM-DD');
+  }
+  if (effectiveUntil < effectiveFrom) {
+    throw new Error('effectiveUntil must be on or after effectiveFrom');
+  }
+
+  let ratePercent;
+  if (components.length > 0) {
+    ratePercent = Math.round(components.reduce((s, c) => s + c.ratePercent, 0) * 10000) / 10000;
+  } else {
+    const totalRaw = (row.totalRate || '').trim();
+    if (!totalRaw) throw new Error('Must supply at least one component column OR a totalRate');
+    const v = Number(totalRaw);
+    if (!Number.isFinite(v) || v < 0) throw new Error(`totalRate=${totalRaw} is not a non-negative number`);
+    ratePercent = v;
+  }
+
+  return {
+    originCountry: origin,
+    destinationCountry: dest,
+    effectiveFrom,
+    effectiveUntil,
+    components,
+    ratePercent,
+    sourceNote: (row.sourceNote || '').trim() || null,
+    brandCode: (row.brandCode || '').trim().toUpperCase() || null,
+  };
+}
+
+// POST /api/tariff-rates/bulk-import (multipart file=<csv> OR json {csv: "..."})
+exports.bulkImport = async (req, res, next) => {
+  try {
+    const { parse } = require('csv-parse/sync');
+    let raw = '';
+    if (req.file && req.file.path) {
+      const fs = require('fs');
+      raw = fs.readFileSync(req.file.path, 'utf8');
+      fs.unlink(req.file.path, () => {});
+    } else if (req.body && typeof req.body.csv === 'string') {
+      raw = req.body.csv;
+    } else {
+      return res.status(400).json({ success: false, message: 'Provide a multipart file=<csv> upload or JSON body { csv: "..." }' });
+    }
+
+    let rows;
+    try {
+      rows = parse(raw, { columns: true, skip_empty_lines: true, trim: true, bom: true });
+    } catch (e) {
+      return res.status(400).json({ success: false, message: `CSV parse failed: ${e.message}` });
+    }
+
+    const results = { inserted: 0, updated: 0, errors: [] };
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const payload = csvRowToTariffPayload(row);
+        // Upsert on (originCountry, destinationCountry, effectiveFrom).
+        const existing = await db.TariffRate.findOne({
+          where: {
+            originCountry: payload.originCountry,
+            destinationCountry: payload.destinationCountry,
+            effectiveFrom: payload.effectiveFrom,
+          },
+        });
+        if (existing) {
+          await existing.update(payload);
+          auditService.logAction(req.user?.id, 'tariff_rate_updated', 'TariffRate', existing.id, { source: 'bulk_import', after: payload }, req.ip).catch(() => {});
+          results.updated++;
+        } else {
+          const created = await db.TariffRate.create({ ...payload, createdById: req.user?.id || null });
+          auditService.logAction(req.user?.id, 'tariff_rate_created', 'TariffRate', created.id, { source: 'bulk_import', data: created.toJSON() }, req.ip).catch(() => {});
+          results.inserted++;
+        }
+      } catch (e) {
+        // Row index +2 so the user sees the CSV line number (header is line 1).
+        results.errors.push({ row: i + 2, message: e.message, data: row });
+      }
+    }
+
+    auditService.logAction(req.user?.id, 'tariff_rate_bulk_import', 'TariffRate', null, {
+      inserted: results.inserted, updated: results.updated, errorCount: results.errors.length,
+    }, req.ip).catch(() => {});
+
+    res.json({ success: true, data: results });
+  } catch (err) {
+    next(err);
+  }
+};

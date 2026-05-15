@@ -2829,4 +2829,43 @@ Sentinel: `phase4_9_c3_2_tariff_rate_components_backfilled`.
 ## Tests
 
 `backend/__tests__/unit/tariffRateComponents.test.js`: 4 cases including the exact seed sums (40.7714 and 15.5214) and floating-point cleanup (0.1+0.2 → 0.3).
+
+---
+
+# TariffRate bulk import + CSV template (Phase 4.9 C-4)
+
+## Endpoints
+
+- `GET /api/tariff-rates/template.csv` — any auth user. Downloads an empty CSV template with header + the two seed rows as worked examples. Column header is documented in `tariffRateController.CSV_HEADER`.
+- `POST /api/tariff-rates/bulk-import` — super_admin only. Accepts either a multipart `file=<csv>` upload (1MB cap, .csv/.txt only) OR a JSON body `{ csv: "<raw>" }` for programmatic use.
+
+## CSV shape
+
+One row per tariff entry. Component contributions go in named columns (`mfnBase`, `section301`, `section232`, `ieepaReciprocal`, `ieepaFentanyl`, `adCvd`, `mpf`, `hmf`). Two free-form pairs (`otherName1/otherRate1`, `otherName2/otherRate2`) handle rare additions. A row may instead supply a single `totalRate` when the breakdown is unknown — the importer accepts either path.
+
+Behavior:
+- Zero-valued component cells are skipped (they don't add a `{name, ratePercent:0}` noise row).
+- `ratePercent` is the sum of named components when at least one is present, rounded to 4 decimals; otherwise the explicit `totalRate` is used.
+- `effectiveFrom <= effectiveUntil` enforced. Both must be `YYYY-MM-DD`.
+- `originCountry` + `destinationCountry` upper-cased and length-checked (ISO2).
+
+## Upsert key
+
+`(originCountry, destinationCountry, effectiveFrom)`. A row that matches an existing record updates it (auditing `tariff_rate_updated`); otherwise it inserts (auditing `tariff_rate_created`). A summary `tariff_rate_bulk_import` AuditLog row records `inserted / updated / errorCount`.
+
+## Errors
+
+Per-row errors do not abort the import. Response body: `{ success: true, data: { inserted, updated, errors: [{row, message, data}] } }`. `row` is the 1-indexed CSV line number (header is line 1) so the user sees the right line in the spreadsheet.
+
+## UI
+
+`/settings/tariff-rates` toolbar gets two buttons (super_admin):
+- **Template** — direct download link to `template.csv`.
+- **Bulk import** — hidden file input that triggers the upload. Toast summarizes the result; errors are dumped to `console.warn` for now.
+
+No mobile UI. Bulk operations are a desktop super-admin workflow; on-the-go mobile use is read-only.
+
+## Tests
+
+`backend/__tests__/unit/tariffBulkImport.test.js`: 6 cases covering the seed sums, totalRate-only rows, empty-cell skip, otherN pair validation, non-numeric detection, and the "must supply at least one" rule.
 | CN | US | 40.7714

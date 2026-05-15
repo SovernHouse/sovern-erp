@@ -13,8 +13,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, Pencil, AlertTriangle, Check, X } from 'lucide-react';
-import api from '../../services/api';
+import { Plus, Trash2, Pencil, AlertTriangle, Check, X, Upload, Download } from 'lucide-react';
+import api, { tariffRatesAPI } from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
@@ -184,6 +184,38 @@ export default function TariffRates() {
           <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
             <input type="checkbox" checked={showExpired} onChange={(e) => setShowExpired(e.target.checked)} className="w-4 h-4 rounded border-slate-300" />
             Show expired
+          </label>
+          {/* Phase 4.9 C-4: bulk import + template download. */}
+          <a href={tariffRatesAPI.templateUrl()} download className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 text-sm font-medium">
+            <Download className="w-4 h-4" /> Template
+          </a>
+          <label className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 text-sm font-medium cursor-pointer">
+            <Upload className="w-4 h-4" /> Bulk import
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              hidden
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const res = await tariffRatesAPI.bulkImport(file);
+                  const { inserted, updated, errors } = res.data || {};
+                  const errCount = errors?.length || 0;
+                  if (errCount === 0) {
+                    toast.success(`Imported: ${inserted} new, ${updated} updated`);
+                  } else {
+                    toast(`Imported: ${inserted} new, ${updated} updated, ${errCount} error(s) — see console`, { icon: 'WARN' });
+                    console.warn('[tariff bulk-import] errors:', errors);
+                  }
+                  await load();
+                } catch (err) {
+                  toast.error(err.response?.data?.message || 'Bulk import failed');
+                } finally {
+                  e.target.value = '';
+                }
+              }}
+            />
           </label>
           <button onClick={startCreate} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-sm font-medium">
             <Plus className="w-4 h-4" /> New rate

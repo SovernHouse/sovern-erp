@@ -146,13 +146,21 @@ export const quotationsAPI = {
   getPDF: (id) => api.get(`/quotations/${id}/pdf`, { responseType: 'blob' }),
 }
 
-// Phase 4.9 C-2 / C-3: tariff rates API.
+// Phase 4.9 C-2 / C-3 / C-4: tariff rates API.
 export const tariffRatesAPI = {
   getAll: (params) => api.get('/tariff-rates', { params }),
   expiring: (days = 7) => api.get(`/tariff-rates/expiring?days=${days}`),
   create: (data) => api.post('/tariff-rates', data),
   update: (id, data) => api.put(`/tariff-rates/${id}`, data),
   delete: (id) => api.delete(`/tariff-rates/${id}`),
+  // C-4: bulk import. Accepts a File (multipart) and posts to bulk-import.
+  bulkImport: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/tariff-rates/bulk-import', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  // C-4: template download URL (link target — uses the same axios baseURL).
+  templateUrl: () => `${api.defaults.baseURL || ''}/tariff-rates/template.csv`,
 }
 
 // Proforma Invoices endpoints
