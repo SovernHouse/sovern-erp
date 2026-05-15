@@ -5,12 +5,18 @@
 ---
 
 ## Last Updated
-2026-05-15 Taiwan time. Through Phase 4.9.3 (AI assistant capability gaps closed) — also includes 4.9.2 (Factory.brandCode + ProductPrice temporal), 4.9.4 (rate-limiter self-DOS fix), 4.9.1 (taxonomy/brand cleanup + recovery + orphan rename), 4.7+ (AI polish), Phase 5 (offline mode), Phase 4.9 (tariffs + landed-cost).
+2026-05-15 Taiwan time (end of day). Latest: Phase 4.9.3.1 (brand-aware fromAddress hotfix codified + MCP write-tool audit). Also this session: Phase 4.11 (MCP smoke harness + lazy googleapis), Phase 4.9.3 final F+G+H (describe_entity_db + ProductPrice cleanup + boot parity check), Phase 4.10 (migration framework), Phase 4.9.5 (REST current-price endpoint).
 
 ---
 
 ## CI Status
 - **Latest commits on main (newest first):**
+  - `fb65da0` feat(ai-mcp): Phase 4.9.3.1 — codify brand-aware fromAddress + audit MCP write tools — CI green, deploy in progress
+  - `a67ec9f` test(mcp): Phase 4.11 — MCP tool smoke-test harness + lazy googleapis — CI green, deployed
+  - `a598a5b` feat(ai-mcp+infra): Phase 4.9.3 (final) Parts F + G + H — describe_entity_db + ProductPrice cleanup + parity check — CI green, deployed
+  - `b771c13` feat(pricing): Phase 4.9.5 — REST current-price endpoint + admin form soft-deprecation
+  - `559eb83` feat(infra): Phase 4.10 — formalise migration framework (bootstrap + contract)
+  - `de61da6` docs(session): refresh through Phase 4.9.3
   - `58f27af` docs(ai): Phase 4.9.3c — three-surface docs for 4.9.3a + 4.9.3b
   - `7d046a3` feat(ai-mcp): Phase 4.9.3b — outreach draft mode + Drive multi-account routing
   - `aadd92c` feat(ai-mcp): Phase 4.9.3a — Customer + Product CRUD MCP tools
@@ -19,10 +25,16 @@
   - `a50d6f5` feat(pricing): Phase 4.9.2b — ProductPrice temporal replace + getCurrentPrice
   - `fd32688` feat(factory+taxonomy): Phase 4.9.2a — Factory.brandCode + match filter + MCP ext + sortOrder fix
   - …earlier: full 4.9.1 + 4.7+ + Phase 5 + Phase 4.9 chain (see git log).
-- **Working tree:** clean (SESSION.md modified only).
-- **Tests:** 247/247 passing locally pre-push. Includes 11 unitConversion + 4 tariffRateComponents + 6 tariffBulkImport + 3 offlineDedupe + 4 rateLimiter492 cases added across the recent phases.
-- **Backend health:** live at `https://erp.sovernhouse.co/api`. All boot-time migrations sentinel-recorded in AuditLog through `phase4_9_3a_customer_metadata_added`.
-- **Mobile parity:** READY. All new mobile surfaces shipped in the same commits per L-035. Alex still needs to run `cd "C:\Users\Alex\Desktop\International Trade Company\Trading ERP\mobile\sovern-ops-app"; npx eas-cli update --branch main --message "…"` from PowerShell (correct form per memory; old `--platform ios --environment production` flags fail).
+- **Working tree on VM:** clean (only the usual untracked backups/ecosystem.config.js/local artifacts).
+- **Tests:** 148/148 integration passing locally (Windows). On VM: smoke + cross-process MCP tests run via `npx jest` (no supertest installed → full suite is CI-only). New this session: 6 mcpSmoke + 3 mcpFromAddress493_1 tests, all green.
+- **Backend health:** live at `https://erp.sovernhouse.co/api`. All boot-time migrations sentinel-recorded in AuditLog through `phase4_9_3_g_product_price_cleanup`. Boot-time parity check (Phase 4.9.3 final Part H) reports "checked 104 model(s) clean, 0 with mismatch(es)."
+- **The Phase 4.9.3.1 hotfix is already running live on the VM** (Alex applied it directly before this session). The git history catches up via `a67ec9f` (carried the fix code accidentally because the file was already patched on disk) + `fb65da0` (schema update, 3 integration tests, audit table, SQLITE_STORAGE test enabler).
+- **Mobile parity:** N/A for this session's commits — Phase 4.11 (test infra) and Phase 4.9.3.1 (MCP-only schema + tests + audit) don't touch user-facing surfaces. No mobile rebuild needed. Last EAS push from the prior session covered the user-facing changes through 4.9.3.
+
+## Next Session — Pick Up Here
+- **MCP write-tool controller-divergence cleanup** (logged in `fb65da0` commit message). Audit identified that every MCP write tool reimplements its controller; older tools (create_lead, update_lead, factory/contact CRUD, send_email, schedule_follow_up, create_quotation, approve_product) lack `auditAiWrite()` calls so the AI-initiated audit trail has gaps. create_lead/update_lead also don't propagate `brandCode`. Structural fix = MCP handlers call the corresponding controller function directly; document as a separate phase.
+- **Verification owed on prod after `fb65da0` deploy lands:** AI assistant chat mode, FW context, ask "describe the send_outreach_email tool" — confirm the new `fromAddress` parameter appears in the schema with the Phase 4.9.3.1 resolution description.
+- **Phase 4.11 smoke harness now in place** — future MCP changes should add a smoke case for any new high-value tool (template: see `backend/__tests__/integration/mcpSmoke.test.js`). Data-flow tests follow the `mcpFromAddress493_1.test.js` template (SQLITE_STORAGE override + MCP_FORCE_SYNC=false on subprocess + shared file SQLite).
 - **Brands on prod:** SH active commission=0%, FW active commission=7% (HanHua Sales Rep Agreement), HH inactive.
 - **Taxonomy on prod:** Flooring → Resilient → SPC/WPC/Engineered SPC/LVT/Vinyl Sheet (Resilient sortOrder=2, EngSPC=3, LVT=4, Vinyl Sheet=5). Engineered Wood + remaining flooring rows direct children of Flooring. IronCore Flooring + WPC Hybrid Flooring archived. Orphan `ProductCategory` (singular) renamed to `ProductCategory_orphan_20260515`; 18 rows preserved (~30 day retention; safe to DROP after 2026-06-15).
 - **Factories on prod:** Anhui HanHua + FlorWay SDN. BHD. both `brandCode='FW'`.
