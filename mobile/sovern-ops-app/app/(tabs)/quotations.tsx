@@ -208,6 +208,17 @@ export default function QuotationsScreen() {
         maxToRenderPerBatch={10}
         windowSize={10}
       />
+
+      {/* Phase 4.9 Pre-flight — L-035 parity: mobile can now create
+          quotations. Floating action button matches the forest brand
+          accent + sits clear of the bottom tab bar. */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/quotation/create')}
+        accessibilityLabel="New quotation"
+      >
+        <Text style={styles.fabIcon}>+</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -286,5 +297,15 @@ const styles = StyleSheet.create({
 
   separator: { height: 1, backgroundColor: COLORS.border },
   empty:     { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  // Phase 4.9 Pre-flight — FAB
+  fab: {
+    position: 'absolute', right: 20, bottom: 24,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: COLORS.forest,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
+  fabIcon: { color: COLORS.white, fontSize: 30, fontWeight: '700', marginTop: -2 },
   emptyText: { color: COLORS.muted, fontSize: 14 },
 });

@@ -1100,6 +1100,45 @@ export async function getQuotation(id: string) {
   return res.data
 }
 
+// Phase 4.9 Pre — mobile parity catch-up. Mirrors desktop QuotationForm
+// submit shape (see frontend/admin-portal/src/pages/Quotations/QuotationForm.jsx).
+// Backend POST /api/quotations runs sanctions screening, brand-scope assert,
+// and below-floor price validation (Phase 4 C14/C18). brandCode is
+// brand-locked at creation per D-5.
+export type QuotationItemPayload = {
+  productId: string
+  description: string
+  quantity: number
+  unit: 'sqm' | 'sqft' | 'box' | 'pallet' | 'roll' | 'piece'
+  unitPrice: number
+  discount?: number
+  notes?: string
+  belowFloorReason?: string
+}
+
+export type CreateQuotationPayload = {
+  customerId: string
+  factoryId?: string
+  leadId?: string
+  brandCode?: string
+  items: QuotationItemPayload[]
+  validUntil?: string
+  currency?: string
+  discount?: number
+  discountType?: 'fixed' | 'percentage'
+  taxRate?: number
+  terms?: string
+  notes?: string
+}
+
+export async function createQuotation(payload: CreateQuotationPayload) {
+  const res = await request<{ success: boolean; data: Quotation; autoAddedBrand?: string }>(
+    '/api/quotations',
+    { method: 'POST', body: JSON.stringify(payload) },
+  )
+  return res
+}
+
 export async function sendQuotation(id: string) {
   const res = await request<{ success: boolean; data: { quotation: Quotation } }>(`/api/quotations/${id}/send`, { method: 'POST' })
   return (res as any).data ?? res
