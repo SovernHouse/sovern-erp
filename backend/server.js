@@ -613,6 +613,16 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] C18 sanctions backfill skipped:', e.message);
     }
+
+    // Phase 4.5, C24: refresh FW Brand signature (HTML + text) to the
+    // Country Manager / FlorWay+HanHua design. Idempotent via AuditLog
+    // sentinel; SH untouched.
+    try {
+      const { migrateBrandSignaturesC24 } = require('./services/migrateBrandSignaturesC24');
+      await migrateBrandSignaturesC24(db);
+    } catch (e) {
+      logger.warn('[boot] C24 FW signature refresh skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {
