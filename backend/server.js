@@ -189,6 +189,11 @@ const expenseRoutes = require('./routes/expenseRoutes');
 const brandRoutes = require('./routes/brandRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
+// Phase 5 hardening: dedupe offline-queued writes by X-Client-Uuid so
+// a network-cut-after-send replay can't double-create. No-op for any
+// request without the header, GETs, or non-queueable paths.
+app.use('/api', require('./middleware/dedupeOfflineWrite'));
+
 app.use('/api/auth', authRoutes);
 app.use('/api', brandRoutes); // mounts /api/brands, /api/brands/me, /api/admin/brand-override
 app.use('/api', adminRoutes); // Phase 4.7, C-3: mounts /api/admin/drive-setup

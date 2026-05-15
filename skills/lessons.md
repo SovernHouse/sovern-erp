@@ -103,6 +103,7 @@ When editing a long template literal (e.g. the AI assistant system prompt in `ba
 - **Fix at call site:** `res.data` is the unwrapped payload. For an object, just use `res.data`. For an array, use `Array.isArray(res.data) ? res.data : []`.
 - **Rule:** In `frontend/admin-portal/`, NEVER write `res.data?.data` or `res.data.data` when the call goes through the shared `api` axios instance from `services/api.js`. The interceptor strips the envelope already. The only legitimate case for `.data.data` is a payload whose unwrapped value is itself an object with a literal `data` field (e.g. a tree response shaped `{ data: [...children] }` — rare; check the controller).
 - **Cluster cleanup deferred:** 17 other files have the pattern but have not been reported as user-visible bugs yet. Tracked as a Phase 5 polish item; sweep with caution (some sites may use raw `fetch` or a separate axios instance that does not have the interceptor, so blanket find-replace is unsafe).
+- **Sweep done (commit `c3f2c46`):** Classified all 47 occurrences across 29 files. 42 were already safe (chained with `|| res.data`, `??`, or `Array.isArray` fallback). 5 unsafe sites fixed with `res.data?.data ?? res.data` so the path works whether the interceptor unwrapped or not: `ClientContacts.jsx:1459` (campaign send poll froze on "queued"), `AssistantPage.jsx:132` (log_expense rendered bogus id slice), `AssistantPage.jsx:942` (attachment upload silently dropped files), `DevRunsPage.jsx:277` (dev-run detail never refreshed past "queued"), `RolePermissions.jsx:380` (post-reset permission preview dropped).
 
 **L-044 — React Native horizontal ScrollView clips its children unless flexGrow is pinned to zero**
 
@@ -110,6 +111,14 @@ When a React Native horizontal `<ScrollView>` sits between two flex children (e.
 
 - **Root cause:** RN ScrollView's default flex behavior in a flex column container assumes vertical scrolling. Setting `horizontal={true}` does not also imply `flexGrow: 0`. The ScrollView claims more vertical space than its content's intrinsic height, then renders content at the top and lets the FlatList beneath cover the remainder.
 - **Fix:** Always set `style={{ flexGrow: 0, flexShrink: 0 }}` on horizontal ScrollViews used as a row inside a column-flex parent. `contentContainerStyle` alone does NOT pin height; the outer `style` does.
+
+**L-046 — Sequelize `indexes:` fields use the actual column name, not the JS attribute name, when `underscored: true` is on globally**
+
+`backend/config/database.js` sets `define: { underscored: true, freezeTableName: true }` for the whole connection. A model defined with `createdAt`/`updatedAt` writes to columns named `created_at`/`updated_at`. If a model adds `indexes: [{ fields: ['createdAt'] }]`, sequelize emits `CREATE INDEX ... ON Table (createdAt)` and SQLite errors with `no such column: createdAt`. Caught by 148 failing tests on first attempt at Phase 5 X-Client-Uuid dedupe (commit fixed before push).
+
+- **Root cause:** `underscored: true` rewrites the column name at table creation time but does NOT rewrite identifiers inside `indexes:` blocks. The index DDL is emitted with the raw string from the model definition.
+- **Fix:** When adding an `indexes:` entry on a model that includes timestamp or any other auto-mapped field, write the column name in snake_case (`created_at`, `updated_at`), not camelCase. Only the JS-side `define()` attributes get the auto-mapping; raw index field strings do not.
+- **Rule:** In any backend model that uses `indexes:`, reference fields by their actual SQL column name. When in doubt: query `PRAGMA table_info(<Table>)` or trace back through `database.js` `underscored` to confirm what column name Sequelize will emit.
 - **Rule:** Any horizontal `<ScrollView>` between flex siblings gets `style={{ flexGrow: 0, flexShrink: 0 }}`. Verify on an actual iOS device, not just the simulator — iOS sometimes renders this differently between the two.
 
 ---

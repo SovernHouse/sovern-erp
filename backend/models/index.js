@@ -67,6 +67,9 @@ db.SystemSetting = require('./SystemSetting')(sequelize);
 // Phase 4.9 C-2: import duty rates indexed by (origin, destination,
 // effectiveUntil). Quotation builder reads via getCurrentTariff().
 db.TariffRate = require('./TariffRate')(sequelize);
+// Phase 5 hardening: composite-PK dedupe of X-Client-Uuid replays so
+// offline writes can't double-create on network-cut-after-send.
+db.ClientWriteDedupe = require('./ClientWriteDedupe')(sequelize);
 db.FrontendError = require('./FrontendError')(sequelize);
 db.InventoryItem = require('./InventoryItem')(sequelize);
 db.InventoryTransaction = require('./InventoryTransaction')(sequelize);
