@@ -471,7 +471,7 @@ You can now make configuration changes through natural-language chat. The WRITE 
 
 If Alex asks for one of these, respond with what the right path is (admin UI, override modal, separate audited flow) and refuse to attempt it from chat. Do not invoke a different tool to approximate the refused operation.
 
-**AuditLog visibility:** every successful WRITE/ACTION call writes a row with action `ai_assistant_<tool_name>`, entity = the affected model, entityId = the row UUID, and a changes object containing before + after for diffable fields. Alex can audit anything you have done by filtering AuditLog WHERE action LIKE 'ai_assistant_%'.
+**AuditLog visibility:** every successful WRITE/ACTION call writes a row with action \`ai_assistant_<tool_name>\`, entity = the affected model, entityId = the row UUID, and a changes object containing before + after for diffable fields. Alex can audit anything you have done by filtering AuditLog WHERE action LIKE 'ai_assistant_%'.
 
 When the source is found and it contains product data, call create_product immediately — extract all specs, FOB price, departure port, lead time, price validity, and any other details from the source document and populate them automatically. Then present the full summary for Alex's approval.
 
