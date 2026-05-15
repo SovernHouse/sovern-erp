@@ -747,6 +747,26 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] 4.9.2a migration skipped:', e.message);
     }
+
+    // Phase 4.9.2b: ProductPrice schema replacement (rename old →
+    // create new shape per spec) + backfill from Product.baseFobPrice
+    // and originVariants.
+    try {
+      const { migrate492bProductPrice } = require('./services/migrate492bProductPrice');
+      await migrate492bProductPrice(db);
+    } catch (e) {
+      logger.warn('[boot] 4.9.2b migration skipped:', e.message);
+    }
+
+    // Phase 4.9.2b: reconcile pass to catch any drift between
+    // ProductPrice (canonical) and Product.baseFobPrice (denormalized
+    // cache). Idempotent; only touches rows that actually differ.
+    try {
+      const { reconcileBaseFobPrices } = require('./services/productPriceService');
+      await reconcileBaseFobPrices();
+    } catch (e) {
+      logger.warn('[boot] 4.9.2b reconcile skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {

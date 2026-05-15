@@ -258,43 +258,48 @@ const getByCategory = async (req, res, next) => {
 const createPrice = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { factoryId, costPrice, exwPrice, priceType, markup, sellingPrice, currency, validFrom, validTo } = req.body;
+    // Phase 4.9.2b: new shape. At least one of factoryId / origin
+    // required. Cost is per m² explicit; sqft computed at read time.
+    const {
+      factoryId, origin,
+      costPriceUsdPerM2, sellingPriceUsdPerM2, markupPercent,
+      currency, tariffRate, tariffDestination,
+      validFrom, validTo, sourceNote,
+    } = req.body;
 
     const product = await db.Product.findByPk(id);
     if (!product || product.deletedAt) throw new NotFoundError('Product not found');
 
-    const factory = await db.Factory.findByPk(factoryId);
-    if (!factory) throw new NotFoundError('Factory not found');
-
-    if (!costPrice || isNaN(parseFloat(costPrice))) throw new ValidationError('costPrice is required');
-
-    const markupPct = parseFloat(markup) || 20;
-    // Sovern margin formula: sell = cost / (1 - margin%)
-    const computedSell = sellingPrice || parseFloat(costPrice) / (1 - markupPct / 100);
-
-    // Deactivate any existing active price for this factory on this product
-    await db.ProductPrice.update(
-      { isActive: false },
-      { where: { productId: id, factoryId, isActive: true } }
-    );
+    if (!factoryId && !origin) {
+      throw new ValidationError('At least one of factoryId or origin is required');
+    }
+    if (factoryId) {
+      const factory = await db.Factory.findByPk(factoryId);
+      if (!factory) throw new NotFoundError('Factory not found');
+    }
+    if (costPriceUsdPerM2 == null || isNaN(parseFloat(costPriceUsdPerM2))) {
+      throw new ValidationError('costPriceUsdPerM2 is required');
+    }
 
     const price = await db.ProductPrice.create({
       id: uuidv4(),
       productId: id,
-      factoryId,
-      costPrice: parseFloat(costPrice),
-      exwPrice: exwPrice ? parseFloat(exwPrice) : null,
-      priceType: priceType || 'FOB',
-      markup: markupPct,
-      sellingPrice: parseFloat(computedSell.toFixed(2)),
+      factoryId: factoryId || null,
+      origin: origin || null,
+      costPriceUsdPerM2: parseFloat(costPriceUsdPerM2),
+      sellingPriceUsdPerM2: sellingPriceUsdPerM2 != null ? parseFloat(sellingPriceUsdPerM2) : null,
+      markupPercent: markupPercent != null ? parseFloat(markupPercent) : null,
       currency: currency || 'USD',
-      validFrom: validFrom || new Date(),
+      tariffRate: tariffRate != null ? parseFloat(tariffRate) : null,
+      tariffDestination: tariffDestination || null,
+      validFrom: validFrom || new Date().toISOString().slice(0, 10),
       validTo: validTo || null,
-      isActive: true
+      sourceNote: sourceNote || null,
+      createdBy: req.user?.id || null,
     });
 
     const result = await db.ProductPrice.findByPk(price.id, {
-      include: [{ model: db.Factory, as: 'factory', attributes: ['id', 'companyName'] }]
+      include: [{ model: db.Factory, as: 'factory', attributes: ['id', 'companyName'], required: false }],
     });
 
     res.status(201).json(getSuccessResponse(result, 'Price added successfully'));
@@ -307,31 +312,32 @@ const createPrice = async (req, res, next) => {
 const updatePrice = async (req, res, next) => {
   try {
     const { id, priceId } = req.params;
-    const { costPrice, exwPrice, priceType, markup, sellingPrice, currency, validTo, isActive } = req.body;
+    const {
+      factoryId, origin,
+      costPriceUsdPerM2, sellingPriceUsdPerM2, markupPercent,
+      currency, tariffRate, tariffDestination,
+      validTo, sourceNote,
+    } = req.body;
 
     const price = await db.ProductPrice.findOne({ where: { id: priceId, productId: id } });
     if (!price) throw new NotFoundError('Price record not found');
 
-    const newCost = costPrice !== undefined ? parseFloat(costPrice) : price.costPrice;
-    const newMarkup = markup !== undefined ? parseFloat(markup) : price.markup;
-    // Recalculate sell price if cost or markup changed and sellingPrice not explicitly provided
-    const newSell = sellingPrice !== undefined
-      ? parseFloat(sellingPrice)
-      : parseFloat(newCost) / (1 - newMarkup / 100);
+    const patch = {};
+    if (factoryId !== undefined)             patch.factoryId = factoryId || null;
+    if (origin !== undefined)                patch.origin = origin || null;
+    if (costPriceUsdPerM2 !== undefined)     patch.costPriceUsdPerM2 = parseFloat(costPriceUsdPerM2);
+    if (sellingPriceUsdPerM2 !== undefined)  patch.sellingPriceUsdPerM2 = sellingPriceUsdPerM2 == null ? null : parseFloat(sellingPriceUsdPerM2);
+    if (markupPercent !== undefined)         patch.markupPercent = markupPercent == null ? null : parseFloat(markupPercent);
+    if (currency !== undefined)              patch.currency = currency;
+    if (tariffRate !== undefined)            patch.tariffRate = tariffRate == null ? null : parseFloat(tariffRate);
+    if (tariffDestination !== undefined)     patch.tariffDestination = tariffDestination || null;
+    if (validTo !== undefined)               patch.validTo = validTo || null;
+    if (sourceNote !== undefined)            patch.sourceNote = sourceNote || null;
 
-    await price.update({
-      costPrice: newCost,
-      exwPrice: exwPrice !== undefined ? (exwPrice ? parseFloat(exwPrice) : null) : price.exwPrice,
-      priceType: priceType || price.priceType,
-      markup: newMarkup,
-      sellingPrice: parseFloat(newSell.toFixed(2)),
-      currency: currency || price.currency,
-      validTo: validTo !== undefined ? validTo : price.validTo,
-      isActive: isActive !== undefined ? isActive : price.isActive
-    });
+    await price.update(patch);
 
     const result = await db.ProductPrice.findByPk(priceId, {
-      include: [{ model: db.Factory, as: 'factory', attributes: ['id', 'companyName'] }]
+      include: [{ model: db.Factory, as: 'factory', attributes: ['id', 'companyName'], required: false }],
     });
 
     res.json(getSuccessResponse(result, 'Price updated successfully'));

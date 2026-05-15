@@ -108,16 +108,26 @@ const create = async (req, res, next) => {
         );
       }
 
-      // Phase 4, C14: floor check. Default unitPrice from baseFobPrice when
-      // absent. Below-floor requires super_admin + belowFloorReason.
+      // Phase 4, C14 (extended Phase 4.9.2b): floor check sources from
+      // ProductPrice (the new temporal pricing layer) so per-origin
+      // pricing windows are honoured. Falls back to product.baseFobPrice
+      // (denormalized cache) when no ProductPrice row exists yet —
+      // covers products created before the 4.9.2b backfill and any
+      // future product whose ProductPrice insert lagged the Product
+      // insert.
+      const { getCurrentPrice } = require('../services/productPriceService');
+      const reqOriginRaw = (item.originCountry || '').toUpperCase().trim();
+      const lineOrigin = reqOriginRaw || (product.originCountry || '').toUpperCase().trim() || null;
+      const currentPrice = await getCurrentPrice(product.id, lineOrigin);
+      const floor = currentPrice
+        ? Number(currentPrice.sellingPriceUsdPerM2)
+        : (product.baseFobPrice != null ? parseFloat(product.baseFobPrice) : null);
+
       let unitPrice = item.unitPrice;
       if (unitPrice == null || unitPrice === '' || Number(unitPrice) === 0) {
-        if (product.baseFobPrice != null) {
-          unitPrice = parseFloat(product.baseFobPrice);
-        }
+        if (floor != null) unitPrice = floor;
       }
-      if (product.baseFobPrice != null) {
-        const floor = parseFloat(product.baseFobPrice);
+      if (floor != null) {
         if (parseFloat(unitPrice) < floor) {
           const isSuperAdmin = req.user?.role === 'super_admin';
           if (!isSuperAdmin) {
@@ -137,7 +147,7 @@ const create = async (req, res, next) => {
             'product_floor_override',
             'Product',
             product.id,
-            { sku: product.sku, floor, quotedPrice: parseFloat(unitPrice), reason },
+            { sku: product.sku, floor, quotedPrice: parseFloat(unitPrice), reason, source: currentPrice ? 'ProductPrice' : 'baseFobPriceFallback' },
             req.ip,
           ).catch(() => {});
         }
