@@ -225,10 +225,16 @@ async function migrate491TaxonomyAndBrand(db) {
   const hierarchyResult = await buildHierarchyAndEngineeredSPC(db);
   const gapResult = await recordSpecGaps(db);
 
+  // AuditLog.entityId is NOT NULL. Use the System zero-UUID
+  // convention adopted by other System-scoped sentinel writers
+  // (e.g. migrateArchiveTaxonomyC21Followup.js). Passing null here
+  // on first deploy threw a NotNullViolation that the boot try/catch
+  // swallowed — left the sentinel missing so the guard at start of
+  // this function never tripped on subsequent boots.
   await db.AuditLog.create({
     action: SENTINEL_ACTION,
     entity: 'System',
-    entityId: null,
+    entityId: '00000000-0000-0000-0000-000000000000',
     userId: null,
     changes: {
       schema: schemaResult,

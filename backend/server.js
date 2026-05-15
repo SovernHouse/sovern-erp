@@ -715,6 +715,18 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] 4.9.1 taxonomy+brand migration skipped:', e.message);
     }
+
+    // Phase 4.9.1 RECOVERY: corrects partial state left by the first
+    // run of migrate491TaxonomyAndBrand. Re-parents SPC/LVT/WPC/Vinyl
+    // Sheet under Resilient, restores Engineered Wood to Flooring,
+    // archives IronCore Flooring + WPC Hybrid Flooring. Independent
+    // sentinel so it doesn't reblock when the original is re-fixed.
+    try {
+      const { migrate491Recovery } = require('./services/migrate491Recovery');
+      await migrate491Recovery(db);
+    } catch (e) {
+      logger.warn('[boot] 4.9.1 recovery migration skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {
