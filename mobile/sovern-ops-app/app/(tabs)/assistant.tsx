@@ -44,6 +44,33 @@ const DEV_MODE_KEY = 'sovern.ai.devModeOn';
 const PENDING_RESEARCH_KEY = 'sovern.ai.pendingResearch';
 const NON_TERMINAL_RUN: DevModeRunStatus[] = ['queued', 'running', 'opening_pr', 'awaiting_clarification'];
 
+// Phase 4.7+ C-2 follow-up: shared renderer mirrors the desktop
+// helper in AssistantPage.jsx. Backend `message` wins when present;
+// errors flagged with isError=true for the red-tinted bubble.
+function renderAssistantResponse(res: any, opts: { linkUrl?: string; linkText?: string } = {}): { content: string; isError: boolean } {
+  if (res instanceof Error) {
+    return { content: `❌ ${res.message || 'Request failed'}`, isError: true };
+  }
+  if (res && (res.error || res.success === false)) {
+    const msg = res.error || res.message || 'Operation reported failure';
+    return { content: `❌ ${msg}`, isError: true };
+  }
+  const baseMessage = typeof res?.message === 'string' && res.message.trim().length > 0
+    ? res.message.trim()
+    : null;
+  if (res?.data && typeof res.data === 'object' && res.data.id) {
+    const head = baseMessage || '✅ Request accepted.';
+    const link = opts.linkUrl ? `\n\n${opts.linkText || 'Open'}: ${opts.linkUrl}` : '';
+    return { content: `${head}${link}`, isError: false };
+  }
+  if (baseMessage) return { content: baseMessage, isError: false };
+  const payload = res?.data ?? res;
+  return {
+    content: '```\n' + JSON.stringify(payload, null, 2).slice(0, 4000) + '\n```',
+    isError: false,
+  };
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatAge(iso?: string): string {
@@ -343,12 +370,21 @@ function MsgBubble({ msg }: { msg: AIMessage }) {
           styles.bubble,
           isUser ? styles.bubbleUser : styles.bubbleAI,
           isDevModeUser && styles.bubbleUserDevMode,
+          // Phase 4.7+ C-2 follow-up: red tint for genuine error responses.
+          !isUser && msg.isError && styles.bubbleAIError,
         ]}
       >
         {isDevModeUser && (
           <Text style={styles.devModeBadgeText}>DEV MODE</Text>
         )}
-        <Text selectable style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
+        <Text
+          selectable
+          style={[
+            styles.bubbleText,
+            isUser && styles.bubbleTextUser,
+            !isUser && msg.isError && styles.bubbleTextError,
+          ]}
+        >
           {displayText}
         </Text>
         {/* Attachments (item 3) — rendered below the message text. Image
@@ -954,21 +990,34 @@ export default function AssistantScreen() {
       try {
         const res = await startDevModeRun(body);
         const run = res.data;
-        if (run) {
-          const cardMsg: AIMessage = {
+        // Phase 4.7+ C-2 follow-up: surface the backend message (now
+        // preserved as res.message) as a textual ack before the live
+        // DevRunCard. Mobile dev-runs uses /dev-runs route prefix.
+        const rendered = renderAssistantResponse(res, run?.id ? { linkUrl: `/dev-runs/${run.id}`, linkText: 'Watch progress' } : {});
+        const ackMsg: AIMessage = {
+          role: 'assistant',
+          content: rendered.content,
+          timestamp: new Date().toISOString(),
+          isError: rendered.isError,
+        };
+        const toAppend: AIMessage[] = [ackMsg];
+        if (run?.id) {
+          toAppend.push({
             role: 'assistant',
             content: '',
             timestamp: new Date().toISOString(),
             kind: 'devRun',
             runId: run.id,
-          };
-          setMessages(prev => [...prev, cardMsg]);
+          });
         }
+        setMessages(prev => [...prev, ...toAppend]);
       } catch (err: any) {
+        const rendered = renderAssistantResponse(err);
         const errMsg: AIMessage = {
           role: 'assistant',
-          content: '⚠️ ' + (err.message ?? 'Could not start dev-mode run.'),
+          content: rendered.content,
           timestamp: new Date().toISOString(),
+          isError: rendered.isError,
         };
         setMessages(prev => [...prev, errMsg]);
       } finally {
@@ -1422,9 +1471,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   bubbleAI:       { backgroundColor: COLORS.white, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: COLORS.border },
+  bubbleAIError:  { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' },
   bubbleUser:     { backgroundColor: COLORS.forest, borderBottomRightRadius: 4 },
   bubbleText:     { fontSize: 15, color: COLORS.ink, lineHeight: 22 },
   bubbleTextUser: { color: '#fff' },
+  bubbleTextError:{ color: '#991B1B' },
   bubbleTime:     { fontSize: 10, color: COLORS.muted, marginLeft: 4 },
   bubbleTimeUser: { marginLeft: 0, marginRight: 4 },
 

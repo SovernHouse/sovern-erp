@@ -18,6 +18,56 @@ import {
 
 // Dev Mode (super_admin only) — toggle persisted across reloads
 const DEV_MODE_KEY = 'sovern.ai.devModeOn'
+
+// Phase 4.7+ C-2 follow-up: shared renderer for "show this raw response
+// in the chat" surfaces. Three branches:
+//
+//   1. error  → res.error / res.success === false / non-2xx-axios-error.
+//               Returns { content, isError: true } so the bubble can
+//               style the message in red.
+//   2. dev run created → res.data.id present. Returns the backend
+//               message (preferred) + appended Watch-progress link.
+//   3. fallback → unknown shape. Returns the JSON.stringify of the
+//               payload in a fenced code block so the user has
+//               something to debug against.
+//
+// `extra` is appended to whichever content we pick (used by the dev
+// run path to add the markdown link).
+function renderAssistantResponse(res, opts = {}) {
+  // axios error path: callers may pass the caught error directly.
+  if (res?.isAxiosError || res instanceof Error) {
+    const err = res
+    const msg = err.response?.data?.message
+      || err.response?.data?.error
+      || err.message
+      || 'Request failed'
+    return { content: `❌ ${msg}`, isError: true }
+  }
+  // Application-level error in a 2xx envelope.
+  if (res && (res.error || res.success === false)) {
+    const msg = res.error || res.message || 'Operation reported failure'
+    return { content: `❌ ${msg}`, isError: true }
+  }
+  // Backend message field surfaced by the interceptor.
+  const baseMessage = typeof res?.message === 'string' && res.message.trim().length > 0
+    ? res.message.trim()
+    : null
+  if (res?.data && typeof res.data === 'object' && res.data.id) {
+    const head = baseMessage || '✅ Request accepted.'
+    const link = opts.linkUrl ? `\n\n[${opts.linkText || 'Open'} →](${opts.linkUrl})` : ''
+    return { content: `${head}${link}`, isError: false }
+  }
+  if (baseMessage) {
+    return { content: baseMessage, isError: false }
+  }
+  // Unknown shape — pretty-print as a fenced block so the user (or a
+  // dev tailing the chat) can read what came back.
+  const payload = res?.data ?? res
+  return {
+    content: '```json\n' + JSON.stringify(payload, null, 2).slice(0, 4000) + '\n```',
+    isError: false,
+  }
+}
 const NON_TERMINAL_RUN = ['queued', 'running', 'opening_pr', 'awaiting_clarification']
 
 // ─── Slash commands ───────────────────────────────────────────────────────────
@@ -370,17 +420,21 @@ const MessageBubble = React.memo(function MessageBubble({ msg }) {
         {isDevModeUser ? <Code size={15} /> : isUser ? <User size={15} /> : <Bot size={15} />}
       </div>
 
-      {/* Bubble */}
+      {/* Bubble — Phase 4.7+ C-2 follow-up: isError responses render
+          with a red tint so genuine failures stand out from the normal
+          assistant grey-on-white. */}
       <div style={{
         maxWidth: '75%',
-        background: isUser ? (isDevModeUser ? '#0f172a' : '#2563eb') : '#fff',
-        color: isUser ? '#fff' : '#1e293b',
+        background: isUser
+          ? (isDevModeUser ? '#0f172a' : '#2563eb')
+          : (msg.isError ? '#fef2f2' : '#fff'),
+        color: isUser ? '#fff' : (msg.isError ? '#991b1b' : '#1e293b'),
         borderRadius: isUser ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
         padding: '10px 14px',
         fontSize: 14,
         lineHeight: 1.6,
         boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-        border: isUser ? 'none' : '1px solid #e2e8f0',
+        border: isUser ? 'none' : (msg.isError ? '1px solid #fca5a5' : '1px solid #e2e8f0'),
         position: 'relative',
       }}>
         {isDevModeUser && (
@@ -1133,40 +1187,34 @@ export default function AssistantPage() {
       }])
       try {
         const res = await devModeAPI.startRun(text)
-        // The api.js axios interceptor auto-unwraps the { success, data }
-        // envelope (see services/api.js). So res.data IS the unwrapped run
-        // object — NOT the envelope. Reading res.data?.data here was the
-        // double-unwrap bug that left the chat with no confirmation
-        // message (or an "[object Object]" render path elsewhere).
+        // Phase 4.7+ C-2 follow-up: prefer backend res.message when
+        // present (now exposed by the interceptor), append the watch
+        // link, and surface the dev-run card below the confirmation.
         const run = res.data
+        const linkUrl = run?.id ? `/ai/dev-runs/${run.id}` : null
+        const rendered = renderAssistantResponse(res, linkUrl ? { linkUrl, linkText: 'Watch progress' } : {})
+        const msgs = [{
+          role: 'assistant',
+          content: rendered.content,
+          isError: rendered.isError,
+          createdAt: new Date().toISOString(),
+        }]
         if (run && run.id) {
-          setMessages(prev => [...prev,
-            {
-              role: 'assistant',
-              content: `✅ Run queued. The dev-mode AI is now working in a sandboxed worktree. [Watch progress →](/ai/dev-runs/${run.id})`,
-              createdAt: new Date().toISOString(),
-            },
-            {
-              role: 'assistant',
-              kind: 'devRun',
-              runId: run.id,
-              content: '',
-              createdAt: new Date().toISOString(),
-            },
-          ])
-        } else {
-          // Defensive: backend returned 2xx but no usable run payload.
-          setMessages(prev => [...prev, {
+          msgs.push({
             role: 'assistant',
-            content: '⚠️ Dev-mode run accepted but no run id returned. Check /ai/dev-runs for the most recent entry.',
+            kind: 'devRun',
+            runId: run.id,
+            content: '',
             createdAt: new Date().toISOString(),
-          }])
+          })
         }
+        setMessages(prev => [...prev, ...msgs])
       } catch (err) {
-        const msg = err.response?.data?.error || err.message || 'Failed to start dev-mode run'
+        const rendered = renderAssistantResponse(err)
         setMessages(prev => [...prev, {
           role: 'assistant',
-          content: '⚠️ ' + msg,
+          content: rendered.content,
+          isError: rendered.isError,
           createdAt: new Date().toISOString(),
         }])
       } finally {

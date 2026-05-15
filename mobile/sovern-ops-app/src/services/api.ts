@@ -1501,6 +1501,11 @@ export interface AIMessage {
    * the read_attachment MCP tool during the chat call.
    */
   attachments?: AIAttachment[]
+  /**
+   * Phase 4.7+ C-2 follow-up: assistant messages produced by a failed
+   * response render with a red-tinted bubble when isError=true.
+   */
+  isError?: boolean
 }
 
 export interface AIChatResponse {

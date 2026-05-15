@@ -80,6 +80,11 @@ api.interceptors.response.use(
       if (body.pagination) {
         response.pagination = body.pagination
       }
+      // Phase 4.7+ C-2 follow-up: preserve the envelope's message
+      // field so renderAssistantResponse can prefer backend copy over
+      // hardcoded frontend strings. body.message is dropped by the
+      // unwrap below otherwise.
+      if (typeof body.message === 'string') response.message = body.message
       response.data = body.data
     }
 

@@ -847,7 +847,7 @@ export const HELP_CONTENT = {
       },
       {
         heading: 'Configuration changes via chat (Phase 4.5, C19 v2)',
-        body: 'The assistant can make configuration changes through natural-language chat: edit brand fields, email templates, your own profile, your dashboard, create reminders, mark tasks complete, and archive stray items. Every WRITE follows a preview-confirm-save pattern: the assistant shows the diff first, waits for "yes / save / go ahead", then applies and reports back. Every successful change writes an AuditLog row with action prefix ai_assistant_*.',
+        body: 'The assistant can make configuration changes through natural-language chat: edit brand fields, email templates, your own profile, your dashboard, create reminders, mark tasks complete, and archive stray items. Every WRITE follows a preview-confirm-save pattern: the assistant shows the diff first, waits for "yes / save / go ahead", then applies and reports back. Every successful change writes an AuditLog row with action prefix ai_assistant_*. Responses from any AI write use a shared renderer (Phase 4.7+): the backend message takes precedence over hardcoded UI copy, genuine errors render in a red-tinted bubble, and unrecognized response shapes are pretty-printed in a code block so payloads are at least debuggable from the chat.',
         items: [
           '"Update the FW signature to put HanHua first" — assistant shows the new HTML preview, asks confirm, saves.',
           '"Hide the orders widget on my dashboard" — assistant reads your current layout, drops the widget, shows the new layout, asks confirm.',
