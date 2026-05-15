@@ -129,7 +129,8 @@ async function runSlashCommand(slash, conversationId, { onResearchStarted } = {}
         originalAmount: amount,
         submissionStatus: 'draft',
       })
-      const e = res.data?.data
+      // L-045: interceptor unwraps; fall through if it didn't.
+      const e = res.data?.data ?? res.data
       return `✓ Logged: **${currency} ${amount.toLocaleString()}** — ${description}\n\nStatus: draft. Open the Expenses page to attach a receipt or assign to a customer/office. ID: \`${e?.id?.slice(0, 8)}\``
     }
 
@@ -939,7 +940,8 @@ export default function AssistantPage() {
       setUploadingCount(c => c + 1)
       try {
         const res = await aiAPI.uploadAttachment(f)
-        const att = res.data?.data
+        // L-045: interceptor unwraps; fall through if not.
+        const att = res.data?.data ?? res.data
         if (att) setPendingAttachments(prev => [...prev, att])
       } catch (err) {
         const msg = err.response?.data?.error || err.message || 'Upload failed'

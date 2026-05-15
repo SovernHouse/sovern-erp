@@ -274,7 +274,9 @@ function RunDetailDrawer({ run: initialRun, onClose, onChanged }) {
   const refresh = useCallback(async () => {
     try {
       const res = await devModeAPI.getRun(initialRun.id)
-      if (res.data?.data) setRun(res.data.data)
+      // L-045: interceptor unwraps {success,data}. res.data IS the run.
+      const next = res.data?.data ?? res.data
+      if (next) setRun(next)
     } catch (_) { /* ignore */ }
   }, [initialRun.id])
   useEffect(() => { refresh() }, [refresh])

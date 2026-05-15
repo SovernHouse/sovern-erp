@@ -377,7 +377,8 @@ export default function RolePermissions() {
   const handleReset = async (role) => {
     const res = await api.post(`/settings/role-permissions/${role}/reset`)
     await load()
-    return res.data?.data?.permissions
+    // L-045: interceptor unwraps; res.data is the role row directly.
+    return (res.data?.data ?? res.data)?.permissions
   }
 
   const filteredRoles = roles.filter(r => {

@@ -1456,7 +1456,9 @@ function BulkSendModal({ selectedLeads, onClose, onComplete }) {
     pollRef.current = setInterval(async () => {
       try {
         const res = await api.get(`/crm/campaigns/${campaignId}/status`);
-        const d = res.data?.data;
+        // L-045: axios interceptor already unwraps {success,data}.
+        // res.data is the payload directly; fall through if not unwrapped.
+        const d = res.data?.data ?? res.data;
         setProgress(d);
         if (d?.sendStatus === 'completed' || d?.sendStatus === 'failed') {
           clearInterval(pollRef.current);
