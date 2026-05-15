@@ -9,6 +9,23 @@
 
 import * as SecureStore from 'expo-secure-store';
 import { CONFIG } from '../constants/config';
+import { isCacheable, buildKey, getCached, setCached } from './offlineCache';
+
+// Phase 5d: pull the current user id from the auth store WITHOUT
+// importing the store directly (would create a circular dep — the
+// store re-exports types from api.ts). We persist the user blob in
+// AsyncStorage on login from authStore; read it here.
+async function currentUserId(): Promise<string | null> {
+  try {
+    const AS = (await import('@react-native-async-storage/async-storage')).default;
+    const raw = await AS.getItem('authStore:user');
+    if (!raw) return null;
+    const u = JSON.parse(raw);
+    return u?.id || null;
+  } catch (_) {
+    return null;
+  }
+}
 
 async function getToken(): Promise<string | null> {
   return SecureStore.getItemAsync(CONFIG.TOKEN_KEY);
@@ -55,27 +72,57 @@ async function request<T>(
   _retry = true,
 ): Promise<T> {
   const token = await getToken();
+  const method = (options.method || 'GET').toUpperCase();
+  const isGet = method === 'GET';
+  const cacheEligible = isGet && isCacheable(path);
 
-  const res = await fetch(`${CONFIG.SERVER_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers ?? {}),
-    },
-  });
+  try {
+    const res = await fetch(`${CONFIG.SERVER_URL}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers ?? {}),
+      },
+    });
 
-  if (res.status === 401 && _retry) {
-    const refreshed = await tryRefresh();
-    if (refreshed) return request(path, options, false);
+    if (res.status === 401 && _retry) {
+      const refreshed = await tryRefresh();
+      if (refreshed) return request(path, options, false);
+    }
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body?.message ?? `HTTP ${res.status}`);
+    }
+
+    const payload = (await res.json()) as T;
+
+    // Phase 5d: cache successful GETs on whitelisted prefixes.
+    if (cacheEligible) {
+      try {
+        const uid = await currentUserId();
+        await setCached(buildKey(uid, path), payload, { userId: uid });
+      } catch (_) { /* cache writes never block the response */ }
+    }
+
+    return payload;
+  } catch (err: any) {
+    // Phase 5d: network-error fallback for GETs. TypeError "Network
+    // request failed" is the standard RN signal; AbortError when our
+    // own timeout fired. Either way, serve cached if we have it.
+    if (cacheEligible) {
+      const isNetworkErr = err?.name === 'TypeError' || err?.name === 'AbortError' || /Network/i.test(err?.message || '');
+      if (isNetworkErr) {
+        try {
+          const uid = await currentUserId();
+          const cached = await getCached<T>(buildKey(uid, path));
+          if (cached) return cached.data;
+        } catch (_) { /* fall through to throw */ }
+      }
+    }
+    throw err;
   }
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body?.message ?? `HTTP ${res.status}`);
-  }
-
-  return res.json() as Promise<T>;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────
