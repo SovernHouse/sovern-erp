@@ -5,16 +5,54 @@
 ---
 
 ## Last Updated
-2026-05-15 Taiwan time. Phase 4.5 + 4.6 + 4.7 (C-1/C-3/C-4) shipped + live.
+2026-05-15 Taiwan time. Phase 4.9b shipped (TariffRate model + admin CRUD + mobile read view).
 
 ---
 
 ## CI Status
-- **Latest commits on main:** Phase 4.7 chain `41b60a1` (C-1 gap-closer) → `6b81895` (C-3 Drive setup) → C-4 (this commit).
+- **Latest commits on main (newest first):**
+  - `5c80429` feat(tariffs): TariffRate model + admin CRUD + mobile read view (Phase 4.9b) — CI in progress at session note time
+  - `fe29ea4` fix(ai): dev-mode chat + dev-runs list double-unwrap (two bugs, one root) — green
+  - `bb22fdd` feat(catalog): Product.originVariants multi-origin pricing (Phase 4.9a) — green
+  - `bcd682c` feat(mobile): quotation create flow — L-035 parity catch-up (Pre-4.9) — green
+  - `e8ad4e7` fix(pipeline): unwrap envelope correctly so columns are populated (hotfix) — green
+  - `97a493d` feat(taxonomy): archive non-flooring product categories (C21 follow-up) — green
 - **Working tree:** clean
-- **Most recent deploy:** `41b60a1` deploy green at 02:14 UTC. C-3 in CI at session continue point.
+- **Most recent deploy:** `fe29ea4` deploy green. `5c80429` deploy will follow after CI passes.
 - **Backend health:** live at `https://erp.sovernhouse.co/api`
-- **C18 migration verified:** 5 Customers + 112 Leads at screening_status='pending'; sentinel `phase4_sanctions_backfilled` in AuditLog.
+- **Tests:** 219/219 passing locally pre-push.
+- **Mobile parity:** READY. Tariff rates read screen `mobile/sovern-ops-app/app/tariff-rates.tsx` shipped same commit per L-035. Alex still needs to run `eas update --branch main --platform ios --environment production` from Windows for users to see it.
+
+---
+
+## Phase 4.9 — IN FLIGHT
+
+Multi-origin products + tariff rates + landed-cost quotations. Ordered as 4.9a → 4.9b → 4.9c → 4.9d → 4.9e per Alex's approved sequence. Must ship before Phase 5 (offline mode).
+
+### 4.9a — Product.originVariants — SHIPPED (`bb22fdd`, deploy green)
+
+- Product gains `originVariants JSON NOT NULL DEFAULT []`. Variant: `{ originCountry, fobPriceUsd, priceUnit, moqOverride?, leadTimeOverride? }`.
+- Backfill service `migrateProductOriginVariantsC49a.js` with sentinel `phase4_9_c1_product_origin_variants_backfilled`.
+- productController create + update accept `originVariants`.
+- Desktop ProductForm: add/remove origin variant rows (origin country / FOB / unit / MOQ override / lead time override).
+- Mobile product detail modal: read-only origin variants list.
+
+### 4.9b — TariffRate model + admin CRUD — SHIPPED (`5c80429`, CI running)
+
+- Backend: `TariffRate` model (UUID, originCountry, destinationCountry, ratePercent DECIMAL(7,4), effectiveFrom, effectiveUntil, sourceNote, nullable brandCode). Controller exposes list / expiring / create / update / remove + `getCurrentTariff(origin, destination, brandCode, asOfDate)` helper for the upcoming 4.9c landed-cost flow. Routes: read = any auth user, mutations = super_admin (L-031). All mutations audited.
+- Seed (`seedTariffRatesC49b.js`, sentinel `phase4_9_c2_tariff_rates_seeded`): CN→US 40.7714% + MY→US 15.5214%, both `2026-05-14` → `2026-05-15` (intentional short window so 4.9e date-warning fires immediately).
+- Desktop: `/settings/tariff-rates` super-admin page. Grouped table by origin→destination, expiry badges (red expired / amber ≤7d), inline DraftRow editor, Show expired toggle. Super-admin sidebar entry.
+- Mobile (L-035): `app/tariff-rates.tsx` read-only list with same expiry badges + Show expired toggle. Mutations stay desktop-super-admin only by design.
+- DEVELOPER_GUIDE section added.
+
+### Next: 4.9c — Quotation builder origin-picker + landed-cost math + PDF columns (USA destinations)
+
+- Per quotation line item, picker selects which `Product.originVariants[]` to use → sets FOB and origin country.
+- At save and at PDF render: call `getCurrentTariff(origin, 'US', brandCode)`. Compute `landedCostUnit = fob * (1 + ratePercent/100)`. Cache the snapshot (`tariffSnapshot: {ratePercent, effectiveUntil, sourceTariffRateId}`) on the QuotationItem so the quotation is immutable after send even if the live rate changes.
+- New PDF columns shown when destination is USA: Origin, FOB, Tariff %, Landed/unit, Landed total.
+- Mobile parity: line-item editor on `mobile/sovern-ops-app/app/quotation/create.tsx` gets the same origin picker + USA landed-cost preview.
+
+### Then: 4.9d (bulk import) → 4.9e (expiry warning UI) → Phase 5 (offline mode).
 
 ---
 
