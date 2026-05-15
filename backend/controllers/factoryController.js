@@ -13,7 +13,17 @@ const canViewFactory = (user, factory) => {
 
 const create = async (req, res, next) => {
   try {
-    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations, isConfidential, allowedUserIds, notes, logo, rating } = req.body;
+    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations, isConfidential, allowedUserIds, notes, logo, rating, brandCode } = req.body;
+
+    // Phase 4.9.2a: validate brandCode when provided (FK at JS layer
+    // only per L-034). null = unclassified, no brand restriction.
+    let resolvedBrandCode = null;
+    if (brandCode != null && String(brandCode).trim() !== '') {
+      const code = String(brandCode).toUpperCase();
+      const b = await db.Brand.findOne({ where: { code } });
+      if (!b) return res.status(400).json({ success: false, message: `brandCode "${brandCode}" does not exist` });
+      resolvedBrandCode = code;
+    }
 
     const factory = await db.Factory.create({
       id: uuidv4(),
@@ -34,7 +44,8 @@ const create = async (req, res, next) => {
       isConfidential: isConfidential || false,
       allowedUserIds: allowedUserIds || [],
       notes: notes || null,
-      logo: logo || null
+      logo: logo || null,
+      brandCode: resolvedBrandCode,
     });
 
     res.status(201).json(getSuccessResponse(factory, 'Factory created successfully'));
@@ -109,7 +120,7 @@ const getById = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations, rating, isActive, isConfidential, allowedUserIds, notes, logo } = req.body;
+    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations, rating, isActive, isConfidential, allowedUserIds, notes, logo, brandCode } = req.body;
 
     const factory = await db.Factory.findByPk(id);
     if (!factory) {
@@ -121,6 +132,20 @@ const update = async (req, res, next) => {
     }
 
     const beforeSnapshot = factory.toJSON();
+
+    // Phase 4.9.2a: validate brandCode if present. Accept null/empty
+    // to clear; non-null must exist in Brand.
+    let resolvedBrandCode = factory.brandCode;
+    if (brandCode !== undefined) {
+      if (brandCode == null || String(brandCode).trim() === '') {
+        resolvedBrandCode = null;
+      } else {
+        const code = String(brandCode).toUpperCase();
+        const b = await db.Brand.findOne({ where: { code } });
+        if (!b) return res.status(400).json({ success: false, message: `brandCode "${brandCode}" does not exist` });
+        resolvedBrandCode = code;
+      }
+    }
 
     await factory.update({
       companyName: companyName || factory.companyName,
@@ -140,7 +165,8 @@ const update = async (req, res, next) => {
       isConfidential: isConfidential !== undefined ? isConfidential : factory.isConfidential,
       allowedUserIds: allowedUserIds !== undefined ? allowedUserIds : factory.allowedUserIds,
       notes: notes !== undefined ? notes : factory.notes,
-      logo: logo !== undefined ? logo : factory.logo
+      logo: logo !== undefined ? logo : factory.logo,
+      brandCode: resolvedBrandCode,
     });
 
     res.json(getSuccessResponse(factory, 'Factory updated successfully'));

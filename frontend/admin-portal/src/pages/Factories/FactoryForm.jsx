@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { ArrowLeft } from 'lucide-react'
-import { factoriesAPI } from '../../services/api'
+import { factoriesAPI, brandsAPI } from '../../services/api'
 import { COUNTRIES, FACTORY_STATUS } from '../../utils/constants'
 import { TextInput, EmailInput, SelectInput, TextArea } from '../../components/FormFields'
 
@@ -22,10 +22,22 @@ export default function FactoryForm() {
     contactPerson: '',
     status: FACTORY_STATUS.ACTIVE,
     notes: '',
+    brandCode: '',
   })
+  // Phase 4.9.2a: brand selector dropdown sourced from /api/brands.
+  const [brandOptions, setBrandOptions] = useState([])
 
   useEffect(() => {
     if (id) fetchFactory()
+    let cancelled = false
+    brandsAPI.list()
+      .then(res => {
+        if (cancelled) return
+        const rows = res.data?.data || res.data || []
+        setBrandOptions(rows.filter(b => b.active !== false).map(b => ({ value: b.code, label: `${b.code} — ${b.displayName}` })))
+      })
+      .catch(() => { if (!cancelled) setBrandOptions([]) })
+    return () => { cancelled = true }
   }, [id])
 
   const fetchFactory = async () => {
@@ -152,6 +164,23 @@ export default function FactoryForm() {
             value={formData.address}
             onChange={handleChange}
           />
+
+          {/* Phase 4.9.2a: brand context. Blank = unclassified. */}
+          <div>
+            <SelectInput
+              label="Brand"
+              name="brandCode"
+              value={formData.brandCode || ''}
+              onChange={handleChange}
+              options={[
+                { value: '', label: '— Unclassified —' },
+                ...brandOptions,
+              ]}
+            />
+            <p className="text-xs text-slate-500 -mt-3 mb-4">
+              Optional. Used by match_factories_for_product to prefer same-brand suppliers and by analytics for portfolio splits. Leave blank for genuinely cross-brand suppliers.
+            </p>
+          </div>
 
           <SelectInput
             label="Status"

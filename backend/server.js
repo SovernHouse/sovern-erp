@@ -737,6 +737,16 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] 4.9.1 orphan cleanup skipped:', e.message);
     }
+
+    // Phase 4.9.2a: Factory.brandCode column + backfill HanHua + FlorWay,
+    // plus taxonomy sortOrder collision fix (Resilient 10→2, EngSPC
+    // 4→3, LVT 5→4, Vinyl Sheet 6→5).
+    try {
+      const { migrate492aFactoryBrandAndTaxonomy } = require('./services/migrate492aFactoryBrandAndTaxonomy');
+      await migrate492aFactoryBrandAndTaxonomy(db);
+    } catch (e) {
+      logger.warn('[boot] 4.9.2a migration skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {

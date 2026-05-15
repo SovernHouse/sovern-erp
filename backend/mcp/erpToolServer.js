@@ -733,6 +733,12 @@ async function callTool(name, args) {
       // Email and phone are required by the model, but if Alex hasn't given
       // them yet (e.g. backfilling factories from contact data), accept
       // placeholder values and let him fix the records later.
+      // Phase 4.9.2a: optional brandCode. Validated when present.
+      const brandCode = args.brand_code || args.brandCode || null;
+      if (brandCode != null) {
+        const b = await getDb().Brand.findOne({ where: { code: String(brandCode).toUpperCase() } });
+        if (!b) return `Error: brandCode "${brandCode}" does not exist in Brand. Use list_brands to find valid codes, or create_brand to provision one first.`;
+      }
       const factory = await getDb().Factory.create({
         companyName:    args.company_name,
         contactPerson:  args.contact_person || null,
@@ -748,6 +754,7 @@ async function callTool(name, args) {
         certifications: args.certifications  || [],
         specializations:args.specializations || [],
         notes:          args.notes    || null,
+        brandCode:      brandCode ? String(brandCode).toUpperCase() : null,
       });
       return {
         success: true,
@@ -760,21 +767,32 @@ async function callTool(name, args) {
     case 'update_factory': {
       const factory = await getDb().Factory.findByPk(args.id);
       if (!factory) return `Factory ${args.id} not found.`;
+      // Phase 4.9.2a: brandCode allowed. Validated against Brand table
+      // when set to a non-null value. Pass null explicitly to clear.
       const allowed = ['companyName', 'contactPerson', 'email', 'phone',
         'address', 'city', 'country', 'currency', 'paymentTerms',
-        'leadTimeDays', 'rating', 'certifications', 'specializations', 'notes'];
-      // Map snake_case input to camelCase fields where applicable
+        'leadTimeDays', 'rating', 'certifications', 'specializations', 'notes',
+        'brandCode'];
       const aliasMap = {
         company_name: 'companyName',
         contact_person: 'contactPerson',
         payment_terms: 'paymentTerms',
         lead_time_days: 'leadTimeDays',
+        brand_code: 'brandCode',
       };
       const updates = {};
       for (const [k, v] of Object.entries(args)) {
         if (k === 'id') continue;
         const field = aliasMap[k] || k;
         if (allowed.includes(field)) updates[field] = v;
+      }
+      if (updates.brandCode != null && updates.brandCode !== '') {
+        const code = String(updates.brandCode).toUpperCase();
+        const b = await getDb().Brand.findOne({ where: { code } });
+        if (!b) return `Error: brandCode "${updates.brandCode}" does not exist in Brand. Use list_brands to find valid codes.`;
+        updates.brandCode = code;
+      } else if (updates.brandCode === '' || updates.brandCode === null) {
+        updates.brandCode = null;
       }
       await factory.update(updates);
       return { success: true, updated: Object.keys(updates), factory: factory.toJSON() };
@@ -1249,9 +1267,14 @@ async function callTool(name, args) {
       // taxonomy/specialization, certifications, and past sourcing history
       // (factory appears on existing Quotations / PurchaseOrders for similar
       // products). Returns a ranked list with reasons.
+      // Phase 4.9.2a: when both the product's brand AND a candidate
+      // factory's brand are set, prefer the matching brand. We don't
+      // filter out non-matching factories (cross-brand sourcing is
+      // legitimate) — we score the match as a tiebreaker reason.
       const { Op } = require('sequelize');
       const { product_description, vertical, country, hs_code,
-              required_certifications = [], min_quantity, target_lead_time_days } = args;
+              required_certifications = [], min_quantity, target_lead_time_days,
+              brand_code } = args;
 
       const allFactories = await getDb().Factory.findAll({
         where: { isActive: { [Op.ne]: false } },
@@ -1273,6 +1296,18 @@ async function callTool(name, args) {
         // Country match
         if (country && f.country && f.country.toLowerCase() === country.toLowerCase()) {
           score += 30; reasons.push(`country match (${f.country})`);
+        }
+
+        // Phase 4.9.2a: brand match. When both sides have a brand and
+        // they line up, score it; when they disagree, mildly penalise
+        // (cross-brand sourcing is allowed but the same-brand path is
+        // operationally simpler).
+        if (brand_code && f.brandCode) {
+          if (f.brandCode === brand_code) {
+            score += 15; reasons.push(`brand match (${brand_code})`);
+          } else {
+            score -= 5; reasons.push(`brand mismatch (factory ${f.brandCode}, product ${brand_code})`);
+          }
         }
 
         // Specialization / vertical fit
@@ -2960,6 +2995,7 @@ const TOOL_DEFS = [
         certifications:  { type: 'array',   items: { type: 'string' }, description: 'e.g. ["FSC", "ISO 9001", "CE"]' },
         specializations: { type: 'array',   items: { type: 'string' }, description: 'e.g. ["SPC flooring", "engineered wood"]' },
         notes:           { type: 'string' },
+        brand_code:      { type: 'string',  description: 'Phase 4.9.2a: optional brand context. Set to a code from list_brands (e.g. "FW" for HanHua + FlorWay supplier ecosystem). Leave omitted for unclassified suppliers; admin can set later.' },
       },
     },
   },
@@ -2985,6 +3021,7 @@ const TOOL_DEFS = [
         certifications:  { type: 'array', items: { type: 'string' } },
         specializations: { type: 'array', items: { type: 'string' } },
         notes:           { type: 'string' },
+        brand_code:      { type: ['string', 'null'], description: 'Phase 4.9.2a: brand context. Pass a code from list_brands, or null to clear.' },
       },
     },
   },
@@ -3134,6 +3171,7 @@ const TOOL_DEFS = [
         required_certifications:{ type: 'array', items: { type: 'string' }, description: 'Required certs (e.g. ["FloorScore", "CARB Phase 2"]). All must match for the full bonus.' },
         min_quantity:           { type: 'number', description: 'Minimum order quantity in units / containers' },
         target_lead_time_days:  { type: 'number', description: 'Maximum acceptable lead time in days' },
+        brand_code:             { type: 'string', description: 'Phase 4.9.2a: product brand. When set, factories whose brandCode matches get a +15 score bump; mismatched brands get a -5 penalty (not a filter — cross-brand sourcing is allowed).' },
         limit:                  { type: 'number', description: 'Max candidates to return (default 10)' },
       },
     },

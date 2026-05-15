@@ -85,6 +85,15 @@ module.exports = (sequelize) => {
       type: DataTypes.JSON,
       defaultValue: [],
       comment: 'Array of User IDs permitted to view this factory when isConfidential=true'
+    },
+    // Phase 4.9.2a: brand context. Nullable; default null = unclassified.
+    // FK to Brand.code (NOT id) to match the convention used elsewhere
+    // (Product.brandCode, Quotation.brandCode, etc.). Referential
+    // integrity declared in models/index.js per L-034.
+    brandCode: {
+      type: DataTypes.STRING(8),
+      allowNull: true,
+      defaultValue: null,
     }
   }, {
     paranoid: true, // soft deletes — sets deletedAt instead of hard-deleting

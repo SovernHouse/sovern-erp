@@ -627,6 +627,10 @@ const BRAND_TX_MODELS = [
   'Document', 'DocumentApproval',
   // Expense module (Phase 1 Commit 3b-A).
   'Expense', 'ReimbursementOffice', 'Trip', 'ExpenseSubmission',
+  // Phase 4.9.2a: Factory carries an optional brand context (nullable).
+  // Used by match_factories_for_product to prefer same-brand supplier
+  // matches and by analytics to split FW vs SH supplier portfolios.
+  'Factory',
 ];
 if (db.Brand) {
   for (const name of BRAND_TX_MODELS) {
