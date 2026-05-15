@@ -5,24 +5,29 @@
 ---
 
 ## Last Updated
-2026-05-15 Taiwan time. Phase 4.9b shipped (TariffRate model + admin CRUD + mobile read view).
+2026-05-15 Taiwan time. Phase 4.9 complete + Phase 5 offline mode complete + Phase 4.7+ AI polish + Phase 4.9.1 taxonomy/brand cleanup + 4.9.1 recovery + orphan table cleanup.
 
 ---
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `88a5e66` feat(tariffs): expiry warning UI — dashboard + send-confirm (Phase 4.9e) — CI in progress at session note time
-  - `4c379b0` feat(tariffs): bulk import + CSV template (Phase 4.9d)
-  - `3a15141` feat(tariffs): named component breakdown (Phase 4.9 C-3 follow-up)
-  - `d7340b6` feat(quotations): landed-cost + display-unit toggle (Phase 4.9c)
-  - `6f4421b` feat(mcp): list_brands + create_brand (Brand MCP)
-  - `5c80429` feat(tariffs): TariffRate model + admin CRUD + mobile read view (Phase 4.9b)
-  - `bb22fdd` feat(catalog): Product.originVariants multi-origin pricing (Phase 4.9a)
+  - `f59f147` chore(hygiene): rename orphan ProductCategory + classify suspect tables (CI in progress at note time)
+  - `4ac0a62` docs(lessons): L-048 + L-049 from Phase 4.9.1 first-run debrief
+  - `9bf88de` fix(taxonomy): Phase 4.9.1 recovery — corrective re-parent + archive + sentinel
+  - `a2d19f1` feat(brand-admin+docs): Phase 4.9.1 Commit B — admin UI + docs
+  - `8819f3a` feat(taxonomy+ai): Phase 4.9.1 Commit A — migration + 5 PC tools + brand update extension
+  - `56a6d37` feat(mobile-ai): View-by-Run-ID search on dev-runs (Phase 4.7+ C-3 parity)
+  - `6c02cd8` feat(ai): shared assistant-response renderer (Phase 4.7+ C-2 follow-up)
+  - `2afd578` fix(drive): include webViewLink on found-not-created folders (Phase 4.7+ C-4)
+  - `1ea3903` feat(offline): safe service worker (Phase 5b proper)
+  - `9275a90` fix(offline): write-queue + dedupe paths matched no real routes
+  - …earlier: full Phase 4.9 + Phase 5 chain (see git log).
 - **Working tree:** clean (SESSION.md modified only).
-- **Tests:** 240/240 passing locally pre-push. New suites: unitConversion (11), tariffRateComponents (4), tariffBulkImport (6).
+- **Tests:** 243/243 passing.
 - **Backend health:** live at `https://erp.sovernhouse.co/api`.
 - **Mobile parity:** READY. All new mobile surfaces shipped in same commits per L-035. Alex still needs to run `eas update --branch main --platform ios --environment production` from Windows for users to see it.
-- **Brands on prod:** SH, FW. HH not yet created. AI assistant can now call `list_brands` then `create_brand` to provision it.
+- **Brands on prod:** SH active commission=0%, FW active commission=7% (HanHua Sales Rep Agreement), HH inactive (created in error).
+- **Taxonomy on prod:** Flooring → Resilient → SPC/WPC/Engineered SPC/LVT/Vinyl Sheet. Engineered Wood + remaining flooring rows direct children of Flooring. IronCore Flooring + WPC Hybrid Flooring archived. Orphan ProductCategory (singular) table renamed to ProductCategory_orphan_20260515; data preserved.
 
 ---
 
