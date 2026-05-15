@@ -650,6 +650,16 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] C3a leadNumber backfill skipped:', e.message);
     }
+
+    // Phase 4.8 Commit 3b hotfix: legacy Lead.status='prospect' rows get
+    // remapped to 'contacted' so the new Lead-based Pipeline kanban
+    // does not silently drop them. Idempotent via AuditLog sentinel.
+    try {
+      const { migrateLeadProspectStatusC3b } = require('./services/migrateLeadProspectStatusC3b');
+      await migrateLeadProspectStatusC3b(db);
+    } catch (e) {
+      logger.warn('[boot] C3b prospect-status remap skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {
