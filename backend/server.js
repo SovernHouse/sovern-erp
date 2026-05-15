@@ -795,6 +795,18 @@ db.sequelize.authenticate()
     } catch (e) {
       logger.warn('[boot] 4.9.3a customer metadata migration skipped:', e.message);
     }
+
+    // Phase 4.10: bootstrap the SequelizeMeta tracking table so
+    // sequelize-cli sees the existing schema as the migration baseline.
+    // Idempotent. Closes the long-standing deferred follow-up around
+    // `sync({alter:true})` (see L-046/L-048/L-049). Going forward,
+    // NEW schema changes should use `npm run migrate:generate`.
+    try {
+      const { bootstrapMigrationsMeta } = require('./services/bootstrapMigrationsMeta');
+      await bootstrapMigrationsMeta(db);
+    } catch (e) {
+      logger.warn('[boot] migration framework bootstrap skipped:', e.message);
+    }
   })
   .then(() => optimizeDatabase(db.sequelize))
   .then(async () => {

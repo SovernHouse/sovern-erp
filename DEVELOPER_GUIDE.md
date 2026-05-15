@@ -2814,6 +2814,45 @@ New admin endpoint `GET /api/admin/ratelimit-stats` (super_admin only). Returns 
 
 ---
 
+# Migration framework — formalised (Phase 4.10)
+
+## Why
+
+L-046, L-048, and L-049 are all symptoms of one root cause: prod schema is built via `sequelize.sync()`, there's no `SequelizeMeta` tracking table, so every schema change needs a defensive `ALTER ADD ... try/catch` to be safe across re-boots and re-deploys. This phase closes that gap without disrupting any working code.
+
+## Bootstrap (this commit)
+
+`backend/services/bootstrapMigrationsMeta.js` runs at every server boot (after the existing 4.9.* sentinel migrations). It:
+
+1. Creates `SequelizeMeta` (schema: `name VARCHAR(255) NOT NULL PRIMARY KEY`) if absent. Matches the Sequelize-cli default schema so `npm run migrate` sees a compatible tracking table.
+2. Reads every file from `backend/migrations/` and seeds `SequelizeMeta` with each filename. Uses `INSERT OR IGNORE` for rock-solid idempotency.
+3. Records the bootstrap once in AuditLog under `phase4_10_sequelize_meta_bootstrapped` for visibility.
+
+Result: `npm run migrate:status` now shows every file in `backend/migrations/` as APPLIED on prod (was previously empty/erroring). Future migrations generated via `npm run migrate:generate -- <name>` show PENDING and are applied by `npm run migrate`.
+
+## Going-forward contract
+
+- **NEW schema changes:** `npm run migrate:generate -- <name>` → write `up()` + `down()` in the generated `backend/migrations/<timestamp>-<name>.js` → `npm run migrate` to apply locally + deploy to push to prod. Run `npm run migrate` as part of the deploy script (post-checkout, pre-server-start).
+- **OLD service-style migrations** (`backend/services/migrate*.js`, 7 files): leave alone. They are sentinel-guarded via AuditLog + idempotent + working in prod. Retroactive conversion is busy work that adds no value. If a service migration ever needs to change, rewrite it as a `backend/migrations/<timestamp>-<name>.js` file with proper up/down rather than editing the service.
+- **Boot-time `sync()` and the additive ALTER block in server.js:** stays for now (covers the historical schema). Future tables defined in new models still get auto-created by `sync()` on first boot, then their CREATE TABLE migration logs as "already applied" via the bootstrap. Don't worry about this.
+
+## L-046 status
+
+L-046 (Sequelize `indexes:` field naming under `underscored: true`) stays in the lessons file — it's still a real gotcha when authoring NEW migrations or models. But the systemic risk it described (every schema change is a defensive try/catch) is now solved by the framework.
+
+## Verification
+
+After the next deploy:
+```bash
+ssh sovern-erp 'cd /home/alex/sovern-erp && npm run migrate:status'
+# Expect: every file in backend/migrations/ shows "up"
+
+sqlite3 /home/alex/sovern-erp/data/erp.db "SELECT name FROM SequelizeMeta ORDER BY name;"
+# Expect: same list of filenames
+```
+
+---
+
 # AI assistant chat-mode capability gaps closed (Phase 4.9.3)
 
 ## Why
