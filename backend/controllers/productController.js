@@ -491,6 +491,204 @@ const getCurrentPriceEndpoint = async (req, res, next) => {
   }
 };
 
+// ── Phase 4.17 — Product approval workflow ──────────────────────────────────
+//
+// Three actions a super_admin can take on a Product that the AI assistant
+// created in pending state (or any Product flagged for review):
+//
+//   approve         → isActive=true + cascade ProductPrice.isActive=true
+//                      + mark the ScheduledActivity as done with the
+//                      reviewer's comment in completedNote.
+//   reject          → soft-delete the Product + cancel the activity. The
+//                      reviewer's reason goes to completedNote on the
+//                      cancelled activity. Cascades isActive=false on
+//                      ProductPrice so the row can't be quoted from.
+//   requestRevision → keep the Product inactive, mark the activity as
+//                      done (with reviewer comment), spawn a follow-up
+//                      ScheduledActivity (type='follow_up') assigned to
+//                      whoever originally requested the create (the AI
+//                      session user) so the comment loops back to the
+//                      author for a second-pass edit.
+//
+// All three are super_admin-gated and audit-logged via auditService.
+// The shared updateActivityFor() helper keeps the ScheduledActivity
+// state-machine consistent so the dashboard activity banner clears
+// correctly without manual dismiss.
+
+async function updateActivityFor(productId, finalStatus, reviewerNote, reviewerId) {
+  const where = {
+    entityType: 'Product',
+    entityId:   productId,
+    type:       'approve',
+    status:     'pending',
+  };
+  const [rowCount] = await db.ScheduledActivity.update(
+    {
+      status:        finalStatus,
+      completedAt:   new Date(),
+      completedNote: reviewerNote || (finalStatus === 'done' ? 'Approved' : 'Rejected'),
+    },
+    { where }
+  );
+  return rowCount;
+}
+
+const approve = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const note = (req.body && req.body.note) ? String(req.body.note).slice(0, 1000) : null;
+    const product = await db.Product.findByPk(id);
+    if (!product || product.deletedAt) throw new NotFoundError('Product not found');
+
+    const wasActive = product.isActive;
+    await product.update({ isActive: true });
+
+    // No price-cascade needed: ProductPrice uses temporal validTo, not
+    // an isActive boolean. A price becomes quotable on the catalog when
+    // its Product is active AND its validFrom/validTo window includes
+    // today. Flipping Product.isActive is the only state change required.
+    const pricesAffected = await db.ProductPrice.count({ where: { productId: id } });
+
+    const activityRowsTouched = await updateActivityFor(id, 'done', note || 'Approved', req.user.id);
+
+    res.json(getSuccessResponse({
+      productId: id,
+      sku:       product.sku,
+      wasActive,
+      pricesAffected,
+      activitiesClosed: activityRowsTouched,
+    }, `Product "${product.name}" approved`));
+
+    auditService.logAction(
+      req.user.id,
+      'product_approve',
+      'Product',
+      id,
+      { sku: product.sku, wasActive, pricesAffected, note },
+      req.ip
+    ).catch(() => {});
+  } catch (err) {
+    next(err);
+  }
+};
+
+const reject = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const reason = (req.body && req.body.reason) ? String(req.body.reason).slice(0, 1000) : null;
+    if (!reason || !reason.trim()) {
+      return res.status(400).json(getSuccessResponse({}, 'reason is required when rejecting a product'));
+    }
+    const product = await db.Product.findByPk(id);
+    if (!product || product.deletedAt) throw new NotFoundError('Product not found');
+
+    const beforeSnapshot = product.toJSON();
+
+    // Cascade: close any open ProductPrice windows by setting validTo
+    // to today. Temporal-pricing model (Phase 4.9.2b) — there is no
+    // isActive column on ProductPrice; the window is the source of
+    // truth. validate:false skips the beforeValidate(factoryId|origin)
+    // hook which fires on bulk payloads even when we're not touching
+    // those columns.
+    const today = new Date().toISOString().slice(0, 10);
+    await db.ProductPrice.update(
+      { validTo: today },
+      {
+        where: {
+          productId: id,
+          [require('sequelize').Op.or]: [
+            { validTo: null },
+            { validTo: { [require('sequelize').Op.gt]: today } },
+          ],
+        },
+        validate: false,
+      }
+    );
+
+    await product.update({ isActive: false, deletedAt: new Date() });
+
+    const activityRowsTouched = await updateActivityFor(id, 'cancelled', `Rejected: ${reason}`, req.user.id);
+
+    res.json(getSuccessResponse({
+      productId: id,
+      sku:       product.sku,
+      activitiesCancelled: activityRowsTouched,
+    }, `Product "${product.name}" rejected`));
+
+    auditService.logAction(
+      req.user.id,
+      'product_reject',
+      'Product',
+      id,
+      { sku: product.sku, before: beforeSnapshot, reason },
+      req.ip
+    ).catch(() => {});
+  } catch (err) {
+    next(err);
+  }
+};
+
+const requestRevision = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const comment = (req.body && req.body.comment) ? String(req.body.comment).slice(0, 1000) : null;
+    if (!comment || !comment.trim()) {
+      return res.status(400).json(getSuccessResponse({}, 'comment is required when requesting a revision'));
+    }
+    const product = await db.Product.findByPk(id);
+    if (!product || product.deletedAt) throw new NotFoundError('Product not found');
+
+    // Close the existing approval activity with the reviewer's comment so
+    // it clears off the dashboard banner.
+    const closedCount = await updateActivityFor(id, 'done', `Revision requested: ${comment}`, req.user.id);
+
+    // Look up the most recent existing approve-activity on this product
+    // so we can route the follow-up back to the user who scheduled the
+    // original create (typically the AI session user). Fallback to the
+    // current reviewer when no prior activity exists.
+    const existing = await db.ScheduledActivity.findOne({
+      where: { entityType: 'Product', entityId: id, type: 'approve' },
+      order: [['createdAt', 'DESC']],
+    });
+    const followUpAssignee = existing?.assignedById || req.user.id;
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const followUp = await db.ScheduledActivity.create({
+      type:         'follow_up',
+      entityType:   'Product',
+      entityId:     id,
+      entityLabel:  `${product.name} (${product.sku}) — REVISION requested`,
+      assignedToId: followUpAssignee,
+      assignedById: req.user.id,
+      dueDate:      tomorrow.toISOString().slice(0, 10),
+      priority:     'high',
+      note:         `Reviewer requested a revision on ${product.name} (${product.sku}):\n\n"${comment}"\n\nUpdate the Product, then schedule a new "approve" activity for super_admin to re-review.`,
+      status:       'pending',
+    });
+
+    res.json(getSuccessResponse({
+      productId: id,
+      sku:       product.sku,
+      closedActivities: closedCount,
+      followUpActivityId: followUp.id,
+      followUpAssignee,
+    }, `Revision requested for "${product.name}"`));
+
+    auditService.logAction(
+      req.user.id,
+      'product_request_revision',
+      'Product',
+      id,
+      { sku: product.sku, comment, followUpActivityId: followUp.id, followUpAssignee },
+      req.ip
+    ).catch(() => {});
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   create,
   getAll,
@@ -505,4 +703,7 @@ module.exports = {
   bulkUpdate,
   softDelete,
   getCurrentPriceEndpoint,
+  approve,
+  reject,
+  requestRevision,
 };

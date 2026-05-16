@@ -32,6 +32,7 @@ import {
   ClipboardList,
 } from 'lucide-react'
 import { activitiesAPI } from '../services/api'
+import ProductApprovalModal from './ProductApprovalModal'
 
 // ── Brand tokens (mirrors Layout.jsx — no shared module yet) ─────────────────
 const INK    = '#0E0D0C'
@@ -99,6 +100,10 @@ const ENTITY_ROUTES = {
   SampleRequest:   '/samples',
   LetterOfCredit:  '/letters-of-credit',
   Payment:         '/payments',
+  // Phase 4.17: Product activities open the ProductApprovalModal
+  // rather than navigating. The route value is kept as a fallback for
+  // any future Product activity types that aren't approval-related.
+  Product:         '/products',
 }
 
 // ── Poll interval ─────────────────────────────────────────────────────────────
@@ -112,6 +117,10 @@ export default function ActivityBanner({ onSchedule }) {
   const [dismissed, setDismissed] = useState(new Set()) // IDs hidden this session
   const [collapsed, setCollapsed] = useState(false)
   const [markingDone, setMarkingDone] = useState(null) // ID being confirmed
+  // Phase 4.17: when a Product-typed activity is clicked, open the
+  // approval modal instead of navigating. activeProductApproval carries
+  // the activity object so the modal can show the original create note.
+  const [activeProductApproval, setActiveProductApproval] = useState(null)
   const intervalRef = useRef(null)
 
   const load = useCallback(async () => {
@@ -145,6 +154,12 @@ export default function ActivityBanner({ onSchedule }) {
   }, {})
 
   const handleNavigate = (activity) => {
+    // Phase 4.17: Product approval tasks open the inline modal instead
+    // of routing. Any other entity type falls through to navigation.
+    if (activity.entityType === 'Product' && activity.type === 'approve') {
+      setActiveProductApproval(activity)
+      return
+    }
     const base = ENTITY_ROUTES[activity.entityType]
     if (base) navigate(`${base}/${activity.entityId}`)
   }
@@ -327,6 +342,20 @@ export default function ActivityBanner({ onSchedule }) {
             )
           })}
         </div>
+      )}
+
+      {/* Phase 4.17: Product approval modal — opens when a Product
+          activity pill is clicked. Action callbacks refresh the banner
+          so the chip clears once the activity is closed server-side. */}
+      {activeProductApproval && (
+        <ProductApprovalModal
+          productId={activeProductApproval.entityId}
+          activity={activeProductApproval}
+          onClose={(didAction) => {
+            setActiveProductApproval(null)
+            if (didAction) load()
+          }}
+        />
       )}
     </div>
   )

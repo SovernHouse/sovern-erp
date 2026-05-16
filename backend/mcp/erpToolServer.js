@@ -3462,7 +3462,14 @@ async function callTool(name, args) {
         specs.packing       ? `Packing: ${specs.packing}`              : null,
       ].filter(Boolean).join('\n');
 
-      if (USER_ID) {
+      // Phase 4.17: only schedule an approval activity when the product
+      // was created in pending state (active=false, the safer default).
+      // If the caller explicitly passed active:true, they've already
+      // approved the create — queueing a redundant "Approve …" pill on
+      // the dashboard is noise. Bulk creates (e.g. the IronLite 9-SKU
+      // launch) used to spam 9 chips for products that were already
+      // live; that pattern is what triggered this gate.
+      if (USER_ID && !isActive) {
         await getDb().ScheduledActivity.create({
           type:        'approve',
           entityType:  'Product',

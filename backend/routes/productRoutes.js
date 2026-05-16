@@ -94,4 +94,18 @@ router.delete('/:id', requireAuth, requireAny('products'),
   productController.softDelete
 );
 
+// Phase 4.17 — Product approval workflow. Super-admin-only because
+// approving a Product flips it live (quotable + visible in catalog
+// filters) and rejecting soft-deletes it. The matching ScheduledActivity
+// state-machine updates happen inside the controller.
+router.post('/:id/approve', requireAuth, requireRole('super_admin', 'admin'),
+  productController.approve
+);
+router.post('/:id/reject', requireAuth, requireRole('super_admin', 'admin'),
+  productController.reject
+);
+router.post('/:id/request-revision', requireAuth, requireRole('super_admin', 'admin'),
+  productController.requestRevision
+);
+
 module.exports = router;
