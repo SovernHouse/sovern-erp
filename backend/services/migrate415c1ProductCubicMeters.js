@@ -36,19 +36,29 @@ async function migrate415c1ProductCubicMeters(db) {
     return { skipped: true, reason: 'sentinel-present' };
   }
 
+  // Phase 4.17 follow-up: original code used 'Products' (plural) but the
+  // active table is 'Product' (singular per the project's freezeTableName
+  // convention). The mistake caused this migration to ALTER a nonexistent
+  // table on every restart, logging the failure but never crashing because
+  // the boot wrapper catches it. The 4.16.4 Product-table rebuild already
+  // included cubic_meters in the new schema, so on prod the column exists
+  // even though this migration never ran successfully. Sentinel write
+  // below now finally records the no-op so we stop retrying.
   const stats = { columnsAdded: [] };
-  const exists = await columnExists(db.sequelize, 'Products', 'cubic_meters');
+  const exists = await columnExists(db.sequelize, 'Product', 'cubic_meters');
   if (!exists) {
     try {
       await db.sequelize.query(
-        'ALTER TABLE "Products" ADD COLUMN "cubic_meters" DECIMAL(10,4) NULL'
+        'ALTER TABLE "Product" ADD COLUMN "cubic_meters" DECIMAL(10,4) NULL'
       );
-      stats.columnsAdded.push('Products.cubic_meters');
-      logger.info('[phase4_15c1] added Products.cubic_meters');
+      stats.columnsAdded.push('Product.cubic_meters');
+      logger.info('[phase4_15c1] added Product.cubic_meters');
     } catch (err) {
-      logger.error(`[phase4_15c1] failed to add Products.cubic_meters: ${err.message}`);
+      logger.error(`[phase4_15c1] failed to add Product.cubic_meters: ${err.message}`);
       throw err;
     }
+  } else {
+    stats.skipped = 'column-already-exists';
   }
 
   await db.AuditLog.create({

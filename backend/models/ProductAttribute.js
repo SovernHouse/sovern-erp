@@ -7,10 +7,14 @@ module.exports = (sequelize) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
+    // L-034: inline FK reference caused the Phase 4.17 follow-up bug —
+    // prod schema retained the FK pointing at ProductCategory_orphan_20260515
+    // long after the table was renamed, so every ProductAttribute insert
+    // failed with SQLITE_CONSTRAINT. Model-level association in
+    // .associate() below still enforces the relationship at the app layer.
     categoryId: {
       type: DataTypes.UUID,
-      allowNull: true,
-      references: { model: 'ProductCategory', key: 'id' }
+      allowNull: true
     },
     attributeName: {
       type: DataTypes.STRING,
