@@ -71,6 +71,15 @@ module.exports = (sequelize) => {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true
     },
+    // Phase 4.15c-1: per-unit shipping volume in cubic meters. Drives the
+    // optimizeContainerLoad math and feeds packing-list / shipment-document
+    // generation. Nullable so legacy rows stay valid; the container
+    // optimizer flags lines whose product has no cube data.
+    cubicMeters: {
+      type: DataTypes.DECIMAL(10, 4),
+      allowNull: true,
+      comment: 'Per-unit shipping volume (cbm). Used by container loading optimizer + packing lists.',
+    },
     hsCode: {
       type: DataTypes.STRING,
       allowNull: true

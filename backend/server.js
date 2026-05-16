@@ -664,6 +664,16 @@ db.sequelize.authenticate()
       logger.warn('[boot] phase4.13b drop sanctions_screened skipped:', e.message);
     }
 
+    // Phase 4.15c-1: add Product.cubic_meters column for container
+    // loading optimizer + packing lists. Sentinel:
+    // phase4_15c1_product_cubic_meters_added.
+    try {
+      const { migrate415c1ProductCubicMeters } = require('./services/migrate415c1ProductCubicMeters');
+      await migrate415c1ProductCubicMeters(db);
+    } catch (e) {
+      logger.warn('[boot] phase4.15c-1 product cubic_meters skipped:', e.message);
+    }
+
     // Phase 4.5, C24: refresh FW Brand signature (HTML + text) to the
     // Country Manager / FlorWay+HanHua design. Idempotent via AuditLog
     // sentinel; SH untouched.

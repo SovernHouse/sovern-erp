@@ -9,11 +9,7 @@ module.exports = (sequelize) => {
     },
     sampleRequestId: {
       type: DataTypes.UUID,
-      allowNull: false,
-      references: {
-        model: 'SampleRequest',
-        key: 'id'
-      }
+      allowNull: false
     },
     feedbackDate: {
       type: DataTypes.DATE,
@@ -74,19 +70,11 @@ module.exports = (sequelize) => {
     },
     sentByContactId: {
       type: DataTypes.UUID,
-      allowNull: true,
-      references: {
-        model: 'Contact',
-        key: 'id'
-      }
+      allowNull: true
     },
     handledBy: {
       type: DataTypes.UUID,
-      allowNull: true,
-      references: {
-        model: 'User',
-        key: 'id'
-      }
+      allowNull: true
     },
     internalNotes: {
       type: DataTypes.TEXT,

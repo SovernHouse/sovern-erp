@@ -2334,6 +2334,484 @@ async function callTool(name, args) {
       return { success: true, dashboard: result.dashboard };
     }
 
+    // ── Phase 4.15c-1: Container loading (5 tools) ──────────────────────
+    case 'erp_create_container_load': {
+      const requester = await getCurrentUserOrThrow();
+      const cl = require('../services/aiWriteServices/containerLoadingWriteService');
+      const result = await cl.createContainerLoad({
+        containerType: args.container_type,
+        containerNumber: args.container_number,
+        shipmentId: args.shipment_id,
+        purchaseOrderId: args.purchase_order_id,
+        destinationPort: args.destination_port,
+        etd: args.etd,
+        eta: args.eta,
+        notes: args.notes,
+      }, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('create_container_load', 'Container', result.container.id, {
+        containerNumber: result.container.containerNumber,
+        containerType: result.container.containerType,
+        shipmentId: result.container.shipmentId,
+        purchaseOrderId: result.container.purchaseOrderId,
+      }, requester.id);
+      return { success: true, container: result.container.toJSON() };
+    }
+
+    case 'erp_optimize_container_load': {
+      const cl = require('../services/aiWriteServices/containerLoadingWriteService');
+      const result = await cl.optimizeContainerLoad({
+        containerType: args.container_type,
+        items: args.items,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return { success: true, ...result.plan };
+    }
+
+    case 'erp_list_container_loads': {
+      const cl = require('../services/aiWriteServices/containerLoadingWriteService');
+      const result = await cl.listContainerLoads({
+        containerType: args.container_type,
+        containerStatus: args.container_status,
+        shipmentId: args.shipment_id,
+        purchaseOrderId: args.purchase_order_id,
+        search: args.search,
+        limit: args.limit,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return result.containers.length
+        ? result.containers.map(c => c.toJSON())
+        : 'No container loads match those filters.';
+    }
+
+    case 'erp_get_container_load': {
+      const cl = require('../services/aiWriteServices/containerLoadingWriteService');
+      const result = await cl.getContainerLoad(args.id);
+      if (!result.ok) return formatMcpWriteError(result);
+      return { success: true, container: result.container.toJSON() };
+    }
+
+    case 'erp_update_container_load': {
+      const requester = await getCurrentUserOrThrow();
+      const cl = require('../services/aiWriteServices/containerLoadingWriteService');
+      const result = await cl.updateContainerLoad(args.id, {
+        containerStatus: args.container_status,
+        destinationPort: args.destination_port,
+        etd: args.etd,
+        eta: args.eta,
+        cargoWeight: args.cargo_weight,
+        usedCapacity: args.used_capacity,
+        palletCount: args.pallet_count,
+        boxCount: args.box_count,
+        loadingDate: args.loading_date,
+        departureDate: args.departure_date,
+        notes: args.notes,
+      }, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('update_container_load', 'Container', result.container.id, {
+        before: result.before,
+        after: result.after,
+      }, requester.id);
+      return { success: true, container: result.container.toJSON() };
+    }
+
+    // ── Phase 4.15c-2: Quality / inspection (9 tools) ───────────────────
+    case 'erp_schedule_inspection': {
+      const requester = await getCurrentUserOrThrow();
+      const ins = require('../services/aiWriteServices/inspectionWriteService');
+      const result = await ins.scheduleInspection({
+        type: args.type,
+        factoryId: args.factory_id,
+        inspectorId: args.inspector_id,
+        salesOrderId: args.sales_order_id,
+        purchaseOrderId: args.purchase_order_id,
+        scheduledDate: args.scheduled_date,
+        notes: args.notes,
+        inspectionNumber: args.inspection_number,
+      }, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('schedule_inspection', 'Inspection', result.inspection.id, {
+        inspectionNumber: result.inspection.inspectionNumber,
+        type: result.inspection.type,
+        factoryId: result.inspection.factoryId,
+        salesOrderId: result.inspection.salesOrderId,
+        purchaseOrderId: result.inspection.purchaseOrderId,
+      }, requester.id);
+      return { success: true, inspection: result.inspection.toJSON() };
+    }
+
+    case 'erp_start_inspection': {
+      const requester = await getCurrentUserOrThrow();
+      const ins = require('../services/aiWriteServices/inspectionWriteService');
+      const result = await ins.startInspection(args.id, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('start_inspection', 'Inspection', result.inspection.id, {
+        before: result.before,
+        after: result.after,
+      }, requester.id);
+      return { success: true, inspection: result.inspection.toJSON() };
+    }
+
+    case 'erp_complete_inspection': {
+      const requester = await getCurrentUserOrThrow();
+      const ins = require('../services/aiWriteServices/inspectionWriteService');
+      const result = await ins.completeInspection(args.id, {
+        overallResult: args.overall_result,
+        notes: args.notes,
+        completedDate: args.completed_date,
+      }, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('complete_inspection', 'Inspection', result.inspection.id, {
+        before: result.before,
+        after: result.after,
+      }, requester.id);
+      return { success: true, inspection: result.inspection.toJSON() };
+    }
+
+    case 'erp_add_inspection_item': {
+      const requester = await getCurrentUserOrThrow();
+      const ins = require('../services/aiWriteServices/inspectionWriteService');
+      const result = await ins.addInspectionItem({
+        inspectionId: args.inspection_id,
+        productId: args.product_id,
+        checkPoint: args.check_point,
+        criteria: args.criteria,
+        result: args.result,
+        value: args.value,
+        notes: args.notes,
+        images: args.images,
+      }, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('add_inspection_item', 'InspectionItem', result.item.id, {
+        inspectionId: result.item.inspectionId,
+        productId: result.item.productId,
+        checkPoint: result.item.checkPoint,
+        result: result.item.result,
+      }, requester.id);
+      return { success: true, item: result.item.toJSON() };
+    }
+
+    case 'erp_update_inspection_item': {
+      const requester = await getCurrentUserOrThrow();
+      const ins = require('../services/aiWriteServices/inspectionWriteService');
+      const result = await ins.updateInspectionItem(args.item_id, {
+        result: args.result,
+        value: args.value,
+        notes: args.notes,
+        checkPoint: args.check_point,
+        criteria: args.criteria,
+        images: args.images,
+      }, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('update_inspection_item', 'InspectionItem', result.item.id, {
+        before: result.before,
+        after: result.after,
+      }, requester.id);
+      return { success: true, item: result.item.toJSON() };
+    }
+
+    case 'erp_list_inspections': {
+      const ins = require('../services/aiWriteServices/inspectionWriteService');
+      const result = await ins.listInspections({
+        status: args.status,
+        type: args.type,
+        factoryId: args.factory_id,
+        inspectorId: args.inspector_id,
+        salesOrderId: args.sales_order_id,
+        purchaseOrderId: args.purchase_order_id,
+        scheduledFrom: args.scheduled_from,
+        scheduledTo: args.scheduled_to,
+        search: args.search,
+        limit: args.limit,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return result.inspections.length
+        ? result.inspections.map(i => i.toJSON())
+        : 'No inspections match those filters.';
+    }
+
+    case 'erp_get_inspection': {
+      const ins = require('../services/aiWriteServices/inspectionWriteService');
+      const result = await ins.getInspection(args.id);
+      if (!result.ok) return formatMcpWriteError(result);
+      return { success: true, inspection: result.inspection.toJSON() };
+    }
+
+    case 'erp_generate_inspection_report': {
+      const requester = await getCurrentUserOrThrow();
+      const ins = require('../services/aiWriteServices/inspectionWriteService');
+      const result = await ins.generateInspectionReport({
+        inspectionId: args.inspection_id,
+        summary: args.summary,
+        recommendations: args.recommendations,
+        fileUrl: args.file_url,
+        extraFindings: args.extra_findings,
+      }, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('generate_inspection_report', 'InspectionReport', result.report.id, {
+        inspectionId: result.report.inspectionId,
+        reportNumber: result.report.reportNumber,
+      }, requester.id);
+      return { success: true, report: result.report.toJSON() };
+    }
+
+    case 'erp_get_inspection_report': {
+      const ins = require('../services/aiWriteServices/inspectionWriteService');
+      const result = await ins.getInspectionReport({
+        reportId: args.report_id,
+        reportNumber: args.report_number,
+        inspectionId: args.inspection_id,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return { success: true, report: result.report.toJSON() };
+    }
+
+    // ── Phase 4.15c-3: Sample management (6 tools) ──────────────────────
+    case 'erp_create_sample_request': {
+      const requester = await getCurrentUserOrThrow();
+      const sm = require('../services/aiWriteServices/sampleWriteService');
+      const result = await sm.createSampleRequest({
+        customerId: args.customer_id,
+        products: args.products,
+        priority: args.priority,
+        requiredByDate: args.required_by_date,
+        specialRequirements: args.special_requirements,
+        notes: args.notes,
+        requestNumber: args.request_number,
+      }, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('create_sample_request', 'SampleRequest', result.request.id, {
+        requestNumber: result.request.requestNumber,
+        customerId: result.request.customerId,
+        priority: result.request.priority,
+        totalQuantity: Number(result.request.totalQuantity),
+      }, requester.id);
+      return { success: true, request: result.request.toJSON() };
+    }
+
+    case 'erp_approve_sample_request': {
+      const requester = await getCurrentUserOrThrow();
+      const sm = require('../services/aiWriteServices/sampleWriteService');
+      const result = await sm.approveSampleRequest(args.id, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('approve_sample_request', 'SampleRequest', result.request.id, {
+        before: result.before,
+        after: result.after,
+      }, requester.id);
+      return { success: true, request: result.request.toJSON() };
+    }
+
+    case 'erp_create_sample_shipment': {
+      const requester = await getCurrentUserOrThrow();
+      const sm = require('../services/aiWriteServices/sampleWriteService');
+      const result = await sm.createSampleShipment({
+        sampleRequestId: args.sample_request_id,
+        quantity: args.quantity,
+        shippingMethod: args.shipping_method,
+        carrier: args.carrier,
+        trackingNumber: args.tracking_number,
+        shippedDate: args.shipped_date,
+        expectedDeliveryDate: args.expected_delivery_date,
+        weight: args.weight,
+        weightUnit: args.weight_unit,
+        shippingCost: args.shipping_cost,
+        currency: args.currency,
+        notes: args.notes,
+        shipmentNumber: args.shipment_number,
+      }, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('create_sample_shipment', 'SampleShipment', result.shipment.id, {
+        shipmentNumber: result.shipment.shipmentNumber,
+        sampleRequestId: result.shipment.sampleRequestId,
+        carrier: result.shipment.carrier,
+        trackingNumber: result.shipment.trackingNumber,
+        requestStatusBefore: result.requestBefore?.status,
+        requestStatusAfter: result.requestAfter?.status,
+      }, requester.id);
+      return { success: true, shipment: result.shipment.toJSON() };
+    }
+
+    case 'erp_record_sample_feedback': {
+      const requester = await getCurrentUserOrThrow();
+      const sm = require('../services/aiWriteServices/sampleWriteService');
+      const result = await sm.recordSampleFeedback({
+        sampleRequestId: args.sample_request_id,
+        rating: args.rating,
+        quality: args.quality,
+        packaging: args.packaging,
+        delivery: args.delivery,
+        comments: args.comments,
+        issues: args.issues,
+        recommendations: args.recommendations,
+        sentByContactId: args.sent_by_contact_id,
+        followUpDate: args.follow_up_date,
+        internalNotes: args.internal_notes,
+        status: args.status,
+      }, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('record_sample_feedback', 'SampleFeedback', result.feedback.id, {
+        sampleRequestId: result.feedback.sampleRequestId,
+        rating: result.feedback.rating,
+        status: result.feedback.status,
+      }, requester.id);
+      return { success: true, feedback: result.feedback.toJSON() };
+    }
+
+    case 'erp_list_sample_requests': {
+      const sm = require('../services/aiWriteServices/sampleWriteService');
+      const result = await sm.listSampleRequests({
+        customerId: args.customer_id,
+        status: args.status,
+        priority: args.priority,
+        requestFrom: args.request_from,
+        requestTo: args.request_to,
+        search: args.search,
+        limit: args.limit,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return result.requests.length
+        ? result.requests.map(r => r.toJSON())
+        : 'No sample requests match those filters.';
+    }
+
+    case 'erp_get_sample_request': {
+      const sm = require('../services/aiWriteServices/sampleWriteService');
+      const result = await sm.getSampleRequest(args.id);
+      if (!result.ok) return formatMcpWriteError(result);
+      return { success: true, request: result.request.toJSON() };
+    }
+
+    // ── Phase 4.15b-2: Letter of Credit (7 tools) ───────────────────────
+    case 'erp_create_letter_of_credit': {
+      const requester = await getCurrentUserOrThrow();
+      const lcSvc = require('../services/aiWriteServices/letterOfCreditWriteService');
+      const result = await lcSvc.createLetterOfCredit({
+        lcNumber: args.lc_number,
+        supplierId: args.supplier_id,
+        customerId: args.customer_id,
+        issuingBank: args.issuing_bank,
+        advisingBank: args.advising_bank,
+        beneficiary: args.beneficiary,
+        amount: args.amount,
+        currency: args.currency,
+        issueDate: args.issue_date,
+        expiryDate: args.expiry_date,
+        type: args.type,
+        terms: args.terms,
+        paymentTerms: args.payment_terms,
+        tolerance: args.tolerance,
+        toleranceType: args.tolerance_type,
+        partialShipment: args.partial_shipment,
+        transhipmentAllowed: args.transhipment_allowed,
+        incoterm: args.incoterm,
+        notes: args.notes,
+      }, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('create_letter_of_credit', 'LetterOfCredit', result.lc.id, {
+        lcNumber: result.lc.lcNumber,
+        amount: Number(result.lc.amount),
+        currency: result.lc.currency,
+        supplierId: result.lc.supplierId,
+        customerId: result.lc.customerId,
+        issuingBank: result.lc.issuingBank,
+      }, requester.id);
+      return { success: true, lc: result.lc.toJSON() };
+    }
+
+    case 'erp_submit_letter_of_credit': {
+      const requester = await getCurrentUserOrThrow();
+      const lcSvc = require('../services/aiWriteServices/letterOfCreditWriteService');
+      const result = await lcSvc.submitLetterOfCredit(args.id, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('submit_letter_of_credit', 'LetterOfCredit', result.lc.id, {
+        before: result.before,
+        after: result.after,
+      }, requester.id);
+      return { success: true, lc: result.lc.toJSON() };
+    }
+
+    case 'erp_approve_letter_of_credit': {
+      const requester = await getCurrentUserOrThrow();
+      // Super-admin gate: LC approval is a high-stakes financial decision.
+      if (requester.role !== 'super_admin') {
+        return formatMcpWriteError({
+          ok: false, code: 'forbidden', httpStatus: 403,
+          message: `Only super_admin can approve a Letter of Credit (current role: ${requester.role}). LC approval is a high-stakes financial commitment.`,
+        });
+      }
+      const lcSvc = require('../services/aiWriteServices/letterOfCreditWriteService');
+      const result = await lcSvc.approveLetterOfCredit(args.id, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('approve_letter_of_credit', 'LetterOfCredit', result.lc.id, {
+        before: result.before,
+        after: result.after,
+      }, requester.id);
+      return { success: true, lc: result.lc.toJSON() };
+    }
+
+    case 'erp_attach_lc_document': {
+      const requester = await getCurrentUserOrThrow();
+      const lcSvc = require('../services/aiWriteServices/letterOfCreditWriteService');
+      const result = await lcSvc.attachLcDocument({
+        letterOfCreditId: args.letter_of_credit_id,
+        documentType: args.document_type,
+        documentNumber: args.document_number,
+        fileName: args.file_name,
+        fileUrl: args.file_url,
+        status: args.status,
+        remarks: args.remarks,
+      }, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('attach_lc_document', 'LetterOfCreditDocument', result.document.id, {
+        letterOfCreditId: result.document.letterOfCreditId,
+        documentType: result.document.documentType,
+        fileName: result.document.fileName,
+      }, requester.id);
+      return { success: true, document: result.document.toJSON() };
+    }
+
+    case 'erp_record_lc_payment': {
+      const requester = await getCurrentUserOrThrow();
+      const lcSvc = require('../services/aiWriteServices/letterOfCreditWriteService');
+      const result = await lcSvc.recordLcPayment(args.id, {
+        presentedAmount: args.presented_amount,
+        presentedDate: args.presented_date,
+        paidAmount: args.paid_amount,
+        paidDate: args.paid_date,
+      }, { userId: requester.id, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('record_lc_payment', 'LetterOfCredit', result.lc.id, {
+        before: result.before,
+        after: result.after,
+      }, requester.id);
+      return { success: true, lc: result.lc.toJSON() };
+    }
+
+    case 'erp_list_letters_of_credit': {
+      const lcSvc = require('../services/aiWriteServices/letterOfCreditWriteService');
+      const result = await lcSvc.listLettersOfCredit({
+        status: args.status,
+        supplierId: args.supplier_id,
+        customerId: args.customer_id,
+        type: args.type,
+        issuingBank: args.issuing_bank,
+        expiringBefore: args.expiring_before,
+        search: args.search,
+        limit: args.limit,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return result.letters.length
+        ? result.letters.map(l => l.toJSON())
+        : 'No letters of credit match those filters.';
+    }
+
+    case 'erp_get_letter_of_credit': {
+      const lcSvc = require('../services/aiWriteServices/letterOfCreditWriteService');
+      const result = await lcSvc.getLetterOfCredit(args.id);
+      if (!result.ok) return formatMcpWriteError(result);
+      return { success: true, lc: result.lc.toJSON() };
+    }
+
     case 'calculate_landed_cost': {
       const { product_cost, quantity = 1, freight = 0, insurance = 0,
               customs_duty = 0, handling = 0, local_delivery = 0,
@@ -5176,6 +5654,447 @@ const TOOL_DEFS = [
     name: 'erp_get_compliance_dashboard',
     description: 'Phase 4.15d — compliance dashboard counters: expiringCerts (next 30 days), flaggedRecords, pendingApprovals, highRiskShipments (anti_dumping type). Read-only aggregation across ComplianceRecord + CertificateOfOrigin. No filters yet — returns the global view.',
     inputSchema: { type: 'object', properties: {} },
+  },
+
+  // ── Phase 4.15c-1: Container loading (5 tools) ──────────────────────────
+  {
+    name: 'erp_create_container_load',
+    description: 'Phase 4.15c — create a Container row in planning status. Auto-generates containerNumber when not supplied. containerType: 20ft / 40ft / 40ft_hc. Writes ai_assistant_create_container_load to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['container_type'],
+      properties: {
+        container_type:    { type: 'string', enum: ['20ft', '40ft', '40ft_hc'] },
+        container_number:  { type: 'string', description: 'Optional. Auto-generated as PLAN-<TYPE>-<TS> when omitted.' },
+        shipment_id:       { type: 'string' },
+        purchase_order_id: { type: 'string' },
+        destination_port:  { type: 'string' },
+        etd:               { type: 'string', description: 'ISO datetime — Estimated Time of Departure.' },
+        eta:               { type: 'string', description: 'ISO datetime — Estimated Time of Arrival.' },
+        notes:             { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'erp_optimize_container_load',
+    description: 'Phase 4.15c — pure-math optimizer: given a container_type + list of {product_id, quantity}, returns total weight + cube + utilization % + fits/overflow. Does NOT persist. Fetches each Product to read its weight + cubicMeters; flags products with missing spec data. Use before erp_create_container_load to validate the plan.',
+    inputSchema: {
+      type: 'object',
+      required: ['container_type', 'items'],
+      properties: {
+        container_type: { type: 'string', enum: ['20ft', '40ft', '40ft_hc'] },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['product_id', 'quantity'],
+            properties: {
+              product_id: { type: 'string' },
+              quantity:   { type: 'number' },
+            },
+          },
+        },
+      },
+    },
+  },
+  {
+    name: 'erp_list_container_loads',
+    description: 'Phase 4.15c — list Container rows with filters. Up to 100. Search is LIKE on containerNumber.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        container_type:    { type: 'string', enum: ['20ft', '40ft', '40ft_hc'] },
+        container_status:  { type: 'string', enum: ['available', 'planning', 'loading', 'loaded', 'in_transit', 'delivered', 'empty', 'maintenance'] },
+        shipment_id:       { type: 'string' },
+        purchase_order_id: { type: 'string' },
+        search:            { type: 'string', description: 'LIKE on containerNumber.' },
+        limit:             { type: 'number', description: 'Default 25, max 100.' },
+      },
+    },
+  },
+  {
+    name: 'erp_get_container_load',
+    description: 'Phase 4.15c — fetch one Container by id.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Container UUID.' } },
+    },
+  },
+  {
+    name: 'erp_update_container_load',
+    description: 'Phase 4.15c — patch Container fields. Editable: container_status, destination_port, etd, eta, cargo_weight, used_capacity, pallet_count, box_count, loading_date, departure_date, notes. container_type and container_number are immutable on this path. Writes ai_assistant_update_container_load with before/after.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:                { type: 'string' },
+        container_status:  { type: 'string', enum: ['available', 'planning', 'loading', 'loaded', 'in_transit', 'delivered', 'empty', 'maintenance'] },
+        destination_port:  { type: 'string' },
+        etd:               { type: 'string', description: 'ISO datetime.' },
+        eta:               { type: 'string', description: 'ISO datetime.' },
+        cargo_weight:      { type: 'number' },
+        used_capacity:     { type: 'number' },
+        pallet_count:      { type: 'integer' },
+        box_count:         { type: 'integer' },
+        loading_date:      { type: 'string', description: 'ISO datetime.' },
+        departure_date:    { type: 'string', description: 'ISO datetime.' },
+        notes:             { type: 'string' },
+      },
+    },
+  },
+
+  // ── Phase 4.15c-2: Quality / inspection (9 tools) ───────────────────────
+  {
+    name: 'erp_schedule_inspection',
+    description: 'Phase 4.15c — create an Inspection row in status=scheduled. type covers the full QC lifecycle: pre_production, during_production, pre_shipment, loading. factory_id + inspector_id required; sales_order_id and/or purchase_order_id optional. inspection_number auto-generated when omitted. Writes ai_assistant_schedule_inspection.',
+    inputSchema: {
+      type: 'object',
+      required: ['type', 'factory_id', 'inspector_id'],
+      properties: {
+        type: { type: 'string', enum: ['pre_production', 'during_production', 'pre_shipment', 'loading'] },
+        factory_id: { type: 'string' },
+        inspector_id: { type: 'string', description: 'User UUID of the assigned inspector.' },
+        sales_order_id: { type: 'string' },
+        purchase_order_id: { type: 'string' },
+        scheduled_date: { type: 'string', description: 'ISO datetime.' },
+        notes: { type: 'string' },
+        inspection_number: { type: 'string', description: 'Override the auto-generated number.' },
+      },
+    },
+  },
+  {
+    name: 'erp_start_inspection',
+    description: 'Phase 4.15c — transition scheduled → in_progress. Refuses if the inspection is already in_progress or finalized. Writes ai_assistant_start_inspection with before/after.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Inspection UUID.' } },
+    },
+  },
+  {
+    name: 'erp_complete_inspection',
+    description: 'Phase 4.15c — finalize an in_progress inspection. overall_result (pass | fail | conditional) drives the final status (passed | failed | conditional). completed_date defaults to now. Writes ai_assistant_complete_inspection with before/after.',
+    inputSchema: {
+      type: 'object',
+      required: ['id', 'overall_result'],
+      properties: {
+        id: { type: 'string', description: 'Inspection UUID.' },
+        overall_result: { type: 'string', enum: ['pass', 'fail', 'conditional'] },
+        notes: { type: 'string' },
+        completed_date: { type: 'string', description: 'ISO datetime. Defaults to now.' },
+      },
+    },
+  },
+  {
+    name: 'erp_add_inspection_item',
+    description: 'Phase 4.15c — add a checkpoint line item to an inspection. Each item has a check_point (e.g., "Dimensions"), criteria (e.g., "Width 6mm ± 0.2mm"), result (pass/fail/na), optional measured value, notes, and images array. Refuses if the parent inspection is already finalized.',
+    inputSchema: {
+      type: 'object',
+      required: ['inspection_id', 'product_id', 'check_point', 'criteria'],
+      properties: {
+        inspection_id: { type: 'string' },
+        product_id: { type: 'string' },
+        check_point: { type: 'string', description: 'Short label for the check (e.g. "Dimensions", "Color match").' },
+        criteria: { type: 'string', description: 'Pass criteria — what the inspector measures against.' },
+        result: { type: 'string', enum: ['pass', 'fail', 'na'] },
+        value: { type: 'string', description: 'Measured value (free-text — keep numeric values as strings to preserve units).' },
+        notes: { type: 'string' },
+        images: { type: 'array', items: { type: 'string' }, description: 'Array of image URLs.' },
+      },
+    },
+  },
+  {
+    name: 'erp_update_inspection_item',
+    description: 'Phase 4.15c — patch an inspection item. Editable: result, value, notes, check_point, criteria, images. Refuses if the parent inspection is already finalized. Writes ai_assistant_update_inspection_item with before/after.',
+    inputSchema: {
+      type: 'object',
+      required: ['item_id'],
+      properties: {
+        item_id: { type: 'string', description: 'InspectionItem UUID.' },
+        result: { type: 'string', enum: ['pass', 'fail', 'na'] },
+        value: { type: 'string' },
+        notes: { type: 'string' },
+        check_point: { type: 'string' },
+        criteria: { type: 'string' },
+        images: { type: 'array', items: { type: 'string' } },
+      },
+    },
+  },
+  {
+    name: 'erp_list_inspections',
+    description: 'Phase 4.15c — list inspections with filters. Up to 100. scheduledFrom/To are ISO datetime range filters on scheduled_date.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['scheduled', 'in_progress', 'passed', 'failed', 'conditional'] },
+        type: { type: 'string', enum: ['pre_production', 'during_production', 'pre_shipment', 'loading'] },
+        factory_id: { type: 'string' },
+        inspector_id: { type: 'string' },
+        sales_order_id: { type: 'string' },
+        purchase_order_id: { type: 'string' },
+        scheduled_from: { type: 'string', description: 'ISO datetime — inspections scheduled at or after this.' },
+        scheduled_to: { type: 'string', description: 'ISO datetime — inspections scheduled at or before this.' },
+        search: { type: 'string', description: 'LIKE on inspection_number.' },
+        limit: { type: 'number', description: 'Default 25, max 100.' },
+      },
+    },
+  },
+  {
+    name: 'erp_get_inspection',
+    description: 'Phase 4.15c — fetch one Inspection by id, with items, report, factory, and inspector eager-loaded.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Inspection UUID.' } },
+    },
+  },
+  {
+    name: 'erp_generate_inspection_report',
+    description: 'Phase 4.15c — create an InspectionReport row for a given inspection. Auto-derives findings (per-checkpoint pass/fail/na counts + overall counts) from the inspection items. Summary defaults to a one-line "X/Y passed" string when omitted. Refuses if a report already exists for the inspection (one-to-one). Returns the report row including the auto-generated reportNumber. Writes ai_assistant_generate_inspection_report.',
+    inputSchema: {
+      type: 'object',
+      required: ['inspection_id'],
+      properties: {
+        inspection_id: { type: 'string' },
+        summary: { type: 'string' },
+        recommendations: { type: 'string' },
+        file_url: { type: 'string', description: 'Optional URL to the PDF (use erp_generate_inspection_certificate_pdf to produce one).' },
+        extra_findings: {
+          type: 'array',
+          description: 'Additional finding objects to prepend before the auto-derived count/per_checkpoint findings.',
+          items: { type: 'object' },
+        },
+      },
+    },
+  },
+  {
+    name: 'erp_get_inspection_report',
+    description: 'Phase 4.15c — fetch an InspectionReport. Provide exactly one of report_id, report_number, or inspection_id.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        report_id: { type: 'string' },
+        report_number: { type: 'string' },
+        inspection_id: { type: 'string' },
+      },
+    },
+  },
+
+  // ── Phase 4.15c-3: Sample management (6 tools) ──────────────────────────
+  {
+    name: 'erp_create_sample_request',
+    description: 'Phase 4.15c — create a SampleRequest in status=pending. products is an array of {productId, quantity, ...}; totalQuantity is auto-summed. Validates each productId exists. Priority defaults to medium. request_number auto-generated when omitted.',
+    inputSchema: {
+      type: 'object',
+      required: ['customer_id', 'products'],
+      properties: {
+        customer_id: { type: 'string' },
+        products: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['quantity'],
+            properties: {
+              productId: { type: 'string' },
+              quantity: { type: 'number' },
+              notes: { type: 'string' },
+            },
+          },
+        },
+        priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] },
+        required_by_date: { type: 'string', description: 'ISO datetime.' },
+        special_requirements: { type: 'string' },
+        notes: { type: 'string' },
+        request_number: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'erp_approve_sample_request',
+    description: 'Phase 4.15c — transition pending → approved. Records approvedBy (the MCP requester) + approvalDate. Refuses if the request is not in pending. Writes ai_assistant_approve_sample_request with before/after.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'SampleRequest UUID.' } },
+    },
+  },
+  {
+    name: 'erp_create_sample_shipment',
+    description: 'Phase 4.15c — create a SampleShipment for an approved sample request. Auto-generates shipmentNumber when omitted. Promotes the parent request to status=shipped when previously approved/processing (allows multiple shipments for split deliveries). Writes ai_assistant_create_sample_shipment.',
+    inputSchema: {
+      type: 'object',
+      required: ['sample_request_id', 'quantity'],
+      properties: {
+        sample_request_id: { type: 'string' },
+        quantity: { type: 'number' },
+        shipping_method: { type: 'string', enum: ['courier', 'air_freight', 'sea_freight', 'local_delivery'] },
+        carrier: { type: 'string', description: 'e.g. DHL, FedEx, UPS, Aramex.' },
+        tracking_number: { type: 'string' },
+        shipped_date: { type: 'string', description: 'ISO datetime. Defaults to now.' },
+        expected_delivery_date: { type: 'string', description: 'ISO datetime.' },
+        weight: { type: 'number' },
+        weight_unit: { type: 'string', enum: ['kg', 'lb'] },
+        shipping_cost: { type: 'number' },
+        currency: { type: 'string', description: 'ISO-3 currency code. Defaults to USD.' },
+        notes: { type: 'string' },
+        shipment_number: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'erp_record_sample_feedback',
+    description: 'Phase 4.15c — capture customer feedback after sample delivery. rating (1–5) is required; quality/packaging/delivery axes are optional 1–5 scores. issues is an array of free-text issue objects. status defaults to "escalated" when rating ≤ 2, otherwise "pending_action". Writes ai_assistant_record_sample_feedback.',
+    inputSchema: {
+      type: 'object',
+      required: ['sample_request_id', 'rating'],
+      properties: {
+        sample_request_id: { type: 'string' },
+        rating: { type: 'integer', minimum: 1, maximum: 5, description: 'Overall rating, 1–5.' },
+        quality: { type: 'integer', minimum: 1, maximum: 5 },
+        packaging: { type: 'integer', minimum: 1, maximum: 5 },
+        delivery: { type: 'integer', minimum: 1, maximum: 5 },
+        comments: { type: 'string', description: 'Customer-facing comments.' },
+        issues: { type: 'array', items: { type: 'object' } },
+        recommendations: { type: 'string' },
+        sent_by_contact_id: { type: 'string' },
+        follow_up_date: { type: 'string', description: 'ISO datetime.' },
+        internal_notes: { type: 'string', description: 'Internal-only notes (not surfaced to customer).' },
+        status: { type: 'string', enum: ['pending_action', 'under_review', 'resolved', 'escalated'] },
+      },
+    },
+  },
+  {
+    name: 'erp_list_sample_requests',
+    description: 'Phase 4.15c — list SampleRequests with filters. Up to 100. requestFrom/To filter on request_date.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        customer_id: { type: 'string' },
+        status: { type: 'string', enum: ['pending', 'approved', 'processing', 'shipped', 'delivered', 'cancelled'] },
+        priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] },
+        request_from: { type: 'string', description: 'ISO datetime.' },
+        request_to: { type: 'string', description: 'ISO datetime.' },
+        search: { type: 'string', description: 'LIKE on request_number.' },
+        limit: { type: 'number', description: 'Default 25, max 100.' },
+      },
+    },
+  },
+  {
+    name: 'erp_get_sample_request',
+    description: 'Phase 4.15c — fetch one SampleRequest by id with shipments, feedback, and customer eager-loaded.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'SampleRequest UUID.' } },
+    },
+  },
+
+  // ── Phase 4.15b-2: Letter of Credit (7 tools) ───────────────────────────
+  {
+    name: 'erp_create_letter_of_credit',
+    description: 'Phase 4.15b — create a draft Letter of Credit. status starts as "draft". Validates supplier (Factory) + customer existence, amount > 0, expiry > issue, enum constraints on type/payment_terms/tolerance_type. tolerance + tolerance_type drive the payment-discrepancy check at erp_record_lc_payment. lc_number auto-generated when omitted.',
+    inputSchema: {
+      type: 'object',
+      required: ['supplier_id', 'customer_id', 'issuing_bank', 'beneficiary', 'amount', 'issue_date', 'expiry_date'],
+      properties: {
+        lc_number: { type: 'string' },
+        supplier_id: { type: 'string', description: 'Factory UUID.' },
+        customer_id: { type: 'string' },
+        issuing_bank: { type: 'string' },
+        advising_bank: { type: 'string' },
+        beneficiary: { type: 'string' },
+        amount: { type: 'number' },
+        currency: { type: 'string', description: 'ISO-3 code. Defaults to USD.' },
+        issue_date: { type: 'string', description: 'ISO datetime.' },
+        expiry_date: { type: 'string', description: 'ISO datetime. Must be after issue_date.' },
+        type: { type: 'string', enum: ['sight', 'usance', 'revolving', 'standby'] },
+        terms: { type: 'string' },
+        payment_terms: { type: 'string', enum: ['at_sight', 'days_30', 'days_60', 'days_90', 'days_120'] },
+        tolerance: { type: 'number', description: 'Allowed payment variance (in % if tolerance_type=percentage, else absolute amount).' },
+        tolerance_type: { type: 'string', enum: ['percentage', 'amount'] },
+        partial_shipment: { type: 'boolean' },
+        transhipment_allowed: { type: 'boolean' },
+        incoterm: { type: 'string' },
+        notes: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'erp_submit_letter_of_credit',
+    description: 'Phase 4.15b — transition draft → submitted. Records the submitter identity in notes so erp_approve_letter_of_credit can enforce self-approval prevention. Writes ai_assistant_submit_letter_of_credit with before/after.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'LetterOfCredit UUID.' } },
+    },
+  },
+  {
+    name: 'erp_approve_letter_of_credit',
+    description: 'Phase 4.15b — transition submitted → approved. SUPER_ADMIN ONLY (high-stakes financial decision). Self-approval is blocked: the user who submitted the LC cannot also approve it. Writes ai_assistant_approve_letter_of_credit with before/after.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'LetterOfCredit UUID.' } },
+    },
+  },
+  {
+    name: 'erp_attach_lc_document',
+    description: 'Phase 4.15b — attach a LetterOfCreditDocument row. Use after erp_generate_*_pdf or to register an externally-uploaded file. document_type is one of invoice, bill_of_lading, packing_list, certificate_of_origin, inspection_report, insurance_document, draft, amendment, other.',
+    inputSchema: {
+      type: 'object',
+      required: ['letter_of_credit_id', 'document_type', 'file_name', 'file_url'],
+      properties: {
+        letter_of_credit_id: { type: 'string' },
+        document_type: { type: 'string', enum: ['invoice', 'bill_of_lading', 'packing_list', 'certificate_of_origin', 'inspection_report', 'insurance_document', 'draft', 'amendment', 'other'] },
+        document_number: { type: 'string' },
+        file_name: { type: 'string' },
+        file_url: { type: 'string' },
+        status: { type: 'string', enum: ['pending', 'verified', 'rejected', 'discrepancy_found'] },
+        remarks: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'erp_record_lc_payment',
+    description: 'Phase 4.15b — record presentation and/or payment against an LC. Setting presented_amount alone promotes status approved/active → presented (does not finalize). Setting paid_amount enforces the tolerance check (within amount ± tolerance) and finalizes status → paid. Both fields can be set in one call. LC must be in approved/active/presented to record payment.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string' },
+        presented_amount: { type: 'number' },
+        presented_date: { type: 'string', description: 'ISO datetime. Defaults to now when presented_amount is set.' },
+        paid_amount: { type: 'number' },
+        paid_date: { type: 'string', description: 'ISO datetime. Defaults to now when paid_amount is set.' },
+      },
+    },
+  },
+  {
+    name: 'erp_list_letters_of_credit',
+    description: 'Phase 4.15b — list LCs with filters. Up to 100. expiring_before flags LCs about to lapse. search runs LIKE on lc_number OR beneficiary.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['draft', 'submitted', 'approved', 'active', 'presented', 'paid', 'cancelled', 'expired'] },
+        supplier_id: { type: 'string' },
+        customer_id: { type: 'string' },
+        type: { type: 'string', enum: ['sight', 'usance', 'revolving', 'standby'] },
+        issuing_bank: { type: 'string', description: 'LIKE match on issuing_bank.' },
+        expiring_before: { type: 'string', description: 'ISO datetime — LCs whose expiry_date is on or before this.' },
+        search: { type: 'string', description: 'LIKE on lc_number OR beneficiary.' },
+        limit: { type: 'number', description: 'Default 25, max 100.' },
+      },
+    },
+  },
+  {
+    name: 'erp_get_letter_of_credit',
+    description: 'Phase 4.15b — fetch one LC by id with attached documents, customer, and supplier eager-loaded.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'LetterOfCredit UUID.' } },
+    },
   },
 
   // ── Phase 4.15a: Document generation (13 tools) ─────────────────────────

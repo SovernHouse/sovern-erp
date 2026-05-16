@@ -5,7 +5,15 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: Phase 4.15d-2b-2 — Compliance write MCP tools (6). create/update_compliance_record, create_hs_code (super_admin gate — HS codes are global reference), create_certificate_of_origin (row create; the PDF generator is the separate Phase 4.15a tool), get_compliance_dashboard. Defensive Shipment FK pre-check on CO create to avoid raw SQLITE_CONSTRAINT errors. 12 new tests (487/487 total locally). **Phase 4.15d is now complete** (4.15d-1 + 4.15d-2a + 4.15d-2b-1 + 4.15d-2b-2).
+2026-05-16 Taiwan time. Latest: Phase 4.15b-2 — Letter of Credit MCP tools (7). createLetterOfCredit (draft + validates supplier/customer/amount/expiry/enums); submitLetterOfCredit (draft → submitted, embeds submitter UUID marker in notes); approveLetterOfCredit (submitted → approved, SUPER_ADMIN gate at MCP layer, self-approval blocked when submitter === approver — Phase 4.15d-1 pattern adapted to the LC schema); attachLcDocument (LetterOfCreditDocument row); recordLcPayment (presented_amount → presented; paid_amount → tolerance-checked against amount ± tolerance% or amount ± tolerance_amount → paid); listLettersOfCredit + getLetterOfCredit (eager-load documents/customer/supplier). 28 new convergence tests including tolerance edge cases. Full suite 577/577 green locally. **Phase 4.15 is now complete** (4.15a + 4.15b + 4.15c + 4.15d, ~60 tools across the sprint).
+
+2026-05-16 Taiwan time (earlier). Phase 4.15c-3 — Sample management MCP tools (6). createSampleRequest (auto-sums totalQuantity from products[], validates each productId); approveSampleRequest (pending → approved with approvedBy + approvalDate); createSampleShipment (auto-promotes parent request approved/processing → shipped, supports multiple shipments for split deliveries); recordSampleFeedback (1–5 rating + quality/packaging/delivery axes, auto-escalates when rating ≤ 2); listSampleRequests + getSampleRequest (with shipments/feedback/customer eager-loaded). Stripped L-034 inline references from SampleFeedback (sampleRequestId / sentByContactId / handledBy). 24 new tests. Full suite 549/549 green locally. **Phase 4.15c is now complete** (c-1 + c-2 + c-3).
+
+2026-05-16 Taiwan time (earlier). Phase 4.15c-2 — Quality / inspection MCP tools (9). schedule / start / complete inspection with explicit state machine (scheduled → in_progress → passed/failed/conditional); add + update inspection items (refused on finalized inspections); list + get inspection (with items/report/factory/inspector eager-loaded); generate + get inspection report (auto-derived findings: counts + per-checkpoint breakdown; one-to-one inspection ↔ report). 23 new convergence tests. Full suite 525/525 green locally.
+
+2026-05-16 Taiwan time (earlier). Phase 4.15c-1 — Container loading MCP tools (5). createContainerLoad / optimizeContainerLoad (pure-math, no DB) / listContainerLoads / getContainerLoad / updateContainerLoad. Added `Product.cubicMeters` DECIMAL(10,4) + sentinel-guarded boot migration `migrate415c1ProductCubicMeters` (sentinel `phase4_15c1_product_cubic_meters_added`). 15 new convergence tests. Full suite 502/502 green locally. L-051 captured (Sequelize silently drops unknown attributes on Model.create).
+
+2026-05-16 Taiwan time (earlier). Phase 4.15d-2b-2 — Compliance write MCP tools (6). create/update_compliance_record, create_hs_code (super_admin gate — HS codes are global reference), create_certificate_of_origin (row create; the PDF generator is the separate Phase 4.15a tool), get_compliance_dashboard. Defensive Shipment FK pre-check on CO create to avoid raw SQLITE_CONSTRAINT errors. 12 new tests (487/487 total locally). **Phase 4.15d is now complete** (4.15d-1 + 4.15d-2a + 4.15d-2b-1 + 4.15d-2b-2).
 
 2026-05-16 Taiwan time (earlier). Phase 4.15d-2b-1 — Compliance read/calc MCP tools (8).
 
@@ -39,6 +47,10 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
+  - `<pending-commit>` feat(ai-mcp): Phase 4.15b-2 — Letter of Credit MCP tools (7 + service) — Phase 4.15 complete — local 577/577 green, awaiting push
+  - `<pending-commit>` feat(ai-mcp): Phase 4.15c-3 — Sample management MCP tools (6 + service) + L-034 strip on SampleFeedback — local 549/549 green, awaiting push
+  - `<pending-commit>` feat(ai-mcp): Phase 4.15c-2 — Quality / inspection MCP tools (9 + service) — local 525/525 green, awaiting push
+  - `<pending-commit>` feat(ai-mcp): Phase 4.15c-1 — Container loading MCP tools (5 + service) + Product.cubicMeters migration — local 502/502 green, awaiting push
   - `<pending-commit>` feat(ai-mcp): Phase 4.15d-2b-2 — Compliance write MCP tools (6) — Phase 4.15d complete — local 487/487 green, awaiting push
   - `97e30cc` feat(ai-mcp): Phase 4.15d-2b-1 — Compliance read/calc MCP tools (8 + service) — CI green, deployed
   - `bcaac6a` feat(ai-mcp): Phase 4.15b-1 — Landed Cost MCP tools (5 + service) — CI green, deployed
