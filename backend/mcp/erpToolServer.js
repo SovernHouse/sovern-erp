@@ -3491,16 +3491,26 @@ async function callTool(name, args) {
       if (!args.price_valid_until) missing.push('price validity date');
       if (!args.hs_code)           missing.push('HS code');
 
+      // Phase 4.17 follow-up: response status now reflects the actual
+      // isActive flag. Pre-4.17 this always read 'pending_approval' even
+      // when the caller passed active:true, which confused the AI
+      // assistant ("the tool overrode my active:true!") and prompted
+      // unnecessary approve sweeps on bulk-create flows.
+      const statusLabel = isActive ? 'active' : 'pending_approval';
+      const statusMsg = isActive
+        ? 'Product created and active. Available for quotations now.'
+        : 'Product created and pending approval (currently inactive). Approval task scheduled for tomorrow.';
       return {
         success:      true,
         productId:    product.id,
         name:         product.name,
         sku:          product.sku,
-        status:       'pending_approval',
+        status:       statusLabel,
+        isActive,
         priceId:      priceRecord?.id || null,
         sellingPrice: priceRecord ? `USD ${priceRecord.sellingPrice} / ${product.unit}` : null,
         missingFields: missing.length ? missing : null,
-        message: `Product created and pending your approval (currently inactive). Approval task scheduled for tomorrow.${missing.length ? ` Still needed for quotations: ${missing.join(', ')}.` : ' All quotation fields present.'}`,
+        message: `${statusMsg}${missing.length ? ` Still needed for quotations: ${missing.join(', ')}.` : ' All quotation fields present.'}`,
       };
     }
 
@@ -3608,22 +3618,23 @@ async function callTool(name, args) {
       const wasActive = product.isActive;
       await product.update({ isActive: true });
 
-      const priceCount = await getDb().ProductPrice.update(
-        { isActive: true },
-        { where: { productId: args.product_id } }
-      );
+      // Phase 4.17 follow-up: ProductPrice uses temporal validTo, not an
+      // isActive boolean — the previous bulk-update was a no-op against a
+      // nonexistent column. Just count the related rows for the response.
+      const priceCount = await getDb().ProductPrice.count({
+        where: { productId: args.product_id },
+      });
 
       await getDb().ScheduledActivity.update(
         { status: 'done', completedAt: new Date(), completedNote: args.note || 'Approved via AI assistant' },
         { where: { entityType: 'Product', entityId: args.product_id, status: 'pending' } }
       );
 
-      const activatedCount = Array.isArray(priceCount) ? priceCount[0] : priceCount;
       await auditAiWrite('approve_product', 'Product', product.id, {
         sku: product.sku,
         name: product.name,
         wasActive,
-        pricesActivated: activatedCount,
+        pricesAffected: priceCount,
         note: args.note || null,
       }, requester.id);
 
@@ -3632,7 +3643,7 @@ async function callTool(name, args) {
         productId: product.id,
         name: product.name,
         sku: product.sku,
-        pricesActivated: activatedCount,
+        pricesAffected: priceCount,
         message: `Product "${product.name}" is now active and available for quotations.`,
       };
     }
