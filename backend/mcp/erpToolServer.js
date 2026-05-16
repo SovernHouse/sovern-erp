@@ -3360,6 +3360,13 @@ async function callTool(name, args) {
       // default unless the caller opts in).
       const isActive = args.active === true;
 
+      // Phase 4.16.3: accept top-level Product columns the AI directive
+      // needs (base_fob_price, lead_time_days, origin_country,
+      // origin_variants, cubic_meters). Each is optional; nulls preserve
+      // pre-4.16.3 behavior for existing callers. originVariants accepts
+      // an array of {origin, factoryId, ...} entries — pass-through to
+      // the JSON column without re-validation here (validation happens
+      // at quote-build / landed-cost time per L-023).
       const product = await getDb().Product.create({
         brandCode,
         name:               args.name,
@@ -3376,7 +3383,17 @@ async function callTool(name, args) {
         specifications:     specs,
         minOrderQty:        args.min_order_qty        || 1,
         weight:             args.weight               || null,
+        cubicMeters:        args.cubic_meters ?? args.cubicMeters ?? null,
         hsCode:             args.hs_code              || null,
+        baseFobPrice:       args.base_fob_price ?? args.baseFobPrice ?? null,
+        leadTimeDays:       args.lead_time_days ?? args.leadTimeDays ?? null,
+        originCountry:      args.origin_country ?? args.originCountry ?? null,
+        originVariants:     Array.isArray(args.origin_variants)
+                              ? args.origin_variants
+                              : (Array.isArray(args.originVariants) ? args.originVariants : []),
+        certifications:     Array.isArray(args.certifications_list)
+                              ? args.certifications_list
+                              : (Array.isArray(args.certificationsArray) ? args.certificationsArray : []),
         isActive,
       });
 
@@ -6505,34 +6522,63 @@ const TOOL_DEFS = [
   },
   {
     name: 'create_product',
-    description: 'Create a new product in the ERP catalog from quotation or supplier data. Resolves factory and category by name. Auto-generates SKU if not provided. Use this when Alex shares a supplier quotation and asks to add the product to the system.',
+    description: 'Create a new product in the ERP catalog. Required: name + (brand_code OR brandCode) + (category_id OR category_name). All other fields optional. Phase 4.16.3 widened this tool so a single call can set every Product-row column the directive needs (brand, product_type, currency, base_fob_price, lead_time_days, origin_country, origin_variants, cubic_meters, weight, hs_code, certifications, specifications JSON). Pass `active: true` to launch a product live; the safer default is inactive (pending approval). Use `specs` for any free-form spec keys not in the typed `specifications` properties — anything passed there merges into the Product.specifications JSON column. To seed an initial ProductPrice row in the same call, pass `fob_price` + (origin OR factory_id/factory_name); the ProductPrice rows for multi-origin pricing should be created separately via create_product_price.',
     inputSchema: {
       type: 'object',
       required: ['name'],
       properties: {
-        name:                 { type: 'string',  description: 'Product name (e.g. "SPC Flooring 4mm Grey Oak")' },
+        // Identity + scope
+        name:                 { type: 'string',  description: 'Product name (e.g. "IronLite Core 180mm x 1220mm x 6.5mm Engineered SPC")' },
         sku:                  { type: 'string',  description: 'SKU — auto-generated if omitted' },
+        brand_code:           { type: 'string',  description: 'Brand code, e.g. "FW" or "SH". Required. Validated against active Brand. Alias: brandCode.' },
+        brandCode:            { type: 'string',  description: 'Alias for brand_code.' },
         factory_id:           { type: 'string',  description: 'Factory UUID (use if known)' },
         factory_name:         { type: 'string',  description: 'Factory name to search (used if factory_id not known)' },
         category_id:          { type: 'string',  description: 'Category UUID (use if known)' },
-        category_name:        { type: 'string',  description: 'Category name (e.g. "SPC Flooring", "LVT", "Auto Parts") — created if not found' },
+        category_name:        { type: 'string',  description: 'Category name (e.g. "SPC Flooring", "Engineered SPC")' },
+        // Descriptions
         description:          { type: 'string',  description: 'Internal product description' },
         sales_description:    { type: 'string',  description: 'Client-facing description for quotations and sales orders' },
         purchase_description: { type: 'string',  description: 'Supplier-facing description for purchase orders' },
-        unit:                 { type: 'string',  description: 'Unit: sqm, sqft, box, pallet, roll, piece (default: sqm)' },
+        // Catalog filters / typed columns
+        productType:          { type: 'string',  description: 'Product type. Strict enum: lvt | spc | wpc | hardwood | laminate | tile | ceramic | other. Free-form labels (e.g. "IronLite Core") land in specifications.productTypeLabel with productType=other.' },
+        currency:             { type: 'string',  description: 'ISO-3 currency code. Default USD.' },
+        unit:                 { type: 'string',  description: 'Unit: sqm, sqft, box, pallet, roll, piece, container. Default: sqm.' },
         min_order_qty:        { type: 'number',  description: 'Minimum order quantity' },
         weight:               { type: 'number',  description: 'Weight per unit (kg)' },
+        cubic_meters:         { type: 'number',  description: 'Per-unit shipping volume (cbm). Phase 4.15c-1 column; drives container loading optimizer + packing lists.' },
         hs_code:              { type: 'string',  description: 'HS / HTS code for customs' },
-        fob_price:            { type: 'number', description: 'Factory FOB price per unit (USD). Sovern selling price is auto-calculated at FOB / (1 - margin/100).' },
-        margin:               { type: 'number', description: 'Sovern margin % to apply (default: 5). Use whatever Alex specifies — e.g. 8 for 8%, 10 for 10%. Applied by division: selling price = FOB / (1 - margin/100).' },
-        price_valid_until:    { type: 'string', description: 'Price validity date (ISO format, e.g. 2026-08-31). Required for client quotations.' },
-        departure_port:       { type: 'string', description: 'Port of loading / departure port (e.g. "Qingdao", "Shanghai", "Klang"). Required for client quotations.' },
-        lead_time:            { type: 'string', description: 'Production and shipping lead time (e.g. "30 days ex-stock", "45 days from order confirmation").' },
-        packing:              { type: 'string', description: 'Packing details (e.g. "2.23 sqm/box, 40 boxes/pallet, 22 pallets/40ft").' },
-        certifications:       { type: 'string', description: 'Certifications held (e.g. "FloorScore, CARB2, CE").' },
+        active:               { type: 'boolean', description: 'Set true to launch the product live. Default false (created pending approval; super_admin promotes via approve_product).' },
+        // Pricing (top-level columns)
+        base_fob_price:       { type: 'number',  description: 'Buyer-facing FOB price floor on the Product row (USD per unit). Independent of fob_price below — that one creates a ProductPrice row. Use base_fob_price when you want to populate the denormalized cache directly.' },
+        // Multi-origin
+        lead_time_days:       { type: 'integer', description: 'Production + shipping lead time in days (e.g. 30). Integer column. Use the string `lead_time` field below for free-form expressions like "30 days ex-stock".' },
+        origin_country:       { type: 'string',  description: 'ISO-2 country code for the PRIMARY origin (e.g. "CN", "MY"). Multi-origin pricing goes in origin_variants OR via per-origin ProductPrice rows.' },
+        origin_variants: {
+          type: 'array',
+          description: 'Per-origin pricing variants. Each entry: { origin (ISO-2 or country name), factoryId (UUID), fobPriceUsd (number, optional), priceUnit (sqm|sqft|box|...), moqOverride (number, optional), leadTimeOverride (number, optional) }. Raw JSON per L-023 — pass as a real array, do not stringify.',
+          items: { type: 'object' },
+        },
+        // Certifications (typed list, replaces the legacy string field)
+        certifications_list: {
+          type: 'array',
+          description: 'Array of certification objects { name, issuer, expiresAt } per the certifications JSON column. Alias: certificationsArray. Use this instead of the legacy `certifications` string when you have structured data.',
+          items: { type: 'object' },
+        },
+        // Initial-price shortcut (creates a ProductPrice row in addition to the Product row)
+        fob_price:            { type: 'number', description: 'Factory FOB price per unit (USD). Seeds an initial ProductPrice row with origin/factoryId scope. Use create_product_price for additional origins.' },
+        margin:               { type: 'number', description: 'Margin % (passed as a percent like 5 = 5% or a decimal like 0.05). Applied: selling = FOB / (1 - margin/100).' },
+        price_valid_until:    { type: 'string', description: 'Price validity date on the seeded ProductPrice row.' },
+        origin:               { type: 'string', description: 'Origin for the seeded ProductPrice row (when factory_id not supplied). Typically a country name.' },
+        // Logistics (legacy string aliases)
+        departure_port:       { type: 'string', description: 'Port of loading. Stored in specifications.departurePort.' },
+        lead_time:            { type: 'string', description: 'Free-form lead time string (use lead_time_days for the typed integer column).' },
+        packing:              { type: 'string', description: 'Packing details (e.g. "2.23 sqm/box, 40 boxes/pallet").' },
+        certifications:       { type: 'string', description: 'Legacy free-form certifications string. Prefer certifications_list above.' },
+        // Specifications JSON
         specifications: {
           type: 'object',
-          description: 'Product specs extracted from the quotation',
+          description: 'Typed product specs that land in the specifications JSON column. Use the typed properties below for known keys; use `specs` for everything else.',
           properties: {
             thickness:    { type: 'string', description: 'e.g. "4mm", "8mm"' },
             width:        { type: 'string', description: 'e.g. "182mm"' },
@@ -6547,6 +6593,10 @@ const TOOL_DEFS = [
             grade:        { type: 'string', description: 'Product grade if specified' },
             species:      { type: 'string', description: 'Wood species (for engineered/solid wood)' },
           },
+        },
+        specs: {
+          type: 'object',
+          description: 'Free-form spec object. Merged into the Product.specifications JSON column verbatim. Use for any keys not in the typed `specifications` properties above — e.g. plankWidthMm, plankLengthMm, totalThicknessMm, ironliteCoreLayerThicknessMm, ixpeUnderlayThicknessMm, m2PerBox, m2PerPallet, m2PerContainer, piecesPerBox, boxesPerPallet, palletsPerContainer, ironliteBadged, constructionType, defaultCommissionRate, plankWidthInches, plankLengthInches, totalThicknessMm, wearLayerMil. All values pass through untyped; the AI is responsible for using consistent key names across products.',
         },
       },
     },
