@@ -1941,7 +1941,14 @@ async function callTool(name, args) {
           // boot-time crash if the test fixtures aren't bundled.
           const pdfParse = require('pdf-parse/lib/pdf-parse.js');
           const buf = await downloadBytes();
-          const parsed = await pdfParse(buf);
+          // L-048: pdf-parse 1.1.4 + Node 22 throws "bad XRef entry" on
+          // otherwise-valid PDFs when fed a Node Buffer (pdfjs 1.10 typed-
+          // array mismatch). Wrap as Uint8Array. Same fix as parsePdf in
+          // backend/services/driveDocumentParsers.js. Before this wrap,
+          // read_attachment was silently failing on a subset of real
+          // production PDFs.
+          const u8 = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+          const parsed = await pdfParse(u8);
           const text = (parsed.text || '').trim();
           return {
             name, mimeType,

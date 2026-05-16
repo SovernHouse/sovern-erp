@@ -5,7 +5,9 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: Phase 4.14 — Drive document parsers (xlsx, xls, docx, pdf, rtf) wired into `read_drive_file` via a shared `backend/services/driveDocumentParsers.js`. Optional narrowing (sheet_name, row_range, column_range, page_range, max_pages, raw_formulas). 25MB input cap + 200KB output cap + 10-min LRU cache. 23 new parser tests + a prod-smoke harness for real Drive fixtures. L-048 (pdf-parse Buffer→Uint8Array bug on Node 22) and L-049 (SheetJS sheet_to_csv ignores `range`) captured. 365/365 backend tests green locally.
+2026-05-16 Taiwan time. Latest: Phase 4.14 hotfix — applied the L-048 Uint8Array wrap to `read_attachment`'s pdf branch (same one-line bug as parsePdf had pre-4.14). `read_attachment` was silently failing on the same subset of real PDFs the 4.14 parser fixed. 365/365 tests still green.
+
+2026-05-16 Taiwan time (earlier). Phase 4.14 — Drive document parsers (xlsx, xls, docx, pdf, rtf) wired into `read_drive_file` via a shared `backend/services/driveDocumentParsers.js`. Optional narrowing (sheet_name, row_range, column_range, page_range, max_pages, raw_formulas). 25MB input cap + 200KB output cap + 10-min LRU cache. 23 new parser tests + a prod-smoke harness. L-048 (pdf-parse Buffer→Uint8Array bug on Node 22) and L-049 (SheetJS sheet_to_csv ignores `range`) captured.
 
 2026-05-16 Taiwan time (earlier). Phase 4.13c — super_admin Lead sanctions override route. `POST /api/compliance/leads/:id/override`. Safety valve for jurisdiction false positives. 8 new tests.
 
@@ -21,7 +23,8 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `<pending-commit>` feat(ai-mcp): Phase 4.14 — Drive document parsers (xlsx/xls/docx/pdf/rtf) for read_drive_file — local 365/365 green, awaiting push
+  - `<pending-commit>` fix(ai-mcp): Phase 4.14 hotfix — L-048 Uint8Array wrap for read_attachment pdf branch — local 365/365 green, awaiting push
+  - `2db54c0` feat(ai-mcp): Phase 4.14 — Drive document parsers (xlsx/xls/docx/pdf/rtf) for read_drive_file — CI green, deployed
   - `ec7782c` feat(compliance): Phase 4.13c — Lead sanctions override route — CI green, deployed
   - `4546d03` refactor(schema): Phase 4.13b — drop sanctionsScreened boolean + fix JSON-string parsing — CI green, deployed
   - `95222db` feat(compliance): Phase 4.13a — jurisdiction screening for OFAC-comprehensive countries — CI green, deployed
