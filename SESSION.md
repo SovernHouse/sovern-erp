@@ -5,7 +5,9 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: Phase 4.15b-1 — Landed Cost MCP tools (5 + service). Wraps LandedCostTemplate + LandedCostCalculation models. The new `erp_persist_landed_cost_calculation` includes the spec'd ProductPrice.validTo expiration check (fails with `price_expired` when origin supplied and price has expired). Coexists with the read-only `calculate_landed_cost` from Phase 4.9. 18 new convergence tests (459/459 total locally). Letter of Credit (4.15b-2) deferred to a fresh session due to financial-instrument stakes.
+2026-05-16 Taiwan time. Latest: Phase 4.15d-2b-1 — Compliance read/calc MCP tools (8). `complianceWriteService.js` wraps modules/compliance: rule-based `checkCompliance` (CN→US anti-dumping, →US CPSC, →EU CE marking, customs always), `lookupHsCodes`, `calculateDuties` (with country-specific overrides), list/get compliance records, list/get certificates of origin. 16 new convergence tests (475/475 total locally). Write tools (compliance record + HS code CRUD) deferred to 4.15d-2b-2.
+
+2026-05-16 Taiwan time (earlier). Phase 4.15b-1 — Landed Cost MCP tools (5). ProductPrice.validTo expiration check.
 
 2026-05-16 Taiwan time (earlier). parsePdfRaw extraction — L-050 captured.
 
@@ -35,7 +37,8 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `<pending-commit>` feat(ai-mcp): Phase 4.15b-1 — Landed Cost MCP tools (5 + service) — local 459/459 green, awaiting push
+  - `<pending-commit>` feat(ai-mcp): Phase 4.15d-2b-1 — Compliance read/calc MCP tools (8 + service) — local 475/475 green, awaiting push
+  - `bcaac6a` feat(ai-mcp): Phase 4.15b-1 — Landed Cost MCP tools (5 + service) — CI green, deployed
   - `c7e5a2c` refactor(ai-mcp): extract parsePdfRaw — read_drive_file + read_attachment share one PDF code path (L-050) — CI green, deployed
   - `88f0e4b` feat(ai-mcp): Phase 4.15d-2a — Product Specifications MCP tools (6 + service) — CI green, deployed
   - `66645a5` feat(ai-mcp): Phase 4.15d-1 — Internal Approvals MCP tools (5 + service) — CI green, deployed

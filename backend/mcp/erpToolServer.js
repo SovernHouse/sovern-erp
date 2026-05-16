@@ -2156,6 +2156,90 @@ async function callTool(name, args) {
       return { success: true, calculation: result.calculation.toJSON() };
     }
 
+    // ── Phase 4.15d-2b-1: Compliance audit-and-expose (8 read/calc tools) ──
+    case 'erp_compliance_check': {
+      const cs = require('../services/aiWriteServices/complianceWriteService');
+      const result = await cs.checkCompliance({
+        shipmentId: args.shipment_id,
+        productId: args.product_id,
+        countryOrigin: args.country_origin,
+        countryDestination: args.country_destination,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return { success: true, ...result.check };
+    }
+
+    case 'erp_lookup_hs_codes': {
+      const cs = require('../services/aiWriteServices/complianceWriteService');
+      const result = await cs.lookupHsCodes({
+        search: args.search,
+        chapter: args.chapter,
+        limit: args.limit,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return result.hsCodes.length
+        ? result.hsCodes.map(c => c.toJSON())
+        : 'No HS codes match those filters.';
+    }
+
+    case 'erp_calculate_duties': {
+      const cs = require('../services/aiWriteServices/complianceWriteService');
+      const result = await cs.calculateDuties({
+        hsCode: args.hs_code,
+        countryOrigin: args.country_origin,
+        countryDestination: args.country_destination,
+        unitPrice: args.unit_price,
+        quantity: args.quantity,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return { success: true, ...result.calculation };
+    }
+
+    case 'erp_list_compliance_records': {
+      const cs = require('../services/aiWriteServices/complianceWriteService');
+      const result = await cs.listComplianceRecords({
+        shipmentId: args.shipment_id,
+        productId: args.product_id,
+        type: args.type,
+        status: args.status,
+        countryOrigin: args.country_origin,
+        countryDestination: args.country_destination,
+        limit: args.limit,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return result.records.length
+        ? result.records.map(r => r.toJSON())
+        : 'No compliance records match those filters.';
+    }
+
+    case 'erp_get_compliance_record': {
+      const cs = require('../services/aiWriteServices/complianceWriteService');
+      const result = await cs.getComplianceRecord(args.id);
+      if (!result.ok) return formatMcpWriteError(result);
+      return { success: true, record: result.record.toJSON() };
+    }
+
+    case 'erp_list_certificates_of_origin': {
+      const cs = require('../services/aiWriteServices/complianceWriteService');
+      const result = await cs.listCertificatesOfOrigin({
+        status: args.status,
+        shipmentId: args.shipment_id,
+        countryOfOrigin: args.country_of_origin,
+        limit: args.limit,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return result.certificates.length
+        ? result.certificates.map(c => c.toJSON())
+        : 'No certificates of origin match those filters.';
+    }
+
+    case 'erp_get_certificate_of_origin': {
+      const cs = require('../services/aiWriteServices/complianceWriteService');
+      const result = await cs.getCertificateOfOrigin(args.id);
+      if (!result.ok) return formatMcpWriteError(result);
+      return { success: true, certificate: result.certificate.toJSON() };
+    }
+
     case 'calculate_landed_cost': {
       const { product_cost, quantity = 1, freight = 0, insurance = 0,
               customs_duty = 0, handling = 0, local_delivery = 0,
@@ -4828,6 +4912,96 @@ const TOOL_DEFS = [
       type: 'object',
       required: ['id'],
       properties: { id: { type: 'string', description: 'LandedCostCalculation UUID.' } },
+    },
+  },
+
+  // ── Phase 4.15d-2b-1: Compliance read/calc tools (8) ────────────────────
+  {
+    name: 'erp_compliance_check',
+    description: 'Phase 4.15d — rule-based compliance check. Pass shipmentId OR productId + countryOrigin + countryDestination. Returns requirements (anti_dumping, cpsc, ce_marking, customs) + riskLevel. Rule set: CN→US triggers anti-dumping; any →US triggers CPSC; →EU triggers CE marking; customs always required. Stateless — no DB writes.',
+    inputSchema: {
+      type: 'object',
+      required: ['country_origin', 'country_destination'],
+      properties: {
+        shipment_id:         { type: 'string', description: 'Shipment UUID. shipment_id OR product_id is required.' },
+        product_id:          { type: 'string', description: 'Product UUID. shipment_id OR product_id is required.' },
+        country_origin:      { type: 'string', description: 'ISO code or country name.' },
+        country_destination: { type: 'string', description: 'ISO code or country name.' },
+      },
+    },
+  },
+  {
+    name: 'erp_lookup_hs_codes',
+    description: 'Phase 4.15d — search the HarmonizedCode catalog by code or description (LIKE). Optional chapter filter. Up to 100. Use before erp_calculate_duties or when classifying a product.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        search:  { type: 'string', description: 'LIKE %search% on code or description.' },
+        chapter: { type: 'string', description: 'Exact chapter filter (e.g. "44" for wood, "39" for plastics).' },
+        limit:   { type: 'number', description: 'Default 25, max 100.' },
+      },
+    },
+  },
+  {
+    name: 'erp_calculate_duties',
+    description: 'Phase 4.15d — compute duty + anti-dumping rate × unit price × quantity. Pulls baseRate + antiDumpingRate from HarmonizedCode; country-specific overrides take precedence over the base when set. Returns {baseRate, antiDumpingRate, totalDutyRate, dutyAmount}. Stateless — no DB writes.',
+    inputSchema: {
+      type: 'object',
+      required: ['hs_code', 'country_origin', 'country_destination'],
+      properties: {
+        hs_code:             { type: 'string', description: 'HS code (e.g. "440710").' },
+        country_origin:      { type: 'string', description: 'ISO code.' },
+        country_destination: { type: 'string', description: 'ISO code.' },
+        unit_price:          { type: 'number', description: 'Optional. When set with quantity, returns dutyAmount.' },
+        quantity:            { type: 'integer', description: 'Optional. When set with unit_price, returns dutyAmount.' },
+      },
+    },
+  },
+  {
+    name: 'erp_list_compliance_records',
+    description: 'Phase 4.15d — list ComplianceRecord rows with filters. Up to 100. Use for audit trails on compliance status of shipments / products.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        shipment_id:         { type: 'string' },
+        product_id:          { type: 'string' },
+        type:                { type: 'string', description: 'anti_dumping / cpsc / ce_marking / customs / etc.' },
+        status:              { type: 'string', description: 'pending / approved / flagged.' },
+        country_origin:      { type: 'string' },
+        country_destination: { type: 'string' },
+        limit:               { type: 'number', description: 'Default 25, max 100.' },
+      },
+    },
+  },
+  {
+    name: 'erp_get_compliance_record',
+    description: 'Phase 4.15d — fetch one ComplianceRecord by id.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'ComplianceRecord UUID.' } },
+    },
+  },
+  {
+    name: 'erp_list_certificates_of_origin',
+    description: 'Phase 4.15d — list CertificateOfOrigin rows with filters. Up to 100. Use to see what COs have been issued for a shipment or country.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status:           { type: 'string', description: 'draft / issued / used / expired.' },
+        shipment_id:      { type: 'string' },
+        country_of_origin:{ type: 'string' },
+        limit:            { type: 'number', description: 'Default 25, max 100.' },
+      },
+    },
+  },
+  {
+    name: 'erp_get_certificate_of_origin',
+    description: 'Phase 4.15d — fetch one CertificateOfOrigin by id. Use erp_generate_certificate_of_origin_pdf (Phase 4.15a) to produce the PDF.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'CertificateOfOrigin UUID.' } },
     },
   },
 
