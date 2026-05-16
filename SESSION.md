@@ -6,6 +6,8 @@
 
 ## Last Updated — 2026-05-16 Taiwan time
 
+**Picking up tomorrow:** four UI/UX bugs Alex spotted at end-of-day (see "Bugs to fix tomorrow" section below) plus Phase 4.19c — service-layer convergence for Product / ProductPrice / ProductSpec. Phase 4.19c is the structural fix that would have prevented the `sellingPrice` rename fan-out earlier today.
+
 **Latest:** Phase 4.19 — guardrails + emergency hotfix. Mid-session "failed to load products" alarm: `productController.getAll` included `ProductPrice.sellingPrice` but Phase 4.9.2b renamed that column to `sellingPriceUsdPerM2` long ago. Audit found 5 more stale `sellingPrice` references (factory price update, quote builder, logistics PDF, MCP create_product response in 2 spots) — all silently wrong since the rename. Patched all 6 in one commit. Then shipped **4.19a** (audit invariant test that walks every MCP `case` block, finds DB writes, requires a matching `auditAiWrite` — caught 4 real gaps which got fixed: add_lead_activity, log_activity, update_triage_item, send_outreach_email) and **4.19b** (orphan-FK detector that scans `sqlite_master` for `REFERENCES …_orphan_…`; pins L-052 from Phase 4.16.4). Suite 626/626 green.
 
 2026-05-16 Taiwan time (earlier). Phase 4.18 — add missing `ai_assistant_create_product` AuditLog write. The 9 IronLite SKUs created 2026-05-16 had zero corresponding audit rows even though sibling `create_product_spec` (9) and `create_product_price` (18) audited correctly. Added `auditAiWrite('create_product', 'Product', product.id, {...key fields...}, USER_ID)` in the MCP handler after the row succeeds. Convergence test runs the handler in-process (new `__testing.callTool` shim) and asserts the audit row lands. Forward-only; existing 9 rows intact, no backfill. Suite 622/622 green.
@@ -44,9 +46,146 @@
 
 ---
 
+## Bugs to fix tomorrow (Alex's end-of-day report 2026-05-16)
+
+All four spotted in a quick UI walkthrough after the Phase 4.19 deploy.
+Triage notes below — every DB-level fact was confirmed earlier via direct
+`vm_exec` queries, so issues 1–3 are very likely UI brand-scope filter
+problems, not missing data. Issue 4 is a known incomplete feature plus a
+new policy ask.
+
+### Bug 1 — IronLite products not visible in the catalog
+
+**State on prod (verified):** 9 active Products with SKU prefix `IL-`,
+`brand_code='FW'`, all `is_active=1`. Each has 2 ProductPrice rows
+(China + Malaysia, validFrom=2026-05-14, validTo=+15 days) and 1
+ProductSpecification. Container loading optimizer + landed-cost work
+against them today.
+
+**Likely cause:** the admin portal's brand-scope filter is set to SH-only
+in Alex's session. `productController.getAll` uses `brandWhere(req)` which
+pulls from the user's `accessibleBrands` + the `?brandCode=` query
+override. If Alex is in single-brand mode with default SH, FW rows don't
+appear. Switching the topbar brand selector to FW (or cross-brand mode)
+should make them visible.
+
+**To diagnose tomorrow:**
+1. Confirm what `req.user.accessibleBrands` returns for `alex@sovernhouse.co`
+   on prod (should be `['SH', 'FW']` per the Phase 4 migration log).
+2. Confirm the topbar brand switcher state in the browser (likely set to
+   SH by default and never moved).
+3. If the user IS set to cross-brand but the UI still filters: bug in
+   `brandWhere` or the topbar binding.
+
+### Bug 2 — HH/FW factories not visible
+
+**State on prod (verified):**
+- Anhui HanHua Building Materials Technology Co., Ltd. (id
+  `6b1b3926-a3a7-4744-b7d6-acb7432f9935`) — `brandCode='FW'`, active
+- FlorWay SDN. BHD. (id `4f1cb036-856c-40ab-93ec-fc0ecad34f25`) —
+  `brandCode='FW'`, active
+
+**Likely cause:** same brand-scope filter as Bug 1. Factory list is
+brand-scoped per `brandScope` middleware. HH brand itself is `active=false`
+(per "Brands on prod" note above), so factories assigned to HH would not
+appear under HH context — but neither factory IS under HH; they're both FW.
+
+**Note:** Alex wrote "HH or FW factories"; HH brand is inactive by design
+(it was the original supplier brand, deprecated when FW absorbed the
+HanHua relationship). If Alex expects HH factories to show, that's a
+deeper question about whether HH should be re-enabled or whether the
+expectation should be "HanHua the *factory* under FW the *brand*".
+
+### Bug 3 — "Engineered SPC" product category not visible
+
+**State on prod (verified):** ProductCategory id
+`2e25e192-cb38-4ba8-8a65-6b31935c8931`, name 'Engineered SPC', parent
+Resilient (which is under Flooring root). 9 IronLite Products attached.
+sortOrder=3.
+
+**Likely cause:**
+(a) Same brand-scope filter as Bugs 1–2 if the taxonomy tree filters by
+    brand of attached products
+(b) OR the taxonomy UI hides nodes whose subtree is empty in the current
+    brand scope — Engineered SPC has only FW Products under it, so if
+    Alex is in SH scope it'd render as empty/hidden
+(c) OR a real bug: the category tree controller has a different code path
+    than the product list, and may not honour brand scope correctly
+
+**To diagnose tomorrow:** check `categoryController.getCategoryTree` and
+`getCategoriesFlat` for brand-scope handling. Cross-reference against the
+Resilient → Engineered SPC chain at sortOrder 2 → 3 (Resilient sortOrder=2
+per the existing taxonomy snapshot).
+
+### Bug 4 — ProductForm Brand picker doesn't work + default-brand policy missing
+
+Two sub-bugs in one report:
+
+**4a — Brand picker is non-functional in the product edit form.**
+This is a known Phase-1 polish gap (carry-over from the previous session,
+not new): "BrandPicker in create forms — LeadForm, QuotationForm,
+DealForm. Users can brand-override an existing entity via
+`/admin/brand-override` (audit-logged) but the create form doesn't have a
+picker yet." Apparently the edit form has the visible UI element but
+clicking doesn't trigger the override flow. Need to wire it to the
+existing override endpoint OR add an inline brand-update path to
+`update_product` (Phase 4.9.3a typed accept brand_code already; the
+backend supports it).
+
+**4b — New policy: resilient flooring categories should default to FW.**
+LVT, SPC, WPC, Engineered SPC, Vinyl Sheet — all the children of the
+Resilient subtree under Flooring should default `brand_code='FW'` on
+product create, rather than requiring an explicit selection. The
+rationale: FW (FlorWay) owns the resilient flooring catalog by design;
+SH is the parent trading brand for everything else (auto parts, garments,
+commodities, etc.).
+
+**Where to implement 4b:**
+- `ProductForm.jsx` on category change: if the picked category is under
+  the Resilient subtree (need a `parentChain` check or a flag on the
+  category), pre-fill `brand_code` to 'FW' (still overridable).
+- `create_product` MCP handler: same default rule applied server-side so
+  AI-driven creates respect the policy without the AI having to remember.
+- Possibly add a `defaultBrand` column to `ProductCategory` (with FW for
+  the Resilient subtree, NULL for others = inherit user default) so the
+  rule lives in data instead of code. Cleanest long-term path; ~30 min
+  of migration + form wire-up.
+
+---
+
 ## Carry-over (still open)
 
-### #18 — Prod verification step 3 (your manual, ~5 min)
+### Synthetic test product still on dashboard
+SKU `TEST-APPROVAL-1778942054`, product id `fa0e16a2-dde2-4c9f-820b-084952bd2e27`,
+activity id `a67a1cca-7922-42c9-8de6-d485b22742b9`. Pending approval chip in
+the banner. Use it to test the Phase 4.17 ProductApprovalModal end-to-end
+when you pick up tomorrow. Approve / reject / request-revision — any
+action closes the activity. Safe to delete the product itself after.
+
+### Phase 4.19c — Service-layer convergence for Product / ProductPrice / ProductSpec
+
+Highest-leverage item from the post-IronLite risk plan. Extract the
+direct `getDb().Product.create(...)` paths in `case 'create_product'`,
+`case 'update_product'`, `case 'archive_product'`, `case 'approve_product'`
+into `backend/services/aiWriteServices/productWriteService.js`. Same
+pattern as Phase 4.12 (Lead, Quotation, Factory, Contact). Then do
+ProductPrice + ProductSpec the same way. Eliminates the cluster of bugs
+that surfaced this session:
+  - Phase 4.17 misleading status text (would be one place to fix, not N
+    case blocks)
+  - Phase 4.18 missing audit (audit-on-create would be a service contract)
+  - Phase 4.19 sellingPrice fan-out (model field references would be in
+    a single typed service, not scattered across controllers + MCP +
+    PDF generators)
+
+Estimated half-day focused work. Worth blocking time for.
+
+### #18 — Prod verification step 3 (closed)
+Verified earlier this session against AuditLog (115 leads rescreened,
+Iran lead preserved, sentinel rows present for 4.13a + 4.13b). Marked
+complete in the task list.
+
+### EU sanctions URL — webgate upstream still 500
 After the 4.16+4.17 wave settled, query AuditLog for `ai_assistant_*` rows to confirm the new MCP tools (~20 from the 4.15 wave + the 6 from 4.15c-3 + the 5 from 4.15b-2) are writing audit rows correctly in prod usage. Spot-check:
 ```
 SELECT action, COUNT(*) AS n, MAX(created_at) AS last_seen
@@ -74,7 +213,6 @@ Previous file was 1217 lines of per-phase detail. Now ~150 lines focused on rece
 - **IronLite SKUs on prod:** 9 active `IL-180x1220-{6.5..12.0}mm` products under FW brand, all category=Engineered SPC, primary factory=HanHua, origin_variants=[China, Malaysia], lead_time=30 days. 18 ProductPrice rows (2 per SKU, China + Malaysia FOB from xlsx dated 2026-05-14, validTo=+15 days). 9 ProductSpecification rows.
 - **Phase 4.13d still open:** JurisdictionRule DB table + admin CRUD + full OFAC/EU/UK/UN authority matrix + Customer/Quotation parameterization + mobile UI for jurisdiction warnings (L-035). Not blocking; Phase 4.13c override route + 4.13a comprehensive jurisdictions cover the immediate need.
 - **Phase 4.14.1 follow-up — Cowork sovern-mcp-server parsers**: shipped local-only at `C:\Users\Alex\Desktop\International Trade Company\sovern-mcp-server\` (initial commit `3ac9b0a` on local-only `main`). Repo has no remote. Restart Cowork app after build to load the new dist.
-- **Phase 4.13a step-3 prod verification** still nominally open per task #18 — bundle with the post-4.17 audit.
 - **VM kernel restart pending:** `*** System restart required ***` on last VM login. Schedule a reboot when convenient. pm2 restarts cleanly.
 
 ---
