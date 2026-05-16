@@ -1952,6 +1952,109 @@ async function callTool(name, args) {
       return { success: true, approval: result.approval.toJSON() };
     }
 
+    // ── Phase 4.15d-2a: Product Specifications (6 tools) ────────────────
+    case 'erp_upsert_product_spec': {
+      const requester = await getCurrentUserOrThrow();
+      const specService = require('../services/aiWriteServices/productSpecWriteService');
+      const { product_id, product_sku, ...rest } = args;
+      const result = await specService.upsertProductSpec({
+        productId: product_id,
+        productSku: product_sku,
+        ...rest,
+      }, { userId: requester.id, ip: null, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite(result.created ? 'create_product_spec' : 'update_product_spec',
+        'ProductSpecification', result.spec.id, {
+          productId: result.product.id,
+          productSku: result.product.sku,
+          before: result.before || null,
+          after: result.after || result.spec.toJSON(),
+          created: !!result.created,
+        }, requester.id);
+      return {
+        success: true,
+        created: !!result.created,
+        product: { id: result.product.id, sku: result.product.sku, name: result.product.name },
+        spec: result.spec.toJSON(),
+      };
+    }
+
+    case 'erp_get_product_spec': {
+      const specService = require('../services/aiWriteServices/productSpecWriteService');
+      const result = await specService.getProductSpec(args.product_id || args.product_sku);
+      if (!result.ok) return formatMcpWriteError(result);
+      return {
+        success: true,
+        product: { id: result.product.id, sku: result.product.sku, name: result.product.name, brandCode: result.product.brandCode },
+        spec: result.spec.toJSON(),
+      };
+    }
+
+    case 'erp_list_product_specs': {
+      const specService = require('../services/aiWriteServices/productSpecWriteService');
+      const result = await specService.listProductSpecs({
+        flooringType: args.flooring_type,
+        coreType: args.core_type,
+        waterproof: args.waterproof,
+        acRating: args.ac_rating,
+        fireRating: args.fire_rating,
+        origin: args.origin,
+        format: args.format,
+        brandCode: args.brand_code,
+        hasValue: args.has_value,
+        limit: args.limit,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return result.specs.length
+        ? result.specs.map(s => s.toJSON())
+        : 'No product specifications match those filters.';
+    }
+
+    case 'erp_search_product_specs': {
+      const specService = require('../services/aiWriteServices/productSpecWriteService');
+      const result = await specService.searchProductSpecs(args.query);
+      if (!result.ok) return formatMcpWriteError(result);
+      return {
+        success: true,
+        query: result.query,
+        resultCount: result.results.length,
+        results: result.results.map(r => ({
+          product: { id: r.spec.product?.id, sku: r.spec.product?.sku, name: r.spec.product?.name, brandCode: r.spec.product?.brandCode },
+          spec: r.spec.toJSON(),
+          matchedFields: r.matchedFields,
+        })),
+      };
+    }
+
+    case 'erp_lookup_spec_qa': {
+      const specService = require('../services/aiWriteServices/productSpecWriteService');
+      const result = await specService.lookupSpecQa({
+        product: args.product_id || args.product_sku || args.product,
+        attribute: args.attribute,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return result;
+    }
+
+    case 'erp_archive_product_spec': {
+      const requester = await getCurrentUserOrThrow();
+      const specService = require('../services/aiWriteServices/productSpecWriteService');
+      const result = await specService.archiveProductSpec(args.product_id || args.product_sku, {
+        userId: requester.id, ip: null, source: 'mcp',
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('archive_product_spec', 'ProductSpecification', result.deleted.id, {
+        productId: result.product.id,
+        productSku: result.product.sku,
+        before: result.deleted,
+      }, requester.id);
+      return {
+        success: true,
+        archivedSpecId: result.deleted.id,
+        product: { id: result.product.id, sku: result.product.sku, name: result.product.name },
+      };
+    }
+
     case 'calculate_landed_cost': {
       const { product_cost, quantity = 1, freight = 0, insurance = 0,
               customs_duty = 0, handling = 0, local_delivery = 0,
@@ -4418,6 +4521,121 @@ const TOOL_DEFS = [
       properties: {
         id:     { type: 'string', description: 'InternalApproval UUID.' },
         reason: { type: 'string', description: 'Why the request was rejected (>=5 chars). Becomes the decisionNote.' },
+      },
+    },
+  },
+
+  // ── Phase 4.15d-2a: Product Specifications (6 tools) ──────────────────
+  // ProductSpecification is a typed wide-table (one row per Product,
+  // ~30 named columns). The MCP tools surface upsert / get / list /
+  // search / qa-lookup / archive against that schema.
+  {
+    name: 'erp_upsert_product_spec',
+    description: 'Phase 4.15d — create or update a ProductSpecification row (one per product). Pass product_id or product_sku to identify the product. All other fields are optional and silently filtered to the writable column set. Fields: flooringType, coreType, construction, length, width, thickness, wearLayerThickness, wearLayerMil, acRating, waterproof, fireRating, slipRating, surfaceFinish, surfaceTexture, colorPattern, edgeType, woodSpecies, woodGrade, installationMethod, clickSystem, underlaymentRequired, underlaymentType, sqftPerBox, sqmPerBox, planksPerBox, boxWeight, warrantyResidential, warrantyCommercial, certifications (array), origin, format, clientVisibleFields (array), notes. Writes ai_assistant_create_product_spec or ai_assistant_update_product_spec to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        product_id:           { type: 'string', description: 'Product UUID. Required if product_sku is not provided.' },
+        product_sku:          { type: 'string', description: 'Product SKU. Alternative to product_id.' },
+        flooringType:         { type: 'string', description: 'SPC, WPC, LVT, Laminate, Engineered Wood, Solid Wood, Bamboo, Vinyl Dry Back, etc.' },
+        coreType:             { type: 'string' },
+        construction:         { type: 'string' },
+        length:               { type: 'number', description: 'Plank length in mm.' },
+        width:                { type: 'number', description: 'Plank width in mm.' },
+        thickness:            { type: 'number', description: 'Total thickness in mm.' },
+        wearLayerThickness:   { type: 'number', description: 'Wear layer thickness in mm.' },
+        wearLayerMil:         { type: 'integer', description: 'Wear layer in mil (US measurement, e.g., 12, 20, 28).' },
+        acRating:             { type: 'string', description: 'AC1–AC5 (laminate).' },
+        waterproof:           { type: 'boolean' },
+        fireRating:           { type: 'string', description: 'Bfl-s1, Cfl-s1, etc.' },
+        slipRating:           { type: 'string', description: 'R9 / R10 / R11 / COF.' },
+        surfaceFinish:        { type: 'string' },
+        surfaceTexture:       { type: 'string' },
+        colorPattern:         { type: 'string' },
+        edgeType:             { type: 'string', description: 'Micro-bevel, Square edge, Painted bevel, V-groove, etc.' },
+        woodSpecies:          { type: 'string' },
+        woodGrade:            { type: 'string', description: 'AB, BC, CD, EF, Character, Select, Prime, Rustic.' },
+        installationMethod:   { type: 'string', description: 'Click-lock, Glue-down, Nail-down, Floating, Loose Lay.' },
+        clickSystem:          { type: 'string', description: 'Uniclick, Valinge, Drop-lock, etc.' },
+        underlaymentRequired: { type: 'string', description: 'Attached, Required, Optional, Not Required.' },
+        underlaymentType:     { type: 'string', description: 'IXPE, Cork, EVA, EPE, Rubber, Foam.' },
+        sqftPerBox:           { type: 'number' },
+        sqmPerBox:            { type: 'number' },
+        planksPerBox:         { type: 'integer' },
+        boxWeight:            { type: 'number', description: 'kg.' },
+        warrantyResidential:  { type: 'string' },
+        warrantyCommercial:   { type: 'string' },
+        certifications:       { type: 'array', items: { type: 'string' }, description: 'FSC, EUDR, FloorScore, CARB2, CE, etc.' },
+        origin:               { type: 'string', description: 'Country of origin / manufacturing.' },
+        format:               { type: 'string', description: 'Plank, Herringbone, Chevron, etc.' },
+        clientVisibleFields:  { type: 'array', items: { type: 'string' }, description: 'Override which fields the client sees on quotations.' },
+        notes:                { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'erp_get_product_spec',
+    description: 'Phase 4.15d — fetch a ProductSpecification by product_id OR product_sku. Returns the full row + the Product joined for context.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        product_id:  { type: 'string', description: 'Product UUID.' },
+        product_sku: { type: 'string', description: 'Product SKU. Alternative to product_id.' },
+      },
+    },
+  },
+  {
+    name: 'erp_list_product_specs',
+    description: 'Phase 4.15d — list ProductSpecifications with filters. Includes the joined Product (id, sku, name, brandCode). Up to 100. Use has_value=<fieldName> to narrow to rows where that field is set.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        flooring_type: { type: 'string' },
+        core_type:     { type: 'string' },
+        waterproof:    { type: 'boolean' },
+        ac_rating:     { type: 'string' },
+        fire_rating:   { type: 'string' },
+        origin:        { type: 'string' },
+        format:        { type: 'string' },
+        brand_code:    { type: 'string', description: 'Filter via Product.brandCode join. SH or FW.' },
+        has_value:     { type: 'string', description: 'Field name (or alias) that must be non-null on the row.' },
+        limit:         { type: 'number', description: 'Default 25, max 100.' },
+      },
+    },
+  },
+  {
+    name: 'erp_search_product_specs',
+    description: 'Phase 4.15d — case-insensitive LIKE search across the string-typed columns of ProductSpecification (flooringType, coreType, surfaceFinish, woodSpecies, colorPattern, edgeType, installationMethod, certifications, origin, format, notes, etc). Returns up to 25 results with matched fields highlighted for each row. Use this when the AI gets a natural query like "AC4 commercial" or "wide oak plank engineered".',
+    inputSchema: {
+      type: 'object',
+      required: ['query'],
+      properties: {
+        query: { type: 'string', description: 'Search text (>=2 chars).' },
+      },
+    },
+  },
+  {
+    name: 'erp_lookup_spec_qa',
+    description: 'Phase 4.15d — natural-language Q&A against ProductSpecifications. Pass a product (id, sku, or name-ish string) and an attribute (user-facing name like "AC rating", "wear layer", "thickness", "core type", "warranty residential" etc — aliased to the canonical column). Returns the value or "not_yet_recorded" / "unknown_attribute". Use this in customer chat / email drafting when a user asks "what is the AC rating of IL-180x1220-7.5mm?" — the AI calls this tool first, then composes the answer.',
+    inputSchema: {
+      type: 'object',
+      required: ['attribute'],
+      properties: {
+        product_id:  { type: 'string', description: 'Product UUID.' },
+        product_sku: { type: 'string', description: 'Product SKU.' },
+        product:     { type: 'string', description: 'Free-text product reference (UUID or SKU). Convenience alias.' },
+        attribute:   { type: 'string', description: 'User-facing attribute name. Aliased liberally: "AC rating" → acRating, "wear layer" → wearLayerThickness, "thickness" → thickness, etc.' },
+      },
+    },
+  },
+  {
+    name: 'erp_archive_product_spec',
+    description: 'Phase 4.15d — hard-delete a ProductSpecification row (the model has no paranoid flag). Use when the spec is incorrect and needs to start over via erp_upsert_product_spec. Writes ai_assistant_archive_product_spec to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        product_id:  { type: 'string', description: 'Product UUID.' },
+        product_sku: { type: 'string', description: 'Product SKU. Alternative to product_id.' },
       },
     },
   },

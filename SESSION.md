@@ -5,7 +5,9 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: Phase 4.15d-1 — Internal Approvals MCP layer (5 tools: submit / list / get / approve / reject). New `internalApprovalWriteService.js` enforces self-approval blocks at both submit and decide time, assignee-only constraints with super_admin override, and already-decided refusal. 18 new convergence tests (418/418 total locally). 4.15d-2 (Product Specifications + Compliance audit-and-expose) next.
+2026-05-16 Taiwan time. Latest: Phase 4.15d-2a — Product Specifications MCP layer (6 tools: upsert / get / list / search / qa_lookup / archive). New `productSpecWriteService.js` adapts the typed wide-table ProductSpecification (33 writable named columns) to MCP. 71-entry alias map ("AC rating" → acRating, "wear layer" → wearLayerThickness, etc) powers the QA lookup. 21 new convergence tests (439/439 total locally). 4.15d-2b (Compliance audit-and-expose, 14 MCP wrappers around modules/compliance) deferred to next session.
+
+2026-05-16 Taiwan time (earlier). Phase 4.15d-1 — Internal Approvals MCP layer (5 tools). Self-approval hard-blocked, assignee-only with super_admin override.
 
 2026-05-16 Taiwan time (earlier). Phase 4.15a proper — patched brandedQuotationRenderer's 4 brand variants to accept opts.returnBuffer, built `pdfGenerationService.js`, wired 13 PDF generator MCP tools + 4 quotation CRUD MCP tools. 26 new convergence tests.
 
@@ -29,7 +31,8 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `<pending-commit>` feat(ai-mcp): Phase 4.15d-1 — Internal Approvals MCP tools (5 + service) — local 418/418 green, awaiting push
+  - `<pending-commit>` feat(ai-mcp): Phase 4.15d-2a — Product Specifications MCP tools (6 + service) — local 439/439 green, awaiting push
+  - `66645a5` feat(ai-mcp): Phase 4.15d-1 — Internal Approvals MCP tools (5 + service) — CI green, deployed
   - `53ffa22` feat(ai-mcp): Phase 4.15a proper — pdfGenerationService + 13 PDF MCP tools + 4 quotation CRUD MCP tools — CI green, deployed
   - `7625e02` refactor(pdf): Phase 4.15a-prep — pipeToBufferOrDisk helper + 12 generators accept opts.returnBuffer — CI green, deployed
   - `3676445` fix(ai-mcp): Phase 4.14 hotfix — L-048 Uint8Array wrap for read_attachment pdf branch — CI green, deployed

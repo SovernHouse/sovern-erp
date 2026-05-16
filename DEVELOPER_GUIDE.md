@@ -3561,6 +3561,85 @@ Full backend suite 418/418 passing locally (was 400 before 4.15d-1).
 
 ## What 4.15d-1 does NOT do
 
-- Product Specifications MCP tools (6 tools) — Phase 4.15d-2 because the wide-table ProductSpecification model (30+ named columns) needs the QA-lookup design thought-through more carefully than Alex's spec assumed.
-- Compliance audit-and-expose — Phase 4.15d-2 alongside Product Specs.
+- Product Specifications MCP tools — shipped separately as 4.15d-2a (next section).
+- Compliance audit-and-expose — Phase 4.15d-2b (next session).
 - approvalType enum expansion (pricing_override / discount / etc.) — separate follow-up if usage justifies it.
+
+# Phase 4.15d-2a — AI Product Specifications knowledge base
+
+Six MCP tools that wrap the typed wide-table `ProductSpecification` model so the AI assistant can manage the spec knowledge base from chat. One spec row per product (the model enforces `productId UNIQUE`); the MCP layer surfaces upsert (not separate create / update) because the schema's "at-most-one row per product" invariant collapses the two operations.
+
+## The 6 tools
+
+| MCP tool | What it does |
+|---|---|
+| `erp_upsert_product_spec` | Create-or-update the spec row for a product (identified by `product_id` or `product_sku`). All 33 writable columns accepted; anything outside the whitelist silently dropped. Writes `ai_assistant_create_product_spec` or `ai_assistant_update_product_spec`. |
+| `erp_get_product_spec` | Fetch by `product_id` OR `product_sku`. Returns the spec row + the joined Product (id, sku, name, brandCode). |
+| `erp_list_product_specs` | Filters: `flooring_type`, `core_type`, `waterproof` (bool), `ac_rating`, `fire_rating`, `origin`, `format`, `brand_code` (via Product join), `has_value=<field>` (non-null narrow). |
+| `erp_search_product_specs` | Case-insensitive LIKE search across 21 string columns (flooringType, coreType, surfaceFinish, woodSpecies, colorPattern, edgeType, installationMethod, certifications, origin, notes, etc). Returns up to 25 with `matchedFields` annotation. |
+| `erp_lookup_spec_qa` | Natural-language Q&A. Takes `(product_id_or_sku, attribute)`, normalizes the attribute via a 71-entry alias map ("AC rating" → `acRating`, "wear layer" → `wearLayerThickness`, "core" → `coreType`, etc), returns the value with answer code (`found` / `not_yet_recorded` / `unknown_attribute`). High-leverage tool for customer chat. |
+| `erp_archive_product_spec` | Hard-delete the spec row (model has no paranoid flag). Use when the spec is wrong and needs to start over. |
+
+## Service layer
+
+`backend/services/aiWriteServices/productSpecWriteService.js`:
+
+- **WRITABLE_FIELDS** — 33-entry Set covering every writable column on the model. Hardcoded for explicit auditability. Drift between this Set and the model is caught by the test suite's upsert-then-get round-trip.
+- **SEARCHABLE_STRING_FIELDS** — 21-entry array of string columns the search tool walks. Boolean / numeric columns are NOT in the search — use `list` filters for those.
+- **ATTRIBUTE_ALIASES** — 71-entry Map of user-facing names to canonical columns. Liberal aliasing: false negatives in QA are worse than fuzziness. The AI follows up to clarify when the lookup returns `unknown_attribute`.
+- **resolveProduct(idOrSku)** — accepts UUID (regex-tested) or SKU (exact match). Powers the dual-identifier `product_id` / `product_sku` MCP signature.
+
+## QA lookup answer shapes
+
+```js
+// Success: spec row exists and the column has a value
+{ ok: true, answer: 'found', value, attribute, normalised, product: {...} }
+
+// Spec row exists but the column is null/empty
+{ ok: true, answer: 'not_yet_recorded', value: null, message: '...', ...}
+
+// No spec row exists for this product at all
+{ ok: true, answer: 'not_yet_recorded',
+  message: 'No specification row exists for ${sku} (${name}). Use erp_upsert_product_spec to record one.' }
+
+// Attribute alias didn't resolve to a known column
+{ ok: true, answer: 'unknown_attribute',
+  message: 'Attribute "${input}" (normalised to "${camel}") is not a recognised ProductSpecification field. ...' }
+```
+
+The four-state answer is intentional — collapsing to `value | null` loses the AI's ability to distinguish "no data yet" from "wrong attribute" from "no spec row at all", which produces qualitatively different chat responses.
+
+## Schema notes
+
+- `ProductSpecification.productId` has a UNIQUE index — at most one spec per product. The MCP tool layer enforces this naturally via upsert; the model enforces it via constraint.
+- Model comment notes `NULL productId = template`. Phase 4.15d-2a doesn't surface template specs through MCP; that's a future capability if Alex needs reusable spec templates.
+- No `brandCode` column on ProductSpecification itself. Brand scope flows through the joined `Product.brandCode`. Cross-brand reads are allowed (specs are knowledge-base); cross-brand writes follow Product access.
+- No paranoid soft-delete. `erp_archive_product_spec` hard-deletes.
+
+## Tests
+
+`phase415d2aProductSpecs.test.js` — 21 specs:
+- upsert: create + update happy paths, by-SKU resolution, whitelist filtering (`hackerField` dropped), product-not-found 404.
+- get: by id + by SKU, no-spec-row 404 with the right pointer message.
+- list: filters by flooringType / waterproof / hasValue.
+- search: LIKE match + matchedFields annotation, refuses <2 char queries.
+- qa_lookup: alias normalization ("AC rating" → acRating, "wear layer" → wearLayerThickness), `not_yet_recorded` when field is null, `not_yet_recorded` when no spec row exists, `unknown_attribute` for unrecognised, missing product/attribute refused.
+- archive: hard-delete + snapshot, not-found shape.
+
+Full backend suite 439/439 passing locally (was 418 before 4.15d-2a).
+
+## Bootstrap (decoupled per the Phase 4.15 sprint plan)
+
+Per Alex's spec, ProductSpecification bootstrap from the HanHua IronLite spec sheet is decoupled from the MCP tool shipment. After the 9 IronLite Products exist next session, a one-shot script (or the AI in chat) parses the HanHua spec sheet via the Phase 4.14 xlsx/pdf parser and calls `erp_upsert_product_spec` per SKU.
+
+## Three-surface check
+
+- **Admin portal:** no new UI in this commit. The existing Settings/Products spec editor keeps working unchanged.
+- **Mobile:** no new UI. Mobile chat uses the same `/api/ai/chat` endpoint.
+- **Docs:** this section + `tooltipContent.aiProductSpecs` + (next session, alongside 4.15d-2b) helpContent walkthrough + USER_GUIDE subsection.
+
+## What 4.15d-2a does NOT do (deferred)
+
+- Compliance audit-and-expose — modules/compliance has 14 controller methods (compliance check, anti-dumping check, records CRUD, HS code lookup, duties calculation, certificates, dashboard); each one is a candidate MCP wrapper. Shipped as 4.15d-2b in a fresh session.
+- ProductSpecification template support (NULL productId rows). Future capability.
+- Cross-brand scope enforcement on writes — Product access already gates this implicitly; explicit brand checks deferred until usage justifies.
