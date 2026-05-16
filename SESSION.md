@@ -5,7 +5,9 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: Phase 4.13c — super_admin Lead sanctions override route. `POST /api/compliance/leads/:id/override`. Safety valve for jurisdiction false positives. 8 new tests (342/342 total locally).
+2026-05-16 Taiwan time. Latest: Phase 4.14 — Drive document parsers (xlsx, xls, docx, pdf, rtf) wired into `read_drive_file` via a shared `backend/services/driveDocumentParsers.js`. Optional narrowing (sheet_name, row_range, column_range, page_range, max_pages, raw_formulas). 25MB input cap + 200KB output cap + 10-min LRU cache. 23 new parser tests + a prod-smoke harness for real Drive fixtures. L-048 (pdf-parse Buffer→Uint8Array bug on Node 22) and L-049 (SheetJS sheet_to_csv ignores `range`) captured. 365/365 backend tests green locally.
+
+2026-05-16 Taiwan time (earlier). Phase 4.13c — super_admin Lead sanctions override route. `POST /api/compliance/leads/:id/override`. Safety valve for jurisdiction false positives. 8 new tests.
 
 2026-05-16 Taiwan time (earlier). Phase 4.13b — drop legacy `Lead.sanctionsScreened` boolean (kills L-044 state-inconsistency pattern) + fix `hasManualOverrideMarker` JSON-string parsing surfaced by 4.13a's prod run. Sentinel-guarded boot migration `migrate413bDropSanctionsScreened`. 6 new tests.
 
@@ -19,7 +21,8 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `<pending-commit>` feat(compliance): Phase 4.13c — Lead sanctions override route — local 342/342 green, awaiting push
+  - `<pending-commit>` feat(ai-mcp): Phase 4.14 — Drive document parsers (xlsx/xls/docx/pdf/rtf) for read_drive_file — local 365/365 green, awaiting push
+  - `ec7782c` feat(compliance): Phase 4.13c — Lead sanctions override route — CI green, deployed
   - `4546d03` refactor(schema): Phase 4.13b — drop sanctionsScreened boolean + fix JSON-string parsing — CI green, deployed
   - `95222db` feat(compliance): Phase 4.13a — jurisdiction screening for OFAC-comprehensive countries — CI green, deployed
   - `58a22e3` feat(ai-mcp+backend): Phase 4.12 — MCP write-tool / controller convergence — CI green, deployed
@@ -63,7 +66,55 @@
 
 ---
 
-## Phase 4.13c — SHIPPED (LOCAL, AWAITING PUSH)
+## Phase 4.14 — SHIPPED (LOCAL, AWAITING PUSH)
+
+Drive document parsers for `read_drive_file` so the AI assistant can ingest xlsx, xls, docx, pdf, and rtf without per-file manual conversion. Closes the today-session blocker on the IronLite HanHua xlsx ingestion. Spec was authored end-to-end by Alex (Parts A–J); see commit message for the four locked-in design points (target tool, formula handling, fixture strategy, follow-up scope).
+
+### Parser library
+- New: `backend/services/driveDocumentParsers.js` — pure, stateless parsers + dispatch + size caps. Same module will be ported to the Cowork sovern MCP server in Phase 4.14.1.
+- xlsx/xls via SheetJS (`xlsx`). Computed-values default; `raw_formulas:true` opt-in flag emits formula source. Per L-049, `sheet_to_csv` ignores its `range` option — we walk cells manually for both modes via a shared `csvForRange` helper.
+- docx via `mammoth` (already in deps). `max_pages` heuristic via 3000 chars/page; legacy `.doc` returns the documented guidance message.
+- pdf via `pdf-parse` (already in deps). Per-page output with `=== Page N ===` markers; `page_range` narrowing. L-048: Buffer→Uint8Array wrap required on Node 22, applied here. <100-char output triggers the OCR-not-supported guidance message; encrypted PDFs return a clean `pdf_encrypted` error rather than crashing.
+- rtf via `rtf-parser` (new dep). Plain text with paragraph breaks.
+
+### MCP wiring
+- `read_drive_file` handler in `backend/mcp/erpToolServer.js` rewritten to dispatch through `parseByMime` for all Phase 4.14 mime types, preserving the existing Google Docs/Sheets/text/csv branches behind the same 200KB output cap.
+- New optional schema params: `sheet_name`, `row_range`, `column_range`, `raw_formulas`, `page_range`, `max_pages`. Tool description rewritten to advertise the supported mime types + narrowing levers + workarounds for the unsupported set.
+- New helpers in erpToolServer.js: `brandScopeForMcp` (already from 4.12), `getDriveReadCache` (10-min LRU, 50 entries, keyed on fileId+accountKey+every narrowing param), `applyDriveReadOutputCap` (shared with parsers for the legacy branches).
+- accountKey/brandCode routing unchanged from 4.9.3b. Same parser layer serves both SH and FW Drive accounts.
+
+### Size + output limits
+- 25MB soft input cap. Above this, `file_too_large` with a message telling the caller which narrowing params to use.
+- 200KB hard output cap. Truncation marker explicitly lists every narrowing param so the caller knows the lever to pull next.
+
+### Tests
+- New: `backend/__tests__/integration/phase414DriveDocumentParsers.test.js` — 23 specs covering all five formats, every optional param, size caps, mime dispatcher, OCR detection, legacy-doc guidance, encrypted-PDF handling, invalid range params. Inline fixtures: xlsx via SheetJS write, docx via JSZip (transitive dep), pdf via pdfkit (new devDep), rtf hand-crafted, image-only pdf via pdfkit. Zero committed binary fixtures.
+- New: `backend/__tests__/prod-smoke/drive-parsers.smoke.js` — real-Drive integration tests against `DRIVE_SMOKE_XLSX_FW` + `DRIVE_SMOKE_DOCX_SH` + `DRIVE_SMOKE_PDF_SH`. Runs only when `DRIVE_SMOKE_FIXTURES=true`. CI never sets that env. Skipped suites use `describe.skip` so partial fixture sets still run the available ones.
+- Full backend suite 365/365 passing locally (was 342 before 4.14).
+
+### Lessons captured
+- **L-048** — pdf-parse 1.1.4 on Node 22 throws "bad XRef entry" on valid PDFs when fed a Node Buffer. Uint8Array wrap fixes it. Same bug latent in `read_attachment` — flagged for follow-up audit.
+- **L-049** — SheetJS `sheet_to_csv` silently ignores `range`. Walk cells manually.
+
+### Docs
+- `DEVELOPER_GUIDE.md` — new "Phase 4.14 — AI assistant Drive document ingestion" section: full mime list, optional params, output shapes, workarounds, size limits, LRU cache, three-surface check, lessons, smoke-harness usage, 4.14.1 follow-up note.
+- `tooltipContent.js` — `aiDocumentIngestion` tooltip.
+- `helpContent.js` — `/ai/assistant` "Finding and reading documents in Drive" section updated with the Phase 4.14 capabilities + concrete example phrasings the assistant understands.
+- `docs/USER_GUIDE.md` — new "AI Assistant — Reading documents from Drive (Phase 4.14)" subsection.
+
+### Out of scope (deferred)
+- **Phase 4.14.1**: mirror the same parsers in the Cowork `sovern` MCP server (`mcp__sovern__sovern_drive_read`). Same contract, separate repo. Tracked as a follow-up so global Claude Code DX matches the ERP chat DX.
+- Audit `read_attachment` for the L-048 Uint8Array bug. May be silently failing on a subset of real PDFs.
+- OCR for image-based PDFs. Tesseract + cloud-OCR options are heavy; defer until a real workflow needs it.
+- pptx parsing. Sales decks are rare in operations.
+- Write-side document generation (still owned by the Cowork "ms-office-suite" plugin).
+
+### Mobile parity
+N/A — Phase 4.14 is backend-only. Mobile already uses the same `/api/ai/chat` endpoint, so parser capability is inherited transparently.
+
+---
+
+## Phase 4.13c — SHIPPED (PROD GREEN)
 
 Super_admin Lead sanctions override route. Safety valve for jurisdiction false positives introduced in 4.13a (exotic country spellings that don't match the alias map, legitimate counterparties with OFAC general licenses, etc.). Mirrors the existing customer override at `/api/compliance/customers/:id/override`.
 

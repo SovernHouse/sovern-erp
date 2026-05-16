@@ -3336,3 +3336,96 @@ Cache key is `${userId}:...`. On logout, both `clearAll` (read cache) and `queue
 - AsyncStorage on mobile is fast enough for the response volume here (low hundreds of payloads). MMKV upgrade path noted; defer until cold-list latency complaints land.
 - No collaborative conflict resolution for offline writes. The allow-list is curated to avoid surfaces where that matters today.
 | CN | US | 40.7714
+
+# Phase 4.14 — AI assistant Drive document ingestion
+
+`read_drive_file` now parses xlsx, xls, docx, pdf, and rtf directly from Drive — no per-file manual conversion. The Phase 4.7 limitation ("PDF content cannot be extracted via Drive API") is gone. Phase 4.14 also kept the previously-supported types (Google Docs / Sheets / plain text / CSV) and applies a consistent 200KB output cap across all branches.
+
+## Supported mime types
+
+| mime | parser | source |
+|---|---|---|
+| `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` (xlsx) | SheetJS | `backend/services/driveDocumentParsers.js` |
+| `application/vnd.ms-excel` (xls) | SheetJS | same |
+| `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (docx) | mammoth | same |
+| `application/pdf` | pdf-parse | same |
+| `application/rtf`, `text/rtf` | rtf-parser | same |
+| `application/vnd.google-apps.document` (Google Docs) | Drive export to text/plain | inline in handler |
+| `application/vnd.google-apps.spreadsheet` (Google Sheets) | Drive export to text/csv | inline in handler |
+| `text/plain`, `text/csv` | direct download | inline in handler |
+
+## Optional narrowing parameters
+
+| param | applies to | shape | description |
+|---|---|---|---|
+| `sheet_name` | xlsx/xls | string | Case-insensitive sheet name. Omit to read all sheets. |
+| `row_range` | xlsx/xls | `[startRow, endRow]` 1-indexed inclusive | Useful when factory quotes have header rows above the data block. |
+| `column_range` | xlsx/xls | `["A", "Q"]` letters | Inclusive. Inverted ranges error out cleanly. |
+| `raw_formulas` | xlsx/xls | boolean (default false) | Default emits computed cached values (`25.50`). True emits formula source (`=ROUND(K9*(1+L9),2)`). Default is correct for factory quotes; true is correct for auditing a contract draft. |
+| `page_range` | pdf | `[startPage, endPage]` 1-indexed inclusive | For "read page 3 of the contract" flows. |
+| `max_pages` | docx | positive integer | Heuristic page cap (3000 chars/page). Truncates with a marker stating total estimated pages. |
+
+## Output shapes
+
+**xlsx / xls** — one block per sheet, CSV body:
+```
+=== Sheet: Quote (9 rows × 7 cols) ===
+SKU,Description,Thickness,Origin,MOQ,Cost/m²,Sell/m²
+IL-SPC-4MM,SPC 4mm click-lock,4mm,CN,1000,12.5,25.5
+...
+```
+
+**pdf** — file header + per-page blocks:
+```
+=== PDF: frontech-pi-2026-05.pdf (3 pages) ===
+
+=== Page 1 ===
+PROFORMA INVOICE No. PI-2026-05-007
+...
+
+=== Page 2 ===
+...
+```
+
+**docx / rtf** — plain text with paragraph breaks. Tables in docx become tab-separated rows (mammoth default). Style information is dropped — AI ingestion does not need it.
+
+## Workarounds for unsupported formats
+
+| format | workaround |
+|---|---|
+| Legacy `.doc` (pre-2007 Word) | Open in Word and re-save as `.docx`. Or right-click in Drive → "Open with Google Docs" → Drive auto-converts and the resulting Google Doc is readable via the tool. Phase 4.14 deferred legacy `.doc` parsing because the open-source libraries (antiword, libreoffice-headless) have heavy install footprints. |
+| Image-based / scanned PDFs | Drive → "Open with Google Docs" (Drive performs OCR on image PDFs). Or run through OCR.space / Adobe Acrobat first. Phase 4.14 covers text-based PDFs only. |
+| Encrypted PDFs | Remove the password protection in Acrobat or Preview and re-upload. Parser returns a clean `pdf_encrypted` error rather than crashing. |
+| `.pptx` (PowerPoint) | Share the `webViewLink` from `search_drive_files`; have the user describe the deck. Future phase if it becomes common. |
+
+## Size and output limits
+
+- **Soft input cap: 25MB.** Files above this return `file_too_large` with a message suggesting `sheet_name` / `row_range` / `page_range` narrowing or splitting the file. Cap prevents pulling a 100MB Excel into memory just to blow context.
+- **Hard output cap: 200KB.** Roughly 50K tokens — keeps the AI context budget intact. Truncated output ends with `[TRUNCATED at 200KB. Use sheet_name / row_range / column_range / page_range / max_pages parameters to narrow.]` so the caller knows exactly which lever to pull.
+
+## LRU cache
+
+10-minute TTL, 50-entry cap. Keyed on `(fileId + accountKey + every narrowing param)`. Hot during a single AI session (the assistant often re-reads the same file with different narrowing); cold across process restarts. Returns `cached: true` on the payload so callers can tell.
+
+## Write-side document generation — out of scope
+
+The Cowork "ms-office-suite" plugin still owns the WRITE side (generating new docx / xlsx / pdf files from ERP data). Phase 4.14 is read-side only.
+
+## Three-surface check (Phase 4.14)
+
+- **Admin portal:** no new UI. AI assistant chat input gets a tooltip update (`tooltipContent.aiDocumentIngestion`) listing the new formats. `helpContent.aiAssistant.documents` adds a short walkthrough.
+- **Mobile:** no new UI. Mobile uses the same `/api/ai/chat` endpoint, so parser capability is inherited transparently.
+- **Docs:** this section + tooltipContent + helpContent + USER_GUIDE.
+
+## Lessons captured
+
+- **L-048** — pdf-parse 1.1.4 on Node 22 throws `bad XRef entry` on otherwise-valid PDFs when fed a Node `Buffer`. Wrapping the buffer as `Uint8Array` (`new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength)`) sidesteps the bug. Fix lives in `parsePdf`.
+- **L-049** — SheetJS `xlsx.utils.sheet_to_csv` silently ignores its `range` option. Manual cell-walk via `xlsx.utils.encode_cell` is required for reliable row / column narrowing. Same helper now serves both computed-value and `raw_formulas` paths.
+
+## Real-Drive prod-smoke harness
+
+`backend/__tests__/prod-smoke/drive-parsers.smoke.js` exercises the parsers against real Drive fixtures. Skipped by default; runs when `DRIVE_SMOKE_FIXTURES=true`. Expects three fileIds via env: `DRIVE_SMOKE_XLSX_FW`, `DRIVE_SMOKE_DOCX_SH`, `DRIVE_SMOKE_PDF_SH`. CI never sets `DRIVE_SMOKE_FIXTURES`, so this never runs in the regular suite — it's a local-only sanity check for production-equivalent files.
+
+## Phase 4.14.1 follow-up
+
+Same parsers need to land in the Cowork `sovern` MCP server (the global `mcp__sovern__sovern_drive_read` tool) so the ingestion DX is consistent whether you're in the ERP chat or Claude Code globally. Same contract, separate repo. Open follow-up.

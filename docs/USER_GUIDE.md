@@ -1323,8 +1323,14 @@ If more than one Google account is connected, use the account selector to switch
 - Search scans the entire Drive for the selected account, not just the folder you are currently in.
 - Drive data is live, not cached. Results always reflect the current state of your Google Drive.
 
+### AI Assistant — Reading documents from Drive (Phase 4.14)
+
+The AI assistant chat can now read xlsx, xls, docx, pdf, and rtf files directly from Drive in addition to Google Docs, Sheets, plain text, and CSV. There is no per-file conversion step. Ask the assistant to read a file by name, or paste a Drive link, and it parses the contents into the conversation. Narrowing parameters keep large files manageable: name a sheet, a row range, a column range, or a page range so only the relevant slice ingests.
+
+**Unsupported in Phase 4.14:** PowerPoint decks (.pptx), legacy Word (.doc — re-save as .docx or open with Google Docs to auto-convert), scanned image PDFs (open with Google Docs for OCR), encrypted PDFs (remove the password first), files above 25MB (narrow the request or split the file).
+
 ---
 
 **For additional support, contact**: support@tradingerp.com
 
-**Last Updated**: 2026-05-07
+**Last Updated**: 2026-05-16

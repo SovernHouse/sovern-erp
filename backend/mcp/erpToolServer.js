@@ -1797,47 +1797,99 @@ async function callTool(name, args) {
 
     case 'read_drive_file': {
       // Phase 4.9.3b: accountKey routing — same rules as search_drive_files.
+      // Phase 4.14: xlsx / xls / docx / pdf / rtf parsers + per-format
+      // narrowing params (sheet_name, row_range, column_range,
+      // raw_formulas, page_range, max_pages) + 10-min LRU cache.
       const accountKey = args.accountKey || (args.brandCode ? resolveDriveAccount(args.brandCode) : 'sh');
       const targetEmail = emailForAccountKey(accountKey);
       const { auth } = await getGoogleAuth(targetEmail);
       const drive = getGoogle().drive({ version: 'v3', auth });
 
-      // Get file metadata to determine type
+      const parsers = require('../services/driveDocumentParsers');
+      const cache = getDriveReadCache();
+
+      // Cache key includes every parameter that affects output. accountKey
+      // is part of the key because the same fileId can map to different
+      // OAuth contexts (SH Drive vs FW Drive) with different access.
+      const cacheKey = JSON.stringify({
+        fileId: args.file_id,
+        accountKey,
+        sheet_name: args.sheet_name || null,
+        row_range: args.row_range || null,
+        column_range: args.column_range || null,
+        raw_formulas: !!args.raw_formulas,
+        page_range: args.page_range || null,
+        max_pages: args.max_pages || null,
+      });
+      const cached = cache.get(cacheKey);
+      if (cached) {
+        return { ...cached, cached: true };
+      }
+
       const meta = await drive.files.get({
         fileId: args.file_id,
-        fields: 'id, name, mimeType',
+        fields: 'id, name, mimeType, size',
       });
       const { mimeType, name } = meta.data;
 
-      let text = '';
+      try {
+        let payload;
 
-      if (mimeType === 'application/vnd.google-apps.document') {
-        // Google Doc → export as plain text
-        const resp = await drive.files.export(
-          { fileId: args.file_id, mimeType: 'text/plain' },
-          { responseType: 'arraybuffer' }
-        );
-        text = Buffer.from(resp.data).toString('utf8').slice(0, 8000);
-      } else if (mimeType === 'application/vnd.google-apps.spreadsheet') {
-        // Google Sheet → export as CSV
-        const resp = await drive.files.export(
-          { fileId: args.file_id, mimeType: 'text/csv' },
-          { responseType: 'arraybuffer' }
-        );
-        text = Buffer.from(resp.data).toString('utf8').slice(0, 8000);
-      } else if (mimeType === 'text/plain' || mimeType === 'text/csv') {
-        const resp = await drive.files.get(
-          { fileId: args.file_id, alt: 'media' },
-          { responseType: 'arraybuffer' }
-        );
-        text = Buffer.from(resp.data).toString('utf8').slice(0, 8000);
-      } else if (mimeType === 'application/pdf') {
-        return { name, mimeType, note: 'PDF content cannot be extracted via Drive API. Ask Alex to share the text or copy key details.' };
-      } else {
-        return { name, mimeType, note: `File type ${mimeType} is not supported for text extraction.` };
+        if (parsers.isSupported(mimeType) || mimeType === parsers.LEGACY_DOC_MIME) {
+          // Phase 4.14: download the bytes and dispatch to the right parser.
+          const resp = await drive.files.get(
+            { fileId: args.file_id, alt: 'media' },
+            { responseType: 'arraybuffer' }
+          );
+          const buffer = Buffer.from(resp.data);
+          const content = await parsers.parseByMime(buffer, mimeType, {
+            name,
+            sheet_name: args.sheet_name,
+            row_range: args.row_range,
+            column_range: args.column_range,
+            raw_formulas: args.raw_formulas,
+            page_range: args.page_range,
+            max_pages: args.max_pages,
+          });
+          payload = { name, mimeType, content };
+        } else if (mimeType === 'application/vnd.google-apps.document') {
+          const resp = await drive.files.export(
+            { fileId: args.file_id, mimeType: 'text/plain' },
+            { responseType: 'arraybuffer' }
+          );
+          const raw = Buffer.from(resp.data).toString('utf8');
+          payload = { name, mimeType, content: applyDriveReadOutputCap(raw) };
+        } else if (mimeType === 'application/vnd.google-apps.spreadsheet') {
+          const resp = await drive.files.export(
+            { fileId: args.file_id, mimeType: 'text/csv' },
+            { responseType: 'arraybuffer' }
+          );
+          const raw = Buffer.from(resp.data).toString('utf8');
+          payload = { name, mimeType, content: applyDriveReadOutputCap(raw) };
+        } else if (mimeType === 'text/plain' || mimeType === 'text/csv') {
+          const resp = await drive.files.get(
+            { fileId: args.file_id, alt: 'media' },
+            { responseType: 'arraybuffer' }
+          );
+          const raw = Buffer.from(resp.data).toString('utf8');
+          payload = { name, mimeType, content: applyDriveReadOutputCap(raw) };
+        } else {
+          payload = {
+            name, mimeType,
+            note: `File type ${mimeType} is not supported by Phase 4.14 parsers. Supported: Google Docs/Sheets, plain text, CSV, xlsx, xls, docx, pdf, rtf. For pptx, image PDFs, or other formats, share the webViewLink and have the user describe the content.`,
+          };
+        }
+
+        cache.set(cacheKey, payload);
+        return payload;
+      } catch (err) {
+        if (err && err.code && err.code.startsWith && typeof err.userMessage === 'string') {
+          // ParserError from driveDocumentParsers — surface the user-friendly
+          // message rather than the raw exception. Don't cache errors.
+          return { name, mimeType, error: err.userMessage, errorCode: err.code };
+        }
+        return { name, mimeType, error: `read_drive_file failed: ${err.message}` };
       }
-
-      return { name, mimeType, content: text };
     }
 
     case 'read_attachment': {
@@ -3354,6 +3406,32 @@ function formatMcpWriteError(result) {
   return { success: false, error: result.message };
 }
 
+// Phase 4.14: per-process LRU cache for parsed Drive files. 10-min TTL
+// keeps a hot working set during a single AI session (the assistant
+// often re-reads the same file with different narrowing params) while
+// guaranteeing forward freshness across long-running processes. The
+// 50-entry cap puts a ceiling on memory under a worst case (200KB per
+// entry × 50 = 10MB).
+let _driveReadCache = null;
+function getDriveReadCache() {
+  if (_driveReadCache) return _driveReadCache;
+  const { LRUCache } = require('lru-cache');
+  _driveReadCache = new LRUCache({
+    max: 50,
+    ttl: 10 * 60 * 1000,
+  });
+  return _driveReadCache;
+}
+
+// Wrapper around the parsers' applyOutputCap for the legacy
+// (Google Docs / Sheets / plain text / CSV) branches that don't go
+// through parseByMime. Keeps the 200KB hard cap consistent across all
+// read_drive_file paths.
+function applyDriveReadOutputCap(text) {
+  const { applyOutputCap } = require('../services/driveDocumentParsers');
+  return applyOutputCap(text);
+}
+
 async function auditAiWrite(action, entity, entityId, changes, userId) {
   if (!getDb().AuditLog) return;
   try {
@@ -4018,14 +4096,23 @@ const TOOL_DEFS = [
   },
   {
     name: 'read_drive_file',
-    description: 'Read the text content of a Google Drive file (Google Docs, Sheets, plain text, CSV). Phase 4.9.3b: pass accountKey or brandCode the same way as search_drive_files; default "sh". PDFs and PowerPoint decks return a note explaining text cannot be extracted via this API — share the webViewLink from search_drive_files instead.',
+    description: 'Read the text content of a Google Drive file. Phase 4.14 supports: xlsx, xls, docx, pdf, rtf, Google Docs, Google Sheets, plain text, CSV. Optional narrowing params (sheet_name, row_range, column_range, page_range, max_pages) let the AI scope large files without blowing context. Output is hard-capped at 200KB with a [TRUNCATED] marker pointing to the right narrowing param. 10-minute LRU cache keyed on (fileId + accountKey + params) — re-reads in a session are free. accountKey/brandCode routing same as search_drive_files; default "sh". Unsupported: pptx (decks; share webViewLink instead), legacy .doc (re-save as .docx or open with Google Docs to auto-convert), image-based / scanned PDFs (OCR not yet supported), encrypted PDFs.',
     inputSchema: {
       type: 'object',
       required: ['file_id'],
       properties: {
-        file_id:    { type: 'string', description: 'Google Drive file ID from search_drive_files.' },
-        accountKey: { type: 'string', enum: ['sh', 'fw'], description: 'Phase 4.9.3b: account routing. Default "sh".' },
-        brandCode:  { type: 'string', description: 'Phase 4.9.3b: alternative to accountKey. "FW" routes to fw account.' },
+        file_id:       { type: 'string',  description: 'Google Drive file ID from search_drive_files.' },
+        accountKey:    { type: 'string',  enum: ['sh', 'fw'], description: 'Account routing. Default "sh".' },
+        brandCode:     { type: 'string',  description: 'Alternative to accountKey. "FW" routes to fw account.' },
+        // Phase 4.14 xlsx / xls params
+        sheet_name:    { type: 'string',  description: 'xlsx/xls only. Read just the named sheet (case-insensitive). Omit to read all sheets.' },
+        row_range:     { type: 'array',   items: { type: 'number' }, minItems: 2, maxItems: 2, description: 'xlsx/xls only. [startRow, endRow] tuple, 1-indexed inclusive. Useful when factory quotes have header rows above the data.' },
+        column_range:  { type: 'array',   items: { type: 'string' }, minItems: 2, maxItems: 2, description: 'xlsx/xls only. [startCol, endCol] tuple of column letters, e.g. ["A","Q"]. Inclusive.' },
+        raw_formulas:  { type: 'boolean', description: 'xlsx/xls only. Default false (renders computed values like 25.50). Set true to render formula source like =ROUND(K9*(1+L9),2). Use the default for factory quotes; use true to audit a contract draft.' },
+        // Phase 4.14 pdf params
+        page_range:    { type: 'array',   items: { type: 'number' }, minItems: 2, maxItems: 2, description: 'pdf only. [startPage, endPage] tuple, 1-indexed inclusive. Useful for "read page 3 of the contract".' },
+        // Phase 4.14 docx params
+        max_pages:     { type: 'number',  description: 'docx only. Heuristic page cap (≈3000 chars/page). Truncates with a marker indicating total estimated pages.' },
       },
     },
   },

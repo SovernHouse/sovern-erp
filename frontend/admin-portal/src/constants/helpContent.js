@@ -824,14 +824,16 @@ export const HELP_CONTENT = {
         ],
       },
       {
-        heading: 'Finding documents in Drive (Phase 4.5, C19)',
-        body: 'Ask for any file by name or topic and the assistant searches your connected Google Drive. It returns up to 10 matches with a clickable link you can open in the browser. PDFs and PowerPoint decks are listed with their link (the API cannot extract their text); Google Docs, Sheets, plain text, and CSV files can also be read inline into the conversation.',
+        heading: 'Finding and reading documents in Drive (Phase 4.5 C19 + Phase 4.14)',
+        body: 'Ask for any file by name or topic and the assistant searches your connected Google Drive (up to 10 matches with clickable links). Phase 4.14 extended in-conversation reading to xlsx, xls, docx, pdf, and rtf — alongside the original Google Docs, Sheets, plain text, and CSV. The assistant can also narrow large files: name a sheet, a row range, a column range, or a page range so only the relevant slice lands in the conversation.',
         items: [
-          '"Share the IronLite Branding deck" or "find the FlorWay brand guidelines"',
-          '"Pull up the HanHua supplier quotation from April"',
-          '"Where is the Egypt commercial invoice I drafted last week?"',
-          '"Read the SPC price list I uploaded yesterday"',
-          'If a file is not in Drive, the assistant says so and offers to widen the search; it does not invent links.',
+          '"Read the HanHua IronLite quote in the FW Drive" — parses the xlsx, returns each sheet as CSV.',
+          '"From the IronLite quote, just rows 8 to 16 of the Quote sheet" — narrows to the data block, skipping header rows.',
+          '"Read page 3 of the latest Frontech PI" — page_range narrowing on the pdf.',
+          '"Read the first 2 pages of the HanHua Sales Rep Agreement docx" — max_pages truncation.',
+          '"Show me the formulas in the Summary sheet, not the computed values" — raw_formulas=true.',
+          'Unsupported: pptx (decks; share the link), legacy .doc (open with Google Docs to auto-convert or re-save as .docx), scanned image PDFs (OCR not yet supported — open with Google Docs for OCR), encrypted PDFs (remove the password first).',
+          'Large files: 25MB ingestion cap. Above that, the assistant will ask you to narrow the request or split the file.',
         ],
       },
       {
