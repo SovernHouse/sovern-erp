@@ -850,6 +850,53 @@ export const HELP_CONTENT = {
         ],
       },
       {
+        heading: 'Planning container loads from chat (Phase 4.15c-1)',
+        body: 'The AI assistant plans ocean container loads from chat. erp_optimize_container_load is pure-math (no DB write): pass a container_type (20ft / 40ft / 40ft_hc) + list of {product_id, quantity} and it sums weight + cube per line, returns total + utilization % + fits/overflow. erp_create_container_load + update / get / list persist a Container row. The optimizer reads per-unit Product.weight + Product.cubicMeters; the response flags any product missing cube data so you know which SKUs need spec backfill.',
+        items: [
+          '"Will 500 boxes of IL-180x1220-7.5 fit in a 40ft HC?" — pure math, no DB write.',
+          '"Plan the load: 200 boxes of SKU-A + 350 boxes of SKU-B for a 40ft container" — itemised line breakdown.',
+          '"Create a planning container for SO-2026-014 going to Los Angeles" — persists a Container with status=planning, auto-generates PLAN-… number.',
+          '"Update container CN-2026-007 to status loaded with cargoWeight 24800 and palletCount 18" — patch transit state.',
+          'Cube data missing: the optimizer returns hasSpecData=false per product. Use the Products admin to set Product.cubicMeters (Phase 4.15c-1 added the column).',
+        ],
+      },
+      {
+        heading: 'Running QC inspections from chat (Phase 4.15c-2)',
+        body: 'The AI assistant runs the full inspection lifecycle from chat. State machine: scheduled → in_progress → passed / failed / conditional. Tools: schedule (type = pre_production / during_production / pre_shipment / loading), start, complete (overall_result drives final status), add + update checkpoint items (refused on finalized inspections — anti-tamper), list, get (with items/report eager-loaded), generate report (auto-derives counts + per-checkpoint breakdown), get report. One-to-one inspection ↔ report.',
+        items: [
+          '"Schedule a pre-shipment inspection for PO-2026-099 at HanHua next Tuesday with Maria as inspector" — creates the row in status=scheduled.',
+          '"Start inspection INS-2026-018" — transitions to in_progress.',
+          '"Add a Dimensions checkpoint to INS-2026-018 for product IL-180: criteria Width 180mm ± 2mm, result pass, value 179.5mm" — appends an InspectionItem.',
+          '"Complete inspection INS-2026-018 with overall_result conditional and note Color shift on batch 3 needs follow-up" — finalises + maps to status=conditional.',
+          '"Generate the report for INS-2026-018" — auto-derives findings from items, returns report number IR-….',
+        ],
+      },
+      {
+        heading: 'Managing sample requests, shipments, and feedback from chat (Phase 4.15c-3)',
+        body: 'The AI assistant manages the full sample lifecycle. createSampleRequest auto-sums totalQuantity from the products[] array. approve → createSampleShipment auto-promotes the parent request to shipped. recordSampleFeedback auto-escalates when overall rating ≤ 2 (so low-scoring samples land on the follow-up queue immediately).',
+        items: [
+          '"Create a sample request for Acme Imports with 10 sqm of IL-180 and 5 sqm of IL-150, priority high" — auto-sums totalQuantity=15.',
+          '"Approve sample request SR-2026-007" — records approvedBy + approvalDate.',
+          '"Ship SR-2026-007 via DHL, tracking DHL-12345, 15 sqm, expected delivery next Friday" — promotes parent to shipped.',
+          '"Record 4-star feedback for SR-2026-007: quality 5, packaging 4, delivery 3, comment Customer loved the finish but box was crushed" — status defaults to pending_action.',
+          '"Record 2-star feedback for SR-2026-009: color did not match sample" — status defaults to escalated (low-score auto-escalation).',
+          '"List approved sample requests for Acme Imports" — filter by customer + status.',
+        ],
+      },
+      {
+        heading: 'Managing Letters of Credit from chat (Phase 4.15b-2)',
+        body: 'The AI assistant manages the LC lifecycle. State machine: draft → submitted → approved → presented → paid. SUPER_ADMIN gate at approval (high-stakes financial commitment); self-approval blocked (the user who submitted cannot approve their own LC). Payment is tolerance-checked against the LC amount: tolerance_type=percentage means ± tolerance %, tolerance_type=amount means absolute USD. Payment outside the tolerance returns a discrepancy error for manual resolution rather than silently accepting it.',
+        items: [
+          '"Create a draft LC for supplier HanHua and customer Acme Imports, $100,000 USD, sight LC, at sight payment, 5% tolerance, issuing bank ICBC, expiry 2026-08-15" — creates draft row.',
+          '"Submit LC LC-2026-003 for approval" — transitions to submitted, embeds submitter UUID in notes.',
+          '"Approve LC LC-2026-003" — SUPER_ADMIN only; blocked if you submitted it yourself.',
+          '"Attach the bill of lading from Drive to LC-2026-003" — registers a LetterOfCreditDocument row.',
+          '"Record a presentation of $99,500 on LC-2026-003 today" — sets presented_amount, transitions to presented.',
+          '"Record payment of $99,500 on LC-2026-003 paid today" — tolerance-checked against the LC amount (within 5% of $100k → passes). Transitions to paid.',
+          '"List LCs expiring before 2026-07-01" — flags LCs about to lapse so you can ask the bank for an extension.',
+        ],
+      },
+      {
         heading: 'External research (Phase 4.5, C19)',
         body: 'For anything outside the ERP and Drive, the assistant can run a quick web lookup. Use this for time-sensitive or public-record facts — not for trade compliance decisions, which always need a licensed broker.',
         items: [

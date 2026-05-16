@@ -3643,3 +3643,120 @@ Per Alex's spec, ProductSpecification bootstrap from the HanHua IronLite spec sh
 - Compliance audit-and-expose — modules/compliance has 14 controller methods (compliance check, anti-dumping check, records CRUD, HS code lookup, duties calculation, certificates, dashboard); each one is a candidate MCP wrapper. Shipped as 4.15d-2b in a fresh session.
 - ProductSpecification template support (NULL productId rows). Future capability.
 - Cross-brand scope enforcement on writes — Product access already gates this implicitly; explicit brand checks deferred until usage justifies.
+
+# Phase 4.15c — AI Logistics ops MCP tools (container + inspection + sample)
+
+Three sub-phases (c-1 / c-2 / c-3) landed together in the 4.15 wrap commit. Twenty new MCP tools wrapping the logistics surfaces an operations manager actually touches day-to-day. Service files live alongside the Phase 4.12 aiWriteServices/ pattern.
+
+## 4.15c-1 — Container loading (5 tools + service + Product.cubicMeters)
+
+Tools: `erp_create_container_load`, `erp_optimize_container_load`, `erp_list_container_loads`, `erp_get_container_load`, `erp_update_container_load`.
+
+The optimizer is **pure-math** (no DB write): given `container_type` + `items: [{product_id, quantity}]`, it fetches each Product, sums weight + cube, returns `{ fits, overweightBy, overcubeBy, weightUsedPct, cubeUsedPct, items: [...] }`. Container limits are hardcoded in the service per ISO standards:
+
+| Type     | maxWeight | maxCube |
+|----------|-----------|---------|
+| 20ft     | 21,000 kg | 33 cbm  |
+| 40ft     | 26,500 kg | 67 cbm  |
+| 40ft_hc  | 26,500 kg | 76 cbm  |
+
+The Product model previously had `weight` but no per-unit volume. Phase 4.15c-1 adds `Product.cubicMeters DECIMAL(10,4) NULL` and ships sentinel-guarded boot migration `migrate415c1ProductCubicMeters` (sentinel `phase4_15c1_product_cubic_meters_added`). Optimizer flags rows that lack spec data so the AI knows which products need cube populated before a real plan is reliable.
+
+Service: `backend/services/aiWriteServices/containerLoadingWriteService.js`. State-machine-free; container_status updates land via `erp_update_container_load` with allowed-fields whitelist.
+
+## 4.15c-2 — Quality / inspection (9 tools + service)
+
+Tools: `erp_schedule_inspection`, `erp_start_inspection`, `erp_complete_inspection`, `erp_add_inspection_item`, `erp_update_inspection_item`, `erp_list_inspections`, `erp_get_inspection`, `erp_generate_inspection_report`, `erp_get_inspection_report`.
+
+State machine:
+
+```
+scheduled → in_progress → (passed | failed | conditional)
+```
+
+`erp_complete_inspection` only fires from `in_progress`; you must call `erp_start_inspection` first. The explicit transition is intentional: it forces the AI to attach checkpoint items (`erp_add_inspection_item`) before finalizing, rather than letting it create-and-pass in a single call.
+
+`erp_add_inspection_item` and `erp_update_inspection_item` are both **refused on finalized inspections** to prevent post-hoc tampering. Inspection items carry `result ∈ {pass, fail, na}`, an optional measured `value` (string to preserve units), `notes`, and `images[]`.
+
+`erp_generate_inspection_report` auto-derives `findings` from the items: an overall counts row + a per-checkpoint breakdown. Summary defaults to a one-line `"X/Y passed"` when omitted. One-to-one inspection ↔ report; a second call returns 409.
+
+Service: `backend/services/aiWriteServices/inspectionWriteService.js`.
+
+## 4.15c-3 — Sample management (6 tools + service + L-034 fix)
+
+Tools: `erp_create_sample_request`, `erp_approve_sample_request`, `erp_create_sample_shipment`, `erp_record_sample_feedback`, `erp_list_sample_requests`, `erp_get_sample_request`.
+
+`erp_create_sample_request` accepts `products: [{productId, quantity, notes}]` and auto-sums `totalQuantity`. Validates every productId exists. Priority defaults to `medium`.
+
+`erp_create_sample_shipment` is the side-effecting tool: creating a shipment for an `approved` (or `processing`) request promotes the parent to `shipped` and records the transition in the audit payload (`requestStatusBefore`, `requestStatusAfter`). Multiple shipments per request are allowed (split deliveries); subsequent shipments preserve the request status.
+
+`erp_record_sample_feedback` captures the overall `rating` (1–5) plus optional `quality` / `packaging` / `delivery` sub-axes. Status defaults to `escalated` when rating ≤ 2, otherwise `pending_action`.
+
+**L-034 fix shipped alongside:** `SampleFeedback` had inline `references: { model: 'SampleRequest' | 'Contact' | 'User', key: 'id' }` blocks on three FK fields. With the project's table-pluralization convention these resolved to nonexistent tables and triggered `SQLITE_ERROR: no such table: main.Contact` on every feedback insert — even when the FK column was null, because Sequelize sync writes the constraint at table-creation time and SQLite validates the referenced table at insert. Following L-034 the inline blocks were removed; the SampleRequest ↔ SampleFeedback association is already declared in models/index.js.
+
+Service: `backend/services/aiWriteServices/sampleWriteService.js`.
+
+## Audit + tests + three-surface check (Phase 4.15c)
+
+Every write tool writes an `ai_assistant_<action>` AuditLog row via `auditAiWrite` with before/after diffs. Read tools do not audit.
+
+Tests: `phase415c1ContainerLoading.test.js` (15) + `phase415c2Inspection.test.js` (23) + `phase415c3Sample.test.js` (24) = 62 new convergence tests. Suite at 549/549 after 4.15c-3 lands.
+
+- **Admin portal:** no new UI. Existing Logistics/Inspections/Samples modules keep working unchanged.
+- **Mobile:** no new UI. Mobile chat uses the same `/api/ai/chat` endpoint.
+- **Docs:** this section + `tooltipContent.aiLogisticsOps` + (deferred to a follow-up commit) `helpContent` walkthrough + USER_GUIDE subsection.
+
+# Phase 4.15b-2 — AI Letter of Credit MCP tools
+
+Seven tools wrapping the LC lifecycle. LCs are high-stakes financial instruments — the approval path carries a SUPER_ADMIN gate at the MCP layer plus a self-approval block at the service layer.
+
+## The 7 tools
+
+| Tool | Purpose |
+|---|---|
+| `erp_create_letter_of_credit` | Draft LC (status=draft). Validates supplier (Factory) + customer + amount > 0 + expiry > issue + enum constraints. Auto-generates `lc_number` when omitted. |
+| `erp_submit_letter_of_credit` | draft → submitted. Embeds the submitter UUID in `notes` via `[submitted_by: <uuid>]` marker. |
+| `erp_approve_letter_of_credit` | submitted → approved. SUPER_ADMIN ONLY at MCP layer. Self-approval blocked at service layer (submitter UUID extracted from the notes marker; if matches approver, returns `forbidden`). |
+| `erp_attach_lc_document` | Add a `LetterOfCreditDocument` row (invoice / bill_of_lading / packing_list / certificate_of_origin / inspection_report / insurance_document / draft / amendment / other). |
+| `erp_record_lc_payment` | Set `presented_amount` (status → presented) and/or `paid_amount` (status → paid, tolerance-checked). |
+| `erp_list_letters_of_credit` | Filter by status / supplier / customer / type / issuing_bank / expiring_before / search. |
+| `erp_get_letter_of_credit` | Eager-load documents + customer + supplier. |
+
+## Payment tolerance
+
+LC payment is tolerance-checked against the LC `amount`:
+
+- `tolerance_type=percentage` (default): allowed window is `amount ± (amount × tolerance / 100)`
+- `tolerance_type=amount`: allowed window is `amount ± tolerance` (absolute USD)
+
+A `paid_amount` outside the window returns:
+
+```
+paidAmount X is outside the LC tolerance window (base Y, allowed ± Z, actual diff D). A discrepancy needs to be resolved before recording payment.
+```
+
+The AI is expected to surface this to the user, log a discrepancy via `erp_attach_lc_document` (documentType=`amendment` or `other`, status=`discrepancy_found`), and not retry blind.
+
+## Submitter-marker pattern
+
+The LC schema has no `requestedBy` / `approvedBy` columns. Phase 4.15d-1 InternalApproval used those explicit columns; Phase 4.15b-2 adapts the same self-approval invariant by embedding the submitter UUID in the `notes` text via a parseable marker. Pros: no schema change. Cons: writeable by anyone with row-update access (super_admin via the admin portal). For an AI-assisted MCP flow that's acceptable; super_admin tampering is already covered by AuditLog rows on every status transition.
+
+## Service layer
+
+`backend/services/aiWriteServices/letterOfCreditWriteService.js`. Exports `extractSubmitterId(notes)` so tests can assert the marker is parseable end-to-end.
+
+## Tests
+
+`phase415b2LetterOfCredit.test.js` — 28 convergence tests covering: validation (amount/expiry/enums/duplicates/missing FKs), submit + approve + self-approval block, document attach (valid/invalid types/missing required), recordLcPayment happy path + tolerance edge cases (within / outside percentage / outside amount-type / non-positive), list filters, get with eager-load.
+
+## Three-surface check (Phase 4.15b-2)
+
+- **Admin portal:** no new UI. Existing Finance/LC module keeps working unchanged.
+- **Mobile:** no new UI. Mobile chat uses the same `/api/ai/chat` endpoint.
+- **Docs:** this section + (deferred to a follow-up commit) `tooltipContent.aiLetterOfCredit` + `helpContent` walkthrough + USER_GUIDE subsection.
+
+## What 4.15b-2 does NOT do (deferred)
+
+- LC amendment workflow (currently amendments must be attached as documents; a structured `erp_amend_letter_of_credit` tool that diffs vs. the original is a future capability).
+- LC discrepancy resolution workflow — currently the AI must call `erp_attach_lc_document` with `status=discrepancy_found` and surface to a human. A `erp_resolve_lc_discrepancy` tool that takes a resolution + auto-updates document status is a candidate.
+- Multi-currency conversion at payment time. `currency` is captured but no FX is applied; if `paid_amount` is in a different currency than the LC `amount`, the tolerance check uses raw numeric comparison (potentially wrong). The MCP description warns about this implicitly via "Recommend matching currencies for the comparison to be meaningful" — a future tool wiring FX into the calculation is the right fix.
