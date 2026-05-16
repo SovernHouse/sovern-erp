@@ -21,15 +21,24 @@ const STARTUP_TIMEOUT_MS = 8000;
 const CALL_TIMEOUT_MS    = 30000; // first tools/call may trigger lazy model load (~4s) in MCP subprocess
 
 async function startMcp({ env = {} } = {}) {
+  // Phase 4.18: explicitly clear JEST_WORKER_ID so the spawned MCP
+  // subprocess doesn't think it's running inside Jest. erpToolServer.js
+  // skips the stdin wire-up when JEST_WORKER_ID is set (to keep the
+  // in-process unit tests from being killed by jest closing stdin) —
+  // the smoke subprocess actually IS the wire endpoint and needs the
+  // stdin reader active.
+  const childEnv = {
+    ...process.env,
+    NODE_ENV: 'test',
+    MCP_FORCE_SYNC: 'true',
+    // ERP_USER_ID is required by some tools that scope to a user;
+    // tests that need it set their own.
+    ...env,
+  };
+  delete childEnv.JEST_WORKER_ID;
+
   const child = spawn('node', [SERVER_PATH], {
-    env: {
-      ...process.env,
-      NODE_ENV: 'test',
-      MCP_FORCE_SYNC: 'true',
-      // ERP_USER_ID is required by some tools that scope to a user;
-      // tests that need it set their own.
-      ...env,
-    },
+    env: childEnv,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 

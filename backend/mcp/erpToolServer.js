@@ -109,17 +109,23 @@ function stringFieldsFor(Model) {
 
 let _buf = '';
 
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', chunk => {
-  _buf += chunk;
-  let idx;
-  while ((idx = _buf.indexOf('\n')) !== -1) {
-    const line = _buf.slice(0, idx).trim();
-    _buf = _buf.slice(idx + 1);
-    if (line) handleLine(line);
-  }
-});
-process.stdin.on('end', () => process.exit(0));
+// Phase 4.18: skip the stdin wire-up when the module is required from
+// tests. Jest closes stdin after collection which fires the 'end'
+// handler → process.exit(0) → kills the test runner. The wire is only
+// needed when claude -p spawns this file as the actual MCP subprocess.
+if (!process.env.JEST_WORKER_ID) {
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', chunk => {
+    _buf += chunk;
+    let idx;
+    while ((idx = _buf.indexOf('\n')) !== -1) {
+      const line = _buf.slice(0, idx).trim();
+      _buf = _buf.slice(idx + 1);
+      if (line) handleLine(line);
+    }
+  });
+  process.stdin.on('end', () => process.exit(0));
+}
 
 function mcpSend(obj) {
   process.stdout.write(JSON.stringify(obj) + '\n');
@@ -3490,6 +3496,31 @@ async function callTool(name, args) {
       if (!specs.leadTime)         missing.push('lead time');
       if (!args.price_valid_until) missing.push('price validity date');
       if (!args.hs_code)           missing.push('HS code');
+
+      // Phase 4.18: AuditLog row for the Product create. The 9 IronLite
+      // SKUs created on 2026-05-16 surfaced this gap — siblings
+      // (create_product_spec, create_product_price) wrote their
+      // ai_assistant_* rows, but create_product never did. Forward-only;
+      // the IronLite 9 rows are intact, just missing their audit trail.
+      // Recorded with key shape only (no full specifications JSON — that
+      // can balloon and the row data is recoverable via Product.findByPk).
+      await auditAiWrite('create_product', 'Product', product.id, {
+        sku:             product.sku,
+        name:            product.name,
+        brandCode:       product.brandCode,
+        categoryId:      product.categoryId,
+        factoryId:       product.factoryId,
+        productType:     product.productType,
+        productTypeLabel: specs.productTypeLabel || null,
+        unit:            product.unit,
+        currency:        product.currency,
+        baseFobPrice:    product.baseFobPrice,
+        leadTimeDays:    product.leadTimeDays,
+        originCountry:   product.originCountry,
+        originVariantsCount: Array.isArray(product.originVariants) ? product.originVariants.length : 0,
+        isActive:        product.isActive,
+        seededPriceId:   priceRecord?.id || null,
+      }, USER_ID || null);
 
       // Phase 4.17 follow-up: response status now reflects the actual
       // isActive flag. Pre-4.17 this always read 'pending_approval' even
@@ -6932,6 +6963,14 @@ process.stderr.write('[erp-mcp] Server listening on stdin\n');
 // load + sync models so PRAGMA-backed tools (erp_describe_entity_db)
 // have tables to introspect. Production NEVER sets this — model
 // loading stays lazy there so the MCP initialize handshake doesn't
+// Phase 4.18: expose callTool for in-process convergence tests so
+// audit-write coverage doesn't have to round-trip through the JSON-RPC
+// wire. The MCP smoke harness uses :memory: SQLite per its docstring,
+// which means AuditLog assertions are otherwise invisible to tests.
+// Production callers go through handleLine; nothing else uses this
+// shim.
+module.exports = { __testing: { callTool } };
+
 // pay the ~4s cost of loading 100+ models on every claude -p start.
 if (process.env.MCP_FORCE_SYNC === 'true') {
   // Phase 4.11: assign the sync promise to global.__MCP_READY so the

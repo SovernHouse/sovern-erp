@@ -6,7 +6,7 @@
 
 ## Last Updated — 2026-05-16 Taiwan time
 
-**Latest:** Phase 4.17 dead-code sweep (commit `b06d6f7`, CI in progress). IronLite catalog now live on prod: 9 active products, 18 ProductPrice rows, 9 specs, 0 stale chips. Cleaned the misleading `pending_approval` response string in `create_product` and the no-op `ProductPrice.isActive` bulk-update in `approve_product` MCP handler. Suite 619/619 green.
+**Latest:** Phase 4.18 — add missing `ai_assistant_create_product` AuditLog write. The 9 IronLite SKUs created 2026-05-16 had zero corresponding audit rows even though sibling `create_product_spec` (9) and `create_product_price` (18) audited correctly. Added `auditAiWrite('create_product', 'Product', product.id, {...key fields...}, USER_ID)` in the MCP handler after the row succeeds. Convergence test runs the handler in-process (new `__testing.callTool` shim) and asserts the audit row lands. Forward-only; existing 9 rows intact, no backfill. Suite 622/622 green.
 
 **Session arc (deployed unless noted):**
 
