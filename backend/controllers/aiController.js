@@ -178,7 +178,15 @@ async function runClaudeSubprocess(systemPrompt, userPrompt, userId, {
   signal = null,
 } = {}) {
   return new Promise((resolve) => {
-    let output = '';
+    // Phase 4.16.2: stream-json parsing. Stdout arrives in chunks that may
+    // split lines; we line-buffer, JSON.parse each complete line, and
+    // dispatch by event.type. The final assistant text is collected from
+    // either the terminal 'result' event (preferred) or the union of
+    // assistant.message.content[].text chunks (fallback when 'result' is
+    // missing — observed during early-terminated turns).
+    let stdoutBuffer = '';
+    let assistantText = '';           // accumulated from 'assistant' events
+    let resultText = null;            // final text from 'result' event
     let errOutput = '';
     let settled = false;
     let lastStdoutAt = Date.now();
@@ -204,8 +212,25 @@ async function runClaudeSubprocess(systemPrompt, userPrompt, userId, {
       finish({ ok: false, text: null, error: 'aborted_by_caller' });
     }
 
+    // Phase 4.16.2: ask claude -p for streaming JSON events. Without this
+    // flag, claude buffers all stdout until the turn finishes and emits a
+    // single block at the end — which means the Phase 4.16 heartbeat
+    // watchdog sees zero stdout for the entire turn and kills the
+    // subprocess at IDLE_TIMEOUT_MS even though it's making progress.
+    //
+    // With --output-format stream-json --verbose, claude emits one JSON
+    // object per stdout flush: a system 'init' event at start, an
+    // 'assistant' event for each model text chunk, additional 'assistant'
+    // events on each tool call, and a final 'result' event with the full
+    // text. Every event resets the heartbeat → the watchdog finally
+    // distinguishes "still working" from "genuinely hung".
+    //
+    // --verbose is required by claude CLI when -p + --output-format
+    // stream-json are combined (otherwise the flag combination errors at
+    // parse time per the help output).
     const args = ['-p', '--system-prompt', systemPrompt, '--strict-mcp-config',
-                  '--permission-mode', 'bypassPermissions'];
+                  '--permission-mode', 'bypassPermissions',
+                  '--output-format', 'stream-json', '--verbose'];
     if (withMcp) {
       args.push('--mcp-config', MCP_CONFIG_PATH);
     }
@@ -245,25 +270,89 @@ async function runClaudeSubprocess(systemPrompt, userPrompt, userId, {
       signal.addEventListener('abort', onAbort);
     }
 
-    child.stdout.on('data', (d) => {
-      lastStdoutAt = Date.now();
-      const chunk = d.toString();
-      output += chunk;
-      if (onProgress) {
-        try { onProgress(chunk); } catch (cbErr) {
-          logger.warn('[ai] onProgress callback threw (continuing):', cbErr.message);
+    function handleStreamEvent(event) {
+      if (!event || typeof event !== 'object') return;
+      if (event.type === 'assistant' && event.message?.content) {
+        const blocks = Array.isArray(event.message.content) ? event.message.content : [];
+        let chunkText = '';
+        for (const b of blocks) {
+          if (b && b.type === 'text' && typeof b.text === 'string') {
+            assistantText += b.text;
+            chunkText += b.text;
+          }
+        }
+        // Forward text chunks to onProgress so the SSE branch can stream
+        // the assistant's reply to the browser as it arrives.
+        if (chunkText && onProgress) {
+          try { onProgress(chunkText); } catch (cbErr) {
+            logger.warn('[ai] onProgress callback threw (continuing):', cbErr.message);
+          }
+        }
+      } else if (event.type === 'result') {
+        if (typeof event.result === 'string') {
+          resultText = event.result;
+        }
+        if (event.is_error) {
+          // 'result' carries is_error=true for API/permission failures.
+          // Surface to errOutput so the close handler returns ok:false.
+          errOutput += `\n[claude result error: ${event.subtype || 'unknown'}]`;
         }
       }
+      // Other event types (system init, rate_limit_event, tool_use, etc.)
+      // we don't extract text from — but they still tick the heartbeat
+      // (which happens above at the bytes-arrive layer, regardless of
+      // event semantics).
+    }
+
+    function consumeStdoutBuffer() {
+      let nl;
+      while ((nl = stdoutBuffer.indexOf('\n')) !== -1) {
+        const line = stdoutBuffer.slice(0, nl);
+        stdoutBuffer = stdoutBuffer.slice(nl + 1);
+        if (!line.trim()) continue;
+        let event;
+        try { event = JSON.parse(line); }
+        catch (parseErr) {
+          // claude shouldn't emit non-JSON in stream-json mode, but defend
+          // against it: log + skip. Don't propagate to errOutput because
+          // a single noisy diagnostic line shouldn't fail the whole turn.
+          logger.warn('[ai] non-JSON stream line skipped:', line.slice(0, 120));
+          continue;
+        }
+        handleStreamEvent(event);
+      }
+    }
+
+    child.stdout.on('data', (d) => {
+      lastStdoutAt = Date.now();
+      stdoutBuffer += d.toString();
+      consumeStdoutBuffer();
     });
     child.stderr.on('data', (d) => { errOutput += d.toString(); });
 
     child.on('close', (code) => {
       if (settled) return;
-      if (code !== 0 && !output.trim()) {
-        logger.warn('[ai] Claude subprocess exited with code', code, ':', errOutput.slice(0, 200));
-        finish({ ok: false, text: null, error: errOutput.slice(0, 300) });
+      // Drain anything left in the line buffer that didn't end with \n.
+      if (stdoutBuffer.trim()) {
+        // Treat as a final line.
+        stdoutBuffer += '\n';
+        consumeStdoutBuffer();
+      }
+      const finalText = (resultText !== null ? resultText : assistantText).trim();
+      if (!finalText) {
+        // No text in the stream — either the subprocess errored out (code
+        // != 0 + stderr text), a stream result event with is_error=true
+        // pushed into errOutput, or an actual silent failure. Prefer
+        // errOutput when present so the caller sees the real reason.
+        if (code !== 0) {
+          logger.warn('[ai] Claude subprocess exited with code', code, ':', errOutput.slice(0, 200));
+        }
+        const err = errOutput.trim()
+          ? errOutput.slice(0, 300)
+          : (code !== 0 ? `exit_code_${code}` : 'no_text_in_stream');
+        finish({ ok: false, text: null, error: err });
       } else {
-        finish({ ok: true, text: output.trim() });
+        finish({ ok: true, text: finalText });
       }
     });
 

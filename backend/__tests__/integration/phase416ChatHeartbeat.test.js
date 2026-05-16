@@ -21,6 +21,26 @@ function makeFakeChild() {
   return child;
 }
 
+// Phase 4.16.2: claude -p is now invoked with --output-format stream-json
+// so each stdout flush is a JSON event. Helpers to emit the kinds of
+// events the production code parses.
+function emitAssistantText(child, text) {
+  const event = {
+    type: 'assistant',
+    message: { role: 'assistant', content: [{ type: 'text', text }] },
+  };
+  child.stdout.emit('data', Buffer.from(JSON.stringify(event) + '\n'));
+}
+function emitResultEvent(child, text) {
+  const event = { type: 'result', subtype: 'success', is_error: false, result: text };
+  child.stdout.emit('data', Buffer.from(JSON.stringify(event) + '\n'));
+}
+function emitRawChunk(child, raw) {
+  // Used when a test wants to drive raw bytes (e.g. partial line buffering)
+  // rather than a well-formed event.
+  child.stdout.emit('data', Buffer.from(raw));
+}
+
 // jest.mock() is hoisted above any const declaration, so we can't capture
 // a closure variable. Use jest.fn() returned by requireMock instead — the
 // mock module exposes spawn as a jest.fn() that tests can mockReturnValueOnce.
@@ -64,15 +84,16 @@ describe('Phase 4.16 — runClaudeSubprocess heartbeat liveness', () => {
     const onProgress = jest.fn();
     const promise = runClaudeSubprocess('sys', 'user', null, { onProgress });
 
-    // Tick: emit stdout every 10s for 200s (well above the 30s idle
-    // threshold each time; if heartbeat fires it would kill at 30s+5s).
+    // Tick: emit an assistant text event every 10s for 200s. Each event
+    // resets the idle clock; with IDLE_TIMEOUT_MS=120s a 10s cadence is
+    // comfortably under threshold.
     for (let i = 0; i < 20; i++) {
-      child.stdout.emit('data', Buffer.from(`tick ${i}\n`));
-      // Drain promise microtasks so onProgress runs before we advance time.
+      emitAssistantText(child, `tick ${i}\n`);
       await Promise.resolve();
       jest.advanceTimersByTime(10_000);
     }
-    // Total elapsed: 200s. Close cleanly.
+    // Final result event with the full text.
+    emitResultEvent(child, Array.from({ length: 20 }, (_, i) => `tick ${i}`).join('\n'));
     child.emit('close', 0);
 
     const result = await promise;
@@ -91,7 +112,7 @@ describe('Phase 4.16 — runClaudeSubprocess heartbeat liveness', () => {
     const promise = runClaudeSubprocess('sys', 'user', null);
 
     // One initial chunk to confirm the subprocess started.
-    child.stdout.emit('data', Buffer.from('starting\n'));
+    emitAssistantText(child, 'starting\n');
     await Promise.resolve();
 
     // Advance 125s (5s past the 120s idle threshold) without any further
@@ -123,7 +144,7 @@ describe('Phase 4.16 — runClaudeSubprocess heartbeat liveness', () => {
     const promise = runClaudeSubprocess('sys', 'user', null);
 
     // Subprocess starts.
-    child.stdout.emit('data', Buffer.from('start\n'));
+    emitAssistantText(child, 'start\n');
     await Promise.resolve();
 
     // 90 seconds of silence — below the 120s threshold. Watchdog samples
@@ -132,7 +153,7 @@ describe('Phase 4.16 — runClaudeSubprocess heartbeat liveness', () => {
     expect(child.kill).not.toHaveBeenCalled();
 
     // Subprocess resumes emitting — idle clock resets.
-    child.stdout.emit('data', Buffer.from('resumed\n'));
+    emitAssistantText(child, 'resumed\n');
     await Promise.resolve();
 
     // Another 90s of silence after the resume — still below threshold.
@@ -152,7 +173,7 @@ describe('Phase 4.16 — runClaudeSubprocess heartbeat liveness', () => {
 
     const promise = runClaudeSubprocess('sys', 'user', null);
 
-    child.stdout.emit('data', Buffer.from('start\n'));
+    emitAssistantText(child, 'start\n');
     await Promise.resolve();
 
     // 130s of silence — 10s past the threshold. Worst-case watchdog kill
@@ -174,10 +195,11 @@ describe('Phase 4.16 — runClaudeSubprocess heartbeat liveness', () => {
     // Emit a chunk every 20s for 100s (5 chunks). Each resets the idle
     // clock to 0; 20s < IDLE_TIMEOUT_MS so the watchdog should never fire.
     for (let i = 0; i < 5; i++) {
-      child.stdout.emit('data', Buffer.from(`progress ${i}\n`));
+      emitAssistantText(child, `progress ${i}\n`);
       await Promise.resolve();
       jest.advanceTimersByTime(20_000);
     }
+    emitResultEvent(child, 'final');
     child.emit('close', 0);
 
     const result = await promise;
@@ -195,7 +217,7 @@ describe('Phase 4.16 — runClaudeSubprocess heartbeat liveness', () => {
     // HARD_CAP_MS (900s) the absolute ceiling should kick in.
     const chunks = Math.ceil(HARD_CAP_MS / 5_000) + 2;
     for (let i = 0; i < chunks; i++) {
-      child.stdout.emit('data', Buffer.from(`chunk ${i}\n`));
+      emitAssistantText(child, `chunk ${i}\n`);
       await Promise.resolve();
       jest.advanceTimersByTime(5_000);
       if (child.kill.mock.calls.length > 0) break;
@@ -215,7 +237,7 @@ describe('Phase 4.16 — runClaudeSubprocess heartbeat liveness', () => {
     const promise = runClaudeSubprocess('sys', 'user', null, { signal: ac.signal });
 
     // One chunk to confirm subprocess is alive.
-    child.stdout.emit('data', Buffer.from('alive\n'));
+    emitAssistantText(child, 'alive\n');
     await Promise.resolve();
 
     ac.abort();
@@ -247,8 +269,9 @@ describe('Phase 4.16 — runClaudeSubprocess heartbeat liveness', () => {
     const onProgress = jest.fn(() => { throw new Error('callback boom'); });
     const promise = runClaudeSubprocess('sys', 'user', null, { onProgress });
 
-    child.stdout.emit('data', Buffer.from('hello\n'));
+    emitAssistantText(child, 'hello');
     await Promise.resolve();
+    emitResultEvent(child, 'hello');
     child.emit('close', 0);
 
     const result = await promise;
@@ -269,6 +292,82 @@ describe('Phase 4.16 — runClaudeSubprocess heartbeat liveness', () => {
     const result = await promise;
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/boom: missing flag/);
+  });
+
+  // Phase 4.16.2: stream-json parsing.
+
+  it('parses stream-json: result event provides final text', async () => {
+    const child = makeFakeChild();
+    spawnMock.mockReturnValueOnce(child);
+
+    const promise = runClaudeSubprocess('sys', 'user', null);
+    emitAssistantText(child, 'partial response');
+    emitResultEvent(child, 'final canonical response');
+    child.emit('close', 0);
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    // 'result' event takes precedence over accumulated assistant text
+    expect(result.text).toBe('final canonical response');
+  });
+
+  it('parses stream-json: falls back to accumulated assistant text when result event missing', async () => {
+    const child = makeFakeChild();
+    spawnMock.mockReturnValueOnce(child);
+
+    const promise = runClaudeSubprocess('sys', 'user', null);
+    emitAssistantText(child, 'piece one ');
+    emitAssistantText(child, 'piece two');
+    child.emit('close', 0);
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe('piece one piece two');
+  });
+
+  it('parses stream-json: handles a chunk split across stdout reads', async () => {
+    const child = makeFakeChild();
+    spawnMock.mockReturnValueOnce(child);
+
+    const promise = runClaudeSubprocess('sys', 'user', null);
+    const fullEvent = JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'split across reads' }) + '\n';
+    const mid = Math.floor(fullEvent.length / 2);
+    emitRawChunk(child, fullEvent.slice(0, mid));
+    await Promise.resolve();
+    emitRawChunk(child, fullEvent.slice(mid));
+    child.emit('close', 0);
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe('split across reads');
+  });
+
+  it('parses stream-json: skips non-JSON lines without failing the turn', async () => {
+    const child = makeFakeChild();
+    spawnMock.mockReturnValueOnce(child);
+
+    const promise = runClaudeSubprocess('sys', 'user', null);
+    emitRawChunk(child, 'this is not json\n');
+    emitResultEvent(child, 'response anyway');
+    child.emit('close', 0);
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe('response anyway');
+  });
+
+  it('parses stream-json: result.is_error=true surfaces as ok:false', async () => {
+    const child = makeFakeChild();
+    spawnMock.mockReturnValueOnce(child);
+
+    const promise = runClaudeSubprocess('sys', 'user', null);
+    const errEvent = { type: 'result', subtype: 'error', is_error: true, result: '' };
+    child.stdout.emit('data', Buffer.from(JSON.stringify(errEvent) + '\n'));
+    child.emit('close', 0);
+
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/claude result error/);
   });
 
   it('spawn error event is caught and surfaced', async () => {
