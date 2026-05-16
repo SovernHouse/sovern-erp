@@ -165,16 +165,33 @@ const updatePrices = async (req, res, next) => {
         await existingPrice.update({ isActive: false });
       }
 
+      // Phase 4.19 emergency: this entire factory price-update payload
+      // was hitting the pre-4.9.2b ProductPrice schema. Sequelize silently
+      // drops unknown attributes (L-051), so every factory-prices update
+      // since the rename has been a no-op. Fixed by translating the
+      // controller's input shape (costPrice/markup/sellingPrice/isActive)
+      // to the post-rename column set:
+      //   costPrice    → costPriceUsdPerM2
+      //   markup       → markupPercent (decimal 0..1; convert if percent)
+      //   sellingPrice → sellingPriceUsdPerM2 (compute if absent)
+      //   isActive=true → not a column; controlled by validFrom/validTo
+      const costPrice = priceUpdate.costPrice;
+      const rawMarkup = priceUpdate.markup;
+      const markupPercent = rawMarkup != null
+        ? (Number(rawMarkup) > 1 ? Number(rawMarkup) / 100 : Number(rawMarkup))
+        : 0.20;
+      const sellingPrice = priceUpdate.sellingPrice != null
+        ? Number(priceUpdate.sellingPrice)
+        : (costPrice != null ? +(Number(costPrice) * (1 + markupPercent)).toFixed(4) : null);
       await db.ProductPrice.create({
         id: uuidv4(),
         productId: priceUpdate.productId,
         factoryId: id,
-        costPrice: priceUpdate.costPrice,
-        markup: priceUpdate.markup || 20,
-        sellingPrice: priceUpdate.sellingPrice,
-        currency: priceUpdate.currency || factory.currency,
-        isActive: true,
-        validFrom: new Date()
+        costPriceUsdPerM2:   costPrice,
+        markupPercent:       markupPercent,
+        sellingPriceUsdPerM2: sellingPrice,
+        currency:            priceUpdate.currency || factory.currency,
+        validFrom:           new Date(),
       });
     }
 

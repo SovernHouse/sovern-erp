@@ -201,8 +201,15 @@ const convertToQuotation = async (req, res, next) => {
 
     for (const item of inquiry.items) {
       const product = item.product;
-      const price = product.prices?.find(p => p.isActive && new Date() >= p.validFrom && (!p.validTo || new Date() <= p.validTo));
-      const unitPrice = price?.sellingPrice || item.targetPrice || 0;
+      // Phase 4.9.2b renamed sellingPrice → sellingPriceUsdPerM2 and
+      // dropped the isActive boolean in favour of temporal validFrom/
+      // validTo. Phase 4.19 emergency: this filter referenced both the
+      // removed column AND the renamed price field, so quotation
+      // build silently fell through to item.targetPrice || 0 for any
+      // post-rename ProductPrice row.
+      const now = new Date();
+      const price = product.prices?.find(p => new Date(p.validFrom) <= now && (!p.validTo || now <= new Date(p.validTo)));
+      const unitPrice = price?.sellingPriceUsdPerM2 ?? item.targetPrice ?? 0;
       const total = item.quantity * unitPrice;
 
       subtotal += total;

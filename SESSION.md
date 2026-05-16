@@ -6,7 +6,9 @@
 
 ## Last Updated — 2026-05-16 Taiwan time
 
-**Latest:** Phase 4.18 — add missing `ai_assistant_create_product` AuditLog write. The 9 IronLite SKUs created 2026-05-16 had zero corresponding audit rows even though sibling `create_product_spec` (9) and `create_product_price` (18) audited correctly. Added `auditAiWrite('create_product', 'Product', product.id, {...key fields...}, USER_ID)` in the MCP handler after the row succeeds. Convergence test runs the handler in-process (new `__testing.callTool` shim) and asserts the audit row lands. Forward-only; existing 9 rows intact, no backfill. Suite 622/622 green.
+**Latest:** Phase 4.19 — guardrails + emergency hotfix. Mid-session "failed to load products" alarm: `productController.getAll` included `ProductPrice.sellingPrice` but Phase 4.9.2b renamed that column to `sellingPriceUsdPerM2` long ago. Audit found 5 more stale `sellingPrice` references (factory price update, quote builder, logistics PDF, MCP create_product response in 2 spots) — all silently wrong since the rename. Patched all 6 in one commit. Then shipped **4.19a** (audit invariant test that walks every MCP `case` block, finds DB writes, requires a matching `auditAiWrite` — caught 4 real gaps which got fixed: add_lead_activity, log_activity, update_triage_item, send_outreach_email) and **4.19b** (orphan-FK detector that scans `sqlite_master` for `REFERENCES …_orphan_…`; pins L-052 from Phase 4.16.4). Suite 626/626 green.
+
+2026-05-16 Taiwan time (earlier). Phase 4.18 — add missing `ai_assistant_create_product` AuditLog write. The 9 IronLite SKUs created 2026-05-16 had zero corresponding audit rows even though sibling `create_product_spec` (9) and `create_product_price` (18) audited correctly. Added `auditAiWrite('create_product', 'Product', product.id, {...key fields...}, USER_ID)` in the MCP handler after the row succeeds. Convergence test runs the handler in-process (new `__testing.callTool` shim) and asserts the audit row lands. Forward-only; existing 9 rows intact, no backfill. Suite 622/622 green.
 
 **Session arc (deployed unless noted):**
 

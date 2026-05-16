@@ -116,7 +116,13 @@ const getAll = async (req, res, next) => {
         include: [
           { model: db.ProductCategory, as: 'category' },
           { model: db.Factory, as: 'factory' },
-          { model: db.ProductPrice, as: 'prices', attributes: ['sellingPrice', 'currency'] }
+          // Phase 4.9.2b renamed sellingPrice → sellingPriceUsdPerM2 on
+          // ProductPrice. The legacy field on the controller include
+          // returned 500 against the post-rename schema (no such column
+          // sellingPrice). Phase 4.19 emergency: switched to the real
+          // column name + included costPriceUsdPerM2 + the temporal window
+          // fields so the list response remains usable on the catalog UI.
+          { model: db.ProductPrice, as: 'prices', attributes: ['id', 'sellingPriceUsdPerM2', 'costPriceUsdPerM2', 'currency', 'origin', 'factoryId', 'validFrom', 'validTo'] }
         ],
         offset,
         limit: parseInt(limit),

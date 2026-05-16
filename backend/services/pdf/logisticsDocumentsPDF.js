@@ -145,7 +145,10 @@ const generateProductSpecSheetPDF = (product, category, factory, price = null, o
          .text(`SKU: ${product.sku}`, 50, y);
 
       if (price) {
-        doc.text(`Price: ${formatCurrency(price.sellingPrice, price.currency)} / ${product.unit || 'unit'}`,
+        // Phase 4.19 emergency: sellingPrice → sellingPriceUsdPerM2 per
+        // the Phase 4.9.2b rename. Pre-fix this printed "undefined" on
+        // every logistics-doc PDF generated against post-rename rows.
+        doc.text(`Price: ${formatCurrency(price.sellingPriceUsdPerM2, price.currency)} / ${product.unit || 'unit'}`,
           300, y, { align: 'right', width: 245 });
       }
 

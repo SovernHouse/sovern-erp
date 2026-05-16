@@ -785,6 +785,10 @@ async function callTool(name, args) {
         isCompleted: type === 'note' ? true : !!args.is_completed,
         completedAt: type === 'note' ? new Date() : (args.is_completed ? new Date() : null),
       });
+      // Phase 4.19a: audit invariant.
+      await auditAiWrite('add_lead_activity', 'Activity', activity.id, {
+        leadId: args.lead_id, type, subject: subject.slice(0, 120),
+      }, USER_ID);
       return { success: true, activity: activity.toJSON() };
     }
 
@@ -1091,6 +1095,10 @@ async function callTool(name, args) {
 
       try {
         const activity = await getDb().Activity.create(data);
+        // Phase 4.19a: audit invariant.
+        await auditAiWrite('log_activity', 'Activity', activity.id, {
+          type: data.type, subject: data.subject, leadId: data.leadId, contactId: data.contactId,
+        }, USER_ID);
         return { success: true, activityId: activity.id };
       } catch (err) {
         // Fall back to ScheduledActivity if Activity model differs
@@ -1101,6 +1109,9 @@ async function callTool(name, args) {
           dueDate: data.dueDate,
           status:  'pending',
         });
+        await auditAiWrite('log_activity', 'ScheduledActivity', activity.id, {
+          type: data.type, subject: data.subject, fallback: true,
+        }, USER_ID);
         return { success: true, activityId: activity.id, model: 'ScheduledActivity' };
       }
     }
@@ -1172,7 +1183,12 @@ async function callTool(name, args) {
       if (!Object.keys(updates).length) {
         return 'No updatable fields provided. Send { status: "..." }.';
       }
+      const before = item.toJSON();
       await item.update(updates);
+      // Phase 4.19a: audit invariant.
+      await auditAiWrite('update_triage_item', 'TriageItem', item.id, {
+        before: { status: before.status }, after: updates,
+      }, USER_ID);
       return { success: true, updated: Object.keys(updates), item: item.toJSON() };
     }
 
@@ -1340,6 +1356,15 @@ async function callTool(name, args) {
         followUpDueAt,
         errorMessage: sendError || null,
       });
+      // Phase 4.19a: audit invariant. Status carries the send outcome
+      // (draft / sent / failed) so the audit trail distinguishes the
+      // three branches without us needing per-branch action names.
+      await auditAiWrite('send_outreach_email', 'OutreachEmail', row.id, {
+        leadId: lead.id, fromAddress, toAddress: lead.email,
+        subject: subject.slice(0, 120), touchNumber, status,
+        smtpMessageId: smtpResult?.messageId || null,
+        errorMessage: sendError || null,
+      }, USER_ID);
 
       if (draftOnly) {
         return {
@@ -3459,8 +3484,10 @@ async function callTool(name, args) {
       tomorrow.setDate(tomorrow.getDate() + 1);
       const dueDateStr = tomorrow.toISOString().slice(0, 10);
 
+      // Phase 4.19 emergency: priceRecord.sellingPrice was the pre-4.9.2b
+      // field name. New schema: sellingPriceUsdPerM2.
       const priceNote = priceRecord
-        ? `\nFactory FOB: USD ${parseFloat(args.fob_price).toFixed(4)} / ${product.unit}\nMargin: ${parseFloat(args.margin ?? 5)}%\nSovern selling price: USD ${priceRecord.sellingPrice} / ${product.unit}${args.price_valid_until ? `\nPrice valid until: ${args.price_valid_until}` : ''}`
+        ? `\nFactory FOB: USD ${parseFloat(args.fob_price).toFixed(4)} / ${product.unit}\nMargin: ${parseFloat(args.margin ?? 5)}%\nSovern selling price: USD ${priceRecord.sellingPriceUsdPerM2} / ${product.unit}${args.price_valid_until ? `\nPrice valid until: ${args.price_valid_until}` : ''}`
         : '';
       const logisticsNote = [
         specs.departurePort ? `Departure port: ${specs.departurePort}` : null,
@@ -3539,7 +3566,7 @@ async function callTool(name, args) {
         status:       statusLabel,
         isActive,
         priceId:      priceRecord?.id || null,
-        sellingPrice: priceRecord ? `USD ${priceRecord.sellingPrice} / ${product.unit}` : null,
+        sellingPrice: priceRecord ? `USD ${priceRecord.sellingPriceUsdPerM2} / ${product.unit}` : null,
         missingFields: missing.length ? missing : null,
         message: `${statusMsg}${missing.length ? ` Still needed for quotations: ${missing.join(', ')}.` : ' All quotation fields present.'}`,
       };
