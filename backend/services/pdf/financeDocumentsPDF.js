@@ -1,8 +1,12 @@
 const { PDFDocument, fs, path, formatCurrency, uploadDir,
   createDir, getCompanyHeader, getDocumentTitle, getDocumentDetails,
-  createTable, addFooter, addFwInternalRecordBanner } = require('./pdfHelpers');
+  createTable, addFooter, addFwInternalRecordBanner,
+  pipeToBufferOrDisk } = require('./pdfHelpers');
 
-const generateInvoicePDF = (invoice, salesOrder, customer) => {
+// Phase 4.15a: opts.returnBuffer=true returns a Buffer instead of writing
+// to disk. Default false keeps every existing caller unchanged.
+
+const generateInvoicePDF = (invoice, salesOrder, customer, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
       createDir(path.join(uploadDir, 'invoices'));
@@ -10,9 +14,7 @@ const generateInvoicePDF = (invoice, salesOrder, customer) => {
       const filepath = path.join(uploadDir, 'invoices', filename);
 
       const doc = new PDFDocument();
-      const stream = fs.createWriteStream(filepath);
-
-      doc.pipe(stream);
+      const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
       // Phase 4, C16: FW internal-record banner (no-op for non-FW).
       addFwInternalRecordBanner(doc, invoice);
@@ -65,16 +67,14 @@ const generateInvoicePDF = (invoice, salesOrder, customer) => {
       addFooter(doc);
 
       doc.end();
-
-      stream.on('finish', () => resolve(filename));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }
   });
 };
 
-const generateCreditNotePDF = (creditNote, customer) => {
+const generateCreditNotePDF = (creditNote, customer, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
       createDir(path.join(uploadDir, 'credit_notes'));
@@ -82,9 +82,7 @@ const generateCreditNotePDF = (creditNote, customer) => {
       const filepath = path.join(uploadDir, 'credit_notes', filename);
 
       const doc = new PDFDocument();
-      const stream = fs.createWriteStream(filepath);
-
-      doc.pipe(stream);
+      const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
       getCompanyHeader(doc);
       getDocumentTitle(doc, 'CREDIT NOTE');
@@ -120,16 +118,14 @@ const generateCreditNotePDF = (creditNote, customer) => {
       addFooter(doc);
 
       doc.end();
-
-      stream.on('finish', () => resolve(filename));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }
   });
 };
 
-const generateStatementOfAccountPDF = (customer, invoices, payments) => {
+const generateStatementOfAccountPDF = (customer, invoices, payments, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
       createDir(path.join(uploadDir, 'statements'));
@@ -137,9 +133,7 @@ const generateStatementOfAccountPDF = (customer, invoices, payments) => {
       const filepath = path.join(uploadDir, 'statements', filename);
 
       const doc = new PDFDocument();
-      const stream = fs.createWriteStream(filepath);
-
-      doc.pipe(stream);
+      const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
       getCompanyHeader(doc);
       getDocumentTitle(doc, 'STATEMENT OF ACCOUNT');
@@ -186,9 +180,7 @@ const generateStatementOfAccountPDF = (customer, invoices, payments) => {
       addFooter(doc);
 
       doc.end();
-
-      stream.on('finish', () => resolve(filename));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }

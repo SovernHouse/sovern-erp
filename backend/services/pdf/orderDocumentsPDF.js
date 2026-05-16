@@ -1,8 +1,12 @@
 const { PDFDocument, fs, path, formatCurrency, uploadDir,
   createDir, getCompanyHeader, getDocumentTitle, getDocumentDetails,
-  createTable, addFooter, addFwInternalRecordBanner } = require('./pdfHelpers');
+  createTable, addFooter, addFwInternalRecordBanner,
+  pipeToBufferOrDisk } = require('./pdfHelpers');
 
-const generateSalesOrderPDF = (salesOrder, items, customer, factory) => {
+// Phase 4.15a: opts.returnBuffer=true returns a Buffer instead of writing
+// to disk. Default false keeps every existing caller unchanged.
+
+const generateSalesOrderPDF = (salesOrder, items, customer, factory, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
       createDir(path.join(uploadDir, 'sales_orders'));
@@ -10,9 +14,7 @@ const generateSalesOrderPDF = (salesOrder, items, customer, factory) => {
       const filepath = path.join(uploadDir, 'sales_orders', filename);
 
       const doc = new PDFDocument();
-      const stream = fs.createWriteStream(filepath);
-
-      doc.pipe(stream);
+      const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
       // Phase 4, C16: FW internal-record banner (no-op for non-FW).
       addFwInternalRecordBanner(doc, salesOrder);
@@ -57,16 +59,14 @@ const generateSalesOrderPDF = (salesOrder, items, customer, factory) => {
       addFooter(doc);
 
       doc.end();
-
-      stream.on('finish', () => resolve(filename));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }
   });
 };
 
-const generatePurchaseOrderPDF = (purchaseOrder, items, factory) => {
+const generatePurchaseOrderPDF = (purchaseOrder, items, factory, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
       createDir(path.join(uploadDir, 'purchase_orders'));
@@ -74,9 +74,7 @@ const generatePurchaseOrderPDF = (purchaseOrder, items, factory) => {
       const filepath = path.join(uploadDir, 'purchase_orders', filename);
 
       const doc = new PDFDocument();
-      const stream = fs.createWriteStream(filepath);
-
-      doc.pipe(stream);
+      const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
       getCompanyHeader(doc);
       getDocumentTitle(doc, 'PURCHASE ORDER');
@@ -114,16 +112,14 @@ const generatePurchaseOrderPDF = (purchaseOrder, items, factory) => {
       addFooter(doc);
 
       doc.end();
-
-      stream.on('finish', () => resolve(filename));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }
   });
 };
 
-const generatePackingListPDF = (packingList, items) => {
+const generatePackingListPDF = (packingList, items, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
       createDir(path.join(uploadDir, 'packing_lists'));
@@ -131,9 +127,7 @@ const generatePackingListPDF = (packingList, items) => {
       const filepath = path.join(uploadDir, 'packing_lists', filename);
 
       const doc = new PDFDocument();
-      const stream = fs.createWriteStream(filepath);
-
-      doc.pipe(stream);
+      const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
       getCompanyHeader(doc);
       getDocumentTitle(doc, 'PACKING LIST');
@@ -166,9 +160,7 @@ const generatePackingListPDF = (packingList, items) => {
       addFooter(doc);
 
       doc.end();
-
-      stream.on('finish', () => resolve(filename));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }

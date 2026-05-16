@@ -1,8 +1,12 @@
 const { PDFDocument, fs, path, formatCurrency, uploadDir,
   createDir, getCompanyHeader, getDocumentTitle, getDocumentDetails,
-  createTable, addFooter } = require('./pdfHelpers');
+  createTable, addFooter,
+  pipeToBufferOrDisk } = require('./pdfHelpers');
 
-const generateInspectionCertificatePDF = (inspection, report, factory) => {
+// Phase 4.15a: opts.returnBuffer=true returns a Buffer instead of writing
+// to disk. Default false keeps every existing caller unchanged.
+
+const generateInspectionCertificatePDF = (inspection, report, factory, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
       createDir(path.join(uploadDir, 'inspection_certificates'));
@@ -10,9 +14,7 @@ const generateInspectionCertificatePDF = (inspection, report, factory) => {
       const filepath = path.join(uploadDir, 'inspection_certificates', filename);
 
       const doc = new PDFDocument();
-      const stream = fs.createWriteStream(filepath);
-
-      doc.pipe(stream);
+      const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
       getCompanyHeader(doc);
       getDocumentTitle(doc, 'INSPECTION CERTIFICATE');
@@ -48,16 +50,14 @@ const generateInspectionCertificatePDF = (inspection, report, factory) => {
       addFooter(doc);
 
       doc.end();
-
-      stream.on('finish', () => resolve(filename));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }
   });
 };
 
-const generateShipmentDocumentPDF = (shipment, salesOrder, customer) => {
+const generateShipmentDocumentPDF = (shipment, salesOrder, customer, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
       createDir(path.join(uploadDir, 'shipment_documents'));
@@ -65,9 +65,7 @@ const generateShipmentDocumentPDF = (shipment, salesOrder, customer) => {
       const filepath = path.join(uploadDir, 'shipment_documents', filename);
 
       const doc = new PDFDocument();
-      const stream = fs.createWriteStream(filepath);
-
-      doc.pipe(stream);
+      const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
       getCompanyHeader(doc);
       getDocumentTitle(doc, 'SHIPMENT DOCUMENT');
@@ -106,16 +104,14 @@ const generateShipmentDocumentPDF = (shipment, salesOrder, customer) => {
       addFooter(doc);
 
       doc.end();
-
-      stream.on('finish', () => resolve(filename));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }
   });
 };
 
-const generateProductSpecSheetPDF = (product, category, factory, price = null) => {
+const generateProductSpecSheetPDF = (product, category, factory, price = null, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
       createDir(path.join(uploadDir, 'spec_sheets'));
@@ -123,8 +119,7 @@ const generateProductSpecSheetPDF = (product, category, factory, price = null) =
       const filepath = path.join(uploadDir, 'spec_sheets', filename);
 
       const doc = new PDFDocument({ margin: 50, size: 'A4' });
-      const stream = fs.createWriteStream(filepath);
-      doc.pipe(stream);
+      const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
       // ── Header bar ───────────────────────────────────────────────────────────
       doc.rect(0, 0, 595, 80).fill('#1a1a2e');
@@ -261,9 +256,7 @@ const generateProductSpecSheetPDF = (product, category, factory, price = null) =
 
       addFooter(doc);
       doc.end();
-
-      stream.on('finish', () => resolve(filename));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }

@@ -1,8 +1,15 @@
 const { PDFDocument, fs, path, formatCurrency, uploadDir,
   createDir, getCompanyHeader, getDocumentTitle, getDocumentDetails,
-  createTable, addFooter, addFwInternalRecordBanner } = require('./pdfHelpers');
+  createTable, addFooter, addFwInternalRecordBanner,
+  pipeToBufferOrDisk } = require('./pdfHelpers');
 
-const generateQuotationPDF = (quotation, items, customer, salesPerson) => {
+// Phase 4.15a: each generator now accepts an opts={} trailing arg.
+// opts.returnBuffer=true switches the output sink from disk to an
+// in-memory Buffer, used by the MCP Drive-upload path. Default false
+// keeps every existing REST caller unchanged (resolves with filename
+// as before).
+
+const generateQuotationPDF = (quotation, items, customer, salesPerson, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
       createDir(path.join(uploadDir, 'quotations'));
@@ -10,9 +17,7 @@ const generateQuotationPDF = (quotation, items, customer, salesPerson) => {
       const filepath = path.join(uploadDir, 'quotations', filename);
 
       const doc = new PDFDocument();
-      const stream = fs.createWriteStream(filepath);
-
-      doc.pipe(stream);
+      const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
       getCompanyHeader(doc);
       getDocumentTitle(doc, 'QUOTATION');
@@ -65,16 +70,14 @@ const generateQuotationPDF = (quotation, items, customer, salesPerson) => {
       addFooter(doc);
 
       doc.end();
-
-      stream.on('finish', () => resolve(filename));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }
   });
 };
 
-const generateProformaInvoicePDF = (pi, items, customer) => {
+const generateProformaInvoicePDF = (pi, items, customer, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
       createDir(path.join(uploadDir, 'proforma_invoices'));
@@ -82,9 +85,7 @@ const generateProformaInvoicePDF = (pi, items, customer) => {
       const filepath = path.join(uploadDir, 'proforma_invoices', filename);
 
       const doc = new PDFDocument();
-      const stream = fs.createWriteStream(filepath);
-
-      doc.pipe(stream);
+      const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
       // Phase 4, C16: FW internal-record banner (no-op for non-FW).
       addFwInternalRecordBanner(doc, pi);
@@ -141,16 +142,14 @@ const generateProformaInvoicePDF = (pi, items, customer) => {
       addFooter(doc);
 
       doc.end();
-
-      stream.on('finish', () => resolve(filename));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }
   });
 };
 
-const generateSalesNotePDF = (pi, items, customer, signedBy = {}) => {
+const generateSalesNotePDF = (pi, items, customer, signedBy = {}, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
       createDir(path.join(uploadDir, 'sales_notes'));
@@ -158,8 +157,7 @@ const generateSalesNotePDF = (pi, items, customer, signedBy = {}) => {
       const filepath = path.join(uploadDir, 'sales_notes', filename);
 
       const doc = new PDFDocument({ margin: 50, size: 'A4' });
-      const stream = fs.createWriteStream(filepath);
-      doc.pipe(stream);
+      const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
       // ── Header ──────────────────────────────────────────────────────────────
       doc.fontSize(16).font('Helvetica-Bold')
@@ -351,9 +349,7 @@ const generateSalesNotePDF = (pi, items, customer, signedBy = {}) => {
       // ── Footer ───────────────────────────────────────────────────────────────
       addFooter(doc);
       doc.end();
-
-      stream.on('finish', () => resolve(filename));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }

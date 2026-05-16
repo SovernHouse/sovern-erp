@@ -101,9 +101,55 @@ const addFwInternalRecordBanner = (doc, entity) => {
   return 32;
 };
 
+/**
+ * Phase 4.15a — backward-compatible pipe-to-disk-OR-buffer helper.
+ *
+ * Existing generators across this folder all follow the same pattern:
+ *   1. Build a `doc` (PDFKit).
+ *   2. Pipe to a fs.createWriteStream(filepath).
+ *   3. doc.end().
+ *   4. resolve(filename) when the stream finishes.
+ *
+ * The MCP layer (Phase 4.15a) wants the bytes in-memory so it can pipe
+ * them directly to a Drive upload — disk artifacts there would leak.
+ * This helper switches between the two modes based on opts.returnBuffer:
+ *
+ *   - returnBuffer:false (default): pipe to disk, resolve(filename).
+ *     REST callers and existing /api/pdf routes keep working unchanged.
+ *   - returnBuffer:true: collect doc 'data' events, resolve(Buffer)
+ *     when 'end' fires. No disk write.
+ *
+ * Call site pattern (replace the inline stream + resolve/reject block):
+ *
+ *   const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
+ *   // ... build PDF content via doc.text(...), doc.addPage(), etc. ...
+ *   doc.end();
+ *   return sink;
+ *
+ * The helper handles all four success/failure paths.
+ */
+function pipeToBufferOrDisk(doc, opts, filepath, filename) {
+  if (opts && opts.returnBuffer) {
+    return new Promise((resolve, reject) => {
+      const buffers = [];
+      doc.on('data', (b) => buffers.push(b));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+    });
+  }
+  const stream = fs.createWriteStream(filepath);
+  doc.pipe(stream);
+  return new Promise((resolve, reject) => {
+    stream.on('finish', () => resolve(filename));
+    stream.on('error', reject);
+    doc.on('error', reject);
+  });
+}
+
 
 module.exports = {
   PDFDocument, fs, path, formatCurrency, uploadDir,
   createDir, getCompanyHeader, getDocumentTitle, getDocumentDetails,
   createTable, addFooter, addFwInternalRecordBanner,
+  pipeToBufferOrDisk,
 };

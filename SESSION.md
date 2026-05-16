@@ -5,7 +5,9 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: Phase 4.14 hotfix — applied the L-048 Uint8Array wrap to `read_attachment`'s pdf branch (same one-line bug as parsePdf had pre-4.14). `read_attachment` was silently failing on the same subset of real PDFs the 4.14 parser fixed. 365/365 tests still green.
+2026-05-16 Taiwan time. Latest: Phase 4.15a-prep — added `pipeToBufferOrDisk` helper in pdfHelpers + patched 12 of 13 disk-writing PDF generators across sales/order/logistics/finance to accept `opts.returnBuffer`. Backward-compat additive change (default false preserves the existing filename/disk contract). brandedQuotationRenderer (4 brand variants) deferred to 4.15a proper next session. 9 new regression tests (374/374 total locally).
+
+2026-05-16 Taiwan time (earlier). Phase 4.14 hotfix — applied the L-048 Uint8Array wrap to `read_attachment`'s pdf branch (same one-line bug as parsePdf had pre-4.14). `read_attachment` was silently failing on the same subset of real PDFs the 4.14 parser fixed.
 
 2026-05-16 Taiwan time (earlier). Phase 4.14 — Drive document parsers (xlsx, xls, docx, pdf, rtf) wired into `read_drive_file` via a shared `backend/services/driveDocumentParsers.js`. Optional narrowing (sheet_name, row_range, column_range, page_range, max_pages, raw_formulas). 25MB input cap + 200KB output cap + 10-min LRU cache. 23 new parser tests + a prod-smoke harness. L-048 (pdf-parse Buffer→Uint8Array bug on Node 22) and L-049 (SheetJS sheet_to_csv ignores `range`) captured.
 
@@ -23,7 +25,8 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `<pending-commit>` fix(ai-mcp): Phase 4.14 hotfix — L-048 Uint8Array wrap for read_attachment pdf branch — local 365/365 green, awaiting push
+  - `<pending-commit>` refactor(pdf): Phase 4.15a-prep — pipeToBufferOrDisk helper + 12 generators accept opts.returnBuffer — local 374/374 green, awaiting push
+  - `3676445` fix(ai-mcp): Phase 4.14 hotfix — L-048 Uint8Array wrap for read_attachment pdf branch — CI green, deployed
   - `2db54c0` feat(ai-mcp): Phase 4.14 — Drive document parsers (xlsx/xls/docx/pdf/rtf) for read_drive_file — CI green, deployed
   - `ec7782c` feat(compliance): Phase 4.13c — Lead sanctions override route — CI green, deployed
   - `4546d03` refactor(schema): Phase 4.13b — drop sanctionsScreened boolean + fix JSON-string parsing — CI green, deployed
@@ -50,7 +53,21 @@
 - **The Phase 4.9.3.1 hotfix is already running live on the VM** (Alex applied it directly before this session). The git history catches up via `a67ec9f` (carried the fix code accidentally because the file was already patched on disk) + `fb65da0` (schema update, 3 integration tests, audit table, SQLITE_STORAGE test enabler).
 - **Mobile parity:** N/A for this session's commits — Phase 4.11 (test infra) and Phase 4.9.3.1 (MCP-only schema + tests + audit) don't touch user-facing surfaces. No mobile rebuild needed. Last EAS push from the prior session covered the user-facing changes through 4.9.3.
 
-## Next Session — Pick Up Here
+## Next Session — Pick Up Here (Phase 4.15a proper)
+
+The 4.15a-prep commit shipped the foundation: `pipeToBufferOrDisk` helper + 12 of 13 disk-writing generators accept `opts.returnBuffer`. 4.15a proper now builds on top:
+
+1. **Patch brandedQuotationRenderer's 4 variants** (SH classic + FW IronLite + FW private label + FW generic) to accept opts and use the helper. Each is its own Promise + stream + resolve. ~600 LOC of patching that needed a fresh session.
+2. **Patch pdfTemplates.js** (Certificate of Origin, advanced packing list) — verify shape first; may already be Buffer-returning.
+3. **Build `backend/services/aiWriteServices/pdfGenerationService.js`**: wraps a generator call with returnBuffer:true, uploads Buffer to brand-appropriate Drive folder (SH → Documents/<category>/, FW → Brand Assets/Documents/<category>/), creates Document row in DB, audits as `ai_assistant_generate_<category>_pdf`, returns `{ driveFileId, driveUrl, documentRowId, fileName, sizeKB }`.
+4. **Extend Drive folder tree** in `driveStructureSetup.js` to add the Documents/<category>/ subtree on both accounts. Sentinel-guarded boot migration adds the new folders to existing installs.
+5. **Wire 13 MCP generator tools** in erpToolServer.js (erp_generate_quotation_pdf, _invoice_pdf, _proforma_invoice_pdf, _purchase_order_pdf, _packing_list_pdf, _certificate_of_origin_pdf, _credit_note_pdf, _inspection_certificate_pdf, _product_spec_sheet_pdf, _sales_note_pdf, _sales_order_pdf, _shipment_document_pdf, _statement_of_account_pdf). Each ~15 lines.
+6. **Extend quotationWriteService** with `updateQuotation` + `archiveQuotation` (create already exists per Phase 4.12).
+7. **Wire 4 quotation CRUD MCP tools** (update, get, list, archive). `create_quotation` already exists.
+8. **Tests** — convergence-style: sanctions block on create, brand scope on update, Drive upload + Document row on each generator.
+9. **Docs** — DEVELOPER_GUIDE section + tooltipContent + helpContent + USER_GUIDE subsection.
+
+## Carry-over (still open from earlier sessions)
 - **Phase 4.13a deploy + boot-migration verification:**
   1. After deploy, query `AuditLog WHERE action='phase4_13a_jurisdiction_backfilled'` on the VM — confirm one row exists with stats `{ rescreened, statusChanged, manualOverrideSkipped, alreadyProtected }`.
   2. Confirm the existing Iran Lead (id `bf055c3f-c2d3-4db9-8100-bcad7c4664eb`) was NOT touched: `screening_status` still `'blocked'`, `sanctions_screen_details[0].reviewer === 'manual_db_override'` preserved, no new `phase4_13a_jurisdiction_rescreen` AuditLog row against that entity_id.
