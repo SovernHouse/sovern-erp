@@ -2264,23 +2264,20 @@ async function callTool(name, args) {
         };
       }
 
-      // PDF → pdf-parse text
+      // PDF → shared parsePdfRaw helper from driveDocumentParsers (4.15-followup).
+      // Phase 4.14 + the L-048 hotfix lived in two places (read_drive_file's
+      // parsePdf and this read_attachment branch). Both wrapped the Buffer
+      // as Uint8Array to work around pdf-parse 1.1.4 + Node 22's xref bug.
+      // The shared helper centralises that fix — any future caller inherits
+      // it automatically. read_attachment composes the helper's
+      // { numpages, fullText, rawPages } into its existing TEXT_CAP-truncated
+      // response shape (different from parsePdf's === Page N === markers).
       if (mimeType === 'application/pdf') {
         try {
-          // pdf-parse loads test PDFs at top-level when imported as `pdf-parse`.
-          // Use the inner module path to skip that auto-execute and avoid a
-          // boot-time crash if the test fixtures aren't bundled.
-          const pdfParse = require('pdf-parse/lib/pdf-parse.js');
+          const { parsePdfRaw } = require('../services/driveDocumentParsers');
           const buf = await downloadBytes();
-          // L-048: pdf-parse 1.1.4 + Node 22 throws "bad XRef entry" on
-          // otherwise-valid PDFs when fed a Node Buffer (pdfjs 1.10 typed-
-          // array mismatch). Wrap as Uint8Array. Same fix as parsePdf in
-          // backend/services/driveDocumentParsers.js. Before this wrap,
-          // read_attachment was silently failing on a subset of real
-          // production PDFs.
-          const u8 = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-          const parsed = await pdfParse(u8);
-          const text = (parsed.text || '').trim();
+          const parsed = await parsePdfRaw(buf, { name });
+          const text = parsed.fullText;
           return {
             name, mimeType,
             pageCount: parsed.numpages || null,
@@ -2289,6 +2286,12 @@ async function callTool(name, args) {
               : text,
           };
         } catch (e) {
+          // parsePdfRaw throws ParserError with user-friendly messages
+          // for encrypted / image-only PDFs. Surface those rather than
+          // burying them in a generic "parse failed" string.
+          if (e && e.code && typeof e.userMessage === 'string') {
+            return { name, mimeType, error: e.userMessage, errorCode: e.code, webViewLink };
+          }
           return { name, mimeType, error: `PDF parse failed: ${e.message}`, webViewLink };
         }
       }

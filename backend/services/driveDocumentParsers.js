@@ -257,15 +257,39 @@ Phase 4.14 deferred legacy .doc parsing because the open-source libraries (antwo
 
 // ── pdf ───────────────────────────────────────────────────────────────
 
-async function parsePdf(buffer, { name, page_range = null } = {}) {
-  assertInputSize(buffer, name);
-  const pageSel = parsePageRange(page_range);
-
+/**
+ * Phase 4.15-followup: parsePdfRaw is the shared low-level entry point.
+ *
+ * Both parsePdf (which formats the output with === Page N === markers
+ * for the MCP read_drive_file tool) AND erpToolServer's legacy
+ * read_attachment tool now route through this helper. Before extraction,
+ * the L-048 Uint8Array wrap lived in two places — read_attachment hit
+ * the same bad-XRef-entry bug on Node 22 and needed a separate fix
+ * (commit 3676445). One canonical implementation prevents the next
+ * caller from forgetting the wrap.
+ *
+ * Returns:
+ *   { numpages, fullText, rawPages, info, metadata }
+ *
+ * - numpages: integer page count from pdf-parse.
+ * - fullText: trimmed concatenation of every page's text.
+ * - rawPages: per-page text, split by the form-feed delimiter our
+ *   pagerender emits. Trailing empty pages stripped.
+ * - info / metadata: pdf-parse's raw author / title / creator dictionaries
+ *   (may be empty objects when the PDF has no metadata).
+ *
+ * Throws ParserError with codes:
+ *   - 'pdf_encrypted'   — password-protected PDF
+ *   - 'pdf_image_only'  — <100 chars extracted (OCR-needed scan)
+ *   - 'pdf_parse_error' — anything else
+ */
+async function parsePdfRaw(buffer, { name = 'document.pdf' } = {}) {
   let parsed;
   try {
     // L-048: pdf-parse 1.1.4 + Node 22 throws "bad XRef entry" when fed
     // a Node Buffer for many otherwise-valid PDFs (pdfjs 1.10 internal
     // typing mismatch). Wrapping as Uint8Array sidesteps the bug.
+    // Centralised here so every caller inherits the fix automatically.
     const u8 = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
     parsed = await pdfParse(u8, {
       // pagerender lets us collect per-page text individually. Without
@@ -298,6 +322,21 @@ async function parsePdf(buffer, { name, page_range = null } = {}) {
   const rawPages = parsed.text.split(/\f/);
   // Trim trailing empty page that some PDFs produce.
   while (rawPages.length && !rawPages[rawPages.length - 1].trim()) rawPages.pop();
+
+  return {
+    numpages,
+    fullText,
+    rawPages,
+    info: parsed.info || {},
+    metadata: parsed.metadata || {},
+  };
+}
+
+async function parsePdf(buffer, { name, page_range = null } = {}) {
+  assertInputSize(buffer, name);
+  const pageSel = parsePageRange(page_range);
+
+  const { numpages, rawPages } = await parsePdfRaw(buffer, { name });
 
   const startPage = pageSel ? pageSel.startPage : 1;
   const endPage = pageSel ? Math.min(pageSel.endPage, rawPages.length) : rawPages.length;
@@ -398,6 +437,7 @@ module.exports = {
   parseXlsx,
   parseDocx,
   parsePdf,
+  parsePdfRaw,
   parseRtf,
   parseByMime,
   isSupported,

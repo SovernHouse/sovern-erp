@@ -5,7 +5,9 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: Phase 4.15d-2a — Product Specifications MCP layer (6 tools: upsert / get / list / search / qa_lookup / archive). New `productSpecWriteService.js` adapts the typed wide-table ProductSpecification (33 writable named columns) to MCP. 71-entry alias map ("AC rating" → acRating, "wear layer" → wearLayerThickness, etc) powers the QA lookup. 21 new convergence tests (439/439 total locally). 4.15d-2b (Compliance audit-and-expose, 14 MCP wrappers around modules/compliance) deferred to next session.
+2026-05-16 Taiwan time. Latest: parsePdfRaw extraction — extracted the shared low-level PDF reader from `parsePdf` so `read_attachment` and `parsePdf` both compose one helper instead of duplicating the L-048 Uint8Array wrap. L-050 captured: extract a shared helper before the same one-line bugfix lands at a third call site. 2 new regression tests (441/441 total locally).
+
+2026-05-16 Taiwan time (earlier). Phase 4.15d-2a — Product Specifications MCP layer (6 tools). 71-entry alias map powers QA lookup. 21 convergence tests.
 
 2026-05-16 Taiwan time (earlier). Phase 4.15d-1 — Internal Approvals MCP layer (5 tools). Self-approval hard-blocked, assignee-only with super_admin override.
 
@@ -31,7 +33,8 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `<pending-commit>` feat(ai-mcp): Phase 4.15d-2a — Product Specifications MCP tools (6 + service) — local 439/439 green, awaiting push
+  - `<pending-commit>` refactor(ai-mcp): extract parsePdfRaw — read_drive_file + read_attachment share one PDF code path (L-050) — local 441/441 green, awaiting push
+  - `88f0e4b` feat(ai-mcp): Phase 4.15d-2a — Product Specifications MCP tools (6 + service) — CI green, deployed
   - `66645a5` feat(ai-mcp): Phase 4.15d-1 — Internal Approvals MCP tools (5 + service) — CI green, deployed
   - `53ffa22` feat(ai-mcp): Phase 4.15a proper — pdfGenerationService + 13 PDF MCP tools + 4 quotation CRUD MCP tools — CI green, deployed
   - `7625e02` refactor(pdf): Phase 4.15a-prep — pipeToBufferOrDisk helper + 12 generators accept opts.returnBuffer — CI green, deployed

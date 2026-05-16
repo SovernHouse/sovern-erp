@@ -253,6 +253,27 @@ describe('Phase 4.14 — driveDocumentParsers', () => {
       expect(out).toMatch(/Phase 4\.14 pdf fixture/);
     });
 
+    // Phase 4.15-followup: shared low-level parsePdfRaw used by both
+    // parsePdf and read_attachment. Centralises the L-048 Uint8Array
+    // wrap so future callers inherit the fix.
+    it('parsePdfRaw returns { numpages, fullText, rawPages, info, metadata }', async () => {
+      const buf = await makePdfFixture();
+      const out = await parsers.parsePdfRaw(buf, { name: 'tiny.pdf' });
+      expect(out.numpages).toBeGreaterThan(0);
+      expect(typeof out.fullText).toBe('string');
+      expect(out.fullText).toMatch(/Phase 4\.14 pdf fixture/);
+      expect(Array.isArray(out.rawPages)).toBe(true);
+      expect(out.rawPages.length).toBeGreaterThan(0);
+      expect(out.info).toBeTruthy();
+      expect(out.metadata).toBeTruthy();
+    });
+
+    it('parsePdfRaw on an image-only PDF throws pdf_image_only', async () => {
+      const buf = await makeImageOnlyPdfFixture();
+      await expect(parsers.parsePdfRaw(buf, { name: 'scanned.pdf' }))
+        .rejects.toMatchObject({ code: 'pdf_image_only' });
+    });
+
     it('page_range narrows to a subset of pages', async () => {
       const buf = await makePdfFixture();
       const out = await parsers.parsePdf(buf, { name: 'tiny.pdf', page_range: [1, 1] });
