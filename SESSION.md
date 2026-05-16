@@ -5,7 +5,9 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: parsePdfRaw extraction — extracted the shared low-level PDF reader from `parsePdf` so `read_attachment` and `parsePdf` both compose one helper instead of duplicating the L-048 Uint8Array wrap. L-050 captured: extract a shared helper before the same one-line bugfix lands at a third call site. 2 new regression tests (441/441 total locally).
+2026-05-16 Taiwan time. Latest: Phase 4.15b-1 — Landed Cost MCP tools (5 + service). Wraps LandedCostTemplate + LandedCostCalculation models. The new `erp_persist_landed_cost_calculation` includes the spec'd ProductPrice.validTo expiration check (fails with `price_expired` when origin supplied and price has expired). Coexists with the read-only `calculate_landed_cost` from Phase 4.9. 18 new convergence tests (459/459 total locally). Letter of Credit (4.15b-2) deferred to a fresh session due to financial-instrument stakes.
+
+2026-05-16 Taiwan time (earlier). parsePdfRaw extraction — L-050 captured.
 
 2026-05-16 Taiwan time (earlier). Phase 4.15d-2a — Product Specifications MCP layer (6 tools). 71-entry alias map powers QA lookup. 21 convergence tests.
 
@@ -33,7 +35,8 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `<pending-commit>` refactor(ai-mcp): extract parsePdfRaw — read_drive_file + read_attachment share one PDF code path (L-050) — local 441/441 green, awaiting push
+  - `<pending-commit>` feat(ai-mcp): Phase 4.15b-1 — Landed Cost MCP tools (5 + service) — local 459/459 green, awaiting push
+  - `c7e5a2c` refactor(ai-mcp): extract parsePdfRaw — read_drive_file + read_attachment share one PDF code path (L-050) — CI green, deployed
   - `88f0e4b` feat(ai-mcp): Phase 4.15d-2a — Product Specifications MCP tools (6 + service) — CI green, deployed
   - `66645a5` feat(ai-mcp): Phase 4.15d-1 — Internal Approvals MCP tools (5 + service) — CI green, deployed
   - `53ffa22` feat(ai-mcp): Phase 4.15a proper — pdfGenerationService + 13 PDF MCP tools + 4 quotation CRUD MCP tools — CI green, deployed

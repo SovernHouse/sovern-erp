@@ -2055,6 +2055,107 @@ async function callTool(name, args) {
       };
     }
 
+    // ── Phase 4.15b-1: Landed Cost (5 tools) ────────────────────────────
+    case 'erp_create_landed_cost_template': {
+      const requester = await getCurrentUserOrThrow();
+      const lcService = require('../services/aiWriteServices/landedCostWriteService');
+      const result = await lcService.createTemplate({
+        name: args.name,
+        description: args.description,
+        supplierId: args.supplier_id,
+        countryOfOrigin: args.country_of_origin,
+        destinationCountry: args.destination_country,
+        components: args.components,
+        defaultPercentages: args.default_percentages,
+        currency: args.currency,
+        isActive: args.is_active,
+        notes: args.notes,
+      }, { userId: requester.id, ip: null, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('create_landed_cost_template', 'LandedCostTemplate', result.template.id, {
+        name: result.template.name,
+        supplierId: result.template.supplierId,
+        countryOfOrigin: result.template.countryOfOrigin,
+        destinationCountry: result.template.destinationCountry,
+      }, requester.id);
+      return { success: true, template: result.template.toJSON() };
+    }
+
+    case 'erp_list_landed_cost_templates': {
+      const lcService = require('../services/aiWriteServices/landedCostWriteService');
+      const result = await lcService.listTemplates({
+        name: args.name,
+        supplierId: args.supplier_id,
+        countryOfOrigin: args.country_of_origin,
+        destinationCountry: args.destination_country,
+        activeOnly: args.active_only !== false,
+        limit: args.limit,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return result.templates.length
+        ? result.templates.map(t => t.toJSON())
+        : 'No landed-cost templates match those filters.';
+    }
+
+    case 'erp_persist_landed_cost_calculation': {
+      const requester = await getCurrentUserOrThrow();
+      const lcService = require('../services/aiWriteServices/landedCostWriteService');
+      const result = await lcService.persistCalculation({
+        productId: args.product_id,
+        supplierId: args.supplier_id,
+        quantity: args.quantity,
+        productCost: args.product_cost,
+        freight: args.freight,
+        insurance: args.insurance,
+        customsDuty: args.customs_duty,
+        handlingCharges: args.handling_charges,
+        localDelivery: args.local_delivery,
+        currency: args.currency,
+        exchangeRate: args.exchange_rate,
+        purchaseOrderId: args.purchase_order_id,
+        templateId: args.template_id,
+        origin: args.origin,
+        notes: args.notes,
+      }, { userId: requester.id, ip: null, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('persist_landed_cost_calculation', 'LandedCostCalculation', result.calculation.id, {
+        referenceNumber: result.calculation.referenceNumber,
+        productId: result.product.id,
+        productSku: result.product.sku,
+        supplierId: result.supplier.id,
+        supplierName: result.supplier.companyName,
+        quantity: result.calculation.quantity,
+        totalLandedCost: result.calculation.totalLandedCost,
+        costPerUnit: result.calculation.costPerUnit,
+        currency: result.calculation.currency,
+      }, requester.id);
+      return { success: true, calculation: result.calculation.toJSON() };
+    }
+
+    case 'erp_list_landed_cost_calculations': {
+      const lcService = require('../services/aiWriteServices/landedCostWriteService');
+      const result = await lcService.listCalculations({
+        productId: args.product_id,
+        supplierId: args.supplier_id,
+        purchaseOrderId: args.purchase_order_id,
+        dateFrom: args.date_from,
+        dateTo: args.date_to,
+        search: args.search,
+        limit: args.limit,
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return result.calculations.length
+        ? result.calculations.map(c => c.toJSON())
+        : 'No landed-cost calculations match those filters.';
+    }
+
+    case 'erp_get_landed_cost_calculation': {
+      const lcService = require('../services/aiWriteServices/landedCostWriteService');
+      const result = await lcService.getCalculation(args.id);
+      if (!result.ok) return formatMcpWriteError(result);
+      return { success: true, calculation: result.calculation.toJSON() };
+    }
+
     case 'calculate_landed_cost': {
       const { product_cost, quantity = 1, freight = 0, insurance = 0,
               customs_duty = 0, handling = 0, local_delivery = 0,
@@ -4640,6 +4741,93 @@ const TOOL_DEFS = [
         product_id:  { type: 'string', description: 'Product UUID.' },
         product_sku: { type: 'string', description: 'Product SKU. Alternative to product_id.' },
       },
+    },
+  },
+
+  // ── Phase 4.15b-1: Landed Cost (5 tools) ────────────────────────────────
+  {
+    name: 'erp_create_landed_cost_template',
+    description: 'Phase 4.15b — create a LandedCostTemplate. Name must be unique (409 if duplicated). supplier_id optional; country pair optional. components defaults to all-zeros; default_percentages defaults to {freight:5, insurance:1, customsDuty:10, handling:2, localDelivery:3}. Writes ai_assistant_create_landed_cost_template to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['name'],
+      properties: {
+        name:                  { type: 'string', description: 'Unique template name.' },
+        description:           { type: 'string' },
+        supplier_id:           { type: 'string', description: 'Factory UUID. Optional.' },
+        country_of_origin:     { type: 'string' },
+        destination_country:   { type: 'string' },
+        components:            { type: 'object', description: 'JSON: { productCost, freight, insurance, customsDuty, handlingCharges, localDelivery }.' },
+        default_percentages:   { type: 'object', description: 'JSON: { freightPercent, insurancePercent, customsDutyPercent, handlingChargesPercent, localDeliveryPercent }.' },
+        currency:              { type: 'string', description: 'Default USD.' },
+        is_active:             { type: 'boolean', description: 'Default true.' },
+        notes:                 { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'erp_list_landed_cost_templates',
+    description: 'Phase 4.15b — list LandedCostTemplates with filters. Up to 50. Default active_only=true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name:                 { type: 'string', description: 'LIKE %name% on template name.' },
+        supplier_id:          { type: 'string' },
+        country_of_origin:    { type: 'string' },
+        destination_country:  { type: 'string' },
+        active_only:          { type: 'boolean', description: 'Default true.' },
+        limit:                { type: 'number', description: 'Max 50.' },
+      },
+    },
+  },
+  {
+    name: 'erp_persist_landed_cost_calculation',
+    description: 'Phase 4.15b — compute a landed-cost breakdown AND persist a LandedCostCalculation row (reference number LCC-YYYYMMDD-NNN). Computes totalProductCost = productCost*quantity, then adds freight + insurance + customsDuty + handlingCharges + localDelivery. costPerUnit = totalLandedCost / quantity. If `origin` is supplied AND a current ProductPrice row exists for (productId, origin) with validTo in the past, fails with price_expired pointing the caller to refresh the temporal price first (per Alex\'s Phase 4.15 spec). The pure-calc-no-persist version remains as calculate_landed_cost. Writes ai_assistant_persist_landed_cost_calculation to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['product_id', 'supplier_id', 'quantity', 'product_cost'],
+      properties: {
+        product_id:        { type: 'string', description: 'Product UUID.' },
+        supplier_id:       { type: 'string', description: 'Factory UUID.' },
+        quantity:          { type: 'number', description: 'Units (>0).' },
+        product_cost:      { type: 'number', description: 'Per-unit FOB / EXW cost.' },
+        freight:           { type: 'number', description: 'Total freight cost (default 0).' },
+        insurance:         { type: 'number', description: 'Total insurance cost (default 0).' },
+        customs_duty:      { type: 'number', description: 'Total customs duty (default 0).' },
+        handling_charges:  { type: 'number', description: 'Port/handling (default 0).' },
+        local_delivery:    { type: 'number', description: 'Inland delivery (default 0).' },
+        currency:          { type: 'string', description: 'Default USD.' },
+        exchange_rate:     { type: 'number', description: 'Default 1.' },
+        purchase_order_id: { type: 'string', description: 'Optional PO link.' },
+        template_id:       { type: 'string', description: 'Optional LandedCostTemplate link.' },
+        origin:            { type: 'string', description: 'Origin country code/name. When set, triggers ProductPrice.validTo expiration check.' },
+        notes:             { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'erp_list_landed_cost_calculations',
+    description: 'Phase 4.15b — list persisted LandedCostCalculations with filters. Up to 100. Useful for "what landed cost did we calculate for IronLite IL-SPC-4MM last month".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        product_id:        { type: 'string' },
+        supplier_id:       { type: 'string' },
+        purchase_order_id: { type: 'string' },
+        date_from:         { type: 'string', description: 'ISO datetime lower bound on createdAt.' },
+        date_to:           { type: 'string', description: 'ISO datetime upper bound on createdAt.' },
+        search:            { type: 'string', description: 'LIKE on referenceNumber.' },
+        limit:             { type: 'number', description: 'Default 25, max 100.' },
+      },
+    },
+  },
+  {
+    name: 'erp_get_landed_cost_calculation',
+    description: 'Phase 4.15b — fetch a single persisted LandedCostCalculation by id. Returns the full row.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'LandedCostCalculation UUID.' } },
     },
   },
 
