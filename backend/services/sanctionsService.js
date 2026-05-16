@@ -46,7 +46,12 @@ const SOURCES = [
   {
     key: 'ofac_sdn',
     label: 'OFAC SDN',
-    url: 'https://www.treasury.gov/ofac/downloads/sdn.csv',
+    // Phase 4.13.6: switched to the SLS direct path. The legacy
+    // www.treasury.gov/ofac/downloads/sdn.csv redirects here anyway,
+    // but Node's https.get follows redirects without re-applying request
+    // headers in some library versions — pointing direct removes that
+    // edge case.
+    url: 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV',
     file: 'ofac_sdn.csv',
     format: 'csv',
     // OFAC SDN columns: ent_num, sdn_name, sdn_type, program, title, call_sign, vess_type, tonnage, grt, vess_flag, vess_owner, remarks
@@ -55,7 +60,11 @@ const SOURCES = [
   {
     key: 'ofac_consolidated',
     label: 'OFAC Consolidated',
-    url: 'https://www.treasury.gov/ofac/downloads/consolidated/cons_prim.csv',
+    // Phase 4.13.6: OFAC renamed cons_prim.csv → consolidated.csv on the
+    // SLS path. The legacy treasury.gov/ofac/downloads/consolidated/
+    // path now 400s on the cons_prim.csv filename; the new SLS path with
+    // consolidated.csv returns 200 (verified 2026-05-16).
+    url: 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/consolidated.csv',
     file: 'ofac_consolidated.csv',
     format: 'csv',
     parser: parseOfacCsv,
@@ -63,7 +72,14 @@ const SOURCES = [
   {
     key: 'eu_consolidated',
     label: 'EU Consolidated',
-    url: 'https://webgate.ec.europa.eu/europeaid/fsd/fsf/public/files/csvFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw==',
+    // Phase 4.13.6: dropped the trailing == base64 padding from the
+    // token (matches what the EU webgate RSS feed publishes). Both
+    // padded and unpadded forms currently return HTTP 500 with a
+    // server-side "Internal Server Error" JSON body — the bug is on
+    // EU webgate's side; this URL change is cosmetic. The
+    // failure-streak alert (added in this commit) will catch the
+    // upstream outage at the 3-day mark.
+    url: 'https://webgate.ec.europa.eu/fsd/fsf/public/files/csvFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw',
     file: 'eu_consolidated.csv',
     format: 'csv',
     parser: parseEuCsv,
@@ -87,11 +103,20 @@ function ensureDir() {
   }
 }
 
+// Phase 4.13.6: OFAC's sanctionslistservice and EU's webgate both reject
+// Node's default User-Agent (returns 403 / 406). curl works because it
+// sends a recognised UA. We send a polite, contactable UA so an
+// admin upstream can identify our traffic if they ever need to.
+const REQUEST_HEADERS = {
+  'User-Agent': 'SovernHouseERP/1.0 (+https://erp.sovernhouse.co; sanctions-list-refresher)',
+  'Accept': '*/*',
+};
+
 function downloadOnce(url, dest) {
   return new Promise((resolve, reject) => {
     const tmp = dest + '.tmp';
     const file = fs.createWriteStream(tmp);
-    const req = https.get(url, { timeout: 60_000 }, (res) => {
+    const req = https.get(url, { timeout: 60_000, headers: REQUEST_HEADERS }, (res) => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         // Follow one redirect.
         file.close();
@@ -580,13 +605,72 @@ function getSanctionsStatus() {
   };
 }
 
+// Phase 4.13.6: detect sources that have been failing for N+ consecutive
+// daily refresh runs. Scans the most recent sanctions_refresh AuditLog
+// rows (newest first), walks each source's per-run result, and reports
+// any source whose latest run failed AND whose last `thresholdDays` runs
+// all failed.
+//
+// Returns: array of { key, label, consecutiveFailures, latestError }.
+// Empty array when no source is in a failure streak (the happy case).
+//
+// thresholdDays defaults to 3 per the Phase 4.13.6 spec. lookbackDays
+// caps how far back the scan goes (defensive: avoids unbounded scans on
+// long-running installs).
+async function checkRefreshFailureStreaks(db, { thresholdDays = 3, lookbackDays = 7 } = {}) {
+  if (!db?.AuditLog) return [];
+  const { Op } = require('sequelize');
+  const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
+  const rows = await db.AuditLog.findAll({
+    where: { action: 'sanctions_refresh', createdAt: { [Op.gte]: since } },
+    order: [['createdAt', 'DESC']],
+    limit: 14,  // 2× lookbackDays in case refresh runs more than daily
+  });
+
+  // Build per-source ordered failure series from newest to oldest.
+  const seriesByKey = new Map();
+  for (const row of rows) {
+    const results = row.changes?.results || [];
+    for (const r of results) {
+      const arr = seriesByKey.get(r.key) || [];
+      arr.push({ ok: !!r.ok, error: r.error || null, at: row.createdAt });
+      seriesByKey.set(r.key, arr);
+    }
+  }
+
+  const alerts = [];
+  for (const [key, series] of seriesByKey) {
+    if (series.length < thresholdDays) continue;
+    // Latest must be a failure for the alert to fire.
+    if (series[0].ok) continue;
+    // Count consecutive failures from the newest row.
+    let streak = 0;
+    for (const entry of series) {
+      if (!entry.ok) streak++;
+      else break;
+    }
+    if (streak >= thresholdDays) {
+      const label = (SOURCES.find(s => s.key === key) || {}).label || key;
+      alerts.push({
+        key,
+        label,
+        consecutiveFailures: streak,
+        latestError: series[0].error,
+      });
+    }
+  }
+  return alerts;
+}
+
 module.exports = {
   refreshSanctionsData,
   screenName,
   screenJurisdiction,
   getSanctionsStatus,
+  checkRefreshFailureStreaks,
   DATA_DIR,
   // Exposed for tests and for the 4.13a backfill migration.
   JURISDICTION_BLOCK,
   COUNTRY_ALIASES,
+  SOURCES,
 };

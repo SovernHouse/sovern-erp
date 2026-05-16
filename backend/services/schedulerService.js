@@ -285,7 +285,7 @@ async function refreshSanctionsLists() {
     const sanctionsService = require('./sanctionsService');
     const auditService = require('./auditService');
     const results = await sanctionsService.refreshSanctionsData();
-    auditService.logAction(
+    await auditService.logAction(
       null,
       'sanctions_refresh',
       'System',
@@ -296,9 +296,92 @@ async function refreshSanctionsLists() {
     const ok = results.filter((r) => r.ok).length;
     const fail = results.length - ok;
     logger.info(`[SCHEDULER][SANCTIONS] Refresh complete: ${ok} ok, ${fail} failed`);
+
+    // Phase 4.13.6: after every refresh, check whether any source has
+    // been failing for 3+ consecutive runs. Fire a Notification (admin
+    // dashboard) + email Alex when the streak alert trips.
+    if (fail > 0) {
+      try {
+        await alertSanctionsRefreshFailureStreaks(sanctionsService);
+      } catch (alertErr) {
+        logger.warn('[SCHEDULER][SANCTIONS] streak alert error (non-fatal):', alertErr.message);
+      }
+    }
   } catch (err) {
     logger.error('[SCHEDULER][SANCTIONS] refresh error:', err.message);
   }
+}
+
+// Phase 4.13.6: fires a Notification + email to admins when a sanctions
+// source has been failing for 3+ consecutive runs. Notification routes
+// to every super_admin (and falls back to the first admin if no
+// super_admin user is found). Email routes to ADMIN_NOTIFY_EMAIL or
+// alex@sovernhouse.co as a hard-coded last resort.
+async function alertSanctionsRefreshFailureStreaks(sanctionsService) {
+  const db = getDB();
+  if (!db?.AuditLog || !db?.User || !db?.Notification) return;
+
+  const alerts = await sanctionsService.checkRefreshFailureStreaks(db, {
+    thresholdDays: 3,
+    lookbackDays: 7,
+  });
+  if (alerts.length === 0) return;
+
+  // Route to super_admin users; fall back to any admin if none.
+  let recipients = await db.User.findAll({
+    where: { role: 'super_admin', isActive: true },
+    attributes: ['id', 'email', 'firstName'],
+    limit: 5,
+  });
+  if (recipients.length === 0) {
+    recipients = await db.User.findAll({
+      where: { role: 'admin', isActive: true },
+      attributes: ['id', 'email', 'firstName'],
+      limit: 1,
+    });
+  }
+  if (recipients.length === 0) {
+    logger.warn('[SCHEDULER][SANCTIONS] streak alert tripped but no admin recipients to notify');
+    return;
+  }
+
+  const summary = alerts
+    .map(a => `${a.label} (${a.key}): ${a.consecutiveFailures} consecutive failures, latest error: ${a.latestError || 'unknown'}`)
+    .join('\n');
+  const title = `Sanctions list refresh failing: ${alerts.length} source(s)`;
+  const message = `The daily sanctions refresh has been failing for one or more sources.\n\n${summary}\n\nThe screening service is using cached data (last-known-good). Investigate the upstream sources and restore.`;
+
+  // In-app notifications for every recipient.
+  for (const u of recipients) {
+    try {
+      await db.Notification.create({
+        userId: u.id,
+        type: 'system',
+        title,
+        message,
+        data: { kind: 'sanctions_refresh_failure_streak', alerts },
+      });
+    } catch (e) {
+      logger.warn(`[SCHEDULER][SANCTIONS] notification create failed for ${u.email}: ${e.message}`);
+    }
+  }
+
+  // Email Alex (or whoever is configured) — single mail to one address.
+  // Skipping deliberately when EMAIL_ENABLED isn't set; sendEmail's own
+  // disabled-mode guard handles dev/local cases cleanly.
+  try {
+    const emailService = require('./emailService');
+    const to = process.env.ADMIN_NOTIFY_EMAIL || 'alex@sovernhouse.co';
+    await emailService.sendEmail(
+      to,
+      `[Sovern ERP] ${title}`,
+      `<p>${message.replace(/\n/g, '<br>')}</p>`,
+    );
+  } catch (e) {
+    logger.warn(`[SCHEDULER][SANCTIONS] streak alert email failed: ${e.message}`);
+  }
+
+  logger.warn(`[SCHEDULER][SANCTIONS] streak alert fired for ${alerts.length} source(s): ${alerts.map(a => a.key).join(', ')}`);
 }
 
 // ─── Job 8: 90-day rescreen (Phase 4, C18) ───────────────────────────────────

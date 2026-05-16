@@ -1,0 +1,43 @@
+name: Sanctions Source URL Check
+
+# Phase 4.13.6: weekly probe of the upstream sanctions list URLs to
+# detect drift before the daily refresh cron starts failing in prod.
+# Runs every Monday at 04:00 UTC + manually on demand. Hits each source
+# URL with a HEAD request using the production User-Agent and asserts
+# 200 / 301 / 302 / 304.
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'  # Mondays 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  check-urls:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run sanctions URL HEAD probe
+        working-directory: backend
+        env:
+          RUN_SANCTIONS_URL_CHECK: 'true'
+          NODE_ENV: test
+          JWT_SECRET: ci-secret
+          JWT_REFRESH_SECRET: ci-refresh-secret
+        run: npx jest __tests__/integration/phase4136SanctionsSources.test.js -t "real-URL HEAD probe"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::warning::Sanctions URL probe failed. One or more upstream sources have drifted. Investigate before the daily refresh starts producing AuditLog failures in prod."
