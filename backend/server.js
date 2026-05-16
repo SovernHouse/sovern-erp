@@ -135,11 +135,24 @@ app.get('/api/admin/ratelimit-stats', requireAuth, requireRole('super_admin'), (
 });
 
 app.use('/api/', generalLimiter);
-// Add request timeout middleware to prevent hanging requests.
-// AI chat is the one slow endpoint (claude -p subprocess + MCP tool chain
-// can take 60-120s). Apply 150s to it, default 30s to everything else.
+// Phase 4.16: request timeout middleware. AI chat is the one long endpoint;
+// the rest of the API stays at 30s.
+//
+// /api/ai/chat budget = 900s (15 min). The actual liveness check happens
+// inside aiController's heartbeat watchdog (kills subprocess after 30s of
+// stdout idle). This middleware is a hard ceiling safety net for the
+// pathological case where the subprocess emits stdout forever (infinite
+// tool loop) and the watchdog can't catch it. Matches HARD_CAP_MS in
+// aiController.js — keep these two in sync.
+//
+// Pre-4.16: 150s flat. Broke bulk MCP turns (IronLite 9-SKU + 18
+// ProductPrice + audit = ~28 sequential write ops > 150s wall clock).
+// The middleware would next(err) at 150s with 'Request timeout', killing
+// the response before the subprocess finished. The heartbeat-based
+// watchdog in aiController is now the actual liveness mechanism;
+// hard cap here just protects against runaway resource consumption.
 const { createTimeoutMiddleware } = require("./middleware/requestTimeout");
-app.use("/api/ai/chat", createTimeoutMiddleware(150000));
+app.use("/api/ai/chat", createTimeoutMiddleware(900000));
 app.use("/api/", (req, res, next) => {
   if (req.path === '/ai/chat' || req.path.startsWith('/ai/chat')) return next();
   return createTimeoutMiddleware(30000)(req, res, next);

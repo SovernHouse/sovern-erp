@@ -1241,12 +1241,17 @@ export default function AssistantPage() {
     setMessages(prev => [...prev, optimisticUser])
 
     try {
-      const res = await aiAPI.chat({
+      // Phase 4.16: stream the response via SSE. Progress chunks could feed
+      // a "thinking..." indicator with live tool-call previews; for now we
+      // just keep the existing "sending" spinner running and act on the
+      // final 'complete' event. Heartbeat watchdog on the backend means
+      // we no longer hit a 150s wall-clock cap on bulk MCP turns.
+      const completed = await aiAPI.chatStream({
         message: text,
         conversationId: activeConvId,
         ...(attachmentsForSend.length > 0 ? { attachments: attachmentsForSend } : {}),
       })
-      const { conversationId, title, reply, isNew } = res.data
+      const { conversationId, title, reply, isNew } = completed
 
       // Update messages with real timestamps (server echoes back)
       setMessages(prev => {
@@ -1276,7 +1281,10 @@ export default function AssistantPage() {
     } catch (err) {
       // Remove optimistic message on error
       setMessages(prev => prev.slice(0, -1))
-      const msg = err.response?.data?.error || 'Failed to get a response'
+      // Phase 4.16: chatStream throws Error(message); preserve axios-style
+      // fallback in case the offline replay path (which still uses aiAPI.chat)
+      // surfaces an error through the same try block in a future caller.
+      const msg = err.response?.data?.error || err.message || 'Failed to get a response'
       toast.error(msg)
     } finally {
       setSending(false)

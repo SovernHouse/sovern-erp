@@ -709,11 +709,83 @@ export const driveAPI = {
 }
 
 // AI Assistant
+//
+// Phase 4.16: chat() retained as a JSON-buffer fallback (mobile + offline
+// queue replay still use this). chatStream() is the SSE-via-fetch streaming
+// variant — gives bulk MCP turns unlimited wall-clock budget as long as the
+// subprocess keeps emitting progress (heartbeat-based liveness lives on the
+// backend in aiController.js). Desktop chat UI uses chatStream now.
 export const aiAPI = {
-  // AI replies can take 30-240s (claude -p subprocess + MCP tool chain +
-  // optional WebSearch/WebFetch). Must exceed backend kill timer (240s) but
-  // stay under nginx proxy_read_timeout (270s).
-  chat:                 (data)        => api.post('/ai/chat', data, { timeout: 260000 }),
+  // 900s axios ceiling matches backend's HARD_CAP_MS. Heartbeat watchdog
+  // is what actually catches hung subprocesses (30s of stdout silence).
+  chat:                 (data)        => api.post('/ai/chat', data, { timeout: 900000 }),
+  // Phase 4.16 streaming POST. Calls /api/ai/chat with Accept: text/event-stream.
+  // Backend responds with SSE events: 'progress' (one per stdout chunk),
+  // 'complete' (final reply + persisted conversation id), 'error' (subprocess
+  // failure or watchdog-fired kill). Returns a Promise that resolves when
+  // 'complete' arrives or rejects on 'error' / network failure. The optional
+  // onProgress callback runs on every progress chunk (use it to render a
+  // "working..." indicator). Aborting via AbortController kills the
+  // subprocess server-side (req.on('close') in aiController fires the
+  // AbortSignal we pass to runClaudeSubprocess).
+  chatStream: async (data, { onProgress, signal } = {}) => {
+    const token = localStorage.getItem('authToken') || ''
+    const res = await fetch(`${API_BASE_URL}/ai/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(data),
+      signal,
+    })
+    if (!res.ok || !res.body) {
+      let detail = `HTTP ${res.status}`
+      try { const j = await res.json(); detail = j?.error || j?.detail || detail } catch (_) {}
+      throw new Error(detail)
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+    let completed = null
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      // SSE events are delimited by a blank line (\n\n).
+      let idx
+      while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        const raw = buffer.slice(0, idx)
+        buffer = buffer.slice(idx + 2)
+        // Parse the event block into { event, data } — ignore lines
+        // starting with ':' which are SSE comments (heartbeat pings).
+        let eventName = 'message'
+        const dataLines = []
+        for (const line of raw.split('\n')) {
+          if (line.startsWith(':')) continue
+          if (line.startsWith('event:')) eventName = line.slice(6).trim()
+          else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+        }
+        if (dataLines.length === 0) continue
+        let payload
+        try { payload = JSON.parse(dataLines.join('\n')) } catch { payload = { raw: dataLines.join('\n') } }
+        if (eventName === 'progress') {
+          if (onProgress) {
+            try { onProgress(payload) } catch (_) { /* ignore caller errors */ }
+          }
+        } else if (eventName === 'complete') {
+          completed = payload
+        } else if (eventName === 'error') {
+          throw new Error(payload?.error || 'AI assistant error')
+        }
+      }
+    }
+    if (!completed) {
+      throw new Error('Stream ended before completion')
+    }
+    return completed
+  },
   listConversations:    ()            => api.get('/ai/conversations'),
   getConversation:      (id)          => api.get(`/ai/conversations/${id}`),
   renameConversation:   (id, title)   => api.patch(`/ai/conversations/${id}`, { title }),

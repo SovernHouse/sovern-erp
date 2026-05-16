@@ -107,25 +107,96 @@ async function getAiUploadsFolderId(drive) {
   return month;
 }
 
-async function runClaudeSubprocess(systemPrompt, userPrompt, userId, withMcp = true) {
+// Phase 4.16 — subprocess timeout audit + heartbeat-based liveness.
+//
+// Timeout constants in this controller (single source of truth):
+//
+//   IDLE_TIMEOUT_MS           how long we tolerate zero stdout from claude
+//                              before killing it. The subprocess is alive as
+//                              long as it's emitting progress (one tool
+//                              call = one stdout flush). 30s gives slow MCP
+//                              tools (Drive parses, multi-DB writes) headroom
+//                              while still catching genuinely-hung processes.
+//
+//   IDLE_CHECK_INTERVAL_MS    how often we sample the idle clock. 5s. Worst-
+//                              case kill latency is IDLE_TIMEOUT_MS + 5s.
+//
+//   HARD_CAP_MS               absolute ceiling regardless of stdout activity.
+//                              900s = 15 min. Protects against the very rare
+//                              case where the subprocess keeps emitting
+//                              stdout forever (infinite tool loop). Express
+//                              middleware on /api/ai/chat matches at 900s so
+//                              the request can return a clean SSE 'error'
+//                              event before Express forces a close.
+//
+//   SIGTERM_TO_SIGKILL_MS     grace window between graceful and forceful
+//                              kill. 3s. Lets the subprocess flush stderr.
+//
+// Pre-Phase-4.16 history: this used a flat 240s setTimeout. Worked for
+// single-question chat (Alex's normal traffic). Broke for bulk MCP turns —
+// the IronLite 9-SKU + 18 ProductPrice bulk-create needed 150+s of work
+// and hit the upstream Express middleware (server.js:142, 150_000ms) before
+// even reaching the subprocess kill. Heartbeat-based liveness gives bulk
+// turns unlimited wall-clock budget as long as they're making progress.
+
+const IDLE_TIMEOUT_MS = 30_000;
+const IDLE_CHECK_INTERVAL_MS = 5_000;
+const HARD_CAP_MS = 900_000;
+const SIGTERM_TO_SIGKILL_MS = 3_000;
+
+/**
+ * Spawn claude -p and run a turn. Heartbeat-based liveness:
+ *
+ *   - The subprocess can run as long as it keeps emitting stdout. Every
+ *     stdout chunk resets the idle clock AND fires the optional
+ *     onProgress(chunk) callback (used by the SSE branch of exports.chat
+ *     to forward progress to the browser in real time).
+ *
+ *   - If the subprocess goes silent for IDLE_TIMEOUT_MS, the watchdog
+ *     SIGTERMs it (then SIGKILL after a 3s grace).
+ *
+ *   - If the subprocess emits stdout forever (infinite tool loop), the
+ *     HARD_CAP_MS ceiling fires after 15 minutes and kills it.
+ *
+ *   - If the parent caller aborts (SSE client disconnects, AbortSignal
+ *     fires), we kill the subprocess to free resources.
+ *
+ * Returns the full buffered output on close. The onProgress callback is
+ * optional — non-streaming callers (generateTitle, the JSON fallback
+ * branch of exports.chat) can ignore it.
+ */
+async function runClaudeSubprocess(systemPrompt, userPrompt, userId, {
+  withMcp = true,
+  onProgress = null,
+  signal = null,
+} = {}) {
   return new Promise((resolve) => {
     let output = '';
     let errOutput = '';
     let settled = false;
+    let lastStdoutAt = Date.now();
 
-    // --system-prompt        replace Claude Code's default identity with our ERP
-    //                        system prompt (otherwise it acts as the dev tool)
-    // --strict-mcp-config    ignore ~/.claude.json global tools; only use --mcp-config
-    // --mcp-config           enable our ERP tool server (calendar, gmail, leads, etc.)
-    // --permission-mode      bypassPermissions so MCP tool calls don't stall
-    //                        waiting for an approval prompt that no human will
-    //                        ever click in a headless subprocess
-    // --disallowed-tools     block local file/shell tools for security. WebFetch
-    //                        and WebSearch are intentionally allowed so the AI
-    //                        can answer travel/quick-lookup asks (hotels,
-    //                        restaurants, contacts, news). Heavy multi-step
-    //                        sourcing belongs in the Tier 2 background runner,
-    //                        not this synchronous chat path.
+    function finish(result) {
+      if (settled) return;
+      settled = true;
+      clearInterval(idleChecker);
+      clearTimeout(hardCapTimer);
+      if (signal) signal.removeEventListener('abort', onAbort);
+      resolve(result);
+    }
+
+    function killSubprocess(reason) {
+      logger.warn(`[ai] killing claude subprocess: ${reason}`);
+      try { child.kill('SIGTERM'); } catch (_) {}
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, SIGTERM_TO_SIGKILL_MS);
+    }
+
+    function onAbort() {
+      if (settled) return;
+      killSubprocess('caller aborted (client disconnect or shutdown)');
+      finish({ ok: false, text: null, error: 'aborted_by_caller' });
+    }
+
     const args = ['-p', '--system-prompt', systemPrompt, '--strict-mcp-config',
                   '--permission-mode', 'bypassPermissions'];
     if (withMcp) {
@@ -139,38 +210,60 @@ async function runClaudeSubprocess(systemPrompt, userPrompt, userId, withMcp = t
     child.stdin.write(userPrompt);
     child.stdin.end();
 
-    // Hard-kill after 240s — shorter than nginx's proxy_read_timeout (270s)
-    // so the backend can return a clean error before nginx cuts the connection.
-    // Bumped from 120s to give web-research asks (WebSearch/WebFetch enabled
-    // above) room to do 1-3 lookups + synthesis without timing out. Heavier
-    // multi-minute research belongs in the Tier 2 background runner.
-    const killTimer = setTimeout(() => {
-      if (!settled) {
-        logger.warn('[ai] Claude subprocess timeout — killing');
-        child.kill('SIGTERM');
-        setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 3000);
+    // Idle watchdog. Polls every IDLE_CHECK_INTERVAL_MS. Kills if stdout
+    // has been silent longer than IDLE_TIMEOUT_MS.
+    const idleChecker = setInterval(() => {
+      if (settled) return;
+      const idleMs = Date.now() - lastStdoutAt;
+      if (idleMs > IDLE_TIMEOUT_MS) {
+        killSubprocess(`stdout idle ${Math.round(idleMs / 1000)}s > ${IDLE_TIMEOUT_MS / 1000}s threshold`);
+        finish({ ok: false, text: null, error: `subprocess_idle_timeout (${IDLE_TIMEOUT_MS / 1000}s)` });
       }
-    }, 240000);
+    }, IDLE_CHECK_INTERVAL_MS);
 
-    child.stdout.on('data', (d) => { output += d.toString(); });
+    // Hard ceiling — guards against an infinite-tool-loop subprocess that
+    // keeps emitting stdout forever.
+    const hardCapTimer = setTimeout(() => {
+      if (settled) return;
+      killSubprocess(`hard cap ${HARD_CAP_MS / 1000}s reached`);
+      finish({ ok: false, text: null, error: `subprocess_hard_cap_timeout (${HARD_CAP_MS / 1000}s)` });
+    }, HARD_CAP_MS);
+
+    // Caller-initiated abort (SSE client disconnect).
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener('abort', onAbort);
+    }
+
+    child.stdout.on('data', (d) => {
+      lastStdoutAt = Date.now();
+      const chunk = d.toString();
+      output += chunk;
+      if (onProgress) {
+        try { onProgress(chunk); } catch (cbErr) {
+          logger.warn('[ai] onProgress callback threw (continuing):', cbErr.message);
+        }
+      }
+    });
     child.stderr.on('data', (d) => { errOutput += d.toString(); });
 
     child.on('close', (code) => {
-      settled = true;
-      clearTimeout(killTimer);
+      if (settled) return;
       if (code !== 0 && !output.trim()) {
         logger.warn('[ai] Claude subprocess exited with code', code, ':', errOutput.slice(0, 200));
-        resolve({ ok: false, text: null, error: errOutput.slice(0, 300) });
+        finish({ ok: false, text: null, error: errOutput.slice(0, 300) });
       } else {
-        resolve({ ok: true, text: output.trim() });
+        finish({ ok: true, text: output.trim() });
       }
     });
 
     child.on('error', (err) => {
-      settled = true;
-      clearTimeout(killTimer);
+      if (settled) return;
       logger.error('[ai] Claude subprocess error:', err.message);
-      resolve({ ok: false, text: null, error: err.message });
+      finish({ ok: false, text: null, error: err.message });
     });
   });
 }
@@ -181,7 +274,7 @@ async function generateTitle(firstMessage) {
   const userPrompt = 'Generate a 5-word-max title for a conversation that starts with:\n"' +
     firstMessage.slice(0, 200) + '"';
 
-  const result = await runClaudeSubprocess(sys, userPrompt, null, false);
+  const result = await runClaudeSubprocess(sys, userPrompt, null, { withMcp: false });
   if (result.ok && result.text) {
     return result.text.slice(0, 100).replace(/^["']|["']$/g, '').trim();
   }
@@ -278,8 +371,103 @@ exports.chat = async (req, res) => {
         attachmentList.map(a => `- ${a.name || '(unnamed)'} (file_id: "${a.driveFileId}")`).join('\n');
     }
 
-    // Run claude -p with ERP MCP tools
-    const result = await runClaudeSubprocess(systemPrompt, userPrompt, user.id);
+    // Phase 4.16: opt into SSE when the client asks for it. Browser clients
+    // that want real-time progress flip `Accept: text/event-stream`; mobile
+    // (React Native) keeps using the classic JSON-buffer path. Both share
+    // the same subprocess + same heartbeat-based liveness, so the timeout
+    // behavior is identical across surfaces.
+    const wantsSSE = (req.headers.accept || '').includes('text/event-stream');
+    let result;
+
+    if (wantsSSE) {
+      // SSE response. Open the stream, emit progress events on each stdout
+      // chunk, emit a final 'complete' event with the full text + persisted
+      // conversation id. Client disconnects mid-stream abort the subprocess
+      // via AbortController so we don't keep claude running after the user
+      // closes the tab.
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',  // nginx: don't buffer SSE
+      });
+      // Flush headers immediately so the browser EventSource handshake closes.
+      if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+      const ac = new AbortController();
+      req.on('close', () => {
+        if (!result) {
+          logger.info('[ai] SSE client disconnected mid-stream — aborting subprocess');
+          ac.abort();
+        }
+      });
+
+      // Heartbeat ping every 15s so intermediate proxies don't decide the
+      // connection is idle. Comment lines per SSE spec are ignored by clients.
+      const sseHeartbeat = setInterval(() => {
+        try { res.write(`: heartbeat ${Date.now()}\n\n`); } catch (_) {}
+      }, 15_000);
+
+      function sseSend(event, dataObj) {
+        try {
+          res.write(`event: ${event}\n`);
+          res.write(`data: ${JSON.stringify(dataObj)}\n\n`);
+        } catch (writeErr) {
+          logger.warn('[ai] SSE write failed (client likely gone):', writeErr.message);
+        }
+      }
+
+      try {
+        result = await runClaudeSubprocess(systemPrompt, userPrompt, user.id, {
+          onProgress: (chunk) => sseSend('progress', { chunk }),
+          signal: ac.signal,
+        });
+      } finally {
+        clearInterval(sseHeartbeat);
+      }
+
+      if (!result.ok) {
+        sseSend('error', { error: result.error || 'AI assistant is currently unavailable' });
+        try { res.end(); } catch (_) {}
+        return;
+      }
+
+      // Persist + send complete event (same persistence logic as the JSON
+      // branch below, kept inline to avoid a refactor that touches the
+      // whole controller).
+      const assistantReply = result.text;
+      const updatedMessages = [
+        ...history,
+        {
+          role: 'user',
+          content: message.trim(),
+          createdAt: new Date().toISOString(),
+          ...(attachmentList.length > 0 ? { attachments: attachmentList } : {}),
+        },
+        { role: 'assistant', content: assistantReply, createdAt: new Date().toISOString() },
+      ];
+      let title = conversation.title;
+      if (isNew || title === 'New conversation') {
+        try { title = await generateTitle(message.trim()); }
+        catch (_) { title = message.trim().slice(0, 60); }
+      }
+      await conversation.update({
+        messages: updatedMessages,
+        title,
+        lastMessageAt: new Date(),
+      });
+      sseSend('complete', {
+        conversationId: conversation.id,
+        title,
+        reply: assistantReply,
+        isNew,
+      });
+      try { res.end(); } catch (_) {}
+      return;
+    }
+
+    // JSON-buffer branch (mobile + any non-SSE client).
+    result = await runClaudeSubprocess(systemPrompt, userPrompt, user.id);
 
     // If a timeout middleware already closed the response while we were
     // waiting on claude, bail out — trying to res.json() now throws
@@ -499,4 +687,16 @@ exports.uploadAttachment = async (req, res) => {
       try { fs.unlinkSync(tmpPath); } catch (_) { /* file already gone */ }
     }
   }
+};
+
+// Phase 4.16 — exposed for tests. Production callers reach this through
+// exports.chat / generateTitle; tests drive runClaudeSubprocess directly
+// with a mocked child_process.spawn so we can assert heartbeat / hard-cap
+// behavior under jest fake timers without spawning real claude binaries.
+exports.__testing = {
+  runClaudeSubprocess,
+  IDLE_TIMEOUT_MS,
+  IDLE_CHECK_INTERVAL_MS,
+  HARD_CAP_MS,
+  SIGTERM_TO_SIGKILL_MS,
 };
