@@ -331,6 +331,103 @@ function normalize(name) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Phase 4.13a — Jurisdiction screening (OFAC comprehensive countries).
+//
+// The fuzzy-name screener above can't catch a Lead/Customer based on
+// country alone — it requires a name match against the SDN list. That
+// left a real production false-negative: an entity in Iran with no
+// recognisable name slipped through as `cleared`. This block enforces
+// the OFAC comprehensive sanctions programs: any entity whose country
+// matches the JURISDICTION_BLOCK set is flagged regardless of name.
+//
+// Hardcoded set is intentional for 4.13a (per spec). 4.13d moves this
+// to a DB-backed JurisdictionRule table for the full authority/scope
+// matrix. Until then, additions need a code commit + deploy — acceptable
+// because OFAC comprehensive sanctions change rarely (Cuba 1963, Iran
+// 1979, DPRK 2008, Syria 2004 — all stable for years).
+//
+// Citations on every basis string so the AuditLog row carries the
+// underlying regulation reference for any human reviewing the block.
+
+const JURISDICTION_BLOCK = new Map([
+  ['IR', { country: 'Iran', basis: 'OFAC comprehensive sanctions — Iran (ITSR 31 CFR Part 560 / EO 13599)', authority: 'OFAC' }],
+  ['CU', { country: 'Cuba', basis: 'OFAC comprehensive sanctions — Cuba (CACR 31 CFR Part 515)', authority: 'OFAC' }],
+  ['KP', { country: 'North Korea', basis: 'OFAC comprehensive sanctions — DPRK (NKSR 31 CFR Part 510)', authority: 'OFAC' }],
+  ['SY', { country: 'Syria', basis: 'OFAC comprehensive sanctions — Syria (SySR 31 CFR Part 542)', authority: 'OFAC' }],
+]);
+
+// Case-insensitive alias map: any user-typed country variant must
+// normalise to one of the JURISDICTION_BLOCK keys. Unknown countries
+// fall through to "not sanctioned by jurisdiction" — false positives
+// on legitimate counterparties are worse than the override path that
+// 4.13c adds for the rare legitimate false negative.
+const COUNTRY_ALIASES = new Map([
+  // Iran
+  ['ir', 'IR'], ['iran', 'IR'], ['islamic republic of iran', 'IR'],
+  ['the islamic republic of iran', 'IR'], ['persia', 'IR'],
+  // Cuba
+  ['cu', 'CU'], ['cuba', 'CU'], ['republic of cuba', 'CU'],
+  // North Korea
+  ['kp', 'KP'], ['north korea', 'KP'], ['dprk', 'KP'],
+  ["democratic people's republic of korea", 'KP'],
+  ['korea, democratic peoples republic of', 'KP'],
+  ["korea, democratic people's republic of", 'KP'],
+  // Syria
+  ['sy', 'SY'], ['syria', 'SY'], ['syrian arab republic', 'SY'],
+]);
+
+function normalizeCountry(country) {
+  if (country == null) return '';
+  return String(country)
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, '')          // strip parentheticals: "Iran (Islamic Republic of)" → "iran "
+    .replace(/[.,;]/g, '')               // strip common punctuation
+    .replace(/\s+/g, ' ')                // collapse whitespace
+    .trim();
+}
+
+/**
+ * Screen a country string against OFAC comprehensive sanctions
+ * jurisdictions (Phase 4.13a). Independent of name screening — a
+ * matched jurisdiction blocks regardless of whether the name appears
+ * on any SDN list.
+ *
+ * @param {string} country   Free-text country, ISO-2 code, or alias.
+ * @returns {{status: 'flagged'|'cleared', hits: Array, screenedAt: string}}
+ *
+ * status='flagged' on a jurisdiction match; 'cleared' on miss or empty
+ * input. Empty country is intentionally NOT 'pending' — we don't want
+ * to block legitimate creates on missing data. Compliance correctness
+ * lives in screenName composing both signals.
+ */
+function screenJurisdiction(country) {
+  const screenedAt = new Date().toISOString();
+  const norm = normalizeCountry(country);
+  if (!norm) return { status: 'cleared', hits: [], screenedAt };
+
+  // Try direct ISO-2 first (cheap), then alias map.
+  const upper = norm.toUpperCase();
+  let code = JURISDICTION_BLOCK.has(upper) ? upper : null;
+  if (!code) code = COUNTRY_ALIASES.get(norm) || null;
+
+  if (!code) return { status: 'cleared', hits: [], screenedAt };
+
+  const rule = JURISDICTION_BLOCK.get(code);
+  return {
+    status: 'flagged',
+    hits: [{
+      rule: 'jurisdiction',
+      basis: rule.basis,
+      authority: rule.authority,
+      matched: `country=${rule.country}`,
+      reviewer: 'automated_screen',
+      timestamp: screenedAt,
+    }],
+    screenedAt,
+  };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Screening
 
 /**
@@ -342,20 +439,43 @@ function normalize(name) {
  *
  * Returns `pending` (not `cleared`) when no list data is loaded yet so
  * a fresh install with cold cache never silently waves traffic through.
+ *
+ * Phase 4.13a: composes name screen with jurisdiction screen. A
+ * jurisdiction match alone is sufficient to flag; either signal can
+ * trigger 'flagged'. When both signals trigger, the hits arrays are
+ * combined so the audit row carries every reason.
  */
 function screenName(name, country) {
   const screenedAt = new Date().toISOString();
+
+  // Phase 4.13a: jurisdiction screen runs first and unconditionally.
+  // A comprehensively-sanctioned country flags the entity regardless
+  // of name match, no data refresh, or empty name. The result merges
+  // with the name screen below so the audit hits carry every reason.
+  const jurisdictionResult = screenJurisdiction(country);
+
   const { entries } = loadParsed();
 
   if (!entries.length) {
-    // No data loaded — treat as pending. Callers should kick a refresh
-    // and re-screen, but the entity is not blocked.
+    // No data loaded — name screen is pending. Jurisdiction signal
+    // still stands on its own; if it flagged, return the block. Else
+    // surface 'pending' so callers know the name-list is stale.
+    if (jurisdictionResult.status === 'flagged') {
+      return { status: 'flagged', hits: jurisdictionResult.hits, screenedAt };
+    }
     return { status: 'pending', hits: [], screenedAt };
   }
 
   const normName = normalize(name);
   const normCountry = (country || '').toLowerCase().trim();
-  if (!normName) return { status: 'cleared', hits: [], screenedAt };
+  if (!normName) {
+    // Empty name: defer to jurisdiction. Previously returned 'cleared'
+    // unconditionally — that was the gap that let the Iran lead through.
+    if (jurisdictionResult.status === 'flagged') {
+      return { status: 'flagged', hits: jurisdictionResult.hits, screenedAt };
+    }
+    return { status: 'cleared', hits: [], screenedAt };
+  }
 
   const exact = [];
   const fuzzy = [];
@@ -394,16 +514,29 @@ function screenName(name, country) {
     }
   }
 
+  // Phase 4.13a: jurisdiction signal upgrades the final status. A
+  // jurisdiction match alone is enough to flag; combined with a name
+  // hit, both reasons land in the hits array.
+  const jurisdictionHits = jurisdictionResult.status === 'flagged'
+    ? jurisdictionResult.hits
+    : [];
+
   if (exact.length) {
     const anyOverlap = exact.some((h) => h.countryOverlap);
     // Exact name + no country overlap is a likely false positive
     // (different company with the same name). Demote to review.
-    const status = (!normCountry || anyOverlap) ? 'flagged' : 'requires_review';
-    return { status, hits: exact.concat(fuzzy), screenedAt };
+    let status = (!normCountry || anyOverlap) ? 'flagged' : 'requires_review';
+    // Jurisdiction flag promotes to 'flagged' regardless of name overlap.
+    if (jurisdictionHits.length) status = 'flagged';
+    return { status, hits: jurisdictionHits.concat(exact, fuzzy), screenedAt };
   }
 
   if (fuzzy.length) {
     const anyOverlap = fuzzy.some((h) => h.countryOverlap);
+    if (jurisdictionHits.length) {
+      // Jurisdiction match — flag regardless of fuzzy name overlap.
+      return { status: 'flagged', hits: jurisdictionHits.concat(fuzzy), screenedAt };
+    }
     if (!normCountry || anyOverlap) {
       return { status: 'requires_review', hits: fuzzy, screenedAt };
     }
@@ -411,6 +544,10 @@ function screenName(name, country) {
     return { status: 'cleared', hits: [], screenedAt };
   }
 
+  // No name hits. Defer to jurisdiction.
+  if (jurisdictionHits.length) {
+    return { status: 'flagged', hits: jurisdictionHits, screenedAt };
+  }
   return { status: 'cleared', hits: [], screenedAt };
 }
 
@@ -446,6 +583,10 @@ function getSanctionsStatus() {
 module.exports = {
   refreshSanctionsData,
   screenName,
+  screenJurisdiction,
   getSanctionsStatus,
   DATA_DIR,
+  // Exposed for tests and for the 4.13a backfill migration.
+  JURISDICTION_BLOCK,
+  COUNTRY_ALIASES,
 };

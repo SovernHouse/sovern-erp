@@ -638,6 +638,20 @@ db.sequelize.authenticate()
       logger.warn('[boot] C18 sanctions backfill skipped:', e.message);
     }
 
+    // Phase 4.13a: re-screen every Lead + Customer with the new
+    // jurisdiction-aware sanctions screener. Catches existing rows
+    // that pre-4.13a cleared because their name didn't match the SDN
+    // list but their country is under OFAC comprehensive sanctions
+    // (Iran, Cuba, DPRK, Syria). Rows carrying a manual_db_override
+    // marker in sanctions_screen_details are preserved as-is. Sentinel:
+    // AuditLog action phase4_13a_jurisdiction_backfilled.
+    try {
+      const { migrate413aJurisdictionBackfill } = require('./services/migrate413aJurisdictionBackfill');
+      await migrate413aJurisdictionBackfill(db);
+    } catch (e) {
+      logger.warn('[boot] phase4.13a jurisdiction backfill skipped:', e.message);
+    }
+
     // Phase 4.5, C24: refresh FW Brand signature (HTML + text) to the
     // Country Manager / FlorWay+HanHua design. Idempotent via AuditLog
     // sentinel; SH untouched.

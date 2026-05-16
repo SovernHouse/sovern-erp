@@ -5,7 +5,9 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: Phase 4.12 — MCP write-tool / controller convergence (extracted shared aiWriteServices, closed the L-013 sanctions bypass on AI writes, added auditAiWrite to 12 MCP tools, fixed a silent NOT-NULL audit-write failure that had hidden every sanctions_block at lead-create time since C18). 21 new convergence tests, 284/284 backend tests green locally.
+2026-05-16 Taiwan time. Latest: Phase 4.13a — jurisdiction screening (OFAC comprehensive: Iran, Cuba, DPRK, Syria). Closes the Phase 4.12 verification false-negative; sentinel-guarded boot migration re-screens existing rows while preserving manual_db_override markers. 41 new tests including the required Iran-positive CI gate. 328/328 backend tests green locally.
+
+2026-05-16 Taiwan time (earlier). Phase 4.12 — MCP write-tool / controller convergence (extracted shared aiWriteServices, closed the L-013 sanctions bypass on AI writes, added auditAiWrite to 12 MCP tools, fixed a silent NOT-NULL audit-write failure that had hidden every sanctions_block at lead-create time since C18). 21 new convergence tests.
 
 2026-05-15 Taiwan time (end of day). Previous: Phase 4.9.3.1 (brand-aware fromAddress hotfix codified + MCP write-tool audit). Also that session: Phase 4.11 (MCP smoke harness + lazy googleapis), Phase 4.9.3 final F+G+H (describe_entity_db + ProductPrice cleanup + boot parity check), Phase 4.10 (migration framework), Phase 4.9.5 (REST current-price endpoint).
 
@@ -13,7 +15,8 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `<pending-commit>` feat(ai-mcp+backend): Phase 4.12 — MCP write-tool / controller convergence — local 284/284 green, awaiting push
+  - `<pending-commit>` feat(compliance): Phase 4.13a — jurisdiction screening for OFAC-comprehensive countries — local 328/328 green, awaiting push
+  - `58a22e3` feat(ai-mcp+backend): Phase 4.12 — MCP write-tool / controller convergence — CI green, deployed
   - `35b7982` docs(session): refresh through Phase 4.9.3.1 + Phase 4.11
   - `fb65da0` feat(ai-mcp): Phase 4.9.3.1 — codify brand-aware fromAddress + audit MCP write tools — CI green, deploy in progress
   - `a67ec9f` test(mcp): Phase 4.11 — MCP tool smoke-test harness + lazy googleapis — CI green, deployed
@@ -36,10 +39,15 @@
 - **Mobile parity:** N/A for this session's commits — Phase 4.11 (test infra) and Phase 4.9.3.1 (MCP-only schema + tests + audit) don't touch user-facing surfaces. No mobile rebuild needed. Last EAS push from the prior session covered the user-facing changes through 4.9.3.
 
 ## Next Session — Pick Up Here
-- **Phase 4.12 verification on prod** after deploy:
-  1. AI assistant chat → SH context: ask "create a lead for TestBlockedEntity Corp in Iran". Should refuse with sanctions message. Confirm `sanctions_block` AuditLog row exists with `changes.preCreate: true` + `changes.source: 'mcp'`.
-  2. AI assistant chat: "create a lead for Test Co at test@example.com" → confirm `create_lead` is followed by an `ai_assistant_create_lead` AuditLog row.
-  3. Run audit query and confirm 12 new `ai_assistant_*` actions appear: create_lead, update_lead, create_factory, update_factory, delete_factory, create_contact, update_contact, delete_contact, schedule_follow_up, create_quotation, approve_product, send_email.
+- **Phase 4.13a deploy + boot-migration verification:**
+  1. After deploy, query `AuditLog WHERE action='phase4_13a_jurisdiction_backfilled'` on the VM — confirm one row exists with stats `{ rescreened, statusChanged, manualOverrideSkipped, alreadyProtected }`.
+  2. Confirm the existing Iran Lead (id `bf055c3f-c2d3-4db9-8100-bcad7c4664eb`) was NOT touched: `screening_status` still `'blocked'`, `sanctions_screen_details[0].reviewer === 'manual_db_override'` preserved, no new `phase4_13a_jurisdiction_rescreen` AuditLog row against that entity_id.
+  3. AI assistant chat → SH context → "create a lead for X at y@z.com in Iran". Must refuse with `sanctions_block`. Confirm new `sanctions_block` AuditLog row carries `changes.hits[0].rule === 'jurisdiction'` and `basis` cites 31 CFR Part 560.
+- **Then 4.13b/c/d** (per the approved 4-commit split):
+  - 4.13b — drop the `sanctionsScreened` legacy boolean via Phase 4.10 sentinel boot migration. Kills the L-044 state-inconsistency pattern.
+  - 4.13c — `POST /api/compliance/leads/:id/override` super_admin route (mirrors customer override). Adds the safety valve for jurisdiction-screen false positives.
+  - 4.13d — JurisdictionRule DB table + admin CRUD + full authority/scope matrix (OFAC/EU/UK/UN × comprehensive/sectoral) + Customer/Quotation parameterization + mobile UI for jurisdiction warnings (L-035).
+- **Step 3 audit query** (held until 4.13a deploys per Alex): confirm 12 new `ai_assistant_*` actions appear after a Phase 4.13a-era usage window.
 - **Carryover from Phase 4.9.3.1:** AI assistant chat mode, FW context, ask "describe the send_outreach_email tool" — confirm the new `fromAddress` parameter appears in the schema with the Phase 4.9.3.1 resolution description.
 - **Phase 4.11 smoke harness now in place** — future MCP changes should add a smoke case for any new high-value tool (template: see `backend/__tests__/integration/mcpSmoke.test.js`). Data-flow tests follow the `mcpFromAddress493_1.test.js` template (SQLITE_STORAGE override + MCP_FORCE_SYNC=false on subprocess + shared file SQLite).
 - **Brands on prod:** SH active commission=0%, FW active commission=7% (HanHua Sales Rep Agreement), HH inactive.
@@ -49,7 +57,51 @@
 
 ---
 
-## Phase 4.12 — SHIPPED (LOCAL, AWAITING PUSH)
+## Phase 4.13a — SHIPPED (LOCAL, AWAITING PUSH)
+
+Jurisdiction screening for OFAC comprehensive sanctions countries. First commit of the approved 4-commit Phase 4.13 split. Closes the live production compliance bug surfaced during Phase 4.12 verification: a Lead with `country='Iran'` cleared the sanctions screener because the pre-4.13a logic only fuzzy-matched names against the OFAC SDN list. Country-level comprehensive sanctions (ITSR / CACR / NKSR / SySR) were not enforced.
+
+### What's enforced now (4.13a scope)
+Four OFAC comprehensively-sanctioned countries hardcoded in `JURISDICTION_BLOCK`:
+- Iran (IR) — ITSR 31 CFR Part 560 / EO 13599
+- Cuba (CU) — CACR 31 CFR Part 515
+- North Korea (KP) — NKSR 31 CFR Part 510
+- Syria (SY) — SySR 31 CFR Part 542
+
+Country normalization handles ISO-2 codes, full English names, lowercase, parentheticals ("Iran (Islamic Republic of)"), and common aliases (Persia, DPRK, etc.). Unknown countries fall through to `cleared` — false positives on legitimate counterparties are worse than a missed exotic spelling, and 4.13c's override route is the safety valve.
+
+### Where the screen runs
+`sanctionsService.screenJurisdiction(country)` is a new top-level helper. `sanctionsService.screenName(name, country)` now composes both signals: a jurisdiction match alone is sufficient to flag, and on a combined hit the hits arrays concatenate so the audit row carries every reason with the regulation basis citation. No call-site changes needed — the existing service-layer hard-blocks in `leadWriteService.createLead` + `quotationWriteService.createQuotation` already gate on `screen.status === 'flagged'` and now fire for jurisdiction matches automatically.
+
+### Boot-time backfill
+New file: `backend/services/migrate413aJurisdictionBackfill.js`. Wired into `server.js` after `migrateSanctionsC18`. Sentinel: AuditLog action `phase4_13a_jurisdiction_backfilled`. For each Lead + Customer with a country set:
+- Skip rows already at `flagged` / `blocked` / `override` (PROTECTED_STATUSES).
+- Skip rows carrying a `reviewer: 'manual_db_override'` marker in `sanctions_screen_details` (preserves Alex's manual block on prod Lead `bf055c3f-c2d3-4db9-8100-bcad7c4664eb`).
+- For everything else, run the new screen. If it flags via jurisdiction, update `screening_status='flagged'`, append the jurisdiction hits to `sanctions_screen_details`, set `last_screened_at=now`, and write a `phase4_13a_jurisdiction_rescreen` AuditLog row per entity.
+
+### Required CI gate (don't delete from the test file)
+`backend/__tests__/integration/phase413aJurisdictionScreen.test.js` is intentionally structured so that the very first describe block is the Iran-positive test. "4.13a CI green" must mean "the Iran false-negative cannot recur." 41 new tests total: 4 jurisdictions × multiple aliases each, 11 negative cases (USA, China, Mexico, India, Germany, Japan, etc.), screenName composition cases, empty-input cases, manual-override preservation.
+
+### Lessons captured
+- **L-046** — Sanctions screening must compose multiple signals; entity-level SDN match alone is not enough. Country-level jurisdiction signal must run independently and concatenate into the same `{ status, hits, screenedAt }` shape.
+
+### Files changed
+- New: `backend/services/migrate413aJurisdictionBackfill.js`
+- New: `backend/__tests__/integration/phase413aJurisdictionScreen.test.js`
+- Edited: `backend/services/sanctionsService.js` (JURISDICTION_BLOCK + COUNTRY_ALIASES + screenJurisdiction + screenName composition)
+- Edited: `backend/server.js` (wire boot migration)
+
+### What 4.13a does NOT do (deferred per spec)
+- Drop the legacy `sanctionsScreened` boolean → 4.13b
+- Super_admin override route for jurisdiction false positives → 4.13c
+- JurisdictionRule DB table + admin CRUD + full authority/scope matrix + Customer/Quotation parameterization + mobile UI → 4.13d (covers L-035)
+
+### Mobile parity
+N/A in 4.13a (backend-only). 4.13d covers the L-035 mobile-warning UI.
+
+---
+
+## Phase 4.12 — SHIPPED (PROD GREEN)
 
 MCP write-tool / controller convergence. Pulled the inline business logic out of leadController.create/update/delete, quotationController.create, factoryController.create/update/delete, and contactController.create/update/delete into a shared service layer under `backend/services/aiWriteServices/`. Both REST controllers and MCP handlers now call the same service functions — sanctions screening, brand-scope enforcement, leadNumber generation, ProductPrice floor checks, and audit logging happen exactly once per write surface.
 
