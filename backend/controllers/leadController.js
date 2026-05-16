@@ -3,6 +3,7 @@ const db = require('../models');
 const sequelize = db.sequelize;
 const { v4: uuidv4 } = require('uuid');
 const { assertSingleBrandMode, assertBrandWritable } = require('../middleware/brandScope');
+const leadWriteService = require('../services/aiWriteServices/leadWriteService');
 // Helper function to calculate lead score
 const calculateLeadScore = (lead) => {
   let score = 0;
@@ -134,75 +135,22 @@ exports.getLeadById = async (req, res) => {
 
 exports.createLead = async (req, res) => {
   try {
-    // Phase 1 Commit 3: brand-scope enforcement on creation.
-    // Reject in cross-brand mode (D-3: All Brands view is read-only).
-    if (!assertSingleBrandMode(req, res)) return;
-
-    const payload = { ...req.body };
-    // Stamp the creator from the authenticated user; ignore any client-supplied value.
-    if (req.user && req.user.id) payload.createdById = req.user.id;
-
-    // Default brand to the user's defaultBrand if the client didn't send one.
-    // Then assert the user has write access to whatever brand we ended up with.
-    if (!payload.brandCode && req.brandScope) {
-      payload.brandCode = req.brandScope.defaultBrand;
+    const result = await leadWriteService.createLead(req.body || {}, {
+      userId: req.user?.id || null,
+      brandScope: req.brandScope || null,
+      ip: req.ip || null,
+      source: 'rest',
+    });
+    if (!result.ok) {
+      const body = { success: false, message: result.message };
+      if (result.sanctionsBlock) body.sanctionsBlock = result.sanctionsBlock;
+      return res.status(result.httpStatus || 400).json(body);
     }
-    if (!assertBrandWritable(req, res, payload.brandCode)) return;
-
-    // Phase 4, C18: synchronous sanctions screen at create time. Flagged
-    // leads block here BEFORE the row persists — a quick win compared to
-    // creating-then-blocking. requires_review still creates but with the
-    // status set so the UI can surface the warning.
-    const sanctionsService = require('../services/sanctionsService');
-    const auditService = require('../services/auditService');
-    const screen = sanctionsService.screenName(payload.companyName, payload.country);
-    payload.screeningStatus = screen.status;
-    payload.sanctionsScreenDetails = screen.hits;
-    payload.lastScreenedAt = new Date();
-    if (screen.status === 'flagged') {
-      auditService.logAction(
-        req.user?.id,
-        'sanctions_block',
-        'Lead',
-        null,
-        { companyName: payload.companyName, country: payload.country, hits: screen.hits },
-        req.ip,
-      ).catch(() => {});
-      return res.status(403).json({
-        success: false,
-        message: `Sanctions match on "${payload.companyName}". Matched on ${screen.hits.map((h) => h.list).join(', ')}. Super-admin override required.`,
-        sanctionsBlock: { status: screen.status, hits: screen.hits },
-      });
-    }
-
-    // Phase 4.8 Commit 3a: stamp the human-readable LD-YYYYMMDD-NNN
-    // before persist. If the client supplied a leadNumber for an import
-    // flow, respect it; otherwise generate. Collisions on the UNIQUE
-    // column are extremely unlikely (the counter scans existing today-
-    // prefixed rows) but if they happen Sequelize throws, the catch
-    // block returns 500, and the next attempt picks max+1 cleanly.
-    if (!payload.leadNumber) {
-      const { generateLeadNumber } = require('../services/leadNumberGenerator');
-      payload.leadNumber = await generateLeadNumber(db);
-    }
-
-    const lead = await db.Lead.create(payload);
-
-    // Phase 3, C13: if this lead was created against an existing customer
-    // under a brand they didn't yet have, extend customer.brandRelationships
-    // and surface the new brand on the response so the frontend can toast.
-    let autoAddedBrand = null;
-    if (lead.customerId && lead.brandCode) {
-      const { addBrandIfMissing } = require('../services/crossBrandAutoAdd');
-      autoAddedBrand = await addBrandIfMissing(db, lead.customerId, lead.brandCode, {
-        userId: req.user?.id,
-        entity: 'Lead',
-        entityId: lead.id,
-        ip: req.ip,
-      });
-    }
-
-    res.status(201).json({ success: true, data: lead, autoAddedBrand });
+    res.status(201).json({
+      success: true,
+      data: result.lead,
+      autoAddedBrand: result.autoAddedBrand,
+    });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -210,29 +158,17 @@ exports.createLead = async (req, res) => {
 
 exports.updateLead = async (req, res) => {
   try {
-    if (!assertSingleBrandMode(req, res)) return;
-
-    const lead = await db.Lead.findByPk(req.params.id);
-    if (!lead) {
-      return res.status(404).json({ success: false, message: 'Lead not found' });
+    const result = await leadWriteService.updateLead(req.params.id, req.body || {}, {
+      userId: req.user?.id || null,
+      brandScope: req.brandScope || null,
+      ip: req.ip || null,
+      source: 'rest',
+    });
+    if (!result.ok) {
+      return res.status(result.httpStatus || 400).json({ success: false, message: result.message });
     }
-
-    // Caller must have access to the lead's current brand.
-    if (req.brandScope
-        && !req.brandScope.accessibleBrands.includes(lead.brandCode)) {
-      return res.status(404).json({ success: false, message: 'Lead not found' });
-    }
-
-    // brandCode is immutable on the standard update path. Changes flow only
-    // through PATCH /api/admin/brand-override (super_admin, audited). Strip
-    // it from req.body silently rather than 400 — the field will arrive
-    // attached whenever the frontend submits the whole form back.
-    const { brandCode: _ignored, ...allowed } = req.body || {};
-
-    await lead.update(allowed);
-    const updated = lead.toJSON();
-    updated.score = calculateLeadScore(lead);
-
+    const updated = result.lead.toJSON();
+    updated.score = calculateLeadScore(result.lead);
     res.json({ success: true, data: updated });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -265,23 +201,15 @@ exports.updateLeadStatus = async (req, res) => {
 
 exports.deleteLead = async (req, res) => {
   try {
-    if (!assertSingleBrandMode(req, res)) return;
-
-    const lead = await db.Lead.findByPk(req.params.id);
-    if (!lead) {
-      return res.status(404).json({ success: false, message: 'Lead not found' });
+    const result = await leadWriteService.deleteLead(req.params.id, {
+      userId: req.user?.id || null,
+      brandScope: req.brandScope || null,
+      ip: req.ip || null,
+      source: 'rest',
+    });
+    if (!result.ok) {
+      return res.status(result.httpStatus || 500).json({ success: false, message: result.message });
     }
-
-    if (req.brandScope
-        && !req.brandScope.accessibleBrands.includes(lead.brandCode)) {
-      return res.status(404).json({ success: false, message: 'Lead not found' });
-    }
-
-    // Cascade delete related outreach emails before removing the lead
-    if (db.OutreachEmail) {
-      await db.OutreachEmail.destroy({ where: { leadId: lead.id } });
-    }
-    await lead.destroy();
     res.json({ success: true, message: 'Lead deleted' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

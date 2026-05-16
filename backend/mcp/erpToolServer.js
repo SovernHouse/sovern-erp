@@ -590,10 +590,29 @@ async function callTool(name, args) {
     }
 
     case 'send_email': {
+      const requester = await getCurrentUserOrThrow();
       // Phase 4.7, C-1: route via the brand-appropriate account when the
-      // model passes from_email (e.g. "alexflorway@gmail.com" for an FW
-      // thread). Falls back to the default active account when omitted.
+      // model passes from_email. Phase 4.12: also verify the resolved
+      // account is one the AI is permitted to use — refuse to send via
+      // an account whose brandCode is outside the requester's accessible
+      // brands (mirrors triageController.brand_account_mismatch_block).
       const { auth, account } = await getGoogleAuth(args.from_email);
+      const brandScope = await brandScopeForMcp(requester);
+      if (account.brandCode && !brandScope.accessibleBrands.includes(account.brandCode)) {
+        await auditAiWrite('send_email_blocked', 'ConnectedGoogleAccount', account.id, {
+          reason: 'brand_account_mismatch',
+          accountEmail: account.email,
+          accountBrand: account.brandCode,
+          requesterBrands: brandScope.accessibleBrands,
+          attemptedTo: args.to,
+          attemptedSubject: args.subject,
+        }, requester.id);
+        return formatMcpWriteError({
+          ok: false,
+          code: 'brand_not_writable',
+          message: `Cannot send from ${account.email}: that account is tied to brand ${account.brandCode}, which is outside your accessible brands.`,
+        });
+      }
       const gmail = getGoogle().gmail({ version: 'v1', auth });
 
       const to = Array.isArray(args.to) ? args.to.join(', ') : args.to;
@@ -613,6 +632,15 @@ async function callTool(name, args) {
           threadId: args.reply_to_thread_id || undefined,
         },
       });
+
+      await auditAiWrite('send_email', 'ConnectedGoogleAccount', account.id, {
+        from: account.email,
+        brandCode: account.brandCode || null,
+        to,
+        subject: args.subject,
+        threadId: resp.data.threadId,
+        messageId: resp.data.id,
+      }, requester.id);
 
       return {
         success: true,
@@ -663,17 +691,23 @@ async function callTool(name, args) {
     }
 
     case 'update_lead': {
-      const lead = await getDb().Lead.findByPk(args.id);
-      if (!lead) return `Lead ${args.id} not found.`;
-      const allowed = ['status', 'stage', 'notes', 'productInterest',
+      const requester = await getCurrentUserOrThrow();
+      const brandScope = await brandScopeForMcp(requester);
+      // Phase 4.12: 'notes' in the tool schema maps to Lead.description on
+      // the model; the pre-4.12 handler accepted 'notes' but Sequelize
+      // silently dropped it because the column doesn't exist. Translate
+      // here so AI-set notes actually persist.
+      const allowed = ['status', 'stage', 'description', 'productInterest',
         'estimatedValue', 'priority', 'nextFollowUp',
         'industry', 'address', 'city', 'state', 'country', 'website', 'vertical',
         'draftEmailSubject', 'draftEmailBody',
         'assignedToId', 'responsibleUserIds'];
-      const updates = Object.fromEntries(
-        Object.entries(args).filter(([k]) => allowed.includes(k))
-      );
-      // Validate responsibleUserIds is an array of UUID strings if provided
+      const aliasMap = { notes: 'description' };
+      const updates = {};
+      for (const [k, v] of Object.entries(args)) {
+        const field = aliasMap[k] || k;
+        if (allowed.includes(field)) updates[field] = v;
+      }
       if (updates.responsibleUserIds !== undefined) {
         if (!Array.isArray(updates.responsibleUserIds)) {
           return `responsibleUserIds must be an array of user IDs.`;
@@ -681,8 +715,20 @@ async function callTool(name, args) {
         updates.responsibleUserIds = updates.responsibleUserIds
           .filter(x => typeof x === 'string' && x.length > 0);
       }
-      await lead.update(updates);
-      return { success: true, updated: Object.keys(updates), lead: lead.toJSON() };
+      const leadWriteService = require('../services/aiWriteServices/leadWriteService');
+      const result = await leadWriteService.updateLead(args.id, updates, {
+        userId: requester.id,
+        brandScope,
+        ip: null,
+        source: 'mcp',
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('update_lead', 'Lead', result.lead.id, {
+        before: result.before,
+        after: result.after,
+        appliedKeys: Object.keys(updates),
+      }, requester.id);
+      return { success: true, updated: Object.keys(updates), lead: result.lead.toJSON() };
     }
 
     case 'list_users': {
@@ -818,45 +864,43 @@ async function callTool(name, args) {
 
     case 'create_factory': {
       if (!args.company_name) return 'company_name is required.';
-      // Email and phone are required by the model, but if Alex hasn't given
-      // them yet (e.g. backfilling factories from contact data), accept
-      // placeholder values and let him fix the records later.
-      // Phase 4.9.2a: optional brandCode. Validated when present.
-      const brandCode = args.brand_code || args.brandCode || null;
-      if (brandCode != null) {
-        const b = await getDb().Brand.findOne({ where: { code: String(brandCode).toUpperCase() } });
-        if (!b) return `Error: brandCode "${brandCode}" does not exist in Brand. Use list_brands to find valid codes, or create_brand to provision one first.`;
-      }
-      const factory = await getDb().Factory.create({
-        companyName:    args.company_name,
-        contactPerson:  args.contact_person || null,
-        email:          args.email || 'unknown@unknown.local',
-        phone:          args.phone || 'unknown',
-        address:        args.address  || null,
-        city:           args.city     || null,
-        country:        args.country  || null,
-        currency:       args.currency       || 'USD',
-        paymentTerms:   args.payment_terms  || 'Net 60',
-        leadTimeDays:   args.lead_time_days || 30,
-        rating:         args.rating         || 5.0,
-        certifications: args.certifications  || [],
-        specializations:args.specializations || [],
-        notes:          args.notes    || null,
-        brandCode:      brandCode ? String(brandCode).toUpperCase() : null,
-      });
+      const requester = await getCurrentUserOrThrow();
+      const factoryWriteService = require('../services/aiWriteServices/factoryWriteService');
+      const result = await factoryWriteService.createFactory({
+        companyName: args.company_name,
+        contactPerson: args.contact_person || null,
+        email: args.email || null,
+        phone: args.phone || null,
+        address: args.address || null,
+        city: args.city || null,
+        country: args.country || null,
+        currency: args.currency || null,
+        paymentTerms: args.payment_terms || null,
+        leadTimeDays: args.lead_time_days,
+        rating: args.rating,
+        certifications: args.certifications,
+        specializations: args.specializations,
+        notes: args.notes || null,
+        brandCode: args.brand_code || args.brandCode || null,
+      }, { userId: requester.id, ip: null, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+
+      await auditAiWrite('create_factory', 'Factory', result.factory.id, {
+        companyName: result.factory.companyName,
+        country: result.factory.country,
+        brandCode: result.factory.brandCode,
+      }, requester.id);
+
       return {
         success: true,
-        factoryId: factory.id,
-        companyName: factory.companyName,
-        message: `Factory "${factory.companyName}" created. Edit at /factories/${factory.id}.`,
+        factoryId: result.factory.id,
+        companyName: result.factory.companyName,
+        message: `Factory "${result.factory.companyName}" created. Edit at /factories/${result.factory.id}.`,
       };
     }
 
     case 'update_factory': {
-      const factory = await getDb().Factory.findByPk(args.id);
-      if (!factory) return `Factory ${args.id} not found.`;
-      // Phase 4.9.2a: brandCode allowed. Validated against Brand table
-      // when set to a non-null value. Pass null explicitly to clear.
+      const requester = await getCurrentUserOrThrow();
       const allowed = ['companyName', 'contactPerson', 'email', 'phone',
         'address', 'city', 'country', 'currency', 'paymentTerms',
         'leadTimeDays', 'rating', 'certifications', 'specializations', 'notes',
@@ -874,79 +918,94 @@ async function callTool(name, args) {
         const field = aliasMap[k] || k;
         if (allowed.includes(field)) updates[field] = v;
       }
-      if (updates.brandCode != null && updates.brandCode !== '') {
-        const code = String(updates.brandCode).toUpperCase();
-        const b = await getDb().Brand.findOne({ where: { code } });
-        if (!b) return `Error: brandCode "${updates.brandCode}" does not exist in Brand. Use list_brands to find valid codes.`;
-        updates.brandCode = code;
-      } else if (updates.brandCode === '' || updates.brandCode === null) {
-        updates.brandCode = null;
-      }
-      await factory.update(updates);
-      return { success: true, updated: Object.keys(updates), factory: factory.toJSON() };
+      const factoryWriteService = require('../services/aiWriteServices/factoryWriteService');
+      const result = await factoryWriteService.updateFactory(args.id, updates, {
+        userId: requester.id, ip: null, source: 'mcp',
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+
+      await auditAiWrite('update_factory', 'Factory', result.factory.id, {
+        before: result.before,
+        after: result.after,
+        appliedKeys: Object.keys(updates),
+      }, requester.id);
+
+      return { success: true, updated: Object.keys(updates), factory: result.factory.toJSON() };
     }
 
     case 'create_contact': {
-      if (!args.first_name && !args.last_name) {
-        return 'first_name or last_name is required.';
-      }
-      if (!args.email) return 'email is required.';
-      if (!args.factory_id && !args.customer_id) {
-        return 'Either factory_id (supplier-side) or customer_id (buyer-side) is required.';
-      }
-      const contact = await getDb().Contact.create({
-        firstName:   args.first_name   || '',
-        lastName:    args.last_name    || '',
-        email:       args.email,
-        phone:       args.phone        || null,
-        mobile:      args.mobile       || null,
-        jobTitle:    args.job_title    || null,
-        department:  args.department   || null,
-        customerId:  args.customer_id  || null,
-        factoryId:   args.factory_id   || null,
-        isPrimary:   args.is_primary === true,
-        website:     args.website      || null,
+      const requester = await getCurrentUserOrThrow();
+      const contactWriteService = require('../services/aiWriteServices/contactWriteService');
+      const result = await contactWriteService.createContact({
+        firstName: args.first_name || '',
+        lastName: args.last_name || '',
+        email: args.email,
+        phone: args.phone || null,
+        mobile: args.mobile || null,
+        jobTitle: args.job_title || null,
+        department: args.department || null,
+        customerId: args.customer_id || null,
+        factoryId: args.factory_id || null,
+        isPrimary: args.is_primary === true,
+        website: args.website || null,
         linkedinUrl: args.linkedin_url || null,
-        notes:       args.notes        || null,
-        isActive:    args.is_active !== false,
-      });
+        notes: args.notes || null,
+        isActive: args.is_active !== false,
+      }, { userId: requester.id, ip: null, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+
+      await auditAiWrite('create_contact', 'Contact', result.contact.id, {
+        firstName: result.contact.firstName,
+        lastName: result.contact.lastName,
+        email: result.contact.email,
+        factoryId: result.contact.factoryId,
+        customerId: result.contact.customerId,
+      }, requester.id);
+
       return {
         success: true,
-        contactId: contact.id,
-        message: `Contact "${contact.firstName} ${contact.lastName}" created.`,
-        contact: contact.toJSON(),
+        contactId: result.contact.id,
+        message: `Contact "${result.contact.firstName} ${result.contact.lastName}" created.`,
+        contact: result.contact.toJSON(),
       };
     }
 
     case 'delete_contact': {
-      const contact = await getDb().Contact.findByPk(args.id);
-      if (!contact) return `Contact ${args.id} not found.`;
-      const name = `${contact.firstName} ${contact.lastName}`.trim();
-      await contact.destroy();
+      const requester = await getCurrentUserOrThrow();
+      const contactWriteService = require('../services/aiWriteServices/contactWriteService');
+      const result = await contactWriteService.deleteContact(args.id, {
+        userId: requester.id, ip: null, source: 'mcp',
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+
+      const name = `${result.deleted.firstName} ${result.deleted.lastName}`.trim();
+      await auditAiWrite('delete_contact', 'Contact', args.id, {
+        firstName: result.deleted.firstName,
+        lastName: result.deleted.lastName,
+        email: result.deleted.email,
+      }, requester.id);
+
       return { success: true, deletedContactId: args.id, name };
     }
 
     case 'delete_factory': {
-      const factory = await getDb().Factory.findByPk(args.id);
-      if (!factory) return `Factory ${args.id} not found.`;
-      // Block delete if there are open POs — same rule as the REST endpoint.
-      const openPOs = await getDb().PurchaseOrder.count({
-        where: {
-          factoryId: args.id,
-          status: { [require('sequelize').Op.notIn]: ['completed', 'cancelled'] },
-        },
-      }).catch(() => 0);
-      if (openPOs > 0) {
-        return `Cannot delete: factory has ${openPOs} open purchase order(s). Close or cancel them first.`;
-      }
-      const name = factory.companyName;
-      await factory.destroy();
-      return { success: true, deletedFactoryId: args.id, name };
+      const requester = await getCurrentUserOrThrow();
+      const factoryWriteService = require('../services/aiWriteServices/factoryWriteService');
+      const result = await factoryWriteService.deleteFactory(args.id, {
+        userId: requester.id, ip: null, source: 'mcp',
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+
+      await auditAiWrite('delete_factory', 'Factory', args.id, {
+        companyName: result.deleted.companyName,
+        country: result.deleted.country,
+      }, requester.id);
+
+      return { success: true, deletedFactoryId: args.id, name: result.deleted.companyName };
     }
 
     case 'update_contact': {
-      const contact = await getDb().Contact.findByPk(args.id);
-      if (!contact) return `Contact ${args.id} not found.`;
+      const requester = await getCurrentUserOrThrow();
       const allowed = ['firstName', 'lastName', 'email', 'phone', 'mobile',
         'jobTitle', 'department', 'customerId', 'factoryId', 'isPrimary',
         'website', 'linkedinUrl', 'notes', 'isActive'];
@@ -966,8 +1025,19 @@ async function callTool(name, args) {
         const field = aliasMap[k] || k;
         if (allowed.includes(field)) updates[field] = v;
       }
-      await contact.update(updates);
-      return { success: true, updated: Object.keys(updates), contact: contact.toJSON() };
+      const contactWriteService = require('../services/aiWriteServices/contactWriteService');
+      const result = await contactWriteService.updateContact(args.id, updates, {
+        userId: requester.id, ip: null, source: 'mcp',
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+
+      await auditAiWrite('update_contact', 'Contact', result.contact.id, {
+        before: result.before,
+        after: result.after,
+        appliedKeys: Object.keys(updates),
+      }, requester.id);
+
+      return { success: true, updated: Object.keys(updates), contact: result.contact.toJSON() };
     }
 
     // ── Quotations ──────────────────────────────────────────────────────────
@@ -1107,8 +1177,6 @@ async function callTool(name, args) {
       if (!company_name || !contact_name || !email) {
         return 'Missing required fields. Need: company_name, contact_name, email.';
       }
-      // Light email format guard — Sequelize's isEmail validator catches the
-      // rest server-side.
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return `Invalid email: ${email}`;
       }
@@ -1123,7 +1191,10 @@ async function callTool(name, args) {
           message: `Lead already exists for ${email} (id=${existing.id}). Returning existing record.`,
         };
       }
-      const lead = await getDb().Lead.create({
+
+      const requester = await getCurrentUserOrThrow();
+      const brandScope = await brandScopeForMcp(requester);
+      const payload = {
         companyName: company_name,
         contactName: contact_name,
         email,
@@ -1141,9 +1212,33 @@ async function callTool(name, args) {
         leadType: args.lead_type || 'outbound_prospect',
         description: args.notes || null,
         tags: Array.isArray(args.tags) ? args.tags : [],
-        assignedToId: USER_ID || null,
+        assignedToId: requester.id,
+        brandCode: args.brand_code || args.brandCode || null,
+      };
+
+      const leadWriteService = require('../services/aiWriteServices/leadWriteService');
+      const result = await leadWriteService.createLead(payload, {
+        userId: requester.id,
+        brandScope,
+        ip: null,
+        source: 'mcp',
       });
-      return { success: true, lead: lead.toJSON() };
+      if (!result.ok) return formatMcpWriteError(result);
+
+      await auditAiWrite('create_lead', 'Lead', result.lead.id, {
+        companyName: result.lead.companyName,
+        email: result.lead.email,
+        brandCode: result.lead.brandCode,
+        leadNumber: result.lead.leadNumber,
+        screeningStatus: result.lead.screeningStatus,
+        autoAddedBrand: result.autoAddedBrand,
+      }, requester.id);
+
+      return {
+        success: true,
+        lead: result.lead.toJSON(),
+        autoAddedBrand: result.autoAddedBrand,
+      };
     }
 
     case 'send_outreach_email': {
@@ -1297,6 +1392,7 @@ async function callTool(name, args) {
     }
 
     case 'schedule_follow_up': {
+      const requester = await getCurrentUserOrThrow();
       const { outreach_email_id, lead_id, follow_up_at, note } = args;
       if (!follow_up_at) return 'Missing follow_up_at (ISO date string).';
       const date = new Date(follow_up_at);
@@ -1305,26 +1401,39 @@ async function callTool(name, args) {
       if (outreach_email_id) {
         const oe = await getDb().OutreachEmail.findByPk(outreach_email_id);
         if (!oe) return `Outreach email ${outreach_email_id} not found.`;
+        const before = { followUpDueAt: oe.followUpDueAt, followUpNote: oe.followUpNote, followUpCompleted: oe.followUpCompleted };
         await oe.update({ followUpDueAt: date, followUpNote: note || oe.followUpNote, followUpCompleted: false });
+        await auditAiWrite('schedule_follow_up', 'OutreachEmail', oe.id, {
+          before, after: { followUpDueAt: date.toISOString(), followUpNote: note || oe.followUpNote, followUpCompleted: false },
+        }, requester.id);
         return { success: true, scope: 'outreach_email', id: oe.id, followUpDueAt: date.toISOString() };
       }
       if (lead_id) {
         const lead = await getDb().Lead.findByPk(lead_id);
         if (!lead) return `Lead ${lead_id} not found.`;
+        const beforeExpected = lead.expectedCloseDate;
         await lead.update({ expectedCloseDate: lead.expectedCloseDate || date });
-        // Also log an Activity row for visibility on the lead detail page.
+        let activityId = null;
         if (getDb().Activity) {
-          await getDb().Activity.create({
+          const activity = await getDb().Activity.create({
             type: 'follow_up',
             subject: 'Follow-up scheduled',
             description: note || `Follow-up scheduled for ${date.toISOString().slice(0, 10)}`,
             scheduledAt: date,
             leadId: lead.id,
-            userId: USER_ID || null,
+            userId: requester.id,
             isCompleted: false,
             priority: 'medium',
           });
+          activityId = activity.id;
         }
+        await auditAiWrite('schedule_follow_up', 'Lead', lead.id, {
+          scheduledAt: date.toISOString(),
+          note: note || null,
+          activityId,
+          expectedCloseDateBefore: beforeExpected,
+          expectedCloseDateAfter: lead.expectedCloseDate,
+        }, requester.id);
         return { success: true, scope: 'lead', id: lead.id, scheduledAt: date.toISOString() };
       }
       return 'Provide either outreach_email_id or lead_id.';
@@ -1513,16 +1622,9 @@ async function callTool(name, args) {
     }
 
     case 'create_quotation': {
-      // Creates a draft Quotation with items. Resolves lead→customer:
-      //   - If customer_id passed: use it directly.
-      //   - If lead_id passed and lead.convertedCustomerId set: use that.
-      //   - If lead_id passed without conversion: auto-create a Customer
-      //     from the lead's data, link via convertedCustomerId, proceed.
-      // Generates quotationNumber via incrementCounter (matches the
-      // existing /api/quotations create flow). Sets status='draft'.
-
       const { customer_id, lead_id, items, currency, valid_days, terms,
-              factory_id, discount, discount_type, tax_rate, payment_terms } = args;
+              factory_id, discount, discount_type, tax_rate, payment_terms,
+              brand_code } = args;
 
       if (!Array.isArray(items) || items.length === 0) {
         return 'Missing items array. Each item needs: product_id, quantity, unit_price.';
@@ -1533,102 +1635,92 @@ async function callTool(name, args) {
         }
       }
 
-      // Resolve customer
+      const requester = await getCurrentUserOrThrow();
+      const brandScope = await brandScopeForMcp(requester);
+
+      // MCP-only lead→customer auto-conversion. REST callers always pass
+      // customerId directly; the MCP tool is convenience layer for "quote
+      // this prospect" workflows where the Lead hasn't been converted yet.
       let resolvedCustomerId = customer_id;
       let resolvedLeadId = lead_id || null;
-      let lead = null;
+      let leadAutoConverted = false;
       if (lead_id) {
-        lead = await getDb().Lead.findByPk(lead_id);
+        const lead = await getDb().Lead.findByPk(lead_id);
         if (!lead) return `Lead ${lead_id} not found.`;
         if (lead.convertedCustomerId) {
           resolvedCustomerId = lead.convertedCustomerId;
         } else if (!resolvedCustomerId) {
-          // Auto-convert: create a Customer from the lead's data
           const newCustomer = await getDb().Customer.create({
             companyName: lead.companyName,
             contactPerson: lead.contactName,
             email: lead.email,
-            phone: lead.phone || '',  // Customer.phone is allowNull: false
+            phone: lead.phone || '',
             country: lead.country || null,
             city: lead.city || null,
             currency: lead.currency || currency || 'USD',
             paymentTerms: payment_terms || 'Net 30',
           });
           resolvedCustomerId = newCustomer.id;
-          // Mark the lead as converted (status=won, convertedCustomerId set)
           await lead.update({ convertedCustomerId: newCustomer.id, status: 'won', wonDate: new Date() });
+          leadAutoConverted = true;
         }
       }
       if (!resolvedCustomerId) {
         return 'Need either customer_id, or lead_id (will auto-convert lead to customer).';
       }
 
-      // Generate quotationNumber via the existing helper
-      const { generateNumberWithCounter, incrementCounter } = require('../services/numberGenerator');
-      const lastQuotation = await getDb().Quotation.findOne({ order: [['createdAt', 'DESC']] });
-      const counter = incrementCounter(lastQuotation?.quotationNumber);
-      const quotationNumber = generateNumberWithCounter(process.env.DOC_PREFIX_QUOTATION || 'QOT', counter);
+      // Shape items into the camelCase payload the service expects.
+      const camelItems = items.map(it => ({
+        productId: it.product_id,
+        quantity: parseFloat(it.quantity),
+        unitPrice: parseFloat(it.unit_price),
+        unit: it.unit,
+        description: it.description,
+        discount: it.discount,
+        notes: it.notes,
+        originCountry: it.origin_country || it.originCountry || null,
+      }));
 
-      // Compute totals
-      let subtotal = 0;
-      const itemRows = [];
-      for (const it of items) {
-        const product = await getDb().Product.findByPk(it.product_id);
-        const lineTotal = parseFloat(it.quantity) * parseFloat(it.unit_price);
-        subtotal += lineTotal;
-        itemRows.push({
-          productId: it.product_id,
-          description: it.description || (product ? product.name : null),
-          quantity: parseFloat(it.quantity),
-          unit: it.unit || (product ? product.unit : null),
-          unitPrice: parseFloat(it.unit_price),
-          discount: parseFloat(it.discount || 0),
-          total: lineTotal,
-          notes: it.notes || '',
-        });
-      }
-      const discAmt = (discount_type === 'percentage')
-        ? (subtotal * parseFloat(discount || 0)) / 100
-        : parseFloat(discount || 0);
-      const afterDisc = subtotal - discAmt;
-      const taxAmt = (afterDisc * parseFloat(tax_rate || 0)) / 100;
-      const total = afterDisc + taxAmt;
-
-      const validUntil = new Date(Date.now() + (parseInt(valid_days || 30, 10)) * 86400000);
-
-      // Create the quotation
-      const quotation = await getDb().Quotation.create({
-        quotationNumber,
+      const quotationWriteService = require('../services/aiWriteServices/quotationWriteService');
+      const result = await quotationWriteService.createQuotation({
         customerId: resolvedCustomerId,
-        leadId: resolvedLeadId || null,
+        leadId: resolvedLeadId,
         factoryId: factory_id || null,
-        salesPersonId: USER_ID || null,
-        status: 'draft',
-        subtotal,
-        discount: parseFloat(discount || 0),
-        discountType: discount_type || 'fixed',
-        tax: taxAmt,
-        taxRate: parseFloat(tax_rate || 0),
-        total,
+        salesPersonId: requester.id,
+        items: camelItems,
         currency: currency || 'USD',
-        validUntil,
+        validDays: valid_days,
         terms: terms || null,
+        discount: discount,
+        discountType: discount_type,
+        taxRate: tax_rate,
+        brandCode: brand_code || args.brandCode || null,
+      }, {
+        userId: requester.id,
+        role: requester.role,
+        brandScope,
+        ip: null,
+        source: 'mcp',
       });
 
-      // Create the items
-      for (const row of itemRows) {
-        await getDb().QuotationItem.create({ ...row, quotationId: quotation.id });
-      }
+      if (!result.ok) return formatMcpWriteError(result);
 
-      // Reload with items for the return shape
-      const full = await getDb().Quotation.findByPk(quotation.id, {
-        include: [{ model: getDb().QuotationItem, as: 'items' }],
-      });
+      await auditAiWrite('create_quotation', 'Quotation', result.quotation.id, {
+        quotationNumber: result.quotation.quotationNumber,
+        customerId: resolvedCustomerId,
+        brandCode: result.quotation.brandCode,
+        itemCount: camelItems.length,
+        total: result.quotation.total,
+        leadAutoConverted,
+        autoAddedBrand: result.autoAddedBrand,
+      }, requester.id);
 
+      const full = result.quotation;
       return {
         success: true,
         quotation: full.toJSON(),
-        message: `Created ${quotation.status} quotation ${quotation.quotationNumber} with ${itemRows.length} item(s). Total: ${currency || 'USD'} ${total.toFixed(2)}.${lead && !customer_id ? ' (Auto-converted lead to customer.)' : ''}`,
+        autoAddedBrand: result.autoAddedBrand,
+        message: `Created ${full.status} quotation ${full.quotationNumber} with ${camelItems.length} item(s). Total: ${full.currency} ${Number(full.total).toFixed(2)}.${leadAutoConverted ? ' (Auto-converted lead to customer.)' : ''}`,
       };
     }
 
@@ -2335,30 +2427,39 @@ async function callTool(name, args) {
     }
 
     case 'approve_product': {
+      const requester = await requireSuperAdmin();
       const product = await getDb().Product.findByPk(args.product_id);
       if (!product) return `Product ${args.product_id} not found.`;
 
+      const wasActive = product.isActive;
       await product.update({ isActive: true });
 
-      // Activate all prices for this product
       const priceCount = await getDb().ProductPrice.update(
         { isActive: true },
         { where: { productId: args.product_id } }
       );
 
-      // Mark approval task(s) done
       await getDb().ScheduledActivity.update(
         { status: 'done', completedAt: new Date(), completedNote: args.note || 'Approved via AI assistant' },
         { where: { entityType: 'Product', entityId: args.product_id, status: 'pending' } }
       );
 
+      const activatedCount = Array.isArray(priceCount) ? priceCount[0] : priceCount;
+      await auditAiWrite('approve_product', 'Product', product.id, {
+        sku: product.sku,
+        name: product.name,
+        wasActive,
+        pricesActivated: activatedCount,
+        note: args.note || null,
+      }, requester.id);
+
       return {
-        success:       true,
-        productId:     product.id,
-        name:          product.name,
-        sku:           product.sku,
-        pricesActivated: Array.isArray(priceCount) ? priceCount[0] : priceCount,
-        message:       `Product "${product.name}" is now active and available for quotations.`,
+        success: true,
+        productId: product.id,
+        name: product.name,
+        sku: product.sku,
+        pricesActivated: activatedCount,
+        message: `Product "${product.name}" is now active and available for quotations.`,
       };
     }
 
@@ -3215,6 +3316,42 @@ async function requireSuperAdmin() {
     throw err;
   }
   return user;
+}
+
+// Phase 4.12: synthesize a brandScope object from a User row so the
+// aiWriteServices layer behaves the same on MCP as it does behind REST.
+// MCP cross-brand mode is intentionally disabled — only Alex's "All Brands"
+// dropdown in the desktop UI can flip that on, and even there it's
+// read-only by design (D-3).
+async function brandScopeForMcp(user) {
+  const u = user || await getCurrentUserOrThrow();
+  const accessibleBrands =
+    Array.isArray(u.accessibleBrands) && u.accessibleBrands.length
+      ? u.accessibleBrands
+      : ['SH'];
+  const defaultBrand = u.defaultBrand || accessibleBrands[0] || 'SH';
+  return {
+    accessibleBrands,
+    defaultBrand,
+    viewMode: 'single',
+    isCrossBrand: false,
+    where: { brandCode: { [require('sequelize').Op.in]: accessibleBrands } },
+  };
+}
+
+// Phase 4.12: shared formatter for { ok:false, code, message, sanctionsBlock? }
+// shapes returned by the aiWriteServices. Maps to a string the assistant
+// can present to Alex.
+function formatMcpWriteError(result) {
+  if (!result || result.ok) return null;
+  if (result.code === 'sanctions_block') {
+    return {
+      success: false,
+      error: result.message,
+      sanctionsBlock: result.sanctionsBlock,
+    };
+  }
+  return { success: false, error: result.message };
 }
 
 async function auditAiWrite(action, entity, entityId, changes, userId) {

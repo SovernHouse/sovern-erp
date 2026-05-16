@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const db = require('../models');
 const sequelize = db.sequelize;
 const { v4: uuidv4 } = require('uuid');
+const contactWriteService = require('../services/aiWriteServices/contactWriteService');
 // CONTACT CONTROLLERS
 exports.getContacts = async (req, res) => {
   try {
@@ -77,8 +78,15 @@ exports.getContactById = async (req, res) => {
 
 exports.createContact = async (req, res) => {
   try {
-    const contact = await db.Contact.create(req.body);
-    res.status(201).json({ success: true, data: contact });
+    const result = await contactWriteService.createContact(req.body || {}, {
+      userId: req.user?.id || null,
+      ip: req.ip || null,
+      source: 'rest',
+    });
+    if (!result.ok) {
+      return res.status(result.httpStatus || 400).json({ success: false, message: result.message });
+    }
+    res.status(201).json({ success: true, data: result.contact });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -86,13 +94,15 @@ exports.createContact = async (req, res) => {
 
 exports.updateContact = async (req, res) => {
   try {
-    const contact = await db.Contact.findByPk(req.params.id);
-    if (!contact) {
-      return res.status(404).json({ success: false, message: 'Contact not found' });
+    const result = await contactWriteService.updateContact(req.params.id, req.body || {}, {
+      userId: req.user?.id || null,
+      ip: req.ip || null,
+      source: 'rest',
+    });
+    if (!result.ok) {
+      return res.status(result.httpStatus || 400).json({ success: false, message: result.message });
     }
-
-    await contact.update(req.body);
-    res.json({ success: true, data: contact });
+    res.json({ success: true, data: result.contact });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -100,12 +110,14 @@ exports.updateContact = async (req, res) => {
 
 exports.deleteContact = async (req, res) => {
   try {
-    const contact = await db.Contact.findByPk(req.params.id);
-    if (!contact) {
-      return res.status(404).json({ success: false, message: 'Contact not found' });
+    const result = await contactWriteService.deleteContact(req.params.id, {
+      userId: req.user?.id || null,
+      ip: req.ip || null,
+      source: 'rest',
+    });
+    if (!result.ok) {
+      return res.status(result.httpStatus || 500).json({ success: false, message: result.message });
     }
-
-    await contact.destroy();
     res.json({ success: true, message: 'Contact deleted' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

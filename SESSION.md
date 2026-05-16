@@ -5,12 +5,16 @@
 ---
 
 ## Last Updated
-2026-05-15 Taiwan time (end of day). Latest: Phase 4.9.3.1 (brand-aware fromAddress hotfix codified + MCP write-tool audit). Also this session: Phase 4.11 (MCP smoke harness + lazy googleapis), Phase 4.9.3 final F+G+H (describe_entity_db + ProductPrice cleanup + boot parity check), Phase 4.10 (migration framework), Phase 4.9.5 (REST current-price endpoint).
+2026-05-16 Taiwan time. Latest: Phase 4.12 — MCP write-tool / controller convergence (extracted shared aiWriteServices, closed the L-013 sanctions bypass on AI writes, added auditAiWrite to 12 MCP tools, fixed a silent NOT-NULL audit-write failure that had hidden every sanctions_block at lead-create time since C18). 21 new convergence tests, 284/284 backend tests green locally.
+
+2026-05-15 Taiwan time (end of day). Previous: Phase 4.9.3.1 (brand-aware fromAddress hotfix codified + MCP write-tool audit). Also that session: Phase 4.11 (MCP smoke harness + lazy googleapis), Phase 4.9.3 final F+G+H (describe_entity_db + ProductPrice cleanup + boot parity check), Phase 4.10 (migration framework), Phase 4.9.5 (REST current-price endpoint).
 
 ---
 
 ## CI Status
 - **Latest commits on main (newest first):**
+  - `<pending-commit>` feat(ai-mcp+backend): Phase 4.12 — MCP write-tool / controller convergence — local 284/284 green, awaiting push
+  - `35b7982` docs(session): refresh through Phase 4.9.3.1 + Phase 4.11
   - `fb65da0` feat(ai-mcp): Phase 4.9.3.1 — codify brand-aware fromAddress + audit MCP write tools — CI green, deploy in progress
   - `a67ec9f` test(mcp): Phase 4.11 — MCP tool smoke-test harness + lazy googleapis — CI green, deployed
   - `a598a5b` feat(ai-mcp+infra): Phase 4.9.3 (final) Parts F + G + H — describe_entity_db + ProductPrice cleanup + parity check — CI green, deployed
@@ -32,13 +36,61 @@
 - **Mobile parity:** N/A for this session's commits — Phase 4.11 (test infra) and Phase 4.9.3.1 (MCP-only schema + tests + audit) don't touch user-facing surfaces. No mobile rebuild needed. Last EAS push from the prior session covered the user-facing changes through 4.9.3.
 
 ## Next Session — Pick Up Here
-- **MCP write-tool controller-divergence cleanup** (logged in `fb65da0` commit message). Audit identified that every MCP write tool reimplements its controller; older tools (create_lead, update_lead, factory/contact CRUD, send_email, schedule_follow_up, create_quotation, approve_product) lack `auditAiWrite()` calls so the AI-initiated audit trail has gaps. create_lead/update_lead also don't propagate `brandCode`. Structural fix = MCP handlers call the corresponding controller function directly; document as a separate phase.
-- **Verification owed on prod after `fb65da0` deploy lands:** AI assistant chat mode, FW context, ask "describe the send_outreach_email tool" — confirm the new `fromAddress` parameter appears in the schema with the Phase 4.9.3.1 resolution description.
+- **Phase 4.12 verification on prod** after deploy:
+  1. AI assistant chat → SH context: ask "create a lead for TestBlockedEntity Corp in Iran". Should refuse with sanctions message. Confirm `sanctions_block` AuditLog row exists with `changes.preCreate: true` + `changes.source: 'mcp'`.
+  2. AI assistant chat: "create a lead for Test Co at test@example.com" → confirm `create_lead` is followed by an `ai_assistant_create_lead` AuditLog row.
+  3. Run audit query and confirm 12 new `ai_assistant_*` actions appear: create_lead, update_lead, create_factory, update_factory, delete_factory, create_contact, update_contact, delete_contact, schedule_follow_up, create_quotation, approve_product, send_email.
+- **Carryover from Phase 4.9.3.1:** AI assistant chat mode, FW context, ask "describe the send_outreach_email tool" — confirm the new `fromAddress` parameter appears in the schema with the Phase 4.9.3.1 resolution description.
 - **Phase 4.11 smoke harness now in place** — future MCP changes should add a smoke case for any new high-value tool (template: see `backend/__tests__/integration/mcpSmoke.test.js`). Data-flow tests follow the `mcpFromAddress493_1.test.js` template (SQLITE_STORAGE override + MCP_FORCE_SYNC=false on subprocess + shared file SQLite).
 - **Brands on prod:** SH active commission=0%, FW active commission=7% (HanHua Sales Rep Agreement), HH inactive.
 - **Taxonomy on prod:** Flooring → Resilient → SPC/WPC/Engineered SPC/LVT/Vinyl Sheet (Resilient sortOrder=2, EngSPC=3, LVT=4, Vinyl Sheet=5). Engineered Wood + remaining flooring rows direct children of Flooring. IronCore Flooring + WPC Hybrid Flooring archived. Orphan `ProductCategory` (singular) renamed to `ProductCategory_orphan_20260515`; 18 rows preserved (~30 day retention; safe to DROP after 2026-06-15).
 - **Factories on prod:** Anhui HanHua + FlorWay SDN. BHD. both `brandCode='FW'`.
 - **Pricing on prod:** new temporal ProductPrice schema live. `Product.baseFobPrice` retained as denormalized cache (afterSave hook keeps it in sync). 0 ProductPrice rows because 0 priced Products on prod yet (IronLite SKU phase populates).
+
+---
+
+## Phase 4.12 — SHIPPED (LOCAL, AWAITING PUSH)
+
+MCP write-tool / controller convergence. Pulled the inline business logic out of leadController.create/update/delete, quotationController.create, factoryController.create/update/delete, and contactController.create/update/delete into a shared service layer under `backend/services/aiWriteServices/`. Both REST controllers and MCP handlers now call the same service functions — sanctions screening, brand-scope enforcement, leadNumber generation, ProductPrice floor checks, and audit logging happen exactly once per write surface.
+
+### Closed compliance gaps
+- **create_lead via MCP** was bypassing OFAC/sanctions screening (L-013 violation). Now hard-blocks identically to REST, with a `sanctions_block` AuditLog row carrying `source: 'mcp'`.
+- **create_quotation via MCP** was bypassing the `customer.screeningStatus === 'flagged'` hard-block. Same convergence: identical block, identical audit shape.
+- **create_lead** now defaults brandCode from the requester's `defaultBrand` (was hard-coded none).
+- **send_email via MCP** refuses to send via a ConnectedGoogleAccount whose brandCode is outside the requester's accessibleBrands (mirrors triageController.brand_account_mismatch_block).
+
+### Closed audit-trail gaps (12 tools)
+Every MCP write tool now writes an `ai_assistant_<tool>` AuditLog row on success:
+- create_lead, update_lead
+- create_factory, update_factory, delete_factory
+- create_contact, update_contact, delete_contact
+- schedule_follow_up (for both outreach_email and lead scopes)
+- create_quotation
+- approve_product
+- send_email (and a `send_email_blocked` row on brand-mismatch refusal)
+
+### Hidden bug discovered + fixed
+**L-044** — Every `sanctions_block` audit row at Lead-create time had been silently failing to land since C18. `AuditLog.entityId` is NOT NULL but the pre-create path passed `null`; the `.catch(() => {})` swallowed the SQLITE_CONSTRAINT failure. Fix: generate a placeholder UUID and stash `preCreate: true` in `changes`. Existing rows in prod are unaffected (there weren't any).
+
+### Pattern lesson captured
+**L-045** — When a service layer exists, both REST and MCP must call it. No more per-surface duplication of compliance logic.
+
+### Test coverage
+- New file: `backend/__tests__/integration/mcpControllerConvergence.test.js` — 21 service-layer tests covering happy paths, sanctions hard-blocks, cross-brand refusal, brand_not_writable, before/after snapshots, open-PO delete block, contact validation, immutable brandCode on update path.
+- Local: 284/284 backend tests green (was 263 before Phase 4.12).
+- MCP subprocess smoke harness (Phase 4.11) untouched — its :memory: SQLite still can't see the service-layer writes; that's by design. Cross-process convergence is verifiable on prod via the AuditLog query.
+
+### Files changed
+- New: `backend/services/aiWriteServices/leadWriteService.js`, `quotationWriteService.js`, `factoryWriteService.js`, `contactWriteService.js`
+- New: `backend/__tests__/integration/mcpControllerConvergence.test.js`
+- Edited: `backend/controllers/leadController.js` (createLead/updateLead/deleteLead delegate to service)
+- Edited: `backend/controllers/quotationController.js` (create delegates to service; legacy inline block removed)
+- Edited: `backend/controllers/factoryController.js` (create/update/delete delegate to service)
+- Edited: `backend/controllers/contactController.js` (create/update/delete delegate to service)
+- Edited: `backend/mcp/erpToolServer.js` (brandScopeForMcp + formatMcpWriteError helpers added; 12 handlers refactored)
+
+### Mobile parity
+N/A. MCP-only change. No user-facing surfaces touched.
 
 ---
 

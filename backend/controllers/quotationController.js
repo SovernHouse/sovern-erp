@@ -2,13 +2,14 @@ const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
 const db = require('../models');
 const { getPagination, getPaginatedResponse, getSuccessResponse } = require('../utils/helpers');
-const { NotFoundError } = require('../middleware/errorHandler');
+const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
 const documentGenerator = require('../services/documentGenerator');
 const emailService = require('../services/emailService');
 const notificationService = require('../services/notificationService');
 const { generateNumberWithCounter, incrementCounter } = require('../services/numberGenerator');
 const auditService = require('../services/auditService');
 const { validateFinancials } = require('../utils/validateFinancials');
+const quotationWriteService = require('../services/aiWriteServices/quotationWriteService');
 
 // Phase 4.9 C-3: countries we currently track US-style import tariffs for.
 // Only USA today. Keeping it as a list so adding EU / UK / CA later is a
@@ -17,259 +18,30 @@ const TARIFF_TRACKED_DESTINATIONS = new Set(['US', 'USA']);
 
 const create = async (req, res, next) => {
   try {
-    validateFinancials(req.body);
-    const {
-      customerId, inquiryId, salesPersonId, items, discount, discountType,
-      taxRate, terms, factoryId, leadId, brandCode, commissionRateOverride,
-      displayAreaUnit, displayDimensionUnit,
-    } = req.body;
-
-    const customer = await db.Customer.findByPk(customerId);
-    if (!customer) {
-      throw new NotFoundError('Customer not found');
-    }
-
-    // Phase 4, C18: refuse to quote a sanctioned customer. 'override' is
-    // the super-admin attestation path and DOES unblock; only 'flagged'
-    // hard-blocks. 'requires_review' and 'pending' are not blocked here
-    // (the UI shows a warning but lets the user proceed).
-    if (customer.screeningStatus === 'flagged') {
-      const auditService = require('../services/auditService');
-      auditService.logAction(
-        req.user?.id,
-        'sanctions_block',
-        'Customer',
-        customer.id,
-        {
-          context: 'quotation_create',
-          companyName: customer.companyName,
-          reason: customer.sanctionBlockReason,
-          hits: customer.sanctionsScreenDetails,
-        },
-        req.ip,
-      ).catch(() => {});
-      const err = new ValidationError(
-        `Customer "${customer.companyName}" is on a sanctions list. Reason: ${customer.sanctionBlockReason || 'flagged'}. Super-admin override required.`
-      );
-      err.statusCode = 403;
-      err.sanctionsBlock = {
-        status: customer.screeningStatus,
-        customerId: customer.id,
-        hits: customer.sanctionsScreenDetails,
-      };
-      throw err;
-    }
-
-    // Phase 3, C13: resolve brandCode (body wins, else user defaultBrand, else 'SH').
-    const resolvedBrandCode = brandCode || req.brandScope?.defaultBrand || 'SH';
-
-    // Phase 4, C15: validate commissionRateOverride against the 5% floor.
-    // Stored as decimal 0..1 (e.g. 0.07 = 7%). NULL = use brand default.
-    let resolvedOverride = null;
-    if (commissionRateOverride != null && commissionRateOverride !== '') {
-      const rate = parseFloat(commissionRateOverride);
-      if (!Number.isFinite(rate)) {
-        throw new ValidationError('commissionRateOverride must be a number');
-      }
-      const { COMMISSION_FLOOR_DECIMAL } = require('../services/commissionAccrual');
-      if (rate < COMMISSION_FLOOR_DECIMAL) {
-        throw new ValidationError(
-          `commissionRateOverride must be >= ${COMMISSION_FLOOR_DECIMAL} (5% floor)`
-        );
-      }
-      if (rate > 1) {
-        throw new ValidationError('commissionRateOverride must be a decimal between 0 and 1 (e.g. 0.07 = 7%)');
-      }
-      resolvedOverride = rate;
-    }
-
-    const lastQuotation = await db.Quotation.findOne({
-      order: [['createdAt', 'DESC']]
+    const result = await quotationWriteService.createQuotation(req.body || {}, {
+      userId: req.user?.id || null,
+      role: req.user?.role || null,
+      brandScope: req.brandScope || null,
+      ip: req.ip || null,
+      source: 'rest',
     });
-
-    const counter = incrementCounter(lastQuotation?.quotationNumber);
-    const quotationNumber = generateNumberWithCounter(process.env.DOC_PREFIX_QUOTATION || 'QOT', counter);
-
-    let subtotal = 0;
-    const createdItems = [];
-
-    // NO-MARKUP INVARIANT (Phase 4): baseFobPrice is the buyer-facing price
-    // and ALREADY INCLUDES Alex's commission. The line-item math below is
-    // a straight `quantity * unitPrice`. Do NOT multiply by (1 + rate)
-    // anywhere; commission is tracked as a separate CommissionTracking row.
-    for (const item of items) {
-      const product = await db.Product.findByPk(item.productId);
-      if (!product) continue;
-
-      // Phase 4, C14: brand match — products of the current brand only.
-      if (product.brandCode && product.brandCode !== resolvedBrandCode) {
-        throw new ValidationError(
-          `Product ${product.sku} belongs to brand ${product.brandCode}; cannot quote under ${resolvedBrandCode}.`
-        );
+    if (!result.ok) {
+      if (result.code === 'not_found') {
+        return next(new NotFoundError(result.message));
       }
-
-      // Phase 4, C14 (extended Phase 4.9.2b): floor check sources from
-      // ProductPrice (the new temporal pricing layer) so per-origin
-      // pricing windows are honoured. Falls back to product.baseFobPrice
-      // (denormalized cache) when no ProductPrice row exists yet —
-      // covers products created before the 4.9.2b backfill and any
-      // future product whose ProductPrice insert lagged the Product
-      // insert.
-      const { getCurrentPrice } = require('../services/productPriceService');
-      const reqOriginRaw = (item.originCountry || '').toUpperCase().trim();
-      const lineOrigin = reqOriginRaw || (product.originCountry || '').toUpperCase().trim() || null;
-      const currentPrice = await getCurrentPrice(product.id, lineOrigin);
-      const floor = currentPrice
-        ? Number(currentPrice.sellingPriceUsdPerM2)
-        : (product.baseFobPrice != null ? parseFloat(product.baseFobPrice) : null);
-
-      let unitPrice = item.unitPrice;
-      if (unitPrice == null || unitPrice === '' || Number(unitPrice) === 0) {
-        if (floor != null) unitPrice = floor;
-      }
-      if (floor != null) {
-        if (parseFloat(unitPrice) < floor) {
-          const isSuperAdmin = req.user?.role === 'super_admin';
-          if (!isSuperAdmin) {
-            throw new ValidationError(
-              `Unit price ${unitPrice} for ${product.sku} is below floor ${floor.toFixed(2)}. Super-admin override required.`
-            );
-          }
-          const reason = (item.belowFloorReason || '').trim();
-          if (reason.length < 5) {
-            throw new ValidationError(
-              `belowFloorReason (>= 5 chars) is required when quoting ${product.sku} below floor ${floor.toFixed(2)}.`
-            );
-          }
-          // Audit the override. Fire-and-forget.
-          auditService.logAction(
-            req.user.id,
-            'product_floor_override',
-            'Product',
-            product.id,
-            { sku: product.sku, floor, quotedPrice: parseFloat(unitPrice), reason, source: currentPrice ? 'ProductPrice' : 'baseFobPriceFallback' },
-            req.ip,
-          ).catch(() => {});
-        }
-      }
-
-      const total = item.quantity * unitPrice;
-      subtotal += total;
-
-      // Phase 4.9 C-3: resolve origin. If the line specifies originCountry
-      // and the product has a matching originVariants[] entry, prefer the
-      // variant's FOB. Otherwise fobPriceUsd falls back to unitPrice.
-      let resolvedOrigin = null;
-      let resolvedFobUsd = null;
-      const reqOrigin = (item.originCountry || '').toUpperCase().trim();
-      if (reqOrigin) {
-        const variants = Array.isArray(product.originVariants) ? product.originVariants : [];
-        const match = variants.find(v => (v.originCountry || '').toUpperCase() === reqOrigin);
-        if (match && match.fobPriceUsd != null) {
-          resolvedOrigin = reqOrigin;
-          resolvedFobUsd = parseFloat(match.fobPriceUsd);
-        } else {
-          // Origin was named but product has no variant for it. Don't fail —
-          // accept the origin label, snapshot the line's unitPrice as FOB.
-          resolvedOrigin = reqOrigin;
-          resolvedFobUsd = parseFloat(unitPrice);
-        }
-      } else {
-        // No origin chosen — default to product.originCountry if set.
-        resolvedOrigin = (product.originCountry || '').toUpperCase() || null;
-        resolvedFobUsd = parseFloat(unitPrice);
-      }
-
-      createdItems.push({
-        id: uuidv4(),
-        productId: item.productId,
-        description: item.description || product.name,
-        quantity: item.quantity,
-        unit: item.unit,
-        unitPrice: unitPrice,
-        discount: item.discount || 0,
-        total,
-        notes: item.notes || '',
-        originCountry: resolvedOrigin,
-        fobPriceUsd: resolvedFobUsd,
-        // Tariff snapshot + landed cost are populated on send() — left null
-        // at draft so a customer/origin/destination change before send still
-        // recomputes against the live rate.
-        tariffSnapshot: null,
-        landedCostUnit: null,
-        landedCostTotal: null,
-      });
+      const body = { success: false, message: result.message };
+      if (result.sanctionsBlock) body.sanctionsBlock = result.sanctionsBlock;
+      return res.status(result.httpStatus || 400).json(body);
     }
-
-    const discountAmount = discountType === 'percentage' ? (subtotal * discount) / 100 : discount;
-    const afterDiscount = subtotal - discountAmount;
-    const tax = (afterDiscount * taxRate) / 100;
-    const total = afterDiscount + tax;
-
-    // Phase 4.9 C-3: validate display-unit toggles.
-    const validAreaUnits = new Set(['sqm', 'sqft']);
-    const validDimUnits  = new Set(['mm', 'inch']);
-    const resolvedAreaUnit = validAreaUnits.has(displayAreaUnit) ? displayAreaUnit : 'sqm';
-    const resolvedDimUnit  = validDimUnits.has(displayDimensionUnit) ? displayDimensionUnit : 'mm';
-
-    const quotation = await db.Quotation.create({
-      id: uuidv4(),
-      quotationNumber,
-      inquiryId: inquiryId || null,
-      customerId,
-      salesPersonId: salesPersonId || null,
-      factoryId: factoryId || null,
-      leadId: leadId || null,
-      brandCode: resolvedBrandCode,
-      commissionRateOverride: resolvedOverride,
-      status: 'draft',
-      subtotal,
-      discount: discountAmount,
-      discountType: discountType || 'fixed',
-      tax,
-      taxRate: taxRate || 0,
-      total,
-      currency: customer.currency || 'USD',
-      validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      terms,
-      displayAreaUnit: resolvedAreaUnit,
-      displayDimensionUnit: resolvedDimUnit,
-    });
-
-    await Promise.all(createdItems.map(item =>
-      db.QuotationItem.create({ ...item, quotationId: quotation.id })
+    return res.status(201).json(getSuccessResponse(
+      { ...result.quotation.toJSON(), autoAddedBrand: result.autoAddedBrand },
+      'Quotation created successfully',
     ));
-
-    const result = await db.Quotation.findByPk(quotation.id, {
-      include: [
-        { association: 'items', include: [{ model: db.Product, as: 'product' }] },
-        { model: db.Customer, as: 'customer' },
-        { model: db.User, as: 'salesPerson' },
-        { model: db.Factory, as: 'factory', attributes: ['id', 'companyName', 'country'] },
-        { model: db.Lead, as: 'lead', attributes: ['id', 'companyName', 'contactName'] }
-      ]
-    });
-
-    // Phase 3, C13: cross-brand auto-add to customer.brandRelationships.
-    let autoAddedBrand = null;
-    try {
-      const { addBrandIfMissing } = require('../services/crossBrandAutoAdd');
-      autoAddedBrand = await addBrandIfMissing(db, customerId, resolvedBrandCode, {
-        userId: req.user?.id,
-        entity: 'Quotation',
-        entityId: quotation.id,
-        ip: req.ip,
-      });
-    } catch (_) { /* never block the create */ }
-
-    res.status(201).json(getSuccessResponse({ ...result.toJSON(), autoAddedBrand }, 'Quotation created successfully'));
-
-    // Fire-and-forget audit log
-    auditService.logAction(req.user.id, 'CREATE', 'Quotation', quotation.id, { data: result?.toJSON?.() || quotation.toJSON() }, req.ip).catch(() => {});
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
+
 
 const getAll = async (req, res, next) => {
   try {

@@ -2,8 +2,9 @@ const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
 const db = require('../models');
 const { getPagination, getPaginatedResponse, getSuccessResponse } = require('../utils/helpers');
-const { NotFoundError } = require('../middleware/errorHandler');
+const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
 const auditService = require('../services/auditService');
+const factoryWriteService = require('../services/aiWriteServices/factoryWriteService');
 
 const canViewFactory = (user, factory) => {
   if (!factory.isConfidential) return true;
@@ -13,45 +14,17 @@ const canViewFactory = (user, factory) => {
 
 const create = async (req, res, next) => {
   try {
-    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations, isConfidential, allowedUserIds, notes, logo, rating, brandCode } = req.body;
-
-    // Phase 4.9.2a: validate brandCode when provided (FK at JS layer
-    // only per L-034). null = unclassified, no brand restriction.
-    let resolvedBrandCode = null;
-    if (brandCode != null && String(brandCode).trim() !== '') {
-      const code = String(brandCode).toUpperCase();
-      const b = await db.Brand.findOne({ where: { code } });
-      if (!b) return res.status(400).json({ success: false, message: `brandCode "${brandCode}" does not exist` });
-      resolvedBrandCode = code;
-    }
-
-    const factory = await db.Factory.create({
-      id: uuidv4(),
-      companyName,
-      contactPerson,
-      email,
-      phone,
-      address,
-      city,
-      country,
-      currency: currency || 'USD',
-      paymentTerms: paymentTerms || 'Net 60',
-      leadTimeDays: leadTimeDays || 30,
-      certifications: certifications || [],
-      specializations: specializations || [],
-      rating: rating !== undefined ? rating : 5,
-      isActive: true,
-      isConfidential: isConfidential || false,
-      allowedUserIds: allowedUserIds || [],
-      notes: notes || null,
-      logo: logo || null,
-      brandCode: resolvedBrandCode,
+    const result = await factoryWriteService.createFactory(req.body || {}, {
+      userId: req.user?.id || null,
+      ip: req.ip || null,
+      source: 'rest',
     });
-
-    res.status(201).json(getSuccessResponse(factory, 'Factory created successfully'));
-
-    // Fire-and-forget audit log
-    auditService.logAction(req.user.id, 'CREATE', 'Factory', factory.id, { data: factory.toJSON() }, req.ip).catch(() => {});
+    if (!result.ok) {
+      return res.status(result.httpStatus || 400).json({ success: false, message: result.message });
+    }
+    res.status(201).json(getSuccessResponse(result.factory, 'Factory created successfully'));
+    auditService.logAction(req.user?.id, 'CREATE', 'Factory', result.factory.id,
+      { data: result.factory.toJSON() }, req.ip).catch(() => {});
   } catch (error) {
     next(error);
   }
@@ -120,59 +93,18 @@ const getById = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { companyName, contactPerson, email, phone, address, city, country, currency, paymentTerms, leadTimeDays, certifications, specializations, rating, isActive, isConfidential, allowedUserIds, notes, logo, brandCode } = req.body;
-
-    const factory = await db.Factory.findByPk(id);
-    if (!factory) {
-      throw new NotFoundError('Factory not found');
-    }
-
-    if (!canViewFactory(req.user, factory)) {
-      throw new NotFoundError('Factory not found');
-    }
-
-    const beforeSnapshot = factory.toJSON();
-
-    // Phase 4.9.2a: validate brandCode if present. Accept null/empty
-    // to clear; non-null must exist in Brand.
-    let resolvedBrandCode = factory.brandCode;
-    if (brandCode !== undefined) {
-      if (brandCode == null || String(brandCode).trim() === '') {
-        resolvedBrandCode = null;
-      } else {
-        const code = String(brandCode).toUpperCase();
-        const b = await db.Brand.findOne({ where: { code } });
-        if (!b) return res.status(400).json({ success: false, message: `brandCode "${brandCode}" does not exist` });
-        resolvedBrandCode = code;
-      }
-    }
-
-    await factory.update({
-      companyName: companyName || factory.companyName,
-      contactPerson: contactPerson !== undefined ? contactPerson : factory.contactPerson,
-      email: email || factory.email,
-      phone: phone || factory.phone,
-      address: address !== undefined ? address : factory.address,
-      city: city !== undefined ? city : factory.city,
-      country: country !== undefined ? country : factory.country,
-      currency: currency || factory.currency,
-      paymentTerms: paymentTerms || factory.paymentTerms,
-      leadTimeDays: leadTimeDays !== undefined ? leadTimeDays : factory.leadTimeDays,
-      certifications: certifications || factory.certifications,
-      specializations: specializations || factory.specializations,
-      rating: rating !== undefined ? rating : factory.rating,
-      isActive: isActive !== undefined ? isActive : factory.isActive,
-      isConfidential: isConfidential !== undefined ? isConfidential : factory.isConfidential,
-      allowedUserIds: allowedUserIds !== undefined ? allowedUserIds : factory.allowedUserIds,
-      notes: notes !== undefined ? notes : factory.notes,
-      logo: logo !== undefined ? logo : factory.logo,
-      brandCode: resolvedBrandCode,
+    const result = await factoryWriteService.updateFactory(id, req.body || {}, {
+      userId: req.user?.id || null,
+      ip: req.ip || null,
+      source: 'rest',
     });
-
-    res.json(getSuccessResponse(factory, 'Factory updated successfully'));
-
-    // Fire-and-forget audit log
-    auditService.logAction(req.user.id, 'UPDATE', 'Factory', id, { before: beforeSnapshot, after: factory.toJSON() }, req.ip).catch(() => {});
+    if (!result.ok) {
+      if (result.code === 'not_found') return next(new NotFoundError(result.message));
+      return res.status(result.httpStatus || 400).json({ success: false, message: result.message });
+    }
+    res.json(getSuccessResponse(result.factory, 'Factory updated successfully'));
+    auditService.logAction(req.user?.id, 'UPDATE', 'Factory', id,
+      { before: result.before, after: result.after }, req.ip).catch(() => {});
   } catch (error) {
     next(error);
   }
@@ -331,34 +263,19 @@ const getPerformance = async (req, res, next) => {
 const delete_ = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const factory = await db.Factory.findByPk(id);
-
-    if (!factory) {
-      throw new NotFoundError('Factory not found');
-    }
-
-    const { ValidationError } = require('../middleware/errorHandler');
-
-    // Block delete if there are open purchase orders. Closed/cancelled is fine.
-    const openPOs = await db.PurchaseOrder.count({
-      where: {
-        factoryId: id,
-        status: { [require('sequelize').Op.notIn]: ['completed', 'cancelled'] },
-      },
+    const result = await factoryWriteService.deleteFactory(id, {
+      userId: req.user?.id || null,
+      ip: req.ip || null,
+      source: 'rest',
     });
-    if (openPOs > 0) {
-      throw new ValidationError(
-        `Cannot delete factory with ${openPOs} open purchase order(s). Close them first.`
-      );
+    if (!result.ok) {
+      if (result.code === 'not_found') return next(new NotFoundError(result.message));
+      if (result.code === 'validation') return next(new ValidationError(result.message));
+      return res.status(result.httpStatus || 400).json({ success: false, message: result.message });
     }
-
-    // Factory model is paranoid — destroy() sets deletedAt and lists hide it
-    const beforeSnapshot = factory.toJSON();
-    await factory.destroy();
-
     res.json(getSuccessResponse(null, 'Factory deleted successfully'));
-
-    auditService.logAction(req.user.id, 'DELETE', 'Factory', id, { before: beforeSnapshot }, req.ip).catch(() => {});
+    auditService.logAction(req.user?.id, 'DELETE', 'Factory', id,
+      { before: result.deleted }, req.ip).catch(() => {});
   } catch (error) {
     next(error);
   }
