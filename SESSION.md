@@ -5,7 +5,9 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: Phase 4.15a proper — patched brandedQuotationRenderer's 4 brand variants (SH classic + FW IronLite + FW generic + FW private label) to accept opts.returnBuffer, built `backend/services/aiWriteServices/pdfGenerationService.js` (per-category dispatch + Drive upload + Document row + audit), wired 13 PDF generator MCP tools + 4 quotation CRUD MCP tools (update/get/list/archive — create existed from Phase 4.12). 26 new convergence tests (400/400 total locally). Docs updated: DEVELOPER_GUIDE section + tooltipContent + helpContent + USER_GUIDE subsection.
+2026-05-16 Taiwan time. Latest: Phase 4.15d-1 — Internal Approvals MCP layer (5 tools: submit / list / get / approve / reject). New `internalApprovalWriteService.js` enforces self-approval blocks at both submit and decide time, assignee-only constraints with super_admin override, and already-decided refusal. 18 new convergence tests (418/418 total locally). 4.15d-2 (Product Specifications + Compliance audit-and-expose) next.
+
+2026-05-16 Taiwan time (earlier). Phase 4.15a proper — patched brandedQuotationRenderer's 4 brand variants to accept opts.returnBuffer, built `pdfGenerationService.js`, wired 13 PDF generator MCP tools + 4 quotation CRUD MCP tools. 26 new convergence tests.
 
 2026-05-16 Taiwan time (earlier). Phase 4.15a-prep — added `pipeToBufferOrDisk` helper in pdfHelpers + patched 12 of 13 disk-writing PDF generators across sales/order/logistics/finance to accept `opts.returnBuffer`. Backward-compat additive change. 9 regression tests.
 
@@ -27,7 +29,8 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `<pending-commit>` feat(ai-mcp): Phase 4.15a proper — pdfGenerationService + 13 PDF MCP tools + 4 quotation CRUD MCP tools — local 400/400 green, awaiting push
+  - `<pending-commit>` feat(ai-mcp): Phase 4.15d-1 — Internal Approvals MCP tools (5 + service) — local 418/418 green, awaiting push
+  - `53ffa22` feat(ai-mcp): Phase 4.15a proper — pdfGenerationService + 13 PDF MCP tools + 4 quotation CRUD MCP tools — CI green, deployed
   - `7625e02` refactor(pdf): Phase 4.15a-prep — pipeToBufferOrDisk helper + 12 generators accept opts.returnBuffer — CI green, deployed
   - `3676445` fix(ai-mcp): Phase 4.14 hotfix — L-048 Uint8Array wrap for read_attachment pdf branch — CI green, deployed
   - `2db54c0` feat(ai-mcp): Phase 4.14 — Drive document parsers (xlsx/xls/docx/pdf/rtf) for read_drive_file — CI green, deployed

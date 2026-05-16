@@ -1860,6 +1860,98 @@ async function callTool(name, args) {
       };
     }
 
+    // ── Phase 4.15d-1: Internal Approvals (5 tools) ─────────────────────
+    case 'erp_submit_approval': {
+      const requester = await getCurrentUserOrThrow();
+      const approvalService = require('../services/aiWriteServices/internalApprovalWriteService');
+      const result = await approvalService.submitApproval({
+        approvalType: args.approval_type,
+        entityType: args.entity_type,
+        entityId: args.entity_id,
+        assignedToUserId: args.assigned_to_user_id || null,
+        requestNote: args.request_note || null,
+        priority: args.priority,
+        dueDate: args.due_date || null,
+      }, { userId: requester.id, role: requester.role, ip: null, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('submit_approval', 'InternalApproval', result.approval.id, {
+        approvalType: result.approval.approvalType,
+        entityType: result.approval.entityType,
+        entityId: result.approval.entityId,
+        priority: result.approval.priority,
+        assignedToUserId: result.approval.assignedToUserId,
+      }, requester.id);
+      return { success: true, approval: result.approval.toJSON() };
+    }
+
+    case 'erp_list_approvals': {
+      const { Op } = require('sequelize');
+      const where = {};
+      if (args.status) where.status = args.status;
+      if (args.approval_type) where.approvalType = args.approval_type;
+      if (args.requested_by_user_id) where.requestedByUserId = args.requested_by_user_id;
+      if (args.assigned_to_user_id) where.assignedToUserId = args.assigned_to_user_id;
+      if (args.entity_type) where.entityType = args.entity_type;
+      if (args.entity_id) where.entityId = String(args.entity_id);
+      const rows = await getDb().InternalApproval.findAll({
+        where,
+        limit: Math.min(args.limit || 25, 100),
+        order: [['createdAt', 'DESC']],
+        include: [
+          { model: getDb().User, as: 'requester', attributes: ['id', 'firstName', 'lastName', 'email'] },
+          { model: getDb().User, as: 'assignedTo', attributes: ['id', 'firstName', 'lastName', 'email'] },
+          { model: getDb().User, as: 'decidedBy', attributes: ['id', 'firstName', 'lastName', 'email'] },
+        ],
+      });
+      return rows.length ? rows.map(r => r.toJSON()) : 'No approvals match those filters.';
+    }
+
+    case 'erp_get_approval': {
+      const approval = await getDb().InternalApproval.findByPk(args.id, {
+        include: [
+          { model: getDb().User, as: 'requester', attributes: ['id', 'firstName', 'lastName', 'email'] },
+          { model: getDb().User, as: 'assignedTo', attributes: ['id', 'firstName', 'lastName', 'email'] },
+          { model: getDb().User, as: 'decidedBy', attributes: ['id', 'firstName', 'lastName', 'email'] },
+        ],
+      });
+      if (!approval) return `Approval ${args.id} not found.`;
+      return { success: true, approval: approval.toJSON() };
+    }
+
+    case 'erp_approve_request': {
+      const requester = await getCurrentUserOrThrow();
+      const approvalService = require('../services/aiWriteServices/internalApprovalWriteService');
+      const result = await approvalService.decideApproval(args.id, {
+        status: 'approved',
+        note: args.note || null,
+      }, { userId: requester.id, role: requester.role, ip: null, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('approve_request', 'InternalApproval', result.approval.id, {
+        before: result.before,
+        after: result.after,
+      }, requester.id);
+      return { success: true, approval: result.approval.toJSON() };
+    }
+
+    case 'erp_reject_request': {
+      const requester = await getCurrentUserOrThrow();
+      if (!args.reason || String(args.reason).trim().length < 5) {
+        return 'reject_request requires a reason (at least 5 characters).';
+      }
+      const approvalService = require('../services/aiWriteServices/internalApprovalWriteService');
+      const result = await approvalService.decideApproval(args.id, {
+        status: 'rejected',
+        note: args.reason,
+      }, { userId: requester.id, role: requester.role, ip: null, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('reject_request', 'InternalApproval', result.approval.id, {
+        before: result.before,
+        after: result.after,
+        reason: args.reason,
+      }, requester.id);
+      return { success: true, approval: result.approval.toJSON() };
+    }
+
     case 'calculate_landed_cost': {
       const { product_cost, quantity = 1, freight = 0, insurance = 0,
               customs_duty = 0, handling = 0, local_delivery = 0,
@@ -4259,6 +4351,74 @@ const TOOL_DEFS = [
       type: 'object',
       required: ['id'],
       properties: { id: { type: 'string', description: 'Quotation UUID.' } },
+    },
+  },
+
+  // ── Phase 4.15d-1: Internal Approvals (5 tools) ─────────────────────────
+  {
+    name: 'erp_submit_approval',
+    description: 'Phase 4.15d — submit an internal approval request. approval_type must be one of: send_quotation, confirm_sales_order, place_purchase_order, process_payment, stage_advancement, general (catch-all). Self-approval is blocked: assigned_to_user_id cannot equal the requester. Writes ai_assistant_submit_approval to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['entity_type', 'entity_id'],
+      properties: {
+        approval_type:         { type: 'string', enum: ['send_quotation', 'confirm_sales_order', 'place_purchase_order', 'process_payment', 'stage_advancement', 'general'], description: 'Workflow type. Default "general" if omitted or invalid.' },
+        entity_type:           { type: 'string', description: 'Entity being approved (Quotation, SalesOrder, PurchaseOrder, etc.).' },
+        entity_id:             { type: 'string', description: 'UUID of the entity.' },
+        assigned_to_user_id:   { type: 'string', description: 'Specific approver UUID. Leave omitted for "any manager / admin can approve". Must differ from the requester.' },
+        request_note:          { type: 'string', description: 'Optional context for the approver.' },
+        priority:              { type: 'string', enum: ['low', 'normal', 'high', 'urgent'], description: 'Default "normal".' },
+        due_date:              { type: 'string', description: 'ISO datetime by which approval is needed.' },
+      },
+    },
+  },
+  {
+    name: 'erp_list_approvals',
+    description: 'Phase 4.15d — list internal approvals with filters. Default returns up to 25 (max 100). Includes the requester, assignedTo, and decidedBy User joins. Use status="pending" + assigned_to_user_id=<self> to see your inbox.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status:                 { type: 'string', enum: ['pending', 'approved', 'rejected', 'cancelled'], description: 'Filter by workflow state.' },
+        approval_type:          { type: 'string', description: 'Filter by workflow type.' },
+        requested_by_user_id:   { type: 'string', description: 'Filter to one requester.' },
+        assigned_to_user_id:    { type: 'string', description: 'Filter to one assigned approver.' },
+        entity_type:            { type: 'string', description: 'Filter by entity type (Quotation, SalesOrder, etc).' },
+        entity_id:              { type: 'string', description: 'Filter to one entity UUID.' },
+        limit:                  { type: 'number', description: 'Max results (default 25, max 100).' },
+      },
+    },
+  },
+  {
+    name: 'erp_get_approval',
+    description: 'Phase 4.15d — fetch one approval with full requester + assignedTo + decidedBy User joins.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'InternalApproval UUID.' } },
+    },
+  },
+  {
+    name: 'erp_approve_request',
+    description: 'Phase 4.15d — approve a pending request. The decider must differ from the original requester (self-approval is hard-blocked). If the approval was assigned to a specific user, only that assignee (or super_admin) can decide. Writes ai_assistant_approve_request to AuditLog with before/after.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:   { type: 'string', description: 'InternalApproval UUID.' },
+        note: { type: 'string', description: 'Optional manager comment.' },
+      },
+    },
+  },
+  {
+    name: 'erp_reject_request',
+    description: 'Phase 4.15d — reject a pending approval. Reason required (>=5 chars). Same decider rules as erp_approve_request (no self-rejection, assigned-only-can-decide). Writes ai_assistant_reject_request to AuditLog with before/after + reason.',
+    inputSchema: {
+      type: 'object',
+      required: ['id', 'reason'],
+      properties: {
+        id:     { type: 'string', description: 'InternalApproval UUID.' },
+        reason: { type: 'string', description: 'Why the request was rejected (>=5 chars). Becomes the decisionNote.' },
+      },
     },
   },
 

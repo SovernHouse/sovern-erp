@@ -3517,3 +3517,50 @@ Brand-scope enforcement is identical to the leadWriteService pattern: cross-bran
 - New entity admin UIs (still use the existing forms).
 - pptx parsing (separate phase).
 - 4.15b/c/d — commercial ops + logistics + governance MCP tools (next sprint slices).
+
+# Phase 4.15d-1 — AI Internal Approvals
+
+Sub-phase 1 of governance (Phase 4.15d). Five MCP tools that wrap the existing `InternalApproval` model so the AI assistant can run internal sign-off workflows from chat: submit a request, list pending requests, get details, approve, reject. Self-approval is hard-blocked at both submit and decide time per the spec.
+
+## The 5 tools
+
+| MCP tool | What it does |
+|---|---|
+| `erp_submit_approval` | Creates a pending InternalApproval row. Self-assignment blocked at submission. Writes `ai_assistant_submit_approval` to AuditLog. |
+| `erp_list_approvals` | Filtered list (status, approval_type, requested_by, assigned_to, entity_type, entity_id). Joins User for requester / assignee / decidedBy. |
+| `erp_get_approval` | Single approval with the three User joins. |
+| `erp_approve_request` | Status → approved. Self-approval refused (decider ≠ requester). Assigned-only approvals refused for non-assignees unless super_admin. Already-decided refused. Writes `ai_assistant_approve_request` with before/after. |
+| `erp_reject_request` | Status → rejected. Same decider rules. Reason required (>=5 chars). Writes `ai_assistant_reject_request` with before/after + reason. |
+
+## Service layer
+
+`backend/services/aiWriteServices/internalApprovalWriteService.js`:
+
+- **submitApproval** — validates entityType + entityId, normalizes approvalType to 'general' if out-of-enum (the model's ENUM is constrained to `send_quotation`, `confirm_sales_order`, `place_purchase_order`, `process_payment`, `stage_advancement`, `general`), normalizes priority to 'normal' if invalid, blocks self-assignment.
+- **decideApproval** — enforces requester ≠ decider, assigned-only-can-decide (with super_admin override), refuses re-decision of already-decided approvals.
+- **cancelApproval** — only the original requester or a super_admin can cancel; only pending approvals are cancellable.
+
+## Schema notes
+
+The `InternalApproval.approvalType` enum was not expanded to match Alex's spec terms (`pricing_override`, `discount`, `credit_limit`, `contract_clause`). Out-of-enum types submitted by the AI fall through to `general` — the schema-level catch-all. If those specific workflows become high-volume, extend the enum in a follow-up (boot migration + model edit).
+
+## Tests
+
+`phase415d1InternalApprovals.test.js` — 18 specs:
+- submitApproval: happy path, missing entityType/entityId, self-assignment blocked, out-of-enum type normalized, default priority, unassigned approvals accepted.
+- decideApproval: approve happy path, reject with note, self-approval blocked, non-assignee blocked, super_admin override, re-decision refused, invalid decision.status refused.
+- cancelApproval: requester cancels their own, non-requester refused, super_admin override, already-decided refused.
+
+Full backend suite 418/418 passing locally (was 400 before 4.15d-1).
+
+## Three-surface check
+
+- **Admin portal:** no new UI in this commit; the existing InternalApproval pages keep working unchanged. The AI assistant chat is the new surface.
+- **Mobile:** no new UI. Mobile chat uses the same `/api/ai/chat` endpoint and inherits the approval tools transparently.
+- **Docs:** this section + `tooltipContent.aiInternalApprovals` + (next session) helpContent walkthrough.
+
+## What 4.15d-1 does NOT do
+
+- Product Specifications MCP tools (6 tools) — Phase 4.15d-2 because the wide-table ProductSpecification model (30+ named columns) needs the QA-lookup design thought-through more carefully than Alex's spec assumed.
+- Compliance audit-and-expose — Phase 4.15d-2 alongside Product Specs.
+- approvalType enum expansion (pricing_override / discount / etc.) — separate follow-up if usage justifies it.
