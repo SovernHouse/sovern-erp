@@ -231,6 +231,151 @@ async function getCertificateOfOrigin(id) {
   return { ok: true, certificate: coo };
 }
 
+// ── Phase 4.15d-2b-2: write tools ─────────────────────────────────────
+
+const { v4: uuidv4 } = require('uuid');
+
+async function createComplianceRecord(payload, ctx) {
+  if (!payload) return err('validation', 400, 'payload required');
+  const {
+    shipmentId, productId, type, countryOrigin, countryDestination,
+    hsCode, dutyRate, antiDumpingRate, certificateNumber, notes,
+  } = payload;
+  if (!type) return err('validation', 400, 'type is required');
+  if (!countryOrigin) return err('validation', 400, 'countryOrigin is required');
+  if (!countryDestination) return err('validation', 400, 'countryDestination is required');
+
+  const record = await db.ComplianceRecord.create({
+    id: uuidv4(),
+    shipmentId: shipmentId || null,
+    productId: productId || null,
+    type,
+    status: 'pending',
+    countryOrigin,
+    countryDestination,
+    hsCode: hsCode || null,
+    dutyRate: dutyRate != null ? parseFloat(dutyRate) : 0,
+    antiDumpingRate: antiDumpingRate != null ? parseFloat(antiDumpingRate) : 0,
+    complianceDate: new Date(),
+    certificateNumber: certificateNumber || null,
+    notes: notes || null,
+  });
+  return { ok: true, record };
+}
+
+async function updateComplianceRecord(id, patch, ctx) {
+  if (!id) return err('validation', 400, 'id is required');
+  const record = await db.ComplianceRecord.findByPk(id);
+  if (!record) return err('not_found', 404, `ComplianceRecord ${id} not found.`);
+
+  const before = record.toJSON();
+  // Mirror the controller's update surface: only status / expiryDate / notes.
+  const allowed = {};
+  if (patch.status !== undefined) allowed.status = patch.status;
+  if (patch.expiryDate !== undefined) allowed.expiryDate = patch.expiryDate ? new Date(patch.expiryDate) : null;
+  if (patch.notes !== undefined) allowed.notes = patch.notes;
+  await record.update(allowed);
+  return { ok: true, record, before, after: record.toJSON() };
+}
+
+async function createHsCode(payload, ctx) {
+  if (!payload) return err('validation', 400, 'payload required');
+  const {
+    code, description, chapter, heading, subheading,
+    dutyRate, antiDumpingRate, countrySpecific, notes,
+  } = payload;
+  if (!code) return err('validation', 400, 'code is required');
+  if (!description) return err('validation', 400, 'description is required');
+
+  const existing = await db.HarmonizedCode.findOne({ where: { code } });
+  if (existing) {
+    return err('validation', 409, `HS code "${code}" already exists. Use erp_lookup_hs_codes to find the existing row.`);
+  }
+
+  const hsCode = await db.HarmonizedCode.create({
+    id: uuidv4(),
+    code,
+    description,
+    chapter: chapter || null,
+    heading: heading || null,
+    subheading: subheading || null,
+    dutyRate: dutyRate != null ? parseFloat(dutyRate) : 0,
+    antiDumpingRate: antiDumpingRate != null ? parseFloat(antiDumpingRate) : 0,
+    countrySpecific: countrySpecific || null,
+    notes: notes || null,
+  });
+  return { ok: true, hsCode };
+}
+
+async function createCertificateOfOriginRow(payload, ctx) {
+  if (!payload) return err('validation', 400, 'payload required');
+  const {
+    shipmentId, exporterName, exporterAddress, importerName,
+    countryOfOrigin, countryOfDestination, items,
+    chamberOfCommerce, notes,
+  } = payload;
+  if (!shipmentId) return err('validation', 400, 'shipmentId is required');
+  if (!exporterName) return err('validation', 400, 'exporterName is required');
+  if (!exporterAddress) return err('validation', 400, 'exporterAddress is required (CertificateOfOrigin model enforces NOT NULL).');
+  if (!importerName) return err('validation', 400, 'importerName is required');
+  if (!countryOfOrigin) return err('validation', 400, 'countryOfOrigin is required');
+  if (!countryOfDestination) return err('validation', 400, 'countryOfDestination is required');
+  if (!items) return err('validation', 400, 'items is required');
+
+  // Pre-check shipment existence to avoid SQLITE_CONSTRAINT FK violation —
+  // gives the caller a useful error instead of "FOREIGN KEY constraint failed".
+  const shipment = await db.Shipment.findByPk(shipmentId);
+  if (!shipment) {
+    return err('not_found', 404, `Shipment ${shipmentId} not found. Create the shipment row first.`);
+  }
+
+  const certNumber = `COO-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+  const coo = await db.CertificateOfOrigin.create({
+    id: uuidv4(),
+    shipmentId,
+    exporterName,
+    exporterAddress: exporterAddress || null,
+    importerName,
+    countryOfOrigin,
+    countryOfDestination,
+    items,
+    certNumber,
+    issueDate: new Date(),
+    chamberOfCommerce: chamberOfCommerce || null,
+    status: 'issued',
+    notes: notes || null,
+  });
+  return { ok: true, certificate: coo };
+}
+
+async function getComplianceDashboard() {
+  const now = new Date();
+  const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  const [expiringCerts, flaggedRecords, pendingApprovals, highRiskShipments] = await Promise.all([
+    db.CertificateOfOrigin.count({
+      where: {
+        status: { [Op.in]: ['issued', 'used'] },
+        expiryDate: { [Op.between]: [now, thirtyDaysFromNow] },
+      },
+    }).catch(() => 0),
+    db.ComplianceRecord.count({ where: { status: 'flagged' } }).catch(() => 0),
+    db.ComplianceRecord.count({ where: { status: 'pending' } }).catch(() => 0),
+    db.ComplianceRecord.count({ where: { type: 'anti_dumping' } }).catch(() => 0),
+  ]);
+
+  return {
+    ok: true,
+    dashboard: {
+      expiringCerts,
+      flaggedRecords,
+      pendingApprovals,
+      highRiskShipments,
+      asOf: now.toISOString(),
+    },
+  };
+}
+
 module.exports = {
   checkCompliance,
   lookupHsCodes,
@@ -239,5 +384,10 @@ module.exports = {
   getComplianceRecord,
   listCertificatesOfOrigin,
   getCertificateOfOrigin,
+  createComplianceRecord,
+  updateComplianceRecord,
+  createHsCode,
+  createCertificateOfOriginRow,
+  getComplianceDashboard,
   EU_DESTINATIONS,
 };

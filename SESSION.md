@@ -5,7 +5,9 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: Phase 4.15d-2b-1 — Compliance read/calc MCP tools (8). `complianceWriteService.js` wraps modules/compliance: rule-based `checkCompliance` (CN→US anti-dumping, →US CPSC, →EU CE marking, customs always), `lookupHsCodes`, `calculateDuties` (with country-specific overrides), list/get compliance records, list/get certificates of origin. 16 new convergence tests (475/475 total locally). Write tools (compliance record + HS code CRUD) deferred to 4.15d-2b-2.
+2026-05-16 Taiwan time. Latest: Phase 4.15d-2b-2 — Compliance write MCP tools (6). create/update_compliance_record, create_hs_code (super_admin gate — HS codes are global reference), create_certificate_of_origin (row create; the PDF generator is the separate Phase 4.15a tool), get_compliance_dashboard. Defensive Shipment FK pre-check on CO create to avoid raw SQLITE_CONSTRAINT errors. 12 new tests (487/487 total locally). **Phase 4.15d is now complete** (4.15d-1 + 4.15d-2a + 4.15d-2b-1 + 4.15d-2b-2).
+
+2026-05-16 Taiwan time (earlier). Phase 4.15d-2b-1 — Compliance read/calc MCP tools (8).
 
 2026-05-16 Taiwan time (earlier). Phase 4.15b-1 — Landed Cost MCP tools (5). ProductPrice.validTo expiration check.
 
@@ -37,7 +39,8 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `<pending-commit>` feat(ai-mcp): Phase 4.15d-2b-1 — Compliance read/calc MCP tools (8 + service) — local 475/475 green, awaiting push
+  - `<pending-commit>` feat(ai-mcp): Phase 4.15d-2b-2 — Compliance write MCP tools (6) — Phase 4.15d complete — local 487/487 green, awaiting push
+  - `97e30cc` feat(ai-mcp): Phase 4.15d-2b-1 — Compliance read/calc MCP tools (8 + service) — CI green, deployed
   - `bcaac6a` feat(ai-mcp): Phase 4.15b-1 — Landed Cost MCP tools (5 + service) — CI green, deployed
   - `c7e5a2c` refactor(ai-mcp): extract parsePdfRaw — read_drive_file + read_attachment share one PDF code path (L-050) — CI green, deployed
   - `88f0e4b` feat(ai-mcp): Phase 4.15d-2a — Product Specifications MCP tools (6 + service) — CI green, deployed

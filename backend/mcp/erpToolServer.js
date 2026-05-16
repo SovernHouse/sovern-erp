@@ -2240,6 +2240,100 @@ async function callTool(name, args) {
       return { success: true, certificate: result.certificate.toJSON() };
     }
 
+    // ── Phase 4.15d-2b-2: Compliance write tools (6) ────────────────────
+    case 'erp_create_compliance_record': {
+      const requester = await getCurrentUserOrThrow();
+      const cs = require('../services/aiWriteServices/complianceWriteService');
+      const result = await cs.createComplianceRecord({
+        shipmentId: args.shipment_id,
+        productId: args.product_id,
+        type: args.type,
+        countryOrigin: args.country_origin,
+        countryDestination: args.country_destination,
+        hsCode: args.hs_code,
+        dutyRate: args.duty_rate,
+        antiDumpingRate: args.anti_dumping_rate,
+        certificateNumber: args.certificate_number,
+        notes: args.notes,
+      }, { userId: requester.id, ip: null, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('create_compliance_record', 'ComplianceRecord', result.record.id, {
+        type: result.record.type,
+        countryOrigin: result.record.countryOrigin,
+        countryDestination: result.record.countryDestination,
+        status: result.record.status,
+      }, requester.id);
+      return { success: true, record: result.record.toJSON() };
+    }
+
+    case 'erp_update_compliance_record': {
+      const requester = await getCurrentUserOrThrow();
+      const cs = require('../services/aiWriteServices/complianceWriteService');
+      const result = await cs.updateComplianceRecord(args.id, {
+        status: args.status,
+        expiryDate: args.expiry_date,
+        notes: args.notes,
+      }, { userId: requester.id, ip: null, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('update_compliance_record', 'ComplianceRecord', result.record.id, {
+        before: result.before, after: result.after,
+      }, requester.id);
+      return { success: true, record: result.record.toJSON() };
+    }
+
+    case 'erp_create_hs_code': {
+      const requester = await requireSuperAdmin();
+      const cs = require('../services/aiWriteServices/complianceWriteService');
+      const result = await cs.createHsCode({
+        code: args.code,
+        description: args.description,
+        chapter: args.chapter,
+        heading: args.heading,
+        subheading: args.subheading,
+        dutyRate: args.duty_rate,
+        antiDumpingRate: args.anti_dumping_rate,
+        countrySpecific: args.country_specific,
+        notes: args.notes,
+      }, { userId: requester.id, ip: null, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('create_hs_code', 'HarmonizedCode', result.hsCode.id, {
+        code: result.hsCode.code,
+        description: result.hsCode.description,
+        dutyRate: result.hsCode.dutyRate,
+      }, requester.id);
+      return { success: true, hsCode: result.hsCode.toJSON() };
+    }
+
+    case 'erp_create_certificate_of_origin': {
+      const requester = await getCurrentUserOrThrow();
+      const cs = require('../services/aiWriteServices/complianceWriteService');
+      const result = await cs.createCertificateOfOriginRow({
+        shipmentId: args.shipment_id,
+        exporterName: args.exporter_name,
+        exporterAddress: args.exporter_address,
+        importerName: args.importer_name,
+        countryOfOrigin: args.country_of_origin,
+        countryOfDestination: args.country_of_destination,
+        items: args.items,
+        chamberOfCommerce: args.chamber_of_commerce,
+        notes: args.notes,
+      }, { userId: requester.id, ip: null, source: 'mcp' });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('create_certificate_of_origin', 'CertificateOfOrigin', result.certificate.id, {
+        certNumber: result.certificate.certNumber,
+        shipmentId: result.certificate.shipmentId,
+        countryOfOrigin: result.certificate.countryOfOrigin,
+      }, requester.id);
+      return { success: true, certificate: result.certificate.toJSON() };
+    }
+
+    case 'erp_get_compliance_dashboard': {
+      const cs = require('../services/aiWriteServices/complianceWriteService');
+      const result = await cs.getComplianceDashboard();
+      if (!result.ok) return formatMcpWriteError(result);
+      return { success: true, dashboard: result.dashboard };
+    }
+
     case 'calculate_landed_cost': {
       const { product_cost, quantity = 1, freight = 0, insurance = 0,
               customs_duty = 0, handling = 0, local_delivery = 0,
@@ -5003,6 +5097,85 @@ const TOOL_DEFS = [
       required: ['id'],
       properties: { id: { type: 'string', description: 'CertificateOfOrigin UUID.' } },
     },
+  },
+
+  // ── Phase 4.15d-2b-2: Compliance write tools (6) ────────────────────────
+  {
+    name: 'erp_create_compliance_record',
+    description: 'Phase 4.15d — create a ComplianceRecord row (status=pending). type / countryOrigin / countryDestination required; shipment_id and product_id both optional. Writes ai_assistant_create_compliance_record to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['type', 'country_origin', 'country_destination'],
+      properties: {
+        shipment_id:         { type: 'string' },
+        product_id:          { type: 'string' },
+        type:                { type: 'string', description: 'anti_dumping / cpsc / ce_marking / customs / etc.' },
+        country_origin:      { type: 'string' },
+        country_destination: { type: 'string' },
+        hs_code:             { type: 'string' },
+        duty_rate:           { type: 'number' },
+        anti_dumping_rate:   { type: 'number' },
+        certificate_number:  { type: 'string' },
+        notes:               { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'erp_update_compliance_record',
+    description: 'Phase 4.15d — patch a ComplianceRecord. Allowed fields: status, expiry_date, notes (matches the REST controller surface). Writes ai_assistant_update_compliance_record with before/after.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:          { type: 'string', description: 'ComplianceRecord UUID.' },
+        status:      { type: 'string', description: 'pending / approved / flagged / expired.' },
+        expiry_date: { type: 'string', description: 'ISO datetime.' },
+        notes:       { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'erp_create_hs_code',
+    description: 'Phase 4.15d — add a new HS code to the HarmonizedCode catalog. SUPER_ADMIN ONLY (HS codes are global reference data and misclassification is expensive — gated to limit who can write). Refuses duplicate code with 409. Writes ai_assistant_create_hs_code to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['code', 'description'],
+      properties: {
+        code:               { type: 'string', description: 'HS code (typically 6–10 digits).' },
+        description:        { type: 'string' },
+        chapter:            { type: 'string' },
+        heading:            { type: 'string' },
+        subheading:         { type: 'string' },
+        duty_rate:          { type: 'number' },
+        anti_dumping_rate:  { type: 'number' },
+        country_specific:   { type: 'object', description: 'JSON: { "CN": { dutyRate, antiDumpingRate }, ... }.' },
+        notes:              { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'erp_create_certificate_of_origin',
+    description: 'Phase 4.15d — create a CertificateOfOrigin row (NOT the PDF — the PDF generator is erp_generate_certificate_of_origin_pdf, Phase 4.15a, which renders this row). Generates the certNumber, sets status=issued + issueDate=now. Writes ai_assistant_create_certificate_of_origin to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['shipment_id', 'exporter_name', 'exporter_address', 'importer_name', 'country_of_origin', 'country_of_destination', 'items'],
+      properties: {
+        shipment_id:             { type: 'string' },
+        exporter_name:           { type: 'string' },
+        exporter_address:        { type: 'string' },
+        importer_name:           { type: 'string' },
+        country_of_origin:       { type: 'string' },
+        country_of_destination:  { type: 'string' },
+        items:                   { description: 'Array or object describing the goods. Free-form to match the existing model.' },
+        chamber_of_commerce:     { type: 'string' },
+        notes:                   { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'erp_get_compliance_dashboard',
+    description: 'Phase 4.15d — compliance dashboard counters: expiringCerts (next 30 days), flaggedRecords, pendingApprovals, highRiskShipments (anti_dumping type). Read-only aggregation across ComplianceRecord + CertificateOfOrigin. No filters yet — returns the global view.',
+    inputSchema: { type: 'object', properties: {} },
   },
 
   // ── Phase 4.15a: Document generation (13 tools) ─────────────────────────
