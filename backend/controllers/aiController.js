@@ -114,12 +114,19 @@ async function getAiUploadsFolderId(drive) {
 //   IDLE_TIMEOUT_MS           how long we tolerate zero stdout from claude
 //                              before killing it. The subprocess is alive as
 //                              long as it's emitting progress (one tool
-//                              call = one stdout flush). 30s gives slow MCP
-//                              tools (Drive parses, multi-DB writes) headroom
-//                              while still catching genuinely-hung processes.
+//                              call = one stdout flush). Single MCP tool
+//                              calls can legitimately take 30-60s including
+//                              Drive reads, xlsx parsing, multi-row DB
+//                              writes — Alex's prod usage hit the previous
+//                              30s threshold mid-tool-call routinely (Phase
+//                              4.16.1 hotfix). 120s is the conservative
+//                              ceiling that distinguishes 'legitimate slow
+//                              tool' from 'subprocess actually hung'.
 //
 //   IDLE_CHECK_INTERVAL_MS    how often we sample the idle clock. 5s. Worst-
-//                              case kill latency is IDLE_TIMEOUT_MS + 5s.
+//                              case kill latency is IDLE_TIMEOUT_MS + 5s
+//                              = 125s, well under any user expectation of
+//                              a hung session.
 //
 //   HARD_CAP_MS               absolute ceiling regardless of stdout activity.
 //                              900s = 15 min. Protects against the very rare
@@ -139,7 +146,7 @@ async function getAiUploadsFolderId(drive) {
 // even reaching the subprocess kill. Heartbeat-based liveness gives bulk
 // turns unlimited wall-clock budget as long as they're making progress.
 
-const IDLE_TIMEOUT_MS = 30_000;
+const IDLE_TIMEOUT_MS = 120_000;        // Phase 4.16.1: was 30_000; bumped after prod kills mid-MCP-tool-call
 const IDLE_CHECK_INTERVAL_MS = 5_000;
 const HARD_CAP_MS = 900_000;
 const SIGTERM_TO_SIGKILL_MS = 3_000;

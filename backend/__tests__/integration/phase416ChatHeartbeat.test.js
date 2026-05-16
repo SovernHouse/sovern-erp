@@ -50,8 +50,8 @@ describe('Phase 4.16 — runClaudeSubprocess heartbeat liveness', () => {
     jest.useRealTimers();
   });
 
-  it('exposes the timeout constants', () => {
-    expect(IDLE_TIMEOUT_MS).toBe(30_000);
+  it('exposes the timeout constants (Phase 4.16.1: idle bumped 30s → 120s)', () => {
+    expect(IDLE_TIMEOUT_MS).toBe(120_000);
     expect(IDLE_CHECK_INTERVAL_MS).toBe(5_000);
     expect(HARD_CAP_MS).toBe(900_000);
     expect(SIGTERM_TO_SIGKILL_MS).toBe(3_000);
@@ -94,10 +94,10 @@ describe('Phase 4.16 — runClaudeSubprocess heartbeat liveness', () => {
     child.stdout.emit('data', Buffer.from('starting\n'));
     await Promise.resolve();
 
-    // Advance 35s (5s past the 30s idle threshold) without any further
+    // Advance 125s (5s past the 120s idle threshold) without any further
     // stdout. The idle watchdog samples every 5s, so worst case the kill
-    // fires at 35s.
-    jest.advanceTimersByTime(35_000);
+    // fires at 125s. (Phase 4.16.1: was 30s + 5s buffer pre-bump.)
+    jest.advanceTimersByTime(125_000);
 
     // The watchdog should have called kill('SIGTERM').
     expect(child.kill).toHaveBeenCalledWith('SIGTERM');
@@ -109,6 +109,57 @@ describe('Phase 4.16 — runClaudeSubprocess heartbeat liveness', () => {
     // After kill, the production code resolves with subprocess_idle_timeout.
     // (The fake child never actually emits 'close' here; we rely on
     // runClaudeSubprocess's internal finish() being called by the watchdog.)
+    const result = await promise;
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/idle_timeout/);
+  });
+
+  // Phase 4.16.1: explicit boundary coverage on the new 120s threshold.
+
+  it('Phase 4.16.1: 90s of silence then a stdout resume does NOT kill', async () => {
+    const child = makeFakeChild();
+    spawnMock.mockReturnValueOnce(child);
+
+    const promise = runClaudeSubprocess('sys', 'user', null);
+
+    // Subprocess starts.
+    child.stdout.emit('data', Buffer.from('start\n'));
+    await Promise.resolve();
+
+    // 90 seconds of silence — below the 120s threshold. Watchdog samples
+    // every 5s, sees idleMs=90_000 < 120_000, does nothing.
+    jest.advanceTimersByTime(90_000);
+    expect(child.kill).not.toHaveBeenCalled();
+
+    // Subprocess resumes emitting — idle clock resets.
+    child.stdout.emit('data', Buffer.from('resumed\n'));
+    await Promise.resolve();
+
+    // Another 90s of silence after the resume — still below threshold.
+    jest.advanceTimersByTime(90_000);
+    expect(child.kill).not.toHaveBeenCalled();
+
+    // Close cleanly.
+    child.emit('close', 0);
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    expect(result.text).toContain('resumed');
+  });
+
+  it('Phase 4.16.1: 130s of silence kills (just past the 120s threshold)', async () => {
+    const child = makeFakeChild();
+    spawnMock.mockReturnValueOnce(child);
+
+    const promise = runClaudeSubprocess('sys', 'user', null);
+
+    child.stdout.emit('data', Buffer.from('start\n'));
+    await Promise.resolve();
+
+    // 130s of silence — 10s past the threshold. Worst-case watchdog kill
+    // latency is 120s + 5s poll = 125s, so by 130s the kill has fired.
+    jest.advanceTimersByTime(130_000);
+
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
     const result = await promise;
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/idle_timeout/);
