@@ -205,7 +205,6 @@ describe('Phase 4.13a — Jurisdiction screening', () => {
         country: 'Iran',
         brandCode: 'SH',
         screeningStatus: 'blocked',
-        sanctionsScreened: true,
         sanctionsScreenDetails: [{
           rule: 'jurisdiction',
           basis: 'OFAC comprehensive sanctions — Iran (ITSR 31 CFR Part 560 / EO 13599)',

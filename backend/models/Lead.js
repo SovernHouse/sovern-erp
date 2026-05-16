@@ -142,14 +142,13 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    // Phase 1 legacy: simple boolean flag. Kept for read compatibility;
-    // Phase 4 C18 replaces with screeningStatus enum + details. New code
-    // reads screeningStatus; old code may still read this boolean (kept
-    // in sync where the controller touches both).
-    sanctionsScreened: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false,
-    },
+    // Phase 4.13b removed the Phase 1 legacy `sanctionsScreened` boolean.
+    // It was kept "for read compatibility" but nothing kept it in sync
+    // with screeningStatus, which created the L-044 state-inconsistency
+    // (sanctionsScreened=false + lastScreenedAt populated +
+    // screeningStatus=cleared all at once on the same row). New code
+    // reads screeningStatus exclusively. Migration:
+    // backend/services/migrate413bDropSanctionsScreened.js.
     // Phase 4, C18: full sanctions screening enum + hit details. Lead is
     // screened at create time (company name + country) BEFORE the row
     // persists so we can block creation when flagged. Override is the

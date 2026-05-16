@@ -5,7 +5,9 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: Phase 4.13a — jurisdiction screening (OFAC comprehensive: Iran, Cuba, DPRK, Syria). Closes the Phase 4.12 verification false-negative; sentinel-guarded boot migration re-screens existing rows while preserving manual_db_override markers. 41 new tests including the required Iran-positive CI gate. 328/328 backend tests green locally.
+2026-05-16 Taiwan time. Latest: Phase 4.13b — drop legacy `Lead.sanctionsScreened` boolean (kills L-044 state-inconsistency pattern) + fix `hasManualOverrideMarker` JSON-string parsing surfaced by 4.13a's prod run. Sentinel-guarded boot migration `migrate413bDropSanctionsScreened`. 6 new tests (334/334 total locally).
+
+2026-05-16 Taiwan time (earlier). Phase 4.13a — jurisdiction screening (OFAC comprehensive: Iran, Cuba, DPRK, Syria). Closes the Phase 4.12 verification false-negative; sentinel-guarded boot migration re-screens existing rows while preserving manual_db_override markers. 41 new tests including the required Iran-positive CI gate.
 
 2026-05-16 Taiwan time (earlier). Phase 4.12 — MCP write-tool / controller convergence (extracted shared aiWriteServices, closed the L-013 sanctions bypass on AI writes, added auditAiWrite to 12 MCP tools, fixed a silent NOT-NULL audit-write failure that had hidden every sanctions_block at lead-create time since C18). 21 new convergence tests.
 
@@ -15,7 +17,8 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `<pending-commit>` feat(compliance): Phase 4.13a — jurisdiction screening for OFAC-comprehensive countries — local 328/328 green, awaiting push
+  - `<pending-commit>` refactor(schema): Phase 4.13b — drop sanctionsScreened boolean + fix JSON-string parsing — local 334/334 green, awaiting push
+  - `95222db` feat(compliance): Phase 4.13a — jurisdiction screening for OFAC-comprehensive countries — CI green, deployed
   - `58a22e3` feat(ai-mcp+backend): Phase 4.12 — MCP write-tool / controller convergence — CI green, deployed
   - `35b7982` docs(session): refresh through Phase 4.9.3.1 + Phase 4.11
   - `fb65da0` feat(ai-mcp): Phase 4.9.3.1 — codify brand-aware fromAddress + audit MCP write tools — CI green, deploy in progress
@@ -57,7 +60,27 @@
 
 ---
 
-## Phase 4.13a — SHIPPED (LOCAL, AWAITING PUSH)
+## Phase 4.13b — SHIPPED (LOCAL, AWAITING PUSH)
+
+Drops the legacy `Lead.sanctionsScreened` BOOLEAN column. Phase 1 holdover kept "for read compatibility" but nothing kept it in sync with the C18 `screeningStatus` enum, which created the L-044 state-inconsistency visible on prod (sanctionsScreened=false + lastScreenedAt populated + screeningStatus=cleared all on the same row). Customer table never had the column — verified pre-removal via grep.
+
+### Changes
+- `backend/models/Lead.js` — `sanctionsScreened` field removed; comment block explains the L-044 rationale and points readers at the migration.
+- `backend/services/migrate413bDropSanctionsScreened.js` — new sentinel-guarded boot migration. `ALTER TABLE "Leads" DROP COLUMN "sanctions_screened"` (SQLite 3.35+, well within our deps). Sentinel: `phase4_13b_sanctions_screened_dropped`.
+- `backend/server.js` — wired after `migrate413aJurisdictionBackfill`.
+- `backend/services/migrate413aJurisdictionBackfill.js` — bundled fix: `hasManualOverrideMarker` now parses string-form JSON before checking the array. Surfaced by the prod 4.13a backfill: the Iran row's marker was stored such that Sequelize returned the field as a stringified payload; `Array.isArray()` short-circuited false, and the row only survived via the unrelated PROTECTED_STATUSES fallback. A row with the marker + `screeningStatus='pending'` would have been clobbered. **L-047** captured.
+- `backend/__tests__/integration/phase413bDropSanctionsScreened.test.js` — 6 new tests: model has no attribute, table has no column, Lead.create works without it, migration is idempotent, hasManualOverrideMarker handles string form, end-to-end backfill counts manualOverrideSkipped correctly when details arrive as a string.
+- `backend/__tests__/integration/phase413aJurisdictionScreen.test.js` — manual-override-preservation seed no longer sets `sanctionsScreened`.
+
+### Lessons captured
+- **L-047** — Sequelize DataTypes.JSON on SQLite can return strings; helpers reading JSON columns must accept both array and string forms.
+
+### Mobile parity
+N/A. Backend-only.
+
+---
+
+## Phase 4.13a — SHIPPED (PROD GREEN)
 
 Jurisdiction screening for OFAC comprehensive sanctions countries. First commit of the approved 4-commit Phase 4.13 split. Closes the live production compliance bug surfaced during Phase 4.12 verification: a Lead with `country='Iran'` cleared the sanctions screener because the pre-4.13a logic only fuzzy-matched names against the OFAC SDN list. Country-level comprehensive sanctions (ITSR / CACR / NKSR / SySR) were not enforced.
 

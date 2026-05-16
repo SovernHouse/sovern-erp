@@ -45,8 +45,19 @@ const SYSTEM_ENTITY_ID = '00000000-0000-0000-0000-000000000000';
 const PROTECTED_STATUSES = new Set(['flagged', 'blocked', 'override']);
 
 function hasManualOverrideMarker(details) {
-  if (!Array.isArray(details)) return false;
-  return details.some(h => h && h.reviewer === 'manual_db_override');
+  // Phase 4.13b: SQLite + Sequelize sometimes hands back DataTypes.JSON
+  // fields as raw strings (observed on the prod Iran backfill — the row
+  // was correctly preserved by the PROTECTED_STATUSES fallback, but the
+  // manual-override counter was off by one because Array.isArray()
+  // returned false on a stringified JSON payload). Parse the string
+  // form here so the marker check works regardless of how Sequelize
+  // hydrates the column on this driver.
+  let arr = details;
+  if (typeof arr === 'string') {
+    try { arr = JSON.parse(arr); } catch { return false; }
+  }
+  if (!Array.isArray(arr)) return false;
+  return arr.some(h => h && h.reviewer === 'manual_db_override');
 }
 
 async function rescreenModel(db, Model, entityLabel, stats) {

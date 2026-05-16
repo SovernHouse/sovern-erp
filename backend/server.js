@@ -652,6 +652,18 @@ db.sequelize.authenticate()
       logger.warn('[boot] phase4.13a jurisdiction backfill skipped:', e.message);
     }
 
+    // Phase 4.13b: drop the legacy Lead.sanctions_screened boolean.
+    // Phase 1 holdover that was kept "for read compatibility" but
+    // never stayed in sync with the C18 screeningStatus enum, creating
+    // the L-044 state-inconsistency pattern. Sentinel: AuditLog
+    // action phase4_13b_sanctions_screened_dropped.
+    try {
+      const { migrate413bDropSanctionsScreened } = require('./services/migrate413bDropSanctionsScreened');
+      await migrate413bDropSanctionsScreened(db);
+    } catch (e) {
+      logger.warn('[boot] phase4.13b drop sanctions_screened skipped:', e.message);
+    }
+
     // Phase 4.5, C24: refresh FW Brand signature (HTML + text) to the
     // Country Manager / FlorWay+HanHua design. Idempotent via AuditLog
     // sentinel; SH untouched.
