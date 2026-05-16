@@ -218,6 +218,76 @@ router.post('/customers/:id/override', requireAuth, requireRole('super_admin'), 
 });
 
 /**
+ * POST /api/compliance/leads/:id/override
+ * Phase 4.13c — Super-admin attestation to bypass a Lead's sanctions flag.
+ * The safety valve for jurisdiction false positives introduced in 4.13a
+ * (e.g. an exotic country spelling that doesn't match an alias, or a
+ * legitimate counterparty in a comprehensively-sanctioned country with
+ * an OFAC license).
+ *
+ * Lead has no isActive flag (unlike Customer) and no dedicated
+ * sanctionOverride* columns. Instead we flip screeningStatus to
+ * 'override' and append an override hit to sanctionsScreenDetails
+ * carrying the reason + super_admin identity. Downstream code reading
+ * Lead.screeningStatus already treats 'override' as "do not block",
+ * mirroring the existing Customer behavior in customerController.create
+ * and quotationWriteService.createQuotation.
+ *
+ * Body: { reason } where reason.length >= 10.
+ */
+router.post('/leads/:id/override', requireAuth, requireRole('super_admin'), async (req, res, next) => {
+  try {
+    const reason = (req.body && req.body.reason ? String(req.body.reason) : '').trim();
+    if (reason.length < 10) {
+      throw new ValidationError('reason must be at least 10 characters');
+    }
+    const lead = await db.Lead.findByPk(req.params.id);
+    if (!lead) throw new NotFoundError('Lead not found');
+
+    const priorStatus = lead.screeningStatus;
+    const priorHits = Array.isArray(lead.sanctionsScreenDetails)
+      ? lead.sanctionsScreenDetails
+      : (typeof lead.sanctionsScreenDetails === 'string'
+          ? (() => { try { return JSON.parse(lead.sanctionsScreenDetails); } catch { return []; } })()
+          : []);
+
+    const overrideHit = {
+      rule: 'override',
+      basis: reason,
+      authority: 'SovernSuperAdmin',
+      matched: 'super_admin_attestation',
+      reviewer: 'super_admin',
+      reviewerUserId: req.user.id,
+      reviewerEmail: req.user.email || null,
+      timestamp: new Date().toISOString(),
+    };
+
+    await lead.update({
+      screeningStatus: 'override',
+      sanctionsScreenDetails: priorHits.concat(overrideHit),
+      lastScreenedAt: new Date(),
+    });
+
+    auditService.logAction(
+      req.user.id,
+      'sanctions_override',
+      'Lead',
+      lead.id,
+      {
+        priorStatus,
+        priorHits,
+        reason,
+        overriddenBy: req.user.email || req.user.id,
+        overriddenAt: new Date().toISOString(),
+      },
+      req.ip,
+    ).catch(() => {});
+
+    res.json({ success: true, data: lead });
+  } catch (err) { next(err); }
+});
+
+/**
  * GET /api/compliance/sanctions/status
  * Returns last refresh timestamp, source-by-source byte counts, and
  * whether the refresh / rescreen cron jobs are enabled.

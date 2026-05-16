@@ -5,7 +5,9 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: Phase 4.13b — drop legacy `Lead.sanctionsScreened` boolean (kills L-044 state-inconsistency pattern) + fix `hasManualOverrideMarker` JSON-string parsing surfaced by 4.13a's prod run. Sentinel-guarded boot migration `migrate413bDropSanctionsScreened`. 6 new tests (334/334 total locally).
+2026-05-16 Taiwan time. Latest: Phase 4.13c — super_admin Lead sanctions override route. `POST /api/compliance/leads/:id/override`. Safety valve for jurisdiction false positives. 8 new tests (342/342 total locally).
+
+2026-05-16 Taiwan time (earlier). Phase 4.13b — drop legacy `Lead.sanctionsScreened` boolean (kills L-044 state-inconsistency pattern) + fix `hasManualOverrideMarker` JSON-string parsing surfaced by 4.13a's prod run. Sentinel-guarded boot migration `migrate413bDropSanctionsScreened`. 6 new tests.
 
 2026-05-16 Taiwan time (earlier). Phase 4.13a — jurisdiction screening (OFAC comprehensive: Iran, Cuba, DPRK, Syria). Closes the Phase 4.12 verification false-negative; sentinel-guarded boot migration re-screens existing rows while preserving manual_db_override markers. 41 new tests including the required Iran-positive CI gate.
 
@@ -17,7 +19,8 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `<pending-commit>` refactor(schema): Phase 4.13b — drop sanctionsScreened boolean + fix JSON-string parsing — local 334/334 green, awaiting push
+  - `<pending-commit>` feat(compliance): Phase 4.13c — Lead sanctions override route — local 342/342 green, awaiting push
+  - `4546d03` refactor(schema): Phase 4.13b — drop sanctionsScreened boolean + fix JSON-string parsing — CI green, deployed
   - `95222db` feat(compliance): Phase 4.13a — jurisdiction screening for OFAC-comprehensive countries — CI green, deployed
   - `58a22e3` feat(ai-mcp+backend): Phase 4.12 — MCP write-tool / controller convergence — CI green, deployed
   - `35b7982` docs(session): refresh through Phase 4.9.3.1 + Phase 4.11
@@ -60,7 +63,27 @@
 
 ---
 
-## Phase 4.13b — SHIPPED (LOCAL, AWAITING PUSH)
+## Phase 4.13c — SHIPPED (LOCAL, AWAITING PUSH)
+
+Super_admin Lead sanctions override route. Safety valve for jurisdiction false positives introduced in 4.13a (exotic country spellings that don't match the alias map, legitimate counterparties with OFAC general licenses, etc.). Mirrors the existing customer override at `/api/compliance/customers/:id/override`.
+
+### Route
+`POST /api/compliance/leads/:id/override` — super_admin only, requires `reason >= 10 chars`.
+- Sets `lead.screeningStatus = 'override'` (already in the enum; downstream code in customerController.create + quotationWriteService.createQuotation gates only on `'flagged'`, so 'override' implicitly unblocks).
+- Appends an `override` hit to `sanctions_screen_details` carrying `reviewer: 'super_admin'`, `reviewerUserId`, `reviewerEmail`, and the reason as the `basis`. Prior hits are preserved (e.g. the original jurisdiction hit + any `manual_db_override` chain).
+- Writes a `sanctions_override` AuditLog row with `priorStatus`, `priorHits`, `reason`, `overriddenBy`, `overriddenAt`.
+- Lead has no `isActive` column (unlike Customer), so the route does not toggle one. Downstream gates treat `screeningStatus='override'` as the unblock signal.
+
+### Files changed
+- Edited: `backend/modules/compliance/complianceRoutes.js` — new route block. Imports already present.
+- New: `backend/__tests__/integration/phase413cLeadOverride.test.js` — 8 tests: super_admin happy path, AuditLog row shape, reason < 10 chars, missing reason, 404 on unknown id, 403 for non-super_admin, 401 for unauthenticated, manual_db_override hit preservation when applying a new override.
+
+### Mobile parity
+N/A — backend-only. 4.13d will add the desktop + mobile UI for surfacing the override path to super_admin per L-035.
+
+---
+
+## Phase 4.13b — SHIPPED (PROD GREEN)
 
 Drops the legacy `Lead.sanctionsScreened` BOOLEAN column. Phase 1 holdover kept "for read compatibility" but nothing kept it in sync with the C18 `screeningStatus` enum, which created the L-044 state-inconsistency visible on prod (sanctionsScreened=false + lastScreenedAt populated + screeningStatus=cleared all on the same row). Customer table never had the column — verified pre-removal via grep.
 
