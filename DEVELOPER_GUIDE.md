@@ -3429,3 +3429,91 @@ The Cowork "ms-office-suite" plugin still owns the WRITE side (generating new do
 ## Phase 4.14.1 follow-up
 
 Same parsers need to land in the Cowork `sovern` MCP server (the global `mcp__sovern__sovern_drive_read` tool) so the ingestion DX is consistent whether you're in the ERP chat or Claude Code globally. Same contract, separate repo. Open follow-up.
+
+# Phase 4.15a — AI document generation + quotation CRUD
+
+The AI assistant can now generate every ERP PDF directly from chat, and complete the Quotation CRUD lifecycle (create exists from Phase 4.12; update / get / list / archive added here). 13 generator MCP tools + 4 quotation CRUD MCP tools = 17 new write tools, all routed through the Phase 4.12 service-layer pattern.
+
+## Architecture
+
+Three layers, one contract per tool:
+
+| Layer | File | Role |
+|---|---|---|
+| MCP handler | `backend/mcp/erpToolServer.js` | Thin (~10 lines) — calls the service, audits, returns metadata. |
+| AI write service | `backend/services/aiWriteServices/pdfGenerationService.js` | Dispatches per-category fetch + generator, uploads Buffer to Drive, creates Document row, returns `{ driveFileId, driveUrl, documentRowId, fileName, sizeKB }`. |
+| Underlying PDF generator | `backend/services/pdf/*.js`, `backend/services/pdfTemplates.js` | Phase 4.15a-prep gave each disk-writing generator an `opts.returnBuffer` flag. The service passes `returnBuffer: true`; existing REST callers default false and keep writing to disk unchanged. |
+
+No tool reimplements business logic. Adding a 14th PDF type = one row in `CATEGORY_HANDLERS` (declares fetch + generate + fileName) + one entry in `CATEGORY_MAP` (folder slug + Document.category enum) + one MCP tool schema. No new MCP handler code beyond that — the case statement in the switch already dispatches all 13 via `name.replace(/^erp_generate_/, '').replace(/_pdf$/, '')`.
+
+## The 13 generator tools
+
+| MCP tool | Source generator | Document.category |
+|---|---|---|
+| `erp_generate_quotation_pdf` | brandedQuotationRenderer.dispatch (SH classic + FW IronLite + FW generic + FW private label per brand + customer config) | `quotation` |
+| `erp_generate_invoice_pdf` | financeDocumentsPDF.generateInvoicePDF | `invoice` |
+| `erp_generate_proforma_invoice_pdf` | salesDocumentsPDF.generateProformaInvoicePDF | `proforma_invoice` |
+| `erp_generate_purchase_order_pdf` | orderDocumentsPDF.generatePurchaseOrderPDF | `purchase_order` |
+| `erp_generate_packing_list_pdf` | orderDocumentsPDF.generatePackingListPDF (default) / pdfTemplates.generatePackingListPDF (`advanced: true`) | `packing_list` |
+| `erp_generate_certificate_of_origin_pdf` | pdfTemplates.generateCertificateOfOriginPDF | `shipping` |
+| `erp_generate_credit_note_pdf` | financeDocumentsPDF.generateCreditNotePDF | `other` |
+| `erp_generate_inspection_certificate_pdf` | logisticsDocumentsPDF.generateInspectionCertificatePDF | `inspection` |
+| `erp_generate_product_spec_sheet_pdf` | logisticsDocumentsPDF.generateProductSpecSheetPDF | `other` |
+| `erp_generate_sales_note_pdf` | salesDocumentsPDF.generateSalesNotePDF | `other` |
+| `erp_generate_sales_order_pdf` | orderDocumentsPDF.generateSalesOrderPDF | `sales_order` |
+| `erp_generate_shipment_document_pdf` | logisticsDocumentsPDF.generateShipmentDocumentPDF | `shipping` |
+| `erp_generate_statement_of_account_pdf` | financeDocumentsPDF.generateStatementOfAccountPDF | `other` |
+
+## Drive folder layout
+
+Per `pdfGenerationService.basePathForBrand`:
+
+- **SH brand** → `Documents/<categoryFolder>/` on `alex@sovernhouse.co` Drive
+- **FW brand** → `Brand Assets/Documents/<categoryFolder>/` on `alexflorway@gmail.com` Drive
+
+`<categoryFolder>` mirrors the on-disk upload-dir sub-folder (`quotations`, `invoices`, `proforma_invoices`, `purchase_orders`, `packing_lists`, `certificates_of_origin`, `credit_notes`, `inspection_certificates`, `spec_sheets`, `sales_notes`, `sales_orders`, `shipment_documents`, `statements`) so a human browsing either Drive or the local upload tree sees the same shape. Folder IDs are cached for the process lifetime in `DRIVE_FOLDER_CACHE` (folder IDs never change once created).
+
+Folders are created on first upload (find-or-create per path segment). No upfront migration needed — the cache populates lazily.
+
+## Output handling (why we don't return raw bytes through MCP)
+
+Returning a multi-MB PDF buffer through MCP blows AI context immediately. Instead:
+
+1. Generator runs with `returnBuffer: true` and yields the Buffer in-memory.
+2. `pdfGenerationService.persistGeneratedPdf` uploads the Buffer to Drive via `googleapis` + the brand-routed OAuth client (mirrors Phase 4.9.3b account routing).
+3. A `Document` row is created in the DB linking back to the source entity (`Document.entityType` + `Document.entityId`), with `Document.fileUrl` = the Drive `webViewLink`.
+4. The MCP tool returns `{ driveFileId, driveUrl, documentRowId, fileName, sizeKB, brandCode, category }`. The AI surfaces the URL to the user.
+
+## Audit
+
+Every successful generation writes `AuditLog` action `ai_assistant_generate_<category>_pdf` with changes `{ documentRowId, driveFileId, driveUrl, fileName, sizeKB, category, brandCode, source }`. Mirrors the Phase 4.12 convention so existing audit queries surface AI-driven PDF generation alongside other AI writes.
+
+## Quotation CRUD completion (4 new tools)
+
+`erp_create_quotation` already existed (Phase 4.12). The four new tools complete the lifecycle:
+
+- `erp_update_quotation` — patches a DRAFT quotation. Refuses to edit sent / accepted / rejected (those flow through a revision, not in-place mutation). `brandCode` and `quotationNumber` are immutable.
+- `erp_get_quotation` — full fetch with items + customer + salesPerson + factory + lead.
+- `erp_list_quotations` — filtered list (status, brand, customer, date range). Up to 100.
+- `erp_archive_quotation` — soft-delete via paranoid.
+
+Brand-scope enforcement is identical to the leadWriteService pattern: cross-brand mode rejected with 403; updates against a brand the requester doesn't access return 404 (same shape as Phase 4.12 to avoid leaking row existence).
+
+## Tests
+
+- `phase415aPdfGenerationService.test.js` — 26 specs: CATEGORY_HANDLERS shape (13 categories × 3 method types), persistGeneratedPdf happy + error paths (unknown category, empty buffer, missing fileName, Drive upload failure), brand routing (SH vs FW), Document row + AuditLog landed correctly, quotation CRUD service (update happy / non-draft reject / cross-brand reject / brandCode immutable / archive removes row).
+- `phase415aPrepReturnBuffer.test.js` (from prep commit) — generators dual-mode contract.
+- Full backend suite 400/400 locally (was 374 before 4.15a proper).
+
+## Three-surface check (Phase 4.15a)
+
+- **Admin portal:** no new UI required. PDF download links from the existing /api/pdf/ routes keep working unchanged. The AI assistant chat surfaces the Drive URL inline.
+- **Mobile:** no new UI required. Mobile chat uses the same `/api/ai/chat` endpoint and inherits generation capability transparently. Document rows are visible via the existing mobile Documents list.
+- **Docs:** this section + `tooltipContent.aiDocumentGeneration` + `helpContent` "AI assistant document generation" section + `USER_GUIDE` paragraph.
+
+## What 4.15a does NOT do (deferred per spec)
+
+- Refactor of the underlying PDF generators' rendering or styling. They work; don't touch.
+- New entity admin UIs (still use the existing forms).
+- pptx parsing (separate phase).
+- 4.15b/c/d — commercial ops + logistics + governance MCP tools (next sprint slices).

@@ -837,6 +837,19 @@ export const HELP_CONTENT = {
         ],
       },
       {
+        heading: 'Generating ERP documents from chat (Phase 4.15a)',
+        body: 'The AI assistant generates every ERP PDF directly in chat — quotations (brand-aware), invoices, proforma invoices, sales orders, purchase orders, packing lists, certificates of origin, credit notes, inspection certificates, product spec sheets, sales notes, shipment documents, statements of account. Output is uploaded to the brand-appropriate Drive folder (SH: Documents/<type>/, FW: Brand Assets/Documents/<type>/) with a Document row created in the ERP linking back to the source entity. The AI returns the Drive share link inline.',
+        items: [
+          '"Generate the PDF for quotation QOT-2026-001" — branded variant chosen by the quotation\'s brandCode.',
+          '"Generate the proforma invoice PDF for PI-2026-008 and email it to the buyer" — generates, returns link, drafts the email for your approval.',
+          '"Generate a sales order PDF + packing list PDF for SO-2026-012" — multiple documents in one ask.',
+          '"Make the advanced packing list" — for packing lists only, switches to the professional pdfTemplates renderer.',
+          '"Generate the statement of account for Test Customer Co" — pulls all invoices + payments + outstanding balance.',
+          'Every generation writes ai_assistant_generate_<type>_pdf to AuditLog so you can audit what the AI produced.',
+          'Quotation CRUD: "update quotation QOT-2026-001 to status sent", "list draft quotations for SH brand", "archive QOT-2026-007".',
+        ],
+      },
+      {
         heading: 'External research (Phase 4.5, C19)',
         body: 'For anything outside the ERP and Drive, the assistant can run a quick web lookup. Use this for time-sensitive or public-record facts — not for trade compliance decisions, which always need a licensed broker.',
         items: [

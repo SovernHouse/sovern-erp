@@ -5,7 +5,9 @@
 ---
 
 ## Last Updated
-2026-05-16 Taiwan time. Latest: Phase 4.15a-prep — added `pipeToBufferOrDisk` helper in pdfHelpers + patched 12 of 13 disk-writing PDF generators across sales/order/logistics/finance to accept `opts.returnBuffer`. Backward-compat additive change (default false preserves the existing filename/disk contract). brandedQuotationRenderer (4 brand variants) deferred to 4.15a proper next session. 9 new regression tests (374/374 total locally).
+2026-05-16 Taiwan time. Latest: Phase 4.15a proper — patched brandedQuotationRenderer's 4 brand variants (SH classic + FW IronLite + FW generic + FW private label) to accept opts.returnBuffer, built `backend/services/aiWriteServices/pdfGenerationService.js` (per-category dispatch + Drive upload + Document row + audit), wired 13 PDF generator MCP tools + 4 quotation CRUD MCP tools (update/get/list/archive — create existed from Phase 4.12). 26 new convergence tests (400/400 total locally). Docs updated: DEVELOPER_GUIDE section + tooltipContent + helpContent + USER_GUIDE subsection.
+
+2026-05-16 Taiwan time (earlier). Phase 4.15a-prep — added `pipeToBufferOrDisk` helper in pdfHelpers + patched 12 of 13 disk-writing PDF generators across sales/order/logistics/finance to accept `opts.returnBuffer`. Backward-compat additive change. 9 regression tests.
 
 2026-05-16 Taiwan time (earlier). Phase 4.14 hotfix — applied the L-048 Uint8Array wrap to `read_attachment`'s pdf branch (same one-line bug as parsePdf had pre-4.14). `read_attachment` was silently failing on the same subset of real PDFs the 4.14 parser fixed.
 
@@ -25,7 +27,8 @@
 
 ## CI Status
 - **Latest commits on main (newest first):**
-  - `<pending-commit>` refactor(pdf): Phase 4.15a-prep — pipeToBufferOrDisk helper + 12 generators accept opts.returnBuffer — local 374/374 green, awaiting push
+  - `<pending-commit>` feat(ai-mcp): Phase 4.15a proper — pdfGenerationService + 13 PDF MCP tools + 4 quotation CRUD MCP tools — local 400/400 green, awaiting push
+  - `7625e02` refactor(pdf): Phase 4.15a-prep — pipeToBufferOrDisk helper + 12 generators accept opts.returnBuffer — CI green, deployed
   - `3676445` fix(ai-mcp): Phase 4.14 hotfix — L-048 Uint8Array wrap for read_attachment pdf branch — CI green, deployed
   - `2db54c0` feat(ai-mcp): Phase 4.14 — Drive document parsers (xlsx/xls/docx/pdf/rtf) for read_drive_file — CI green, deployed
   - `ec7782c` feat(compliance): Phase 4.13c — Lead sanctions override route — CI green, deployed

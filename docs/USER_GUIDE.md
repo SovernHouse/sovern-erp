@@ -1329,6 +1329,18 @@ The AI assistant chat can now read xlsx, xls, docx, pdf, and rtf files directly 
 
 **Unsupported in Phase 4.14:** PowerPoint decks (.pptx), legacy Word (.doc — re-save as .docx or open with Google Docs to auto-convert), scanned image PDFs (open with Google Docs for OCR), encrypted PDFs (remove the password first), files above 25MB (narrow the request or split the file).
 
+### AI Assistant — Generating ERP documents from chat (Phase 4.15a)
+
+The AI assistant generates every ERP PDF directly in chat: quotations (brand-aware: SH classic, FW IronLite, FW generic, FW private label), invoices, proforma invoices, sales orders, purchase orders, packing lists (basic + professional), certificates of origin, credit notes, inspection certificates, product spec sheets, sales notes, shipment documents, statements of account. Each generation uploads the PDF to the brand-appropriate Drive folder (SH: Documents/<type>/, FW: Brand Assets/Documents/<type>/) and creates a Document row in the ERP linking back to the source entity. The AI returns the Drive share link inline so you can open the PDF in one click.
+
+Example prompts:
+- "Generate the PDF for quotation QOT-2026-001"
+- "Generate the proforma invoice PDF for PI-2026-008 and draft an email to the buyer"
+- "Generate the statement of account for Test Customer Co"
+- "Update quotation QOT-2026-001 to status sent" (also: list, archive)
+
+Every PDF generation writes an `ai_assistant_generate_<type>_pdf` AuditLog row so you can audit what the AI produced.
+
 ---
 
 **For additional support, contact**: support@tradingerp.com

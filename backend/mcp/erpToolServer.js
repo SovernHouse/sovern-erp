@@ -1724,6 +1724,142 @@ async function callTool(name, args) {
       };
     }
 
+    // ── Phase 4.15a: Document generation (13 tools) ─────────────────────
+    case 'erp_generate_quotation_pdf':
+    case 'erp_generate_invoice_pdf':
+    case 'erp_generate_proforma_invoice_pdf':
+    case 'erp_generate_purchase_order_pdf':
+    case 'erp_generate_packing_list_pdf':
+    case 'erp_generate_certificate_of_origin_pdf':
+    case 'erp_generate_credit_note_pdf':
+    case 'erp_generate_inspection_certificate_pdf':
+    case 'erp_generate_product_spec_sheet_pdf':
+    case 'erp_generate_sales_note_pdf':
+    case 'erp_generate_sales_order_pdf':
+    case 'erp_generate_shipment_document_pdf':
+    case 'erp_generate_statement_of_account_pdf': {
+      const requester = await getCurrentUserOrThrow();
+      const brandScope = await brandScopeForMcp(requester);
+      // Tool name → category (strip 'erp_generate_' prefix + '_pdf' suffix).
+      const category = name.replace(/^erp_generate_/, '').replace(/_pdf$/, '');
+      const pdfService = require('../services/aiWriteServices/pdfGenerationService');
+      const generatorOpts = {};
+      if (category === 'packing_list' && args.advanced === true) {
+        generatorOpts.advanced = true;
+      }
+      const result = await pdfService.generateAndPersist({
+        category,
+        entityId: args.id,
+        generatorOpts,
+      }, {
+        userId: requester.id,
+        brandScope,
+        ip: null,
+        source: 'mcp',
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      return {
+        success: true,
+        category,
+        fileName: result.fileName,
+        driveFileId: result.driveFileId,
+        driveUrl: result.driveUrl,
+        documentRowId: result.documentRowId,
+        sizeKB: result.sizeKB,
+        brandCode: result.brandCode,
+        message: `Generated ${category.replace(/_/g, ' ')} PDF: ${result.fileName} (${result.sizeKB}KB). View: ${result.driveUrl}`,
+      };
+    }
+
+    // ── Phase 4.15a: Quotation CRUD completion (4 new tools) ────────────
+    // erp_create_quotation already exists (create_quotation, Phase 4.12).
+    case 'erp_update_quotation': {
+      const requester = await getCurrentUserOrThrow();
+      const brandScope = await brandScopeForMcp(requester);
+      const allowed = ['status', 'currency', 'validUntil', 'terms', 'discount',
+        'discountType', 'taxRate', 'displayAreaUnit', 'displayDimensionUnit',
+        'salesPersonId', 'factoryId'];
+      const patch = {};
+      for (const k of allowed) {
+        if (args[k] !== undefined) patch[k] = args[k];
+      }
+      const quotationWriteService = require('../services/aiWriteServices/quotationWriteService');
+      const result = await quotationWriteService.updateQuotation(args.id, patch, {
+        userId: requester.id,
+        brandScope,
+        ip: null,
+        source: 'mcp',
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('update_quotation', 'Quotation', result.quotation.id, {
+        before: result.before,
+        after: result.after,
+        appliedKeys: Object.keys(patch),
+      }, requester.id);
+      return { success: true, updated: Object.keys(patch), quotation: result.quotation.toJSON() };
+    }
+
+    case 'erp_get_quotation': {
+      const quotation = await getDb().Quotation.findByPk(args.id, {
+        include: [
+          { association: 'items', include: [{ model: getDb().Product, as: 'product' }] },
+          { model: getDb().Customer, as: 'customer' },
+          { model: getDb().User, as: 'salesPerson' },
+          { model: getDb().Factory, as: 'factory' },
+          { model: getDb().Lead, as: 'lead' },
+        ],
+      });
+      if (!quotation) return `Quotation ${args.id} not found.`;
+      return { success: true, quotation: quotation.toJSON() };
+    }
+
+    case 'erp_list_quotations': {
+      const { Op } = require('sequelize');
+      const where = { deletedAt: null };
+      if (args.status) where.status = args.status;
+      if (args.brand_code) where.brandCode = String(args.brand_code).toUpperCase();
+      if (args.customer_id) where.customerId = args.customer_id;
+      if (args.date_from || args.date_to) {
+        where.createdAt = {};
+        if (args.date_from) where.createdAt[Op.gte] = new Date(args.date_from);
+        if (args.date_to) where.createdAt[Op.lte] = new Date(args.date_to);
+      }
+      const rows = await getDb().Quotation.findAll({
+        where,
+        limit: Math.min(args.limit || 25, 100),
+        order: [['createdAt', 'DESC']],
+        include: [
+          { model: getDb().Customer, as: 'customer', attributes: ['id', 'companyName'] },
+        ],
+        attributes: ['id', 'quotationNumber', 'status', 'brandCode',
+          'subtotal', 'total', 'currency', 'validUntil', 'createdAt'],
+      });
+      return rows.length ? rows.map(r => r.toJSON()) : 'No quotations match those filters.';
+    }
+
+    case 'erp_archive_quotation': {
+      const requester = await getCurrentUserOrThrow();
+      const brandScope = await brandScopeForMcp(requester);
+      const quotationWriteService = require('../services/aiWriteServices/quotationWriteService');
+      const result = await quotationWriteService.archiveQuotation(args.id, {
+        userId: requester.id,
+        brandScope,
+        ip: null,
+        source: 'mcp',
+      });
+      if (!result.ok) return formatMcpWriteError(result);
+      await auditAiWrite('archive_quotation', 'Quotation', args.id, {
+        quotationNumber: result.deleted.quotationNumber,
+        status: result.deleted.status,
+        total: result.deleted.total,
+      }, requester.id);
+      return {
+        success: true,
+        archivedQuotationId: args.id,
+        quotationNumber: result.deleted.quotationNumber,
+      };
+    }
+
     case 'calculate_landed_cost': {
       const { product_cost, quantity = 1, freight = 0, insurance = 0,
               customs_duty = 0, handling = 0, local_delivery = 0,
@@ -4068,6 +4204,191 @@ const TOOL_DEFS = [
       },
     },
   },
+
+  // ── Phase 4.15a: Quotation CRUD completion ──────────────────────────────
+  {
+    name: 'erp_update_quotation',
+    description: 'Phase 4.15a — patch a DRAFT Quotation. Allowed fields: status, currency, validUntil, terms, discount, discountType, taxRate, displayAreaUnit, displayDimensionUnit, salesPersonId, factoryId. brandCode and quotationNumber are immutable. Sent / accepted / rejected quotations cannot be edited — create a revision instead. Writes ai_assistant_update_quotation to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:                   { type: 'string', description: 'Quotation UUID.' },
+        status:               { type: 'string', description: 'New status (draft / sent / accepted / rejected).' },
+        currency:             { type: 'string' },
+        validUntil:           { type: 'string', description: 'ISO datetime.' },
+        terms:                { type: 'string' },
+        discount:             { type: 'number' },
+        discountType:         { type: 'string', enum: ['percentage', 'fixed'] },
+        taxRate:              { type: 'number' },
+        displayAreaUnit:      { type: 'string', enum: ['sqm', 'sqft'] },
+        displayDimensionUnit: { type: 'string', enum: ['mm', 'inch'] },
+        salesPersonId:        { type: 'string' },
+        factoryId:            { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'erp_get_quotation',
+    description: 'Phase 4.15a — fetch a Quotation with all relations (items + product, customer, salesPerson, factory, lead). Use before generate_quotation_pdf so the AI can preview line items and totals.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Quotation UUID.' } },
+    },
+  },
+  {
+    name: 'erp_list_quotations',
+    description: 'Phase 4.15a — list Quotations with filters. Supports status, brand_code, customer_id, date range. Returns up to 100. Use to find a recent quotation by customer or status before triggering a PDF regeneration.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status:      { type: 'string', description: 'Filter by status (draft / sent / accepted / rejected).' },
+        brand_code:  { type: 'string', description: 'Filter by brand (SH / FW).' },
+        customer_id: { type: 'string', description: 'Filter to one customer.' },
+        date_from:   { type: 'string', description: 'ISO datetime lower bound on createdAt.' },
+        date_to:     { type: 'string', description: 'ISO datetime upper bound on createdAt.' },
+        limit:       { type: 'number', description: 'Max results (default 25, max 100).' },
+      },
+    },
+  },
+  {
+    name: 'erp_archive_quotation',
+    description: 'Phase 4.15a — soft-delete a Quotation (paranoid). The row stays in the database with deletedAt set; downstream reads filter it out. Use for cancelled draft quotations. Writes ai_assistant_archive_quotation to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Quotation UUID.' } },
+    },
+  },
+
+  // ── Phase 4.15a: Document generation (13 tools) ─────────────────────────
+  // All thirteen share the same contract: pass an entity id, get back
+  // { driveFileId, driveUrl, documentRowId, fileName, sizeKB }. PDFs are
+  // saved to the brand-appropriate Drive folder (SH → Documents/<type>/,
+  // FW → Brand Assets/Documents/<type>/) and a Document row is created
+  // linking back to the source entity.
+  {
+    name: 'erp_generate_quotation_pdf',
+    description: 'Phase 4.15a — generate the brand-aware Quotation PDF (SH classic / FW IronLite / FW generic / FW private label per quotation.brandCode + customer config). Uploads to Drive, returns the share link, creates a Document row. Writes ai_assistant_generate_quotation_pdf to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Quotation UUID.' } },
+    },
+  },
+  {
+    name: 'erp_generate_invoice_pdf',
+    description: 'Phase 4.15a — generate an Invoice PDF. Includes FW internal-record banner for FW invoices (Phase 4 C16). Uploads to Drive, creates a Document row.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Invoice UUID.' } },
+    },
+  },
+  {
+    name: 'erp_generate_proforma_invoice_pdf',
+    description: 'Phase 4.15a — generate a Proforma Invoice PDF. Includes FW internal-record banner for FW PIs (Phase 4 C16). Uploads to Drive, creates a Document row.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'ProformaInvoice UUID.' } },
+    },
+  },
+  {
+    name: 'erp_generate_purchase_order_pdf',
+    description: 'Phase 4.15a — generate a Purchase Order PDF (for the factory). Uploads to Drive, creates a Document row.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'PurchaseOrder UUID.' } },
+    },
+  },
+  {
+    name: 'erp_generate_packing_list_pdf',
+    description: 'Phase 4.15a — generate a Packing List PDF. Default uses the basic generator; pass advanced=true for the professional pdfTemplates renderer. Uploads to Drive, creates a Document row.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:       { type: 'string',  description: 'PackingList UUID.' },
+        advanced: { type: 'boolean', description: 'Default false. true switches to the professional pdfTemplates renderer.' },
+      },
+    },
+  },
+  {
+    name: 'erp_generate_certificate_of_origin_pdf',
+    description: 'Phase 4.15a — generate a Certificate of Origin PDF. Uses the professional pdfTemplates renderer. Uploads to Drive, creates a Document row.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Certificate of Origin UUID.' } },
+    },
+  },
+  {
+    name: 'erp_generate_credit_note_pdf',
+    description: 'Phase 4.15a — generate a Credit Note PDF for an Invoice. Uploads to Drive, creates a Document row.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Invoice UUID (the credit note references the source invoice).' } },
+    },
+  },
+  {
+    name: 'erp_generate_inspection_certificate_pdf',
+    description: 'Phase 4.15a — generate an Inspection Certificate PDF for a completed inspection. Uploads to Drive, creates a Document row.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Inspection UUID.' } },
+    },
+  },
+  {
+    name: 'erp_generate_product_spec_sheet_pdf',
+    description: 'Phase 4.15a — generate a Product Specification Sheet PDF. Includes factory certifications + commercial details + compliance footer. Uploads to Drive, creates a Document row.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Product UUID.' } },
+    },
+  },
+  {
+    name: 'erp_generate_sales_note_pdf',
+    description: 'Phase 4.15a — generate a Sales Note (Purchase Contract — signed ProformaInvoice) PDF. Uploads to Drive, creates a Document row.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'ProformaInvoice UUID (sales note references the PI).' } },
+    },
+  },
+  {
+    name: 'erp_generate_sales_order_pdf',
+    description: 'Phase 4.15a — generate a Sales Order PDF. Includes FW internal-record banner for FW orders (Phase 4 C16). Uploads to Drive, creates a Document row.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'SalesOrder UUID.' } },
+    },
+  },
+  {
+    name: 'erp_generate_shipment_document_pdf',
+    description: 'Phase 4.15a — generate a Shipment Document PDF (carrier, vessel, container, ports, ETA). Uploads to Drive, creates a Document row.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Shipment UUID.' } },
+    },
+  },
+  {
+    name: 'erp_generate_statement_of_account_pdf',
+    description: 'Phase 4.15a — generate a Statement of Account PDF for a customer (all invoices + payments + outstanding balance). Uploads to Drive, creates a Document row.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Customer UUID.' } },
+    },
+  },
+
   {
     name: 'calculate_landed_cost',
     description: 'Calculate landed cost for a product import. Returns full breakdown: product, freight, insurance, customs duty, handling, local delivery, total landed cost, cost per unit. If margin_percent is provided, also returns sell-price suggestions using Sovern House\'s standard formula: sell_price = cost / (1 - margin/100). Pure calculation — does NOT persist to the LandedCostCalculation table; use the /api/landed-costs endpoint for that.',

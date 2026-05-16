@@ -282,6 +282,71 @@ async function createQuotation(payload, ctx) {
   return { ok: true, quotation: result, autoAddedBrand };
 }
 
+// ── Phase 4.15a: Quotation update + archive (CRUD completion) ─────────
+
+/**
+ * updateQuotation — Phase 4.15a.
+ *
+ * Patches a draft Quotation. Hard-blocks updates on quotations whose
+ * status has moved past 'draft' (sent / accepted / rejected) — once
+ * sent to a buyer, edits go through a new revision, not in-place
+ * mutation. brandCode is immutable here (mirrors leadWriteService);
+ * brand changes flow through the super-admin override path.
+ */
+async function updateQuotation(id, patch, ctx) {
+  const { brandScope } = ctx || {};
+  if (brandScope && brandScope.isCrossBrand) {
+    return err('cross_brand_mode', 403, 'All Brands view is read-only. Switch to SH or FW to make changes.');
+  }
+  const quotation = await db.Quotation.findByPk(id);
+  if (!quotation) return err('not_found', 404, 'Quotation not found');
+
+  if (brandScope
+      && !brandScope.isCrossBrand
+      && Array.isArray(brandScope.accessibleBrands)
+      && !brandScope.accessibleBrands.includes(quotation.brandCode)) {
+    return err('not_found', 404, 'Quotation not found');
+  }
+
+  if (quotation.status && quotation.status !== 'draft') {
+    return err('validation', 400,
+      `Quotation ${quotation.quotationNumber} is in status "${quotation.status}"; only draft quotations are editable. Create a revision instead.`);
+  }
+
+  // brandCode is immutable on the standard update path (mirrors leadWriteService).
+  const { brandCode: _ignored, id: _idIgnored, quotationNumber: _qnIgnored, ...allowed } = patch || {};
+
+  const before = quotation.toJSON();
+  await quotation.update(allowed);
+  return { ok: true, quotation, before, after: quotation.toJSON() };
+}
+
+/**
+ * archiveQuotation — Phase 4.15a. Soft-delete via the existing paranoid
+ * model behavior. Same brand-scope check as update.
+ */
+async function archiveQuotation(id, ctx) {
+  const { brandScope } = ctx || {};
+  if (brandScope && brandScope.isCrossBrand) {
+    return err('cross_brand_mode', 403, 'All Brands view is read-only. Switch to SH or FW to make changes.');
+  }
+  const quotation = await db.Quotation.findByPk(id);
+  if (!quotation) return err('not_found', 404, 'Quotation not found');
+
+  if (brandScope
+      && !brandScope.isCrossBrand
+      && Array.isArray(brandScope.accessibleBrands)
+      && !brandScope.accessibleBrands.includes(quotation.brandCode)) {
+    return err('not_found', 404, 'Quotation not found');
+  }
+
+  const snapshot = quotation.toJSON();
+  await quotation.destroy();  // paranoid: sets deletedAt
+  return { ok: true, deleted: snapshot };
+}
+
 module.exports = {
   createQuotation,
+  updateQuotation,
+  archiveQuotation,
 };

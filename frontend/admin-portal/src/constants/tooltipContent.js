@@ -243,6 +243,7 @@ export const SETTINGS = {
   outreachDraft:    'Draft outreach emails created via the AI assistant\'s send_outreach_email with draftOnly=true are staged here for review before send. status=draft means the row exists but no SMTP send has happened.',
   driveAccountFw:   'FW brand context Google Drive (alexflorway@gmail.com). Used by the AI assistant for HanHua, FlorWay, and IronLite work via accountKey="fw" or by passing brandCode="FW".',
   aiDocumentIngestion: 'Phase 4.14: the AI assistant reads xlsx, xls, docx, pdf, and rtf directly from Drive — no per-file conversion. Ask "read the HanHua quote in Drive" and it parses the spreadsheet. Optional narrowing: "rows 8-16 of the Quote sheet", "page 3 of the contract". Unsupported: pptx, legacy .doc (re-save as .docx), scanned/image PDFs (no OCR yet), encrypted PDFs.',
+  aiDocumentGeneration: 'Phase 4.15a: the AI assistant generates every ERP PDF directly from chat — quotations (brand-aware), invoices, proforma invoices, sales orders, purchase orders, packing lists, certificates of origin, credit notes, inspection certificates, product spec sheets, sales notes, shipment documents, statements of account. Output goes to the brand-appropriate Drive folder (SH: Documents/…, FW: Brand Assets/Documents/…) with a Document row linking back to the source entity. Ask "generate the PDF for quotation QOT-2026-001" and the AI returns the Drive link in chat.',
 }
 
 // ─── Brand (multi-brand data model, Phase 1) ──────────────────────────────────

@@ -36,6 +36,29 @@ const {
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 
+// Phase 4.15a: per-renderer sink helper that switches between in-memory
+// Buffer (for MCP Drive-upload) and the legacy disk-write path (preserves
+// the existing { filename, filepath } resolve shape). The disk shape
+// matters here because /api/pdf/quotation/:id and the dispatcher's
+// existing callers consume .filepath to stream the file back.
+function makeRendererSink(doc, opts, filepath, filename) {
+  if (opts && opts.returnBuffer) {
+    return new Promise((resolve, reject) => {
+      const buffers = [];
+      doc.on('data', (b) => buffers.push(b));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+    });
+  }
+  const stream = fs.createWriteStream(filepath);
+  doc.pipe(stream);
+  return new Promise((resolve, reject) => {
+    stream.on('finish', () => resolve({ filename, filepath: path.resolve(filepath) }));
+    stream.on('error', reject);
+    doc.on('error', reject);
+  });
+}
+
 // ─── PUBLIC ENTRY ──────────────────────────────────────────────────────────
 
 /**
@@ -48,12 +71,12 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
  * @param {object|null} brand   Brand record from db.Brand.findOne. If null,
  *                              the dispatcher fetches it. Pass it through
  *                              when the caller already has it (saves a query).
- * @returns {Promise<{filename:string, filepath:string}>}  Generated file
- *   info. `filename` is the basename for legacy response payloads.
- *   `filepath` is the absolute path used by generatePDF to stream binary
- *   back to the browser.
+ * @param {object} opts       Phase 4.15a: opts.returnBuffer=true returns a
+ *                            Buffer instead of writing to disk. Default false
+ *                            preserves the legacy { filename, filepath } shape.
+ * @returns {Promise<Buffer|{filename:string, filepath:string}>}
  */
-async function dispatch(quotation, items, customer, salesPerson, brand = null) {
+async function dispatch(quotation, items, customer, salesPerson, brand = null, opts = {}) {
   // Resolve brand if caller didn't pass one
   if (!brand && quotation?.brandCode) {
     const db = require('../../models');
@@ -67,16 +90,16 @@ async function dispatch(quotation, items, customer, salesPerson, brand = null) {
   if (brandCode === 'FW') {
     const variant = tokens.resolveFlorWayVariant(customer);
     if (variant === 'ironlite') {
-      return renderFlorWayIronLite(quotation, items, customer, salesPerson, brand);
+      return renderFlorWayIronLite(quotation, items, customer, salesPerson, brand, opts);
     }
     if (variant === 'private_label') {
-      return renderFlorWayPrivateLabel(quotation, items, customer, salesPerson, brand);
+      return renderFlorWayPrivateLabel(quotation, items, customer, salesPerson, brand, opts);
     }
-    return renderFlorWayGeneric(quotation, items, customer, salesPerson, brand);
+    return renderFlorWayGeneric(quotation, items, customer, salesPerson, brand, opts);
   }
 
   // SH path — delegates to legacy in C9, replaced in C10
-  return renderSovernHouseClassic(quotation, items, customer, salesPerson, brand);
+  return renderSovernHouseClassic(quotation, items, customer, salesPerson, brand, opts);
 }
 
 // ─── SH (Sovern House) NATIVE RENDERER (C10) ───────────────────────────────
@@ -87,7 +110,7 @@ async function dispatch(quotation, items, customer, salesPerson, brand = null) {
 // bag and are brand-agnostic. Output path is uploads/quotations/SH/classic/
 // (the brand+variant sub-folder convention introduced for FW in C9).
 
-function renderSovernHouseClassic(quotation, items, customer, salesPerson, brand) {
+function renderSovernHouseClassic(quotation, items, customer, salesPerson, brand, opts = {}) {
   return new Promise((resolve, reject) => {
     try {
       const t = tokens.resolveTokens(brand || { code: 'SH' });
@@ -96,8 +119,7 @@ function renderSovernHouseClassic(quotation, items, customer, salesPerson, brand
 
       const doc = new PDFDocument({ margin: 40, size: 'A4' });
       const fonts = tokens.registerBrandFonts(doc);
-      const stream = fs.createWriteStream(filepath);
-      doc.pipe(stream);
+      const sink = makeRendererSink(doc, opts, filepath, filename);
 
       let pageNum = 1;
       let y;
@@ -153,8 +175,7 @@ function renderSovernHouseClassic(quotation, items, customer, salesPerson, brand
       drawFwFooter(doc, t, fonts, pageNum);
 
       doc.end();
-      stream.on('finish', () => resolve({ filename, filepath: path.resolve(filepath) }));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }
@@ -577,7 +598,7 @@ function tryImage(doc, assetPath, x, y, opts = {}) {
 
 // ─── FW: IRONLITE VARIANT ──────────────────────────────────────────────────
 
-function renderFlorWayIronLite(quotation, items, customer, salesPerson, brand) {
+function renderFlorWayIronLite(quotation, items, customer, salesPerson, brand, opts = {}) {
   return new Promise((resolve, reject) => {
     try {
       const t = tokens.resolveTokens(brand);
@@ -586,8 +607,7 @@ function renderFlorWayIronLite(quotation, items, customer, salesPerson, brand) {
 
       const doc = new PDFDocument({ margin: 40, size: 'A4' });
       const fonts = tokens.registerBrandFonts(doc);
-      const stream = fs.createWriteStream(filepath);
-      doc.pipe(stream);
+      const sink = makeRendererSink(doc, opts, filepath, filename);
 
       let pageNum = 1;
       let y;
@@ -678,8 +698,7 @@ function renderFlorWayIronLite(quotation, items, customer, salesPerson, brand) {
       }
 
       doc.end();
-      stream.on('finish', () => resolve({ filename, filepath: path.resolve(filepath) }));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }
@@ -688,7 +707,7 @@ function renderFlorWayIronLite(quotation, items, customer, salesPerson, brand) {
 
 // ─── FW: GENERIC VARIANT (default) ─────────────────────────────────────────
 
-function renderFlorWayGeneric(quotation, items, customer, salesPerson, brand) {
+function renderFlorWayGeneric(quotation, items, customer, salesPerson, brand, opts = {}) {
   return new Promise((resolve, reject) => {
     try {
       const t = tokens.resolveTokens(brand);
@@ -697,8 +716,7 @@ function renderFlorWayGeneric(quotation, items, customer, salesPerson, brand) {
 
       const doc = new PDFDocument({ margin: 40, size: 'A4' });
       const fonts = tokens.registerBrandFonts(doc);
-      const stream = fs.createWriteStream(filepath);
-      doc.pipe(stream);
+      const sink = makeRendererSink(doc, opts, filepath, filename);
 
       let pageNum = 1;
       let y;
@@ -751,8 +769,7 @@ function renderFlorWayGeneric(quotation, items, customer, salesPerson, brand) {
       drawFwFooter(doc, t, fonts, pageNum);
 
       doc.end();
-      stream.on('finish', () => resolve({ filename, filepath: path.resolve(filepath) }));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }
@@ -761,7 +778,7 @@ function renderFlorWayGeneric(quotation, items, customer, salesPerson, brand) {
 
 // ─── FW: PRIVATE LABEL VARIANT (placeholder) ───────────────────────────────
 
-function renderFlorWayPrivateLabel(quotation, items, customer, salesPerson, brand) {
+function renderFlorWayPrivateLabel(quotation, items, customer, salesPerson, brand, opts = {}) {
   return new Promise((resolve, reject) => {
     try {
       const t = tokens.resolveTokens(brand);
@@ -772,8 +789,7 @@ function renderFlorWayPrivateLabel(quotation, items, customer, salesPerson, bran
 
       const doc = new PDFDocument({ margin: 40, size: 'A4' });
       const fonts = tokens.registerBrandFonts(doc);
-      const stream = fs.createWriteStream(filepath);
-      doc.pipe(stream);
+      const sink = makeRendererSink(doc, opts, filepath, filename);
 
       let pageNum = 1;
       let y;
@@ -833,8 +849,7 @@ function renderFlorWayPrivateLabel(quotation, items, customer, salesPerson, bran
       drawFwFooter(doc, t, fonts, pageNum);
 
       doc.end();
-      stream.on('finish', () => resolve({ filename, filepath: path.resolve(filepath) }));
-      stream.on('error', reject);
+      sink.then(resolve).catch(reject);
     } catch (error) {
       reject(error);
     }
