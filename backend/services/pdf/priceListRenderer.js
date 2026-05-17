@@ -55,10 +55,17 @@ const COL_HEADERS = {
 // the standard cols.
 const CUSTOM_COL_RATIO = 0.10;
 
-function resolveColumns(hiddenList, customDefs) {
+function resolveColumns(hiddenList, customDefs, labelOverrides) {
   const hidden = new Set(
     (Array.isArray(hiddenList) ? hiddenList : []).map(s => String(s).toLowerCase()),
   );
+  const labels = (labelOverrides && typeof labelOverrides === 'object' && !Array.isArray(labelOverrides))
+    ? labelOverrides : {};
+  const headerFor = (k) => {
+    const override = labels[k];
+    if (override && String(override).trim()) return String(override).trim().toUpperCase();
+    return COL_HEADERS[k];
+  };
   const visible = [];
 
   for (const k of COL_ORDER) {
@@ -66,7 +73,7 @@ function resolveColumns(hiddenList, customDefs) {
     visible.push({
       kind:    'std',
       key:     k,
-      header:  COL_HEADERS[k],
+      header:  headerFor(k),
       ratio:   DEFAULT_COL_RATIOS[k],
       align:   (k === 'moq' || k === 'lead' || k === 'price') ? 'right' : 'left',
     });
@@ -233,7 +240,11 @@ async function renderPriceListPdf(priceList, opts = {}) {
       if (typeof customDefs === 'string') {
         try { customDefs = JSON.parse(customDefs); } catch (_) { customDefs = []; }
       }
-      const visibleCols = resolveColumns(hiddenList, customDefs);
+      let columnLabels = priceList.columnLabels || priceList.column_labels || {};
+      if (typeof columnLabels === 'string') {
+        try { columnLabels = JSON.parse(columnLabels); } catch (_) { columnLabels = {}; }
+      }
+      const visibleCols = resolveColumns(hiddenList, customDefs, columnLabels);
 
       // Precompute width + x for each column. Column object gets .width
       // and .x mutated in place so the rest of the rendering can read
@@ -336,6 +347,37 @@ async function renderPriceListPdf(priceList, opts = {}) {
           }
           y += rh;
         });
+      }
+
+      // ── Footer notes block (payment terms / duty breakdown / Incoterm
+      // caveat / sample policy). Rendered above the brand footer. Plain
+      // text; newlines preserved. Page-breaks if it doesn't fit; the
+      // brand footer always sits on the last page (rendered after).
+      const footerNotesRaw = priceList.footerNotes || priceList.footer_notes;
+      if (footerNotesRaw && String(footerNotesRaw).trim()) {
+        const notes = String(footerNotesRaw).trim();
+        doc.font(fonts.body).fontSize(9);
+        const notesHeight = doc.heightOfString(notes, { width: pageWidth });
+        const labelHeight = 14;
+        const blockHeight = labelHeight + notesHeight + 8;
+
+        // Need room for the block + the brand footer below it (~50pt).
+        if (y + 20 + blockHeight > doc.page.height - PAGE_MARGIN - 50) {
+          doc.addPage();
+          y = PAGE_MARGIN;
+        } else {
+          y += 16;
+        }
+
+        doc.fillColor(tokens.primaryColor).fontSize(9).font(fonts.bodyBold)
+           .text('NOTES', PAGE_MARGIN, y, { width: pageWidth });
+        y += labelHeight;
+        doc.moveTo(PAGE_MARGIN, y - 2)
+           .lineTo(PAGE_MARGIN + Math.min(60, pageWidth), y - 2)
+           .strokeColor(tokens.primaryColor).lineWidth(0.8).stroke();
+        doc.fillColor(tokens.ink || '#0F172A').fontSize(9).font(fonts.body)
+           .text(notes, PAGE_MARGIN, y, { width: pageWidth });
+        y += notesHeight + 8;
       }
 
       // ── Footer

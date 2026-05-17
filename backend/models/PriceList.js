@@ -68,6 +68,29 @@ module.exports = (sequelize) => {
       allowNull: true,
       defaultValue: [],
     },
+    // Phase 4.28d second follow-up (2026-05-17). Per-PriceList header
+    // override map for the standard column labels. The default English
+    // names ("Cost Price", "Min Order") don't fit international trade
+    // vocabulary; the operator may need "FOB", "DDP", "CIF", "Min QTY",
+    // etc. Shape: { sku: 'CODE', cost: 'FOB', moq: 'MIN QTY', ... }.
+    // Keys not present in the map fall back to the default label. Keys
+    // are short codes matching hiddenColumns keys + 'sku', 'productName',
+    // 'price'. Empty / missing value → use the built-in label.
+    columnLabels: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: {},
+    },
+    // Phase 4.28d second follow-up. Free-text block rendered at the
+    // bottom of the PDF (above the brand footer). Used for payment
+    // terms, duty breakdown, Incoterm clarification, lead-time caveats,
+    // sample policy, anything that doesn't fit a per-item column. Plain
+    // text; newlines preserved. Empty / null → footer renders without
+    // this section.
+    footerNotes: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
     createdBy: {
       type: DataTypes.UUID,
       allowNull: true,

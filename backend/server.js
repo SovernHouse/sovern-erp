@@ -718,6 +718,17 @@ db.sequelize.authenticate()
       logger.warn('[boot] phase4.28d price list brand_code skipped:', e.message);
     }
 
+    // Phase 4.28d second follow-up (2026-05-17): per-PriceList column
+    // header overrides (e.g. "Cost Price" -> "FOB") + a free-text footer
+    // notes block rendered below the items table on the PDF. Sentinel:
+    // phase4_28e_price_list_column_labels_footer_notes_added.
+    try {
+      const { migrate428eColumnLabelsAndFooterNotes } = require('./services/migrate428eColumnLabelsAndFooterNotes');
+      await migrate428eColumnLabelsAndFooterNotes(db);
+    } catch (e) {
+      logger.warn('[boot] phase4.28e column_labels + footer_notes skipped:', e.message);
+    }
+
     // Phase 4.5, C24: refresh FW Brand signature (HTML + text) to the
     // Country Manager / FlorWay+HanHua design. Idempotent via AuditLog
     // sentinel; SH untouched.

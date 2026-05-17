@@ -18,17 +18,20 @@ import api, { customersAPI, factoriesAPI } from '../../services/api'
 import BrandPicker from '../../components/BrandPicker'
 import LoadingSpinner from '../../components/LoadingSpinner'
 
-// Single source of truth for optional standard item columns. The `k`
-// (key) matches what is stored in PriceList.hiddenColumns and what the
-// PDF renderer's COL_ORDER uses. `field` is the PriceListItem property
-// the input edits. Always-shown columns (SKU, Product, Selling Price,
-// Action) are not in this list and cannot be hidden.
+// Single source of truth for the standard item columns. `k` is the
+// stable key stored in PriceList.hiddenColumns / columnLabels and the
+// key the PDF renderer's COL_ORDER uses. `field` is the PriceListItem
+// property the input edits. `required: true` means the column cannot
+// be hidden (only renamed); SKU, Product Name, Selling Price.
 const STANDARD_ITEM_COLS = [
-  { k: 'cost',  label: 'Cost Price', field: 'costPrice',    type: 'number', align: 'right', step: '0.01' },
-  { k: 'moq',   label: 'Min Order',  field: 'minimumOrder', type: 'number', align: 'right', step: '1' },
-  { k: 'lead',  label: 'Lead Time',  field: 'leadTimeDays', type: 'number', align: 'right', step: '1' },
-  { k: 'unit',  label: 'Unit',       field: 'unit',         type: 'text',   align: 'left' },
-  { k: 'notes', label: 'Notes',      field: 'notes',        type: 'text',   align: 'left' },
+  { k: 'sku',         label: 'SKU',           field: 'sku',          type: 'text',   align: 'left',  required: true },
+  { k: 'productName', label: 'Product Name',  field: 'productName',  type: 'text',   align: 'left',  required: true },
+  { k: 'price',       label: 'Selling Price', field: 'sellingPrice', type: 'number', align: 'right', required: true, step: '0.01' },
+  { k: 'cost',        label: 'Cost Price',    field: 'costPrice',    type: 'number', align: 'right', step: '0.01' },
+  { k: 'moq',         label: 'Min Order',     field: 'minimumOrder', type: 'number', align: 'right', step: '1' },
+  { k: 'lead',        label: 'Lead Time',     field: 'leadTimeDays', type: 'number', align: 'right', step: '1' },
+  { k: 'unit',        label: 'Unit',          field: 'unit',         type: 'text',   align: 'left' },
+  { k: 'notes',       label: 'Notes',         field: 'notes',        type: 'text',   align: 'left' },
 ]
 
 const PriceListManager = () => {
@@ -67,8 +70,16 @@ const PriceListManager = () => {
   const [factories, setFactories] = useState([])
   const [columnDefs, setColumnDefs] = useState([])
   // Phase 4.28d follow-up: which standard PDF columns to HIDE. Set of
-  // 'unit' / 'moq' / 'lead' / 'cost'. SKU + Product + Price always show.
+  // 'unit' / 'moq' / 'lead' / 'cost' / 'notes'. SKU + Product + Price
+  // are required (never hidden).
   const [hiddenStandardCols, setHiddenStandardCols] = useState([])
+  // Phase 4.28d second follow-up (2026-05-17): per-PriceList overrides
+  // for standard column headers (e.g. cost: 'FOB'). Empty / missing key
+  // falls back to the default label from STANDARD_ITEM_COLS.
+  const [columnLabels, setColumnLabels] = useState({})
+  // Free-text block rendered at the bottom of the PDF (payment terms,
+  // duty breakdown, Incoterm caveat, sample policy).
+  const [footerNotes, setFooterNotes] = useState('')
 
   useEffect(() => {
     customersAPI.getAll({ limit: 500 }).then(r => setCustomers(Array.isArray(r.data) ? r.data : (r.data?.data || []))).catch(() => {})
@@ -156,6 +167,13 @@ const PriceListManager = () => {
         try { hidden = JSON.parse(hidden) } catch (_) { hidden = [] }
       }
       setHiddenStandardCols(Array.isArray(hidden) ? hidden : [])
+      // columnLabels comes back as a stringified JSON per L-053.
+      let labels = priceList.columnLabels
+      if (typeof labels === 'string') {
+        try { labels = JSON.parse(labels) } catch (_) { labels = {} }
+      }
+      setColumnLabels(labels && typeof labels === 'object' && !Array.isArray(labels) ? labels : {})
+      setFooterNotes(priceList.footerNotes || '')
     } catch (error) {
       console.error('Failed to load price list details:', error)
       toast.error('Failed to load price list details')
@@ -178,6 +196,8 @@ const PriceListManager = () => {
     setItems([])
     setColumnDefs([])
     setHiddenStandardCols([])
+    setColumnLabels({})
+    setFooterNotes('')
     setSelectedPriceList(null)
   }
 
@@ -322,6 +342,8 @@ const PriceListManager = () => {
         isActive: !!formData.isActive,
         columnDefinitions: columnDefs,
         hiddenColumns: hiddenStandardCols,
+        columnLabels: columnLabels,
+        footerNotes: footerNotes || null,
         items: cleanItems,
       }
 
@@ -474,8 +496,18 @@ const PriceListManager = () => {
                       <td className="px-6 py-4 text-slate-600">{priceList.itemCount || 0}</td>
                       <td className="px-6 py-4 text-slate-600">
                         <span className="text-sm">
-                          {priceList.customerName || priceList.customerId || '—'}
-                          {priceList.factoryName && ` / ${priceList.factoryName}`}
+                          {(() => {
+                            // Odoo many2one display: render the linked
+                            // company name(s), never the FK UUID. Fall
+                            // back to em-dash when the row is unparented
+                            // (template price list).
+                            const cust = priceList.customerName
+                            const fac  = priceList.factoryName
+                            if (cust && fac) return `${cust} / ${fac}`
+                            if (cust)        return cust
+                            if (fac)         return fac
+                            return '—'
+                          })()}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-slate-600 text-sm">
@@ -748,35 +780,61 @@ const PriceListManager = () => {
                 </div>
               </div>
 
-              {/* Optional columns — controls visibility in BOTH the items
-                  table editor below AND the generated PDF. SKU, Product
-                  name, and Selling Price are always shown (the minimum
-                  needed for a useful price list). Untick anything that
-                  doesn't apply to this list (e.g. MOQ for Resilient). */}
+              {/* Columns — show/hide each standard column and override
+                  its header label per-PriceList. Required columns (SKU,
+                  Product Name, Selling Price) cannot be hidden, only
+                  renamed. Toggle affects BOTH the items table below
+                  AND the generated PDF (where applicable). 2026-05-17
+                  feedback: international trade uses Incoterm-style
+                  prices (FOB, CIF, DDP) so "Cost Price" needs to be
+                  free-renameable per list. */}
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">Optional columns</h3>
-                <div className="flex flex-wrap gap-3 text-sm">
+                <h3 className="text-lg font-semibold text-slate-900 mb-1">Columns</h3>
+                <p className="text-xs text-slate-500 mb-3 italic">
+                  Show or hide each standard column. Rename a column to fit your trade vocabulary
+                  (e.g. <strong>Cost Price → FOB</strong>, <strong>Min Order → Min QTY</strong>).
+                  SKU, Product Name, and Selling Price cannot be hidden but can be renamed.
+                </p>
+                <div className="border border-slate-200 rounded-lg divide-y divide-slate-200 bg-white">
                   {STANDARD_ITEM_COLS.map((opt) => {
                     const hidden = hiddenStandardCols.includes(opt.k)
                     return (
-                      <label key={opt.k} className="inline-flex items-center gap-2 px-3 py-1.5 border border-slate-200 rounded-lg bg-white cursor-pointer">
+                      <div key={opt.k} className="flex items-center gap-3 px-3 py-2">
+                        <label className={`inline-flex items-center gap-2 text-sm select-none ${opt.required ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                          <input
+                            type="checkbox"
+                            disabled={opt.required}
+                            checked={opt.required ? true : !hidden}
+                            onChange={(e) => {
+                              if (opt.required) return
+                              const next = new Set(hiddenStandardCols)
+                              if (e.target.checked) next.delete(opt.k)
+                              else                  next.add(opt.k)
+                              setHiddenStandardCols(Array.from(next))
+                            }}
+                            className="w-4 h-4 rounded border-slate-300"
+                          />
+                          <span className="text-slate-700 w-20">{opt.required ? 'Required' : (hidden ? 'Hidden' : 'Show')}</span>
+                        </label>
+                        <span className="text-sm text-slate-500 w-32">{opt.label}</span>
+                        <span className="text-xs text-slate-400">Label on PDF / table:</span>
                         <input
-                          type="checkbox"
-                          checked={!hidden}
+                          type="text"
+                          value={columnLabels[opt.k] || ''}
+                          placeholder={opt.label}
                           onChange={(e) => {
-                            const next = new Set(hiddenStandardCols)
-                            if (e.target.checked) next.delete(opt.k)
-                            else                  next.add(opt.k)
-                            setHiddenStandardCols(Array.from(next))
+                            const next = { ...columnLabels }
+                            const v = e.target.value
+                            if (v && v.trim()) next[opt.k] = v
+                            else delete next[opt.k]
+                            setColumnLabels(next)
                           }}
-                          className="w-4 h-4 rounded border-slate-300"
+                          className="flex-1 min-w-0 px-2 py-1 border border-slate-300 rounded text-sm"
                         />
-                        <span className="text-slate-800">{opt.label}</span>
-                      </label>
+                      </div>
                     )
                   })}
                 </div>
-                <p className="text-xs text-slate-500 mt-2 italic">SKU, Product name, and Selling Price are always shown. Toggle hides the column from both the editor below and the generated PDF.</p>
               </div>
 
               {/* Phase 4.28d follow-up — column editor. Each entry { key,
@@ -862,23 +920,24 @@ const PriceListManager = () => {
                 ) : (
                   <div className="overflow-x-auto border border-slate-200 rounded-lg">
                     {(() => {
-                      // Build the visible column set: SKU + Product +
-                      // Selling Price are always shown. Optional standard
-                      // cols are filtered by hiddenStandardCols. Custom
-                      // cols come from columnDefinitions (with non-empty
-                      // key). Action button is last.
-                      const visibleStandardCols = STANDARD_ITEM_COLS.filter(c => !hiddenStandardCols.includes(c.k))
+                      // Build the visible column set. Required standard
+                      // cols (SKU, Product Name, Selling Price) always
+                      // appear; optional ones are filtered by
+                      // hiddenStandardCols. Custom cols come from
+                      // columnDefinitions (with non-empty key). Action
+                      // button is last. Each header pulls its display
+                      // label from columnLabels[k] when set so the rename
+                      // input above and the table here stay in sync.
+                      const visibleStandardCols = STANDARD_ITEM_COLS.filter(c => c.required || !hiddenStandardCols.includes(c.k))
                       const visibleCustomCols = columnDefs.filter(c => c && c.key)
+                      const labelFor = (col) => columnLabels[col.k] || col.label
                       return (
                         <table className="w-full">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-200">
-                              <th className="px-4 py-3 text-left font-semibold text-slate-900 text-sm">SKU</th>
-                              <th className="px-4 py-3 text-left font-semibold text-slate-900 text-sm">Product Name</th>
-                              <th className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">Selling Price</th>
                               {visibleStandardCols.map((c) => (
                                 <th key={c.k} className={`px-4 py-3 font-semibold text-slate-900 text-sm ${c.align === 'right' ? 'text-right' : 'text-left'}`}>
-                                  {c.label}
+                                  {labelFor(c)}
                                 </th>
                               ))}
                               {visibleCustomCols.map((c) => (
@@ -892,34 +951,6 @@ const PriceListManager = () => {
                           <tbody>
                             {items.map((item) => (
                               <tr key={item.id} className="border-b border-slate-200 hover:bg-slate-50">
-                                <td className="px-4 py-3">
-                                  <input
-                                    type="text"
-                                    value={item.sku || ''}
-                                    onChange={(e) => handleItemChange(item.id, 'sku', e.target.value)}
-                                    className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                    placeholder="SKU"
-                                  />
-                                </td>
-                                <td className="px-4 py-3">
-                                  <input
-                                    type="text"
-                                    value={item.productName || ''}
-                                    onChange={(e) => handleItemChange(item.id, 'productName', e.target.value)}
-                                    className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                    placeholder="Product name"
-                                  />
-                                </td>
-                                <td className="px-4 py-3">
-                                  <input
-                                    type="number"
-                                    value={item.sellingPrice ?? ''}
-                                    onChange={(e) => handleItemChange(item.id, 'sellingPrice', e.target.value)}
-                                    className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-right"
-                                    placeholder="0.00"
-                                    step="0.01"
-                                  />
-                                </td>
                                 {visibleStandardCols.map((c) => (
                                   <td key={c.k} className="px-4 py-3">
                                     <input
@@ -928,7 +959,7 @@ const PriceListManager = () => {
                                       onChange={(e) => handleItemChange(item.id, c.field, e.target.value)}
                                       step={c.step}
                                       className={`w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${c.align === 'right' ? 'text-right' : ''}`}
-                                      placeholder={c.type === 'number' ? '0' : c.label}
+                                      placeholder={c.type === 'number' ? '0' : labelFor(c)}
                                     />
                                   </td>
                                 ))}
@@ -978,6 +1009,27 @@ const PriceListManager = () => {
                     })()}
                   </div>
                 )}
+              </div>
+
+              {/* Footer notes — rendered below the items table on the PDF.
+                  Free text: payment terms, duty breakdown, Incoterm
+                  caveat, sample policy, anything that doesn't fit a
+                  per-item column. */}
+              <div>
+                <label className="block text-lg font-semibold text-slate-900 mb-1">
+                  Footer notes (rendered at the bottom of the PDF)
+                </label>
+                <p className="text-xs text-slate-500 mb-2 italic">
+                  Use for payment terms, duty breakdown, Incoterm clarification, sample policy, lead-time caveats.
+                  Plain text. Line breaks preserved.
+                </p>
+                <textarea
+                  value={footerNotes}
+                  onChange={(e) => setFooterNotes(e.target.value)}
+                  rows={5}
+                  placeholder={'e.g.\nPayment: 30% T/T deposit, 70% before shipment.\nDuty: DDP USA shown; CIF available on request.\nLead times exclude ocean freight.'}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                />
               </div>
 
               {/* Status */}

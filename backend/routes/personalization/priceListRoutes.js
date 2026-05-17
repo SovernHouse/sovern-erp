@@ -57,11 +57,16 @@ router.get('/price-lists', requireAuth, async (req, res, next) => {
     });
     const total = await db.PriceList.count({ where });
 
-    // Add a top-level itemCount per row for clients that don't want to
-    // walk the items array (existing PriceListManager reads itemCount).
+    // Add a top-level itemCount + flat customerName / factoryName so the
+    // Price List Manager table can show the readable company name
+    // instead of the UUID. Odoo many2one display convention: every list
+    // view of a relation shows the linked record's display_name, never
+    // the FK (Alex feedback 2026-05-17).
     const shaped = rows.map((r) => {
       const json = r.toJSON();
-      json.itemCount = Array.isArray(json.items) ? json.items.length : 0;
+      json.itemCount    = Array.isArray(json.items) ? json.items.length : 0;
+      json.customerName = (json.Customer && json.Customer.companyName) || null;
+      json.factoryName  = (json.Factory  && json.Factory.companyName)  || null;
       return json;
     });
 
@@ -125,7 +130,9 @@ router.post('/price-lists', requireAuth, requireRole('admin'), async (req, res, 
  */
 router.put('/price-lists/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
-    const priceList = await db.PriceList.findByPk(req.params.id);
+    const priceList = await db.PriceList.findByPk(req.params.id, {
+      include: [{ model: db.PriceListItem, as: 'items' }],
+    });
     if (!priceList) return res.status(404).json({ success: false, error: { message: 'Price list not found', statusCode: 404 } });
 
     const { items, ...listData } = req.body;
@@ -140,6 +147,26 @@ router.put('/price-lists/:id', requireAuth, requireRole('admin'), async (req, re
         return res.status(400).json({ success: false, error: { message: `Brand "${listData.brandCode}" not active.`, statusCode: 400 } });
       }
     }
+
+    // Phase 4.28d second follow-up: capture a "before" snapshot of the
+    // top-level fields and item count so we can log a human-readable
+    // diff to chatter after the update. Without this the user sees no
+    // record of who edited what (Alex feedback 2026-05-17).
+    const TRACKED_FIELDS = [
+      'name', 'description', 'currencyCode', 'brandCode',
+      'validFrom', 'validTo', 'customerId', 'factoryId',
+      'isActive', 'footerNotes',
+    ];
+    const beforeSnapshot = {};
+    for (const f of TRACKED_FIELDS) beforeSnapshot[f] = priceList[f];
+    const beforeItemCount = Array.isArray(priceList.items) ? priceList.items.length : 0;
+    const beforeHidden = Array.isArray(priceList.hiddenColumns) ? priceList.hiddenColumns
+                     : (typeof priceList.hiddenColumns === 'string' ? (() => { try { return JSON.parse(priceList.hiddenColumns) || []; } catch (_) { return []; } })() : []);
+    const beforeLabels = (priceList.columnLabels && typeof priceList.columnLabels === 'object' && !Array.isArray(priceList.columnLabels)) ? priceList.columnLabels
+                     : (typeof priceList.columnLabels === 'string' ? (() => { try { return JSON.parse(priceList.columnLabels) || {}; } catch (_) { return {}; } })() : {});
+    const beforeCustomDefs = Array.isArray(priceList.columnDefinitions) ? priceList.columnDefinitions
+                     : (typeof priceList.columnDefinitions === 'string' ? (() => { try { return JSON.parse(priceList.columnDefinitions) || []; } catch (_) { return []; } })() : []);
+
     await priceList.update(listData);
 
     if (items) {
@@ -153,6 +180,69 @@ router.put('/price-lists/:id', requireAuth, requireRole('admin'), async (req, re
     const result = await db.PriceList.findByPk(priceList.id, {
       include: [{ model: db.PriceListItem, as: 'items' }]
     });
+
+    // Compose a human-readable diff for chatter. Skip fields that didn't
+    // change. Hide-column / label / custom-column / item-count changes
+    // get their own summary lines so the audit trail is readable in the
+    // detail page's Chatter tab.
+    try {
+      const { postSystemEvent } = require('../../controllers/chatterController');
+      const lines = [];
+      for (const f of TRACKED_FIELDS) {
+        const oldV = beforeSnapshot[f];
+        const newV = result[f];
+        const norm = (v) => v == null ? '' : (v instanceof Date ? v.toISOString().slice(0, 10) : String(v));
+        if (norm(oldV) !== norm(newV)) {
+          const oldFmt = oldV == null || oldV === '' ? '∅' : `"${norm(oldV).slice(0, 80)}"`;
+          const newFmt = newV == null || newV === '' ? '∅' : `"${norm(newV).slice(0, 80)}"`;
+          lines.push(`• ${f}: ${oldFmt} → ${newFmt}`);
+        }
+      }
+      // Hidden columns diff.
+      const afterHidden = Array.isArray(listData.hiddenColumns) ? listData.hiddenColumns : beforeHidden;
+      const hiddenAdded   = afterHidden.filter(k => !beforeHidden.includes(k));
+      const hiddenRemoved = beforeHidden.filter(k => !afterHidden.includes(k));
+      if (hiddenAdded.length)   lines.push(`• hid columns: ${hiddenAdded.join(', ')}`);
+      if (hiddenRemoved.length) lines.push(`• showed columns: ${hiddenRemoved.join(', ')}`);
+      // Column label overrides diff.
+      const afterLabels = (listData.columnLabels && typeof listData.columnLabels === 'object' && !Array.isArray(listData.columnLabels)) ? listData.columnLabels : beforeLabels;
+      const labelKeys = new Set([...Object.keys(beforeLabels), ...Object.keys(afterLabels)]);
+      const labelChanges = [];
+      for (const k of labelKeys) {
+        if ((beforeLabels[k] || '') !== (afterLabels[k] || '')) {
+          labelChanges.push(`${k} "${beforeLabels[k] || ''}" → "${afterLabels[k] || ''}"`);
+        }
+      }
+      if (labelChanges.length) lines.push(`• renamed columns: ${labelChanges.join('; ')}`);
+      // Custom column defs diff (count + keys).
+      const afterCustomDefs = Array.isArray(listData.columnDefinitions) ? listData.columnDefinitions : beforeCustomDefs;
+      const beforeKeys = beforeCustomDefs.map(c => c && c.key).filter(Boolean);
+      const afterKeys  = afterCustomDefs.map(c => c && c.key).filter(Boolean);
+      const customAdded   = afterKeys.filter(k => !beforeKeys.includes(k));
+      const customRemoved = beforeKeys.filter(k => !afterKeys.includes(k));
+      if (customAdded.length)   lines.push(`• added custom columns: ${customAdded.join(', ')}`);
+      if (customRemoved.length) lines.push(`• removed custom columns: ${customRemoved.join(', ')}`);
+      // Items count diff.
+      const afterItemCount = Array.isArray(result.items) ? result.items.length : 0;
+      if (Array.isArray(items) && afterItemCount !== beforeItemCount) {
+        lines.push(`• items: ${beforeItemCount} → ${afterItemCount}`);
+      } else if (Array.isArray(items)) {
+        lines.push(`• items: ${afterItemCount} replaced`);
+      }
+
+      if (lines.length > 0) {
+        const userName = req.user
+          ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email || 'User'
+          : 'System';
+        const body = `${userName} updated this price list:\n${lines.join('\n')}`;
+        await postSystemEvent('PriceList', priceList.id, 'edit', body, { changes: lines.length }, req.user?.id || null, userName);
+      }
+    } catch (chatterErr) {
+      // postSystemEvent already swallows; this catch guards the diff
+      // builder itself. Never break the response on audit-log failure.
+      const logger = require('../../utils/logger');
+      logger.warn('[priceList.put] chatter audit skipped:', chatterErr.message);
+    }
 
     res.json(getSuccessResponse({ message: 'Price list updated', data: result }));
   } catch (error) {
