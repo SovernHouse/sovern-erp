@@ -1416,6 +1416,7 @@ export interface QuotationItem {
   total: number
   notes?: string
   product?: { id: string; name: string; sku?: string }
+  originCountry?: string | null;
 }
 
 export interface Quotation {
