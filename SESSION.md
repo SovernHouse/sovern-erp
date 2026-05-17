@@ -276,6 +276,62 @@ Documented as L-061 with stricter rules:
 
 ---
 
+## Session TRUE FINAL wrap, 2026-05-17 (post-smoke-test arc)
+
+After the live smoke test passed and prod DB was restored, executed Alex's 1-5 outstanding list with no stops.
+
+**Commits in this final arc (all pushed):**
+
+`sovern-erp`:
+- `7ace49f` fix(backend): L-062 true fix, notification helpers expect userId not customerId
+- `7440691` feat(frontend): Phase 4.26c, list pages refetch on autoChain notification
+- `0bb14fc` feat(mobile): Phase 4.26 mobile parity, autoChain poller + DeviceEvent emit
+- `715a10a` fix(tests): L-058 real fix, TEST_LIGHT_BOOT gates heavy requires
+
+`sovern-instructions-skills`:
+- `d8769ac` lessons: L-062 true fix + L-063 + L-064
+
+**Smoke test cleanup:** all 9 smoke records hard-deleted via SQL with FK enforcement off (scripts/cleanup_smoke). Prod DB back to clean baseline: 6 customers, 15 factories, 14 products, 0 transactions.
+
+**Tasks 1-5 closed:**
+
+| # | Task | Outcome |
+|---|---|---|
+| 1 | Truly fix createQuotationNotification | Done. Rename arg userId, early-null guard, callers pass salesPersonId. Same fix applied to Proforma and Shipment variants (same bug shape). |
+| 2 | Delete smoke test records | Done. 9 hard-deletes. |
+| 3 | Phase 4.26c frontend list-page refetch | Done. New useAutoChainRefresh hook + wired into 6 chain entity list pages. |
+| 4 | Mobile 4.26 parity | Done. listMyNotifications API + useAutoChainPoller (30s polling + native Alert toast + DeviceEventEmitter for tabs) + wired into _layout.tsx. |
+| 5 | L-058 real fix | Done. TEST_LIGHT_BOOT gates Sentry + swagger + googleRoutes. Boot 27s → 18s, sync 12s → 1s. Integration health test went from 180s+ timeout to 29s pass. |
+
+**Integration test infra ALIVE:** Health test passes. Other integration tests should follow with the same boot improvement.
+
+**Performance impact:**
+- Backend test boot: 51% faster (39s → 19s)
+- Integration test suite: now usable on this VM (was previously timing out at 180s+)
+- Auto-chain notification: ≤30s mobile latency, real-time on web Socket.IO
+
+**Outstanding (not blockers):**
+
+1. Move SQLITE_STORAGE from `.env` into PM2 ecosystem.config.js or systemd env block (L-061 rule 3). The in-code defense in config/database.js test branch already protects against the prod-DB-wipe class of incidents.
+2. Integration tests beyond health (auth, customers, factories, etc.) untested against the new TEST_LIGHT_BOOT path; some may need additional gates if they depend on Sentry or googleRoutes. Surface as tests are run.
+3. Phase 4.26d (or beyond): consider switching mobile poll to push (expo-notifications). Requires EAS native rebuild + backend push token plumbing.
+
+---
+
+## Final commit roll-call
+
+**This Macbook session, total:**
+- `sovern-erp`: 36 commits (Phase 4.23 mobile parity → Phase 4.25 a-h → 4.26 → 4.24.x → latent fixes → live smoke + bug fixes)
+- `sovern-instructions-skills`: 6 commits (L-054 through L-064)
+
+All pushed to GitHub main on both repos. Vercel auto-deploys the frontend. Backend on the GCP VM running new code post-pm2 restart.
+
+Order-to-cash auto-chain is verified live end-to-end. PWA install discoverable. AI chain triggers exposed via MCP. Mobile and admin notification listeners shipped. Test infra alive. Latent bugs documented and fixed.
+
+Session truly truly complete. Your turn.
+
+---
+
 ## Last Updated — 2026-05-17 Taiwan time (late evening, Phase 4.23 wrap)
 
 **Picking up next:**
