@@ -4,11 +4,24 @@
 
 ---
 
-## Last Updated — 2026-05-17 Taiwan time (late evening)
+## Last Updated — 2026-05-17 Taiwan time (late evening, Phase 4.23 wrap)
 
-**Picking up next:** Phase 4.23 — Customer/Factory entity unification (NEW SPEC required, multi-day refactor). Also pending: Phase 4.19c — service-layer convergence for Product / ProductPrice / ProductSpec. Plus follow-up: apply Phase 4.22 quick-create pattern to LeadForm / InquiryForm / DealForm / PurchaseOrderForm. Investigation still open into the 2026-05-16 14:42 bulk Factory soft-delete root cause. EU sanctions URL webgate alert check-in cron-scheduled for 2026-05-18 09:37 TPE.
+**Picking up next:**
+1. **Mobile embedded contacts** — ContactsSection equivalent for the mobile CustomerDetailModal + FactoryDetailModal. Task #30 carry-over; ~200 line component + wire-up.
+2. **Phase 4.22 quick-create extension** to LeadForm, InquiryForm, DealForm, PurchaseOrderForm (the pattern is established in ProductForm + QuotationForm; just apply same modal+button).
+3. **Phase 4.19c** — service-layer convergence for Product / ProductPrice / ProductSpec.
+4. 2026-05-16 14:42 bulk Factory soft-delete root cause investigation still open.
+5. EU sanctions URL webgate alert check-in cron-scheduled for 2026-05-18 09:37 TPE.
 
-**Latest:** Phase 4.21 + 4.22 + 4.24 — Odoo consistency pass. After the 4.20 IronLite cluster shipped, post-deploy verification surfaced another wave of issues (Intelligence tab 500s, taxonomy not recursive, multi-brand users silently scoped to SH-only). Fixed those (4.20.1), then drafted `docs/phase4_21-odoo-consistency-pass.md` directive + added `trade-odoo-patterns.md` skill to codify the entity-detail contract. Executed 4.21a (chatter sweep), 4.24 (Inventory removal), 4.21b (ProductDetail full upgrade), 4.22 (Many2one quick-create). 7 commits, 3 EAS Updates.
+**Latest:** Phase 4.23 — Client/Supplier unification with embedded contacts (commit `8031aa8`). Plus product row-click → ProductDetail fix.
+
+- **ContactsSection** new reusable component (`frontend/admin-portal/src/components/ContactsSection.jsx`) — inline CRUD card list with primary-flag, edit, delete. Mounted on CustomerDetail (new tab between Overview and Orders) and FactoryDetail (replaced legacy tab that routed out to /crm/contacts/*).
+- **contactsAPI** added to services/api.js — wraps existing /api/contacts surface; the contactController already supports customerId / factoryId filters, no new backend needed.
+- **UI relabel** Customer → Client / Factory → Supplier across nav, page titles, mobile tabs. Routes (/customers, /factories), DB tables (Customer, Factory), and API endpoints unchanged.
+- **Removed nav entries:** Supplier Contacts (/crm/contacts) and Client Contacts (/client-contacts). Routes still resolve for backward compat / legacy deep links.
+- **Product row click fix** — DataTable accepts new `onRowClick` prop. ProductList row → /products/:id (full detail). ProductCatalog row → /products/:id. Edit pencil now goes to /products/:id/edit explicitly. Bug Alex reported: clicking product on Products page didn't open detail with chatter/related tabs.
+
+**Previous:** Phase 4.21 + 4.22 + 4.24 — Odoo consistency pass. After the 4.20 IronLite cluster shipped, post-deploy verification surfaced another wave of issues (Intelligence tab 500s, taxonomy not recursive, multi-brand users silently scoped to SH-only). Fixed those (4.20.1), then drafted `docs/phase4_21-odoo-consistency-pass.md` directive + added `trade-odoo-patterns.md` skill to codify the entity-detail contract. Executed 4.21a (chatter sweep), 4.24 (Inventory removal), 4.21b (ProductDetail full upgrade), 4.22 (Many2one quick-create). 7 commits, 3 EAS Updates.
 
 - **4.20.1 L-047 fix** — Sequelize returns `User.accessibleBrands` as a stringified JSON array on SQLite, not a parsed array. `brandScope` middleware's `Array.isArray` check was false → fallback to `['SH']` → every multi-brand user (incl. alex@sovernhouse.co) silently scoped to single-brand. Patched parse-on-read in `backend/middleware/brandScope.js` AND `backend/mcp/erpToolServer.js brandScopeForMcp`. Verified alex now resolves `['SH','FW']`.
 - **4.20.1 Recursive taxonomy** — `productCategoryController.getCategoryTree` only attached direct children to roots; grandchildren (Resilient → Engineered SPC) were unreachable. Rewrote as recursive `buildNode`. Desktop `ProductTaxonomy.jsx SubCategoryRow` made recursive with progressive indent. Mobile `app/product-taxonomy.tsx` rewritten with unified `CategoryNode` component.
@@ -38,6 +51,7 @@ Test status: 46 product/MCP/audit-invariant/orphan-FK suite passes after the cha
 
 | Commit | Phase | What |
 |---|---|---|
+| `8031aa8` | 4.23 | Client/Supplier unification: ContactsSection embedded on CustomerDetail + FactoryDetail. UI relabel everywhere. Redundant contact nav removed. Product row-click → ProductDetail fix bundled. |
 | `61c2f9b` | 4.22 | Many2one inline quick-create (FactoryQuickCreate + CustomerQuickCreate modals). Wired into ProductForm + QuotationForm. Follow-up: extend to Lead/Inquiry/Deal/PO forms. |
 | `586c3c7` | 4.21b | ProductDetail full Odoo upgrade: 4 new /api/products/:id/* endpoints + desktop smart-button strip + 7 tabs + Chatter + mobile mirror with count chips. |
 | `02fe8d6` | 4.21a + 4.24 | Chatter sweep (Payment/Proforma/GRN/PackingList) + Inventory page removed entirely. Backend whitelist extended with Product/GRN/PackingList. |
