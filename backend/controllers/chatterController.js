@@ -7,6 +7,9 @@ const { Op } = require('sequelize');
 const logger = require('../utils/logger.js'); // still used by postSystemEvent
 
 // ── Allowed entity types (whitelist prevents enumeration attacks) ───────────
+// Phase 4.21a: extended for Odoo consistency pass. GRN + PackingList added
+// for the chatter parity sweep on those detail pages. Product added in
+// advance of the Phase 4.21b ProductDetail full Odoo upgrade.
 const ALLOWED_ENTITY_TYPES = new Set([
   'Quotation',
   'ProformaInvoice',
@@ -23,6 +26,9 @@ const ALLOWED_ENTITY_TYPES = new Set([
   'Claim',
   'SampleRequest',
   'LetterOfCredit',
+  'Product',
+  'GRN',
+  'PackingList',
 ]);
 
 /**

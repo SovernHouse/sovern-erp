@@ -23,6 +23,7 @@ import StatusBadge from '../../components/StatusBadge'
 import BrandBadge from '../../components/BrandBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import Chatter from '../../components/Chatter'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 
 // ─── Send for Approval modal ──────────────────────────────────────────────────
@@ -904,6 +905,10 @@ export default function ProformaDetail() {
         onClose={() => setApprovalLink(null)}
         approvalUrl={approvalLink || ''}
       />
+
+      {/* Phase 4.21a — Odoo chatter parity. ProformaInvoice was already in
+          the chatterController whitelist; just mounting the component. */}
+      <Chatter entityType="ProformaInvoice" entityId={id} className="mt-6" />
 
       {/* Schedule Activity */}
       <ScheduleActivityModal

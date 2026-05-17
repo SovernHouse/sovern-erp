@@ -421,13 +421,9 @@ export const paymentsAPI = {
   delete: (id) => api.delete(`/payments/${id}`),
 }
 
-// Inventory endpoints
-export const inventoryAPI = {
-  getAll: (params) => api.get('/inventory', { params }),
-  getById: (id) => api.get(`/inventory/${id}`),
-  adjustStock: (id, data) => api.post(`/inventory/${id}/adjust`, data),
-  getLowStockItems: () => api.get('/inventory/low-stock'),
-}
+// Inventory endpoints — removed Phase 4.24 (no-stock business model).
+// /api/inventory/* still exists on the backend for any integration that
+// pre-dates this removal, but the frontend no longer references it.
 
 // Reports endpoints
 export const reportsAPI = {

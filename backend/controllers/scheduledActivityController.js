@@ -9,10 +9,12 @@ const logger = require('../utils/logger');
 const { Op } = require('sequelize');
 
 // ── Allowed entity types (whitelist — must match chatterController) ────────
+// Phase 4.21a: mirror chatterController additions (Product, GRN, PackingList).
 const ALLOWED_ENTITY_TYPES = new Set([
   'Quotation', 'ProformaInvoice', 'SalesOrder', 'PurchaseOrder',
   'Lead', 'Customer', 'Factory', 'Inquiry', 'Invoice', 'Payment',
   'Shipment', 'Inspection', 'Claim', 'SampleRequest', 'LetterOfCredit',
+  'Product', 'GRN', 'PackingList',
 ]);
 
 // ── Activity type labels (for chatter messages) ───────────────────────────

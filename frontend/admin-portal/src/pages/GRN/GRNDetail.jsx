@@ -5,6 +5,7 @@ import { ArrowLeft, Edit2, Trash2 } from 'lucide-react'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import StatusBadge from '../../components/StatusBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import Chatter from '../../components/Chatter'
 import { grnAPI } from '../../services/api'
 import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import { formatDate, formatNumber } from '../../utils/formatters'
@@ -365,6 +366,11 @@ export default function GRNDetail() {
           </div>
         </div>
       )}
+
+      {/* Phase 4.21a — Odoo chatter parity. entityType='GRN' added to the
+          chatterController + scheduledActivityController whitelists in
+          this same commit. */}
+      <Chatter entityType="GRN" entityId={id} className="mt-6" />
     </div>
   )
 }

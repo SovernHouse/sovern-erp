@@ -151,7 +151,6 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Packing Lists', path: '/packing-lists', permission: 'packing-lists' },
         { label: 'Shipments', path: '/shipments', permission: 'shipments' },
         { label: 'Inspections', path: '/inspections', permission: 'inspections' },
-        { label: 'Inventory', path: '/inventory', permission: 'inventory' },
       ],
     },
     // ── Finance & Expenses ───────────────────────────────────────────────
@@ -259,7 +258,7 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Operations',
       icon: 'CheckCircle',
-      submenu: [{ label: 'Inventory', path: '/inventory', permission: 'inventory' }],
+      submenu: [], // Inventory removed Phase 4.24 (no-stock business)
     },
     { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
     { label: 'Approvals', icon: 'CheckCircle', path: '/internal-approvals' },
@@ -338,7 +337,7 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Operations',
       icon: 'CheckCircle',
-      submenu: [{ label: 'Inventory', path: '/inventory', permission: 'inventory' }],
+      submenu: [], // Inventory removed Phase 4.24 (no-stock business)
     },
     {
       label: 'Products',
@@ -383,7 +382,7 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Operations',
       icon: 'CheckCircle',
-      submenu: [{ label: 'Inventory', path: '/inventory', permission: 'inventory' }],
+      submenu: [], // Inventory removed Phase 4.24 (no-stock business)
     },
     {
       label: 'Products',
@@ -586,7 +585,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Inspections', path: '/inspections', permission: 'inspections' },
       ],
     },
-    { label: 'Operations', icon: 'CheckCircle', submenu: [{ label: 'Inventory', path: '/inventory', permission: 'inventory' }] },
+    // Operations menu removed Phase 4.24 — its only item (Inventory) is gone.
     { label: 'Documents', icon: 'FileText', submenu: [{ label: 'Document Templates', path: '/documents/templates', permission: 'documents' }] },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
   ],
@@ -655,7 +654,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Inspections', path: '/inspections', permission: 'inspections' },
       ],
     },
-    { label: 'Operations', icon: 'CheckCircle', submenu: [{ label: 'Inventory', path: '/inventory', permission: 'inventory' }] },
+    // Operations menu removed Phase 4.24 — its only item (Inventory) is gone.
     { label: 'Documents', icon: 'FileText', submenu: [{ label: 'Document Templates', path: '/documents/templates', permission: 'documents' }] },
   ],
 
@@ -670,7 +669,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Inspections', path: '/inspections', permission: 'inspections' },
       ],
     },
-    { label: 'Operations', icon: 'CheckCircle', submenu: [{ label: 'Inventory', path: '/inventory', permission: 'inventory' }] },
+    // Operations menu removed Phase 4.24 — its only item (Inventory) is gone.
     { label: 'Documents', icon: 'FileText', submenu: [{ label: 'Document Templates', path: '/documents/templates', permission: 'documents' }] },
   ],
 
@@ -762,7 +761,9 @@ const buildNavFromPermissions = (permissions) => {
   ].filter(Boolean)
   if (finItems.length) nav.push({ label: 'Finance', icon: 'DollarSign', submenu: finItems })
 
-  if (has('inventory')) nav.push({ label: 'Operations', icon: 'CheckCircle', submenu: [{ label: 'Inventory', path: '/inventory', permission: 'inventory' }] })
+  // Operations / Inventory removed Phase 4.24 (no-stock business). The
+  // 'inventory' permission may still exist on legacy role rows; intentionally
+  // not pushing anything for it here.
   if (has('outreach'))  nav.push({ label: 'Outreach', icon: 'Users2', submenu: [{ label: 'Client Contacts', path: '/client-contacts', permission: 'outreach' }] })
   if (has('reports'))   nav.push({ label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' })
   if (has('analytics')) nav.push({ label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' })

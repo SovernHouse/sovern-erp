@@ -5,6 +5,7 @@ import { ArrowLeft, Edit2, Trash2, Download } from 'lucide-react'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import StatusBadge from '../../components/StatusBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import Chatter from '../../components/Chatter'
 import { packingListsAPI } from '../../services/api'
 import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import { formatDate, formatWeight, formatVolume, formatNumber } from '../../utils/formatters'
@@ -264,6 +265,11 @@ export default function PackingListDetail() {
           </div>
         )}
       </div>
+
+      {/* Phase 4.21a — Odoo chatter parity. entityType='PackingList' added
+          to the chatterController + scheduledActivityController whitelists
+          in this same commit. */}
+      <Chatter entityType="PackingList" entityId={id} className="mt-6" />
 
       {/* Delete Confirmation */}
       <ConfirmDialog

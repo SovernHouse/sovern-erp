@@ -85,9 +85,12 @@ const PaymentList   = React.lazy(() => import('./pages/Payments/PaymentList'))
 const PaymentDetail = React.lazy(() => import('./pages/Payments/PaymentDetail'))
 const PaymentForm   = React.lazy(() => import('./pages/Payments/PaymentForm'))
 
-// Inventory
-const InventoryList       = React.lazy(() => import('./pages/Inventory/InventoryList'))
-const InventoryAdjustment = React.lazy(() => import('./pages/Inventory/InventoryAdjustment'))
+// Inventory — removed Phase 4.24 (Sovern House no-stock business model).
+// /reports/inventory (InventoryReport, see below) remains as a read-only
+// historical aggregate; the live /inventory + /inventory/adjustment pages
+// are gone. Backend /api/inventory/* endpoints still respond for any
+// integration that pre-dates this removal, but the UI no longer reaches
+// them.
 
 // Reports
 const SalesReport     = React.lazy(() => import('./pages/Reports/SalesReport'))
@@ -314,9 +317,7 @@ function AppRoutes() {
       <Route path="/payments/new"      element={<P permission="payments"><PaymentForm /></P>} />
       <Route path="/payments/:id"      element={<P permission="payments"><PaymentDetail /></P>} />
 
-      {/* ── Inventory ── */}
-      <Route path="/inventory"            element={<P permission="inventory"><InventoryList /></P>} />
-      <Route path="/inventory/adjustment" element={<P permission="inventory"><InventoryAdjustment /></P>} />
+      {/* ── Inventory — removed Phase 4.24 (no-stock business). /reports/inventory is the only inventory-touch surface left. */}
 
       {/* ── GRN ── */}
       <Route path="/grns"     element={<P permission="inventory"><GRNList /></P>} />

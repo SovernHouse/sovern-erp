@@ -5,6 +5,7 @@ import { ArrowLeft, Edit2, Trash2 } from 'lucide-react'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import StatusBadge from '../../components/StatusBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import Chatter from '../../components/Chatter'
 import { paymentsAPI, invoicesAPI } from '../../services/api'
 import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import { formatCurrency, formatDate } from '../../utils/formatters'
@@ -202,6 +203,10 @@ export default function PaymentDetail() {
           </div>
         )}
       </div>
+
+      {/* Phase 4.21a — Odoo chatter parity. entityType='Payment' is in the
+          chatterController ALLOWED_ENTITY_TYPES whitelist. */}
+      <Chatter entityType="Payment" entityId={id} className="mt-6" />
 
       {/* Delete Confirmation */}
       <ConfirmDialog
