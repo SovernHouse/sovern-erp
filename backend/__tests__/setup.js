@@ -1,5 +1,15 @@
 // MUST set env vars BEFORE any require that touches config/auth.js
 process.env.NODE_ENV = 'test';
+// CRITICAL: unset SQLITE_STORAGE before any require touches sequelize.
+// If .env carries SQLITE_STORAGE=.../data/erp.db (prod), config/database.js
+// honours it even in NODE_ENV=test, and sequelize.sync({force:true}) below
+// would wipe production. delete forces the config to fall back to :memory:
+// for test runs. (Macbook session 2026-05-17 caught this when the
+// SQLITE_STORAGE in .env pointed at /home/alex/sovern-erp/data/erp.db with
+// 116 tables and live customer/factory/product rows.)
+delete process.env.SQLITE_STORAGE;
+
+
 process.env.JWT_SECRET = 'test-secret-key-for-testing-12345';
 process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-key-67890';
 process.env.RATE_LIMIT_MAX_REQUESTS = '10000';
