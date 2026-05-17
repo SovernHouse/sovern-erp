@@ -154,6 +154,110 @@ router.post('/:id/convert-order', requireAuth, async (req, res, next) => {
   }
 });
 
+/**
+ * POST /:id/confirm — Phase 4.25b.
+ *
+ * Transitions PI to status='confirmed' AND auto-creates a SalesOrder
+ * via workflowService. International-trade chain step 2 (Quote ->
+ * Proforma -> SO; this endpoint is the Proforma -> SO hop).
+ *
+ * Body: { factoryId?, estimatedDelivery? } (both optional)
+ *   - factoryId: explicit factory for the SO. If omitted, the workflow
+ *     derives it from the first line item Product.factoryId.
+ *   - estimatedDelivery: ISO date string, optional.
+ *
+ * Idempotent: re-hitting this endpoint after a SO exists returns the
+ * existing SO and does not create a duplicate. The PI status update is
+ * also idempotent (already-confirmed stays confirmed).
+ *
+ * Best-effort failure: if the auto-create fails (e.g. no factoryId can
+ * be resolved), the response surfaces an error but the PI status DOES
+ * NOT roll back. Caller can re-trigger with an explicit factoryId.
+ *
+ * Differs from the older /convert-order endpoint: that one required
+ * factoryId, set an invalid status='converted' (not in the enum), and
+ * lacked workflow integration. /convert-order is preserved for back
+ * compat but new code should call /confirm.
+ */
+router.post('/:id/confirm', requireAuth, async (req, res, next) => {
+  try {
+    const { factoryId, estimatedDelivery } = req.body || {};
+
+    const pi = await db.ProformaInvoice.findByPk(req.params.id);
+    if (!pi) throw new NotFoundError('Proforma Invoice not found');
+
+    const { isAccessibleByBrandCode } = require('../utils/notFoundOnWrongBrand');
+    if (!isAccessibleByBrandCode(req, pi.brandCode)) {
+      throw new NotFoundError('Proforma Invoice not found');
+    }
+
+    const beforeStatus = pi.status;
+    if (pi.status !== 'confirmed') {
+      await pi.update({ status: 'confirmed' });
+    }
+
+    // Phase 4.25b: PI.confirm -> SalesOrder auto-chain.
+    let chainResult;
+    try {
+      const workflowService = require('../services/workflowService');
+      chainResult = await workflowService.onProformaInvoiceConfirmed(pi, {
+        userId: req.user && req.user.id,
+        ip: req.ip,
+        source: 'rest_confirm',
+        factoryId,
+        estimatedDelivery,
+      });
+    } catch (chainErr) {
+      const auditService = require('../services/auditService');
+      auditService.logAction(
+        (req.user && req.user.id) || null,
+        'auto_create_failed',
+        'ProformaInvoice',
+        pi.id,
+        { error: chainErr && chainErr.message, chainStep: 'onProformaInvoiceConfirmed', phase: '4.25b' },
+        req.ip || null,
+      ).catch(() => {});
+      return res.json(getSuccessResponse(
+        { proformaInvoice: pi, salesOrder: null, autoChainError: chainErr.message },
+        'Proforma Invoice confirmed; SalesOrder auto-create failed (see audit log)'
+      ));
+    }
+
+    if (!chainResult.ok) {
+      const auditService = require('../services/auditService');
+      auditService.logAction(
+        (req.user && req.user.id) || null,
+        'auto_create_failed',
+        'ProformaInvoice',
+        pi.id,
+        { code: chainResult.code, message: chainResult.message, chainStep: 'onProformaInvoiceConfirmed', phase: '4.25b' },
+        req.ip || null,
+      ).catch(() => {});
+      return res.json(getSuccessResponse(
+        { proformaInvoice: pi, salesOrder: null, autoChainError: chainResult.message },
+        'Proforma Invoice confirmed; SalesOrder auto-create skipped'
+      ));
+    }
+
+    // Fire-and-forget status-change audit (matches the pattern used by
+    // quotationController.accept and the rest of the suite).
+    const auditService = require('../services/auditService');
+    auditService.logAction(req.user.id, 'UPDATE', 'ProformaInvoice', pi.id,
+      { statusChange: { before: beforeStatus, after: 'confirmed' } },
+      req.ip).catch(() => {});
+
+    res.json(getSuccessResponse({
+      proformaInvoice: pi,
+      salesOrder: chainResult.salesOrder,
+      autoChainCreated: !chainResult.alreadyExisted,
+    }, chainResult.alreadyExisted
+      ? 'Proforma Invoice confirmed (SalesOrder already existed)'
+      : 'Proforma Invoice confirmed and Sales Order auto-created'));
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post('/:id/send', requireAuth, async (req, res, next) => {
   try {
     const pi = await db.ProformaInvoice.findByPk(req.params.id, {

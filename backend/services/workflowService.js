@@ -141,6 +141,135 @@ async function onQuotationAccepted(quotation, ctx = {}) {
   return { ok: true, proformaInvoice: pi, alreadyExisted: false };
 }
 
+
+/**
+ * onProformaInvoiceConfirmed (Phase 4.25b).
+ *
+ * Side-effect of ProformaInvoice.confirm: auto-create a SalesOrder
+ * tied to this PI. Second chain hop of the international-trade
+ * order-to-cash chain.
+ *
+ * Idempotency: SalesOrder.proformaInvoiceId is the natural key. If a
+ * SO already exists for this PI, the existing row is returned and no
+ * second insert happens.
+ *
+ * factoryId resolution: the SalesOrder model requires factoryId (NOT
+ * NULL). Resolution order:
+ *   1. ctx.factoryId (caller supplied; preferred when user picked one)
+ *   2. The factoryId of the first line item's Product (auto-derive)
+ *
+ * If neither resolves, returns { ok: false, code: 'factory_unresolved' }.
+ * The caller should surface this to the user and let them pick. The
+ * upstream PI.status='confirmed' transition is NOT rolled back; the
+ * user can re-trigger the chain by hitting confirm again with a
+ * factoryId in the body.
+ *
+ * Brand-code inheritance: SalesOrder inherits from PI (same pattern
+ * as 4.25a Proforma inheriting from Quotation).
+ *
+ * @param {object} proforma - Sequelize ProformaInvoice. Only id required.
+ * @param {object} ctx - { userId, ip, source, factoryId?, estimatedDelivery? }
+ * @returns {Promise<{ok, salesOrder?, alreadyExisted?, code?, message?}>}
+ */
+async function onProformaInvoiceConfirmed(proforma, ctx = {}) {
+  const { userId, ip, source = 'unknown', factoryId, estimatedDelivery } = ctx;
+
+  if (!proforma || !proforma.id) {
+    return { ok: false, code: 'invalid_input', message: 'proforma with id is required' };
+  }
+
+  // Idempotency: bail early if a SO exists for this PI.
+  const existing = await db.SalesOrder.findOne({
+    where: { proformaInvoiceId: proforma.id },
+  });
+  if (existing) {
+    return { ok: true, salesOrder: existing, alreadyExisted: true };
+  }
+
+  const fullPI = await db.ProformaInvoice.findByPk(proforma.id, {
+    include: [
+      {
+        association: 'items',
+        include: [{ model: db.Product, as: 'product' }],
+      },
+    ],
+  });
+  if (!fullPI) {
+    return { ok: false, code: 'not_found', message: 'ProformaInvoice not found at workflow time' };
+  }
+
+  let resolvedFactoryId = factoryId || null;
+  if (!resolvedFactoryId && Array.isArray(fullPI.items) && fullPI.items.length > 0) {
+    for (const item of fullPI.items) {
+      if (item.product && item.product.factoryId) {
+        resolvedFactoryId = item.product.factoryId;
+        break;
+      }
+    }
+  }
+  if (!resolvedFactoryId) {
+    return {
+      ok: false,
+      code: 'factory_unresolved',
+      message: 'Cannot auto-create SalesOrder: no factoryId on ctx or on any line item Product.',
+    };
+  }
+
+  const { generateDocumentNumber } = require('../utils/helpers');
+  const salesOrder = await db.SalesOrder.create({
+    id: uuidv4(),
+    orderNumber: generateDocumentNumber('SO'),
+    proformaInvoiceId: fullPI.id,
+    customerId: fullPI.customerId,
+    factoryId: resolvedFactoryId,
+    brandCode: fullPI.brandCode || 'SH',
+    status: 'confirmed',
+    subtotal: fullPI.subtotal,
+    discount: fullPI.discount,
+    tax: fullPI.tax,
+    total: fullPI.total,
+    currency: fullPI.currency,
+    estimatedDelivery: estimatedDelivery || null,
+  });
+
+  if (Array.isArray(fullPI.items)) {
+    for (const item of fullPI.items) {
+      await db.SalesOrderItem.create({
+        id: uuidv4(),
+        salesOrderId: salesOrder.id,
+        productId: item.productId,
+        description: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        unitPrice: item.unitPrice,
+        total: item.total,
+      });
+    }
+  }
+
+  auditService.logAction(
+    userId || null,
+    'auto_create',
+    'SalesOrder',
+    salesOrder.id,
+    {
+      sourceEntity: 'ProformaInvoice',
+      sourceId: fullPI.id,
+      sourcePiNumber: fullPI.piNumber,
+      trigger: 'proforma.confirm',
+      phase: '4.25b',
+      orderNumber: salesOrder.orderNumber,
+      factoryId: resolvedFactoryId,
+      factoryIdSource: factoryId ? 'ctx' : 'auto-derived from line item',
+      source,
+    },
+    ip || null,
+  ).catch(() => {});
+
+  return { ok: true, salesOrder, alreadyExisted: false };
+}
+
 module.exports = {
   onQuotationAccepted,
+  onProformaInvoiceConfirmed,
 };
