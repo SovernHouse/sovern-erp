@@ -435,7 +435,12 @@ export const reportsAPI = {
   getPurchaseReport: (params) => api.get('/reports/purchase', { params }),
   getFinancialReport: (params) => api.get('/reports/financial', { params }),
   getInventoryReport: (params) => api.get('/reports/inventory', { params }),
-  getCustomerReport: (params) => api.get('/reports/customer', { params }),
+  // Phase 4.20.1: list-aggregate route /reports/customers (plural). The
+  // singular /reports/customer/:id endpoint is still available via
+  // getCustomerReportById below. Calling /reports/customer with no id
+  // was 404-ing and breaking BIDashboard.
+  getCustomerReport: (params) => api.get('/reports/customers', { params }),
+  getCustomerReportById: (customerId, params) => api.get(`/reports/customer/${customerId}`, { params }),
   getFactoryReport: (params) => api.get('/reports/factory', { params }),
   getProfitMargin: (params) => api.get('/reports/profit-margin', { params }),
   getPipeline: (params) => api.get('/reports/pipeline', { params }),

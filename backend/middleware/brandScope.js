@@ -50,9 +50,19 @@ async function brandScope(req, res, next) {
       return res.status(401).json({ error: 'User not found' });
     }
 
+    // Phase 4.20.1 — L-047: Sequelize on SQLite returns DataTypes.JSON
+    // columns as raw strings on some query paths. Array.isArray(string)
+    // is false, so prior to this patch every multi-brand user (incl.
+    // alex@sovernhouse.co) was silently scoped to the ['SH'] fallback,
+    // hiding all FW data on every brand-scoped page. Parse-on-read so
+    // both forms work.
+    let rawBrands = user.accessibleBrands;
+    if (typeof rawBrands === 'string') {
+      try { rawBrands = JSON.parse(rawBrands); } catch (_) { rawBrands = null; }
+    }
     const accessibleBrands =
-      Array.isArray(user.accessibleBrands) && user.accessibleBrands.length
-        ? user.accessibleBrands
+      Array.isArray(rawBrands) && rawBrands.length
+        ? rawBrands
         : ['SH'];
     const defaultBrand = user.defaultBrand || accessibleBrands[0] || 'SH';
 

@@ -89,15 +89,23 @@ function InlineEdit({ value, onSave, onCancel }) {
   );
 }
 
-// ─── Sub-category row ─────────────────────────────────────────────────────────
-function SubCategoryRow({ child, onUpdate, onDelete, onMoveUp, onMoveDown, isFirst, isLast }) {
+// ─── Sub-category row (recursive, Phase 4.20.1) ───────────────────────────────
+// Now renders its own children depth-first. Each level adds 1rem of left padding
+// so deep nesting is visually distinct without exploding layout. Click the
+// chevron to expand/collapse. Hover row exposes Add / Edit / Delete / Move.
+function SubCategoryRow({ child, onUpdate, onDelete, onMoveUp, onMoveDown, isFirst, isLast, depth = 1 }) {
+  const initialChildren = Array.isArray(child.children) ? child.children : [];
   const [editing, setEditing] = useState(false);
+  const [children, setChildren] = useState(initialChildren);
+  const [expanded, setExpanded] = useState(true);
+  const [addingChild, setAddingChild] = useState(false);
+  const hasChildren = children.length > 0;
 
   const handleSave = async (newName) => {
     if (!newName) return;
     try {
       const res = await api.put(`/products/categories/${child.id}`, { name: newName });
-      onUpdate(res.data.data);
+      onUpdate({ ...child, ...res.data.data, children });
       setEditing(false);
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to update');
@@ -105,7 +113,10 @@ function SubCategoryRow({ child, onUpdate, onDelete, onMoveUp, onMoveDown, isFir
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Delete "${child.name}"?`)) return;
+    const msg = hasChildren
+      ? `Delete "${child.name}" and its ${children.length} sub-categor${children.length === 1 ? 'y' : 'ies'}?`
+      : `Delete "${child.name}"?`;
+    if (!window.confirm(msg)) return;
     try {
       await api.delete(`/products/categories/${child.id}`);
       onDelete(child.id);
@@ -114,33 +125,113 @@ function SubCategoryRow({ child, onUpdate, onDelete, onMoveUp, onMoveDown, isFir
     }
   };
 
+  const handleChildAdded = (newChild) => {
+    setChildren(prev => [...prev, { ...newChild, children: [] }]);
+    setAddingChild(false);
+    setExpanded(true);
+  };
+
+  const handleChildUpdate = (updated) => {
+    setChildren(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
+  };
+
+  const handleChildDelete = (deletedId) => {
+    setChildren(prev => prev.filter(c => c.id !== deletedId));
+  };
+
+  const moveChild = async (index, direction) => {
+    const newChildren = [...children];
+    const swapIndex = index + direction;
+    if (swapIndex < 0 || swapIndex >= newChildren.length) return;
+    const a = newChildren[index];
+    const b = newChildren[swapIndex];
+    newChildren[index] = { ...b, sortOrder: a.sortOrder };
+    newChildren[swapIndex] = { ...a, sortOrder: b.sortOrder };
+    setChildren(newChildren);
+    await api.put(`/products/categories/${a.id}`, { sortOrder: b.sortOrder });
+    await api.put(`/products/categories/${b.id}`, { sortOrder: a.sortOrder });
+  };
+
+  // Indentation grows with depth — root sub-categories at pl-8, grandchildren
+  // at pl-12, great-grandchildren at pl-16, etc.
+  const padLeft = { paddingLeft: `${1.5 + depth * 1.0}rem` };
+
   return (
-    <div className="flex items-center gap-2 pl-8 py-1.5 group hover:bg-slate-50 rounded-lg">
-      <span className="text-slate-300 text-xs mr-1">└</span>
-      {editing ? (
-        <InlineEdit value={child.name} onSave={handleSave} onCancel={() => setEditing(false)} />
-      ) : (
-        <>
-          <span className="flex-1 text-sm text-slate-700">{child.name}</span>
-          <div className="hidden group-hover:flex items-center gap-1">
-            <button
-              onClick={onMoveUp} disabled={isFirst}
-              className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 rounded hover:bg-slate-200"
-            ><ChevronUp size={13} /></button>
-            <button
-              onClick={onMoveDown} disabled={isLast}
-              className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 rounded hover:bg-slate-200"
-            ><ChevronDown size={13} /></button>
-            <button
-              onClick={() => setEditing(true)}
-              className="p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-200"
-            ><Pencil size={13} /></button>
-            <button
-              onClick={handleDelete}
-              className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50"
-            ><Trash2 size={13} /></button>
-          </div>
-        </>
+    <div>
+      <div className="flex items-center gap-2 py-1.5 group hover:bg-slate-50 rounded-lg" style={padLeft}>
+        <button
+          onClick={() => hasChildren && setExpanded(e => !e)}
+          className={`flex-shrink-0 ${hasChildren ? 'text-slate-400 hover:text-slate-700' : 'text-slate-200 cursor-default'}`}
+          aria-label={hasChildren ? (expanded ? 'Collapse' : 'Expand') : undefined}
+        >
+          {hasChildren
+            ? (expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />)
+            : <span className="text-slate-300 text-xs">└</span>}
+        </button>
+        {editing ? (
+          <InlineEdit value={child.name} onSave={handleSave} onCancel={() => setEditing(false)} />
+        ) : (
+          <>
+            <span className={`flex-1 text-sm ${child.isArchived ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+              {child.name}
+            </span>
+            {hasChildren && (
+              <span className="text-xs text-slate-400 mr-2">{children.length}</span>
+            )}
+            <div className="hidden group-hover:flex items-center gap-1">
+              <button
+                onClick={onMoveUp} disabled={isFirst}
+                className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 rounded hover:bg-slate-200"
+              ><ChevronUp size={13} /></button>
+              <button
+                onClick={onMoveDown} disabled={isLast}
+                className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 rounded hover:bg-slate-200"
+              ><ChevronDown size={13} /></button>
+              <button
+                onClick={() => setEditing(true)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-200"
+              ><Pencil size={13} /></button>
+              <button
+                onClick={() => { setAddingChild(true); setExpanded(true); }}
+                className="p-1 text-slate-400 hover:text-emerald-600 rounded hover:bg-emerald-50"
+                title="Add sub-category"
+              ><Plus size={13} /></button>
+              <button
+                onClick={handleDelete}
+                className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50"
+              ><Trash2 size={13} /></button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Recursive children */}
+      {expanded && hasChildren && (
+        <div>
+          {children.map((grandchild, i) => (
+            <SubCategoryRow
+              key={grandchild.id}
+              child={grandchild}
+              onUpdate={handleChildUpdate}
+              onDelete={handleChildDelete}
+              onMoveUp={() => moveChild(i, -1)}
+              onMoveDown={() => moveChild(i, 1)}
+              isFirst={i === 0}
+              isLast={i === children.length - 1}
+              depth={depth + 1}
+            />
+          ))}
+        </div>
+      )}
+
+      {expanded && addingChild && (
+        <div style={{ paddingLeft: `${1.5 + (depth + 1) * 1.0}rem` }}>
+          <AddChildRow
+            parentId={child.id}
+            onSaved={handleChildAdded}
+            onCancel={() => setAddingChild(false)}
+          />
+        </div>
       )}
     </div>
   );

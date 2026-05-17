@@ -1,8 +1,11 @@
 // ─── Product Taxonomy Screen (Phase 4.20 — mobile parity) ──────────────────
 // Mirrors desktop Settings/ProductTaxonomy.jsx scope: view tree, add parent,
-// add sub-category, inline-edit name, delete, archive/restore, toggle
-// "show archived". Skipped vs desktop: drag reorder (uses up/down here),
-// seed-defaults, JSON import/export (desktop-only, niche on mobile).
+// add sub-category at any depth, inline-edit name, delete, archive/restore,
+// toggle "show archived". Skipped vs desktop: drag reorder, seed-defaults,
+// JSON import/export (heavy on mobile).
+//
+// Phase 4.20.1: tree is recursive — clicking a sub-category reveals its
+// children, which can in turn be expanded.
 //
 // Linked from app/(tabs)/settings.tsx via NavRow → router.push('/product-taxonomy').
 
@@ -24,11 +27,8 @@ export default function ProductTaxonomyScreen() {
   const [tree, setTree] = useState<ProductCategoryNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [addingParent, setAddingParent] = useState(false);
   const [newParentName, setNewParentName] = useState('');
-  const [addingChildFor, setAddingChildFor] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     navigation.setOptions({ title: 'Product Taxonomy' });
@@ -48,9 +48,6 @@ export default function ProductTaxonomyScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  const toggleExpanded = (id: string) =>
-    setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
-
   const handleAddParent = async () => {
     const name = newParentName.trim();
     if (!name) return;
@@ -64,71 +61,6 @@ export default function ProductTaxonomyScreen() {
     }
   };
 
-  const handleAddChild = async (parentId: string, name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    try {
-      await createCategory({ name: trimmed, parentId });
-      setAddingChildFor(null);
-      setExpanded(prev => ({ ...prev, [parentId]: true }));
-      await load();
-    } catch (err: any) {
-      Alert.alert('Save failed', err?.message || 'Could not create sub-category');
-    }
-  };
-
-  const handleRename = async (id: string, name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) { setEditing(null); return; }
-    try {
-      await updateCategory(id, { name: trimmed });
-      setEditing(null);
-      await load();
-    } catch (err: any) {
-      Alert.alert('Save failed', err?.message || 'Could not rename');
-    }
-  };
-
-  const confirmDelete = (id: string, name: string) => {
-    Alert.alert(
-      `Delete "${name}"?`,
-      'This permanently removes the category. Sub-categories are deleted too.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteCategoryNode(id);
-              await load();
-            } catch (err: any) {
-              Alert.alert('Delete failed', err?.message || 'Could not delete');
-            }
-          },
-        },
-      ],
-    );
-  };
-
-  const handleArchive = async (id: string, name: string) => {
-    try {
-      await archiveCategoryNode(id);
-      await load();
-    } catch (err: any) {
-      Alert.alert('Archive failed', err?.message || `Could not archive "${name}"`);
-    }
-  };
-
-  const handleRestore = async (id: string, name: string) => {
-    try {
-      await restoreCategoryNode(id);
-      await load();
-    } catch (err: any) {
-      Alert.alert('Restore failed', err?.message || `Could not restore "${name}"`);
-    }
-  };
-
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -137,13 +69,17 @@ export default function ProductTaxonomyScreen() {
     );
   }
 
+  const totalDescendants = (n: ProductCategoryNode): number =>
+    (n.children?.length || 0) + (n.children || []).reduce((s, c) => s + totalDescendants(c), 0);
+  const subCount = tree.reduce((n, c) => n + totalDescendants(c), 0);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.headerBlock}>
         <Text style={styles.h1}>Product Taxonomy</Text>
         <Text style={styles.subtitle}>
           {tree.length} parent {tree.length === 1 ? 'category' : 'categories'} ·{' '}
-          {tree.reduce((n, c) => n + (c.children?.length || 0), 0)} sub-categories
+          {subCount} nested sub-categor{subCount === 1 ? 'y' : 'ies'}
         </Text>
       </View>
 
@@ -169,37 +105,7 @@ export default function ProductTaxonomyScreen() {
       ) : (
         <View style={styles.treeBlock}>
           {tree.map(parent => (
-            <ParentRow
-              key={parent.id}
-              parent={parent}
-              isExpanded={!!expanded[parent.id]}
-              isEditing={editing?.id === parent.id}
-              isAddingChild={addingChildFor === parent.id}
-              editingName={editing?.id === parent.id ? editing.name : ''}
-              onToggleExpand={() => toggleExpanded(parent.id)}
-              onStartEdit={() => setEditing({ id: parent.id, name: parent.name })}
-              onChangeEditName={(t) => setEditing({ id: parent.id, name: t })}
-              onSaveEdit={() => handleRename(parent.id, editing?.name || '')}
-              onCancelEdit={() => setEditing(null)}
-              onStartAddChild={() => {
-                setAddingChildFor(parent.id);
-                setExpanded(prev => ({ ...prev, [parent.id]: true }));
-              }}
-              onSaveChild={(name) => handleAddChild(parent.id, name)}
-              onCancelAddChild={() => setAddingChildFor(null)}
-              onDelete={() => confirmDelete(parent.id, parent.name)}
-              onArchive={() => handleArchive(parent.id, parent.name)}
-              onRestore={() => handleRestore(parent.id, parent.name)}
-              onChildRename={(childId, name) => handleRename(childId, name)}
-              onChildDelete={(childId, name) => confirmDelete(childId, name)}
-              onChildArchive={(childId, name) => handleArchive(childId, name)}
-              onChildRestore={(childId, name) => handleRestore(childId, name)}
-              editingChildId={editing?.id !== parent.id ? editing?.id ?? null : null}
-              editingChildName={editing?.id !== parent.id ? editing?.name ?? '' : ''}
-              onChildStartEdit={(childId, name) => setEditing({ id: childId, name })}
-              onChildChangeEditName={(t) => editing && setEditing({ ...editing, name: t })}
-              onChildCancelEdit={() => setEditing(null)}
-            />
+            <CategoryNode key={parent.id} node={parent} depth={0} onChanged={load} />
           ))}
         </View>
       )}
@@ -238,195 +144,260 @@ export default function ProductTaxonomyScreen() {
   );
 }
 
-// ─── Parent row + child rows ──────────────────────────────────────────────
+// ─── Recursive category node ──────────────────────────────────────────────
+// Depth 0 = root (parent card), depth >=1 = sub-category row. Each node owns
+// its expand/edit/add-child state and reloads via onChanged when the tree
+// shape changes server-side.
 
-type ParentRowProps = {
-  parent: ProductCategoryNode;
-  isExpanded: boolean;
-  isEditing: boolean;
-  isAddingChild: boolean;
-  editingName: string;
-  onToggleExpand: () => void;
-  onStartEdit: () => void;
-  onChangeEditName: (t: string) => void;
-  onSaveEdit: () => void;
-  onCancelEdit: () => void;
-  onStartAddChild: () => void;
-  onSaveChild: (name: string) => void;
-  onCancelAddChild: () => void;
-  onDelete: () => void;
-  onArchive: () => void;
-  onRestore: () => void;
-  onChildRename: (id: string, name: string) => void;
-  onChildDelete: (id: string, name: string) => void;
-  onChildArchive: (id: string, name: string) => void;
-  onChildRestore: (id: string, name: string) => void;
-  editingChildId: string | null;
-  editingChildName: string;
-  onChildStartEdit: (id: string, name: string) => void;
-  onChildChangeEditName: (t: string) => void;
-  onChildCancelEdit: () => void;
-};
+function CategoryNode({ node, depth, onChanged }: {
+  node: ProductCategoryNode;
+  depth: number;
+  onChanged: () => Promise<void> | void;
+}) {
+  const children = Array.isArray(node.children) ? node.children : [];
+  const hasChildren = children.length > 0;
+  const isArchived = !!node.isArchived;
+  const isRoot = depth === 0;
 
-function ParentRow({
-  parent, isExpanded, isEditing, isAddingChild, editingName,
-  onToggleExpand, onStartEdit, onChangeEditName, onSaveEdit, onCancelEdit,
-  onStartAddChild, onSaveChild, onCancelAddChild,
-  onDelete, onArchive, onRestore,
-  onChildDelete, onChildArchive, onChildRestore,
-  editingChildId, editingChildName,
-  onChildStartEdit, onChildChangeEditName, onChildCancelEdit,
-}: ParentRowProps) {
-  const [childInputName, setChildInputName] = useState('');
-  const isArchived = !!parent.isArchived;
-  const childCount = parent.children?.length || 0;
+  const [expanded, setExpanded] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(node.name);
+  const [addingChild, setAddingChild] = useState(false);
+  const [childName, setChildName] = useState('');
 
-  return (
-    <View style={[styles.parentBlock, isArchived && styles.archivedBlock]}>
-      <View style={styles.parentRow}>
-        <TouchableOpacity onPress={onToggleExpand} style={styles.expandBtn}>
-          <Text style={styles.expandChev}>
-            {childCount > 0 ? (isExpanded ? '▾' : '▸') : '·'}
-          </Text>
-        </TouchableOpacity>
+  const saveRename = async () => {
+    const t = editName.trim();
+    if (!t) { setEditing(false); return; }
+    try {
+      await updateCategory(node.id, { name: t });
+      setEditing(false);
+      await onChanged();
+    } catch (err: any) {
+      Alert.alert('Save failed', err?.message || 'Could not rename');
+    }
+  };
 
-        {parent.icon ? <Text style={styles.parentIcon}>{parent.icon}</Text> : null}
+  const saveAddChild = async () => {
+    const t = childName.trim();
+    if (!t) return;
+    try {
+      await createCategory({ name: t, parentId: node.id });
+      setChildName('');
+      setAddingChild(false);
+      await onChanged();
+    } catch (err: any) {
+      Alert.alert('Save failed', err?.message || 'Could not create sub-category');
+    }
+  };
 
-        {isEditing ? (
-          <>
-            <TextInput
-              style={styles.editInput}
-              value={editingName}
-              onChangeText={onChangeEditName}
-              autoFocus
-              onSubmitEditing={onSaveEdit}
-              returnKeyType="done"
-            />
-            <TouchableOpacity onPress={onSaveEdit} style={styles.iconBtn}>
-              <Text style={styles.iconBtnTextOk}>✓</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onCancelEdit} style={styles.iconBtn}>
-              <Text style={styles.iconBtnTextMuted}>✕</Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            <View style={styles.parentNameBlock}>
-              <Text style={[styles.parentName, isArchived && styles.archivedText]} numberOfLines={1}>
-                {parent.name}
-              </Text>
-              {isArchived ? <Text style={styles.archivedPill}>archived</Text> : null}
-              {childCount > 0 ? <Text style={styles.childCount}>{childCount}</Text> : null}
-            </View>
-            <View style={styles.actionRow}>
-              <TouchableOpacity onPress={onStartEdit} style={styles.iconBtn}>
-                <Text style={styles.iconBtnTextMuted}>✎</Text>
-              </TouchableOpacity>
-              {isArchived ? (
-                <TouchableOpacity onPress={onRestore} style={styles.iconBtn}>
-                  <Text style={styles.iconBtnTextOk}>↺</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity onPress={onArchive} style={styles.iconBtn}>
-                  <Text style={styles.iconBtnTextMuted}>⊘</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={onDelete} style={styles.iconBtn}>
-                <Text style={styles.iconBtnTextDanger}>🗑</Text>
-              </TouchableOpacity>
-            </View>
-          </>
+  const confirmDelete = () => {
+    const msg = hasChildren
+      ? `Delete "${node.name}" and its ${children.length} nested sub-categor${children.length === 1 ? 'y' : 'ies'}?`
+      : `Delete "${node.name}"?`;
+    Alert.alert(msg, 'This action cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteCategoryNode(node.id);
+            await onChanged();
+          } catch (err: any) {
+            Alert.alert('Delete failed', err?.message || 'Could not delete');
+          }
+        },
+      },
+    ]);
+  };
+
+  const toggleArchive = async () => {
+    try {
+      if (isArchived) await restoreCategoryNode(node.id);
+      else await archiveCategoryNode(node.id);
+      await onChanged();
+    } catch (err: any) {
+      Alert.alert('Failed', err?.message || (isArchived ? 'Could not restore' : 'Could not archive'));
+    }
+  };
+
+  // Root cards are full panels; deeper levels are rows with progressive indent.
+  const rowPad = { paddingLeft: 12 + depth * 14 };
+
+  if (isRoot) {
+    return (
+      <View style={[styles.parentBlock, isArchived && styles.archivedBlock]}>
+        <CategoryRowHeader
+          node={node}
+          editing={editing}
+          editName={editName}
+          setEditName={setEditName}
+          onSaveRename={saveRename}
+          onCancelRename={() => { setEditing(false); setEditName(node.name); }}
+          onStartEdit={() => setEditing(true)}
+          onToggleExpand={() => hasChildren && setExpanded(e => !e)}
+          onAddChild={() => { setAddingChild(true); setExpanded(true); }}
+          onToggleArchive={toggleArchive}
+          onDelete={confirmDelete}
+          expanded={expanded}
+          hasChildren={hasChildren}
+          isArchived={isArchived}
+          depth={0}
+          showChildCount={children.length}
+          rowPad={{ paddingLeft: 12 }}
+          isRoot
+        />
+
+        {expanded && (children.length > 0 || addingChild) && (
+          <View style={styles.childrenBlock}>
+            {children.map(grand => (
+              <CategoryNode key={grand.id} node={grand} depth={depth + 1} onChanged={onChanged} />
+            ))}
+            {addingChild && (
+              <AddChildInline
+                value={childName}
+                setValue={setChildName}
+                onSave={saveAddChild}
+                onCancel={() => { setAddingChild(false); setChildName(''); }}
+                rowPad={{ paddingLeft: 12 + (depth + 1) * 14 }}
+              />
+            )}
+          </View>
         )}
       </View>
+    );
+  }
 
-      {isExpanded && (
-        <View style={styles.childrenBlock}>
-          {(parent.children || []).map(child => {
-            const isChildEditing = editingChildId === child.id;
-            const childArchived = !!child.isArchived;
-            return (
-              <View key={child.id} style={[styles.childRow, childArchived && styles.archivedRow]}>
-                <Text style={styles.childBullet}>└</Text>
-                {isChildEditing ? (
-                  <>
-                    <TextInput
-                      style={styles.editInput}
-                      value={editingChildName}
-                      onChangeText={onChildChangeEditName}
-                      autoFocus
-                      onSubmitEditing={() => editingChildId && onChildRename(editingChildId, editingChildName)}
-                      returnKeyType="done"
-                    />
-                    <TouchableOpacity
-                      onPress={() => editingChildId && onChildRename(editingChildId, editingChildName)}
-                      style={styles.iconBtn}
-                    >
-                      <Text style={styles.iconBtnTextOk}>✓</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={onChildCancelEdit} style={styles.iconBtn}>
-                      <Text style={styles.iconBtnTextMuted}>✕</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <>
-                    <Text style={[styles.childName, childArchived && styles.archivedText]} numberOfLines={1}>
-                      {child.name}
-                    </Text>
-                    {childArchived ? <Text style={styles.archivedPill}>archived</Text> : null}
-                    <View style={styles.actionRow}>
-                      <TouchableOpacity onPress={() => onChildStartEdit(child.id, child.name)} style={styles.iconBtn}>
-                        <Text style={styles.iconBtnTextMuted}>✎</Text>
-                      </TouchableOpacity>
-                      {childArchived ? (
-                        <TouchableOpacity onPress={() => onChildRestore(child.id, child.name)} style={styles.iconBtn}>
-                          <Text style={styles.iconBtnTextOk}>↺</Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity onPress={() => onChildArchive(child.id, child.name)} style={styles.iconBtn}>
-                          <Text style={styles.iconBtnTextMuted}>⊘</Text>
-                        </TouchableOpacity>
-                      )}
-                      <TouchableOpacity onPress={() => onChildDelete(child.id, child.name)} style={styles.iconBtn}>
-                        <Text style={styles.iconBtnTextDanger}>🗑</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                )}
-              </View>
-            );
-          })}
+  return (
+    <View>
+      <CategoryRowHeader
+        node={node}
+        editing={editing}
+        editName={editName}
+        setEditName={setEditName}
+        onSaveRename={saveRename}
+        onCancelRename={() => { setEditing(false); setEditName(node.name); }}
+        onStartEdit={() => setEditing(true)}
+        onToggleExpand={() => hasChildren && setExpanded(e => !e)}
+        onAddChild={() => { setAddingChild(true); setExpanded(true); }}
+        onToggleArchive={toggleArchive}
+        onDelete={confirmDelete}
+        expanded={expanded}
+        hasChildren={hasChildren}
+        isArchived={isArchived}
+        depth={depth}
+        showChildCount={children.length}
+        rowPad={rowPad}
+      />
 
-          {isAddingChild ? (
-            <View style={styles.childRow}>
-              <Text style={styles.childBullet}>└</Text>
-              <TextInput
-                style={styles.editInput}
-                value={childInputName}
-                onChangeText={setChildInputName}
-                placeholder="Sub-category name…"
-                autoFocus
-                onSubmitEditing={() => { onSaveChild(childInputName); setChildInputName(''); }}
-                returnKeyType="done"
-              />
-              <TouchableOpacity
-                onPress={() => { onSaveChild(childInputName); setChildInputName(''); }}
-                style={styles.iconBtn}
-              >
-                <Text style={styles.iconBtnTextOk}>✓</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { onCancelAddChild(); setChildInputName(''); }} style={styles.iconBtn}>
-                <Text style={styles.iconBtnTextMuted}>✕</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            !isArchived && (
-              <TouchableOpacity style={styles.addChildBtn} onPress={onStartAddChild}>
-                <Text style={styles.addChildBtnText}>＋ Add sub-category</Text>
-              </TouchableOpacity>
-            )
-          )}
+      {expanded && hasChildren && (
+        <View>
+          {children.map(grand => (
+            <CategoryNode key={grand.id} node={grand} depth={depth + 1} onChanged={onChanged} />
+          ))}
         </View>
       )}
+
+      {expanded && addingChild && (
+        <AddChildInline
+          value={childName}
+          setValue={setChildName}
+          onSave={saveAddChild}
+          onCancel={() => { setAddingChild(false); setChildName(''); }}
+          rowPad={{ paddingLeft: 12 + (depth + 1) * 14 }}
+        />
+      )}
+    </View>
+  );
+}
+
+function CategoryRowHeader({
+  node, editing, editName, setEditName, onSaveRename, onCancelRename,
+  onStartEdit, onToggleExpand, onAddChild, onToggleArchive, onDelete,
+  expanded, hasChildren, isArchived, depth, showChildCount, rowPad, isRoot,
+}: any) {
+  return (
+    <View style={[styles.row, isRoot && styles.rootRow, rowPad]}>
+      <TouchableOpacity onPress={onToggleExpand} style={styles.expandBtn} disabled={!hasChildren}>
+        <Text style={[styles.expandChev, !hasChildren && styles.expandChevMuted]}>
+          {hasChildren ? (expanded ? '▾' : '▸') : '·'}
+        </Text>
+      </TouchableOpacity>
+
+      {isRoot && node.icon ? <Text style={styles.parentIcon}>{node.icon}</Text> : null}
+
+      {editing ? (
+        <>
+          <TextInput
+            style={styles.editInput}
+            value={editName}
+            onChangeText={setEditName}
+            autoFocus
+            onSubmitEditing={onSaveRename}
+            returnKeyType="done"
+          />
+          <TouchableOpacity onPress={onSaveRename} style={styles.iconBtn}>
+            <Text style={styles.iconBtnTextOk}>✓</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onCancelRename} style={styles.iconBtn}>
+            <Text style={styles.iconBtnTextMuted}>✕</Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <>
+          <View style={styles.nameBlock}>
+            <Text
+              style={[isRoot ? styles.parentName : styles.childName, isArchived && styles.archivedText]}
+              numberOfLines={1}
+            >
+              {node.name}
+            </Text>
+            {isArchived ? <Text style={styles.archivedPill}>archived</Text> : null}
+            {showChildCount > 0 ? <Text style={styles.childCount}>{showChildCount}</Text> : null}
+          </View>
+          <View style={styles.actionRow}>
+            <TouchableOpacity onPress={onStartEdit} style={styles.iconBtn}>
+              <Text style={styles.iconBtnTextMuted}>✎</Text>
+            </TouchableOpacity>
+            {!isArchived && (
+              <TouchableOpacity onPress={onAddChild} style={styles.iconBtn}>
+                <Text style={styles.iconBtnTextAdd}>＋</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={onToggleArchive} style={styles.iconBtn}>
+              <Text style={isArchived ? styles.iconBtnTextOk : styles.iconBtnTextMuted}>
+                {isArchived ? '↺' : '⊘'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onDelete} style={styles.iconBtn}>
+              <Text style={styles.iconBtnTextDanger}>🗑</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+function AddChildInline({ value, setValue, onSave, onCancel, rowPad }: any) {
+  return (
+    <View style={[styles.row, rowPad]}>
+      <Text style={styles.expandChev}>＋</Text>
+      <TextInput
+        style={styles.editInput}
+        value={value}
+        onChangeText={setValue}
+        placeholder="Sub-category name…"
+        autoFocus
+        onSubmitEditing={onSave}
+        returnKeyType="done"
+      />
+      <TouchableOpacity onPress={onSave} style={styles.iconBtn}>
+        <Text style={styles.iconBtnTextOk}>✓</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={onCancel} style={styles.iconBtn}>
+        <Text style={styles.iconBtnTextMuted}>✕</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -459,36 +430,34 @@ const styles = StyleSheet.create({
   parentBlock: { backgroundColor: COLORS.white, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
   archivedBlock: { backgroundColor: '#F5F5F4', borderColor: '#D6D3D1' },
 
-  parentRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, gap: 8 },
-  expandBtn: { width: 24, alignItems: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingRight: 8, gap: 6 },
+  rootRow: { paddingVertical: 12 },
+  expandBtn: { width: 22, alignItems: 'center' },
   expandChev: { fontSize: 14, color: COLORS.muted, fontWeight: '700' },
+  expandChevMuted: { color: '#CBD5E1' },
   parentIcon: { fontSize: 18 },
-  parentNameBlock: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+
+  nameBlock: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   parentName: { fontSize: 15, fontWeight: '700', color: COLORS.ink, flexShrink: 1 },
-  childCount: {
-    fontSize: 11, fontWeight: '700', color: COLORS.muted,
-    backgroundColor: '#F5F0E8', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9, overflow: 'hidden',
-  },
+  childName: { fontSize: 14, color: COLORS.ink, flexShrink: 1 },
   archivedText: { color: '#9CA3AF', textDecorationLine: 'line-through' },
   archivedPill: {
     fontSize: 10, fontWeight: '700', color: '#92400E',
     backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9, overflow: 'hidden',
   },
+  childCount: {
+    fontSize: 11, fontWeight: '700', color: COLORS.muted,
+    backgroundColor: '#F5F0E8', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9, overflow: 'hidden',
+  },
 
   actionRow: { flexDirection: 'row', gap: 2 },
-  iconBtn: { padding: 6, minWidth: 30, alignItems: 'center' },
-  iconBtnTextMuted: { fontSize: 16, color: COLORS.muted },
+  iconBtn: { padding: 6, minWidth: 28, alignItems: 'center' },
+  iconBtnTextMuted: { fontSize: 15, color: COLORS.muted },
+  iconBtnTextAdd: { fontSize: 18, color: COLORS.forest, fontWeight: '700', lineHeight: 18 },
   iconBtnTextOk: { fontSize: 16, color: COLORS.success, fontWeight: '700' },
-  iconBtnTextDanger: { fontSize: 16, color: COLORS.error },
+  iconBtnTextDanger: { fontSize: 15, color: COLORS.error },
 
-  childrenBlock: { paddingTop: 4, paddingBottom: 8, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: '#FAFAF7' },
-  childRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, gap: 6 },
-  archivedRow: { opacity: 0.6 },
-  childBullet: { fontSize: 14, color: '#CBD5E1', width: 14 },
-  childName: { flex: 1, fontSize: 14, color: COLORS.ink },
-
-  addChildBtn: { paddingHorizontal: 16, paddingVertical: 8, marginTop: 4 },
-  addChildBtnText: { fontSize: 13, color: COLORS.forest, fontWeight: '700' },
+  childrenBlock: { paddingTop: 2, paddingBottom: 6, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: '#FAFAF7' },
 
   addParentBtn: {
     backgroundColor: COLORS.white, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
@@ -512,9 +481,7 @@ const styles = StyleSheet.create({
   cancelBtn: { paddingVertical: 6, paddingHorizontal: 10 },
   cancelBtnText: { color: COLORS.muted, fontSize: 18 },
 
-  footnote: {
-    marginTop: 24, paddingHorizontal: 4,
-  },
+  footnote: { marginTop: 24, paddingHorizontal: 4 },
   footnoteText: { fontSize: 11, color: COLORS.muted, lineHeight: 16 },
   footnoteCode: { fontFamily: 'Courier', color: COLORS.ink },
 });

@@ -4580,9 +4580,17 @@ async function requireSuperAdmin() {
 // read-only by design (D-3).
 async function brandScopeForMcp(user) {
   const u = user || await getCurrentUserOrThrow();
+  // Phase 4.20.1 — L-047: Sequelize returns JSON columns as strings on
+  // some SQLite query paths. Mirror the middleware/brandScope.js parse-
+  // on-read fix so MCP writes don't get silently scoped to ['SH'] when
+  // the user's accessible_brands column carries a stringified array.
+  let rawBrands = u.accessibleBrands;
+  if (typeof rawBrands === 'string') {
+    try { rawBrands = JSON.parse(rawBrands); } catch (_) { rawBrands = null; }
+  }
   const accessibleBrands =
-    Array.isArray(u.accessibleBrands) && u.accessibleBrands.length
-      ? u.accessibleBrands
+    Array.isArray(rawBrands) && rawBrands.length
+      ? rawBrands
       : ['SH'];
   const defaultBrand = u.defaultBrand || accessibleBrands[0] || 'SH';
   return {

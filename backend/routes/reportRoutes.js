@@ -200,6 +200,60 @@ router.get('/financial', requireAuth, requireRole('finance', 'admin'), async (re
   }
 });
 
+// Phase 4.20.1: aggregate list across all accessible customers. Used by
+// BIDashboard.jsx (was hitting /reports/customer without an id and 404-ing,
+// which propagated through Promise.all and broke the entire BI tab). One
+// row per customer with the same totalOrders / totalSpent shape that the
+// per-customer detail route returns under stats — kept flat so the BI
+// card can just sort by totalOrders.
+router.get('/customers', requireAuth, async (req, res, next) => {
+  try {
+    const { period = 'year' } = req.query;
+    const { startDate, endDate } = getDateRange(period);
+    const { brandWhere, filterCustomersByBrand } = require('../utils/brandFilterUtils');
+
+    let customers = await db.Customer.findAll({
+      attributes: ['id', 'companyName', 'status', 'brandRelationships'],
+      order: [['companyName', 'ASC']],
+    });
+    customers = filterCustomersByBrand(customers, req);
+    if (customers.length === 0) {
+      return res.json(getSuccessResponse([]));
+    }
+
+    const customerIds = customers.map(c => c.id);
+    const orders = await db.SalesOrder.findAll({
+      where: {
+        customerId: { [Op.in]: customerIds },
+        createdAt: { [Op.between]: [startDate, endDate] },
+        ...brandWhere(req),
+      },
+      attributes: ['customerId', 'total'],
+    });
+
+    const byCustomer = {};
+    for (const o of orders) {
+      const k = o.customerId;
+      if (!byCustomer[k]) byCustomer[k] = { totalOrders: 0, totalSpent: 0 };
+      byCustomer[k].totalOrders += 1;
+      byCustomer[k].totalSpent += parseFloat(o.total || 0);
+    }
+
+    const out = customers.map(c => ({
+      id: c.id,
+      name: c.companyName,
+      customerName: c.companyName,
+      status: c.status || 'active',
+      totalOrders: byCustomer[c.id]?.totalOrders || 0,
+      totalSpent: byCustomer[c.id]?.totalSpent || 0,
+    }));
+
+    res.json(getSuccessResponse(out));
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/customer/:customerId', requireAuth, async (req, res, next) => {
   try {
     const { period = 'year' } = req.query;

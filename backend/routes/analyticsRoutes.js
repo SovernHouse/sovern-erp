@@ -428,8 +428,11 @@ router.get('/shipment-timeline', async (req, res, next) => {
 
     shipmentData.forEach(row => {
       if (monthMap[row.month]) {
-        const statusKey = row.status.toLowerCase();
-        if (statusKey in monthMap[row.month]) {
+        // Phase 4.20.1: Shipment.status can be NULL on rows created mid-
+        // workflow (no enum default). Falling through .toLowerCase() on
+        // null was the 500 surface on /api/analytics/shipment-timeline.
+        const statusKey = (row.status || '').toLowerCase();
+        if (statusKey && statusKey in monthMap[row.month]) {
           monthMap[row.month][statusKey] = parseInt(row.count || 0);
         }
       }

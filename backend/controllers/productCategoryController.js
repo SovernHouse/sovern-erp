@@ -119,7 +119,12 @@ const toSlug = (name) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 // ─── GET /api/products/categories/tree ────────────────────────────────────────
-// Returns full hierarchy: parents with children array
+// Returns full hierarchy: parents with recursively-nested children. Phase 4.20.1
+// fix — earlier shape only attached direct children to roots, so grandchildren
+// (e.g. Resilient → Engineered SPC) were never reachable from the tree. The
+// desktop ProductTaxonomy / mobile product-taxonomy renderers walk the
+// `children` arrays depth-first, so the recursive build is required for the
+// "click sub-category to see its children" UX.
 const getCategoryTree = async (req, res) => {
   try {
     const all = await db.ProductCategory.findAll({
@@ -130,17 +135,21 @@ const getCategoryTree = async (req, res) => {
       ],
     });
 
-    const parents = all.filter(c => !c.parentId);
     const childMap = {};
     all.filter(c => c.parentId).forEach(c => {
       if (!childMap[c.parentId]) childMap[c.parentId] = [];
       childMap[c.parentId].push(c);
     });
 
-    const tree = parents.map(p => ({
-      ...p.toJSON(),
-      children: (childMap[p.id] || []).sort((a, b) => a.sortOrder - b.sortOrder),
-    }));
+    const buildNode = (node) => ({
+      ...node.toJSON(),
+      children: (childMap[node.id] || [])
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map(buildNode),
+    });
+
+    const tree = all.filter(c => !c.parentId).map(buildNode);
 
     res.json({ success: true, data: tree });
   } catch (error) {
