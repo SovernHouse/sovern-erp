@@ -260,8 +260,8 @@ export default function PurchaseOrdersScreen() {
       draft: 0, sent: 1, confirmed: 2, in_production: 3, shipped: 4, received: 5,
     }
     return [...items].sort((a, b) => {
-      const oa = order[a.status] ?? 99
-      const ob = order[b.status] ?? 99
+      const oa = order[a.status ?? ''] ?? 99
+      const ob = order[b.status ?? ''] ?? 99
       if (oa !== ob) return oa - ob
       const da = a.createdAt ? new Date(a.createdAt).getTime() : 0
       const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
