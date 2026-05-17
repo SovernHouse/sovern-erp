@@ -7,6 +7,54 @@ const setIO = (socketIO) => {
   io = socketIO;
 };
 
+
+// ─── Expo push (Phase 4.26 mobile parity) ─────────────────────────────────
+//
+// Best-effort fan-out to every active ExpoPushToken for a user. Called
+// from createNotification after the Notification row commits. Mobile
+// users with the app installed get a push for the same notification
+// the bell shows.
+
+const EXPO_PUSH_API = 'https://exp.host/--/api/v2/push/send';
+
+async function sendExpoPushToUser(userId, title, body, data) {
+  if (!userId) return;
+  if (!db.ExpoPushToken) return;  // model not yet migrated; silent skip
+  try {
+    const tokens = await db.ExpoPushToken.findAll({
+      where: { userId, isActive: true },
+      attributes: ['token'],
+    });
+    if (!tokens || tokens.length === 0) return;
+    const messages = tokens.map(t => ({
+      to: t.token,
+      sound: 'default',
+      title: title || 'Sovern Operations',
+      body: body || '',
+      data: data || {},
+      priority: 'high',
+    }));
+    const res = await fetch(EXPO_PUSH_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        ...(process.env.EXPO_ACCESS_TOKEN
+          ? { Authorization: `Bearer ${process.env.EXPO_ACCESS_TOKEN}` }
+          : {}),
+      },
+      body: JSON.stringify(messages),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      logger.warn('[push] Expo push HTTP ' + res.status + ': ' + txt.slice(0, 200));
+    }
+  } catch (e) {
+    logger.warn('[push] Expo push failed: ' + (e && e.message));
+  }
+}
+
 const createNotification = async (userId, type, title, message, data = {}, link = null) => {
   try {
     const notification = await db.Notification.create({
@@ -30,6 +78,16 @@ const createNotification = async (userId, type, title, message, data = {}, link 
         createdAt: notification.createdAt
       });
     }
+
+    // Phase 4.26 mobile parity: fire-and-forget Expo push fan-out.
+    // Awaited so the call resolves before we return, but failures are
+    // logged inside sendExpoPushToUser and never throw.
+    await sendExpoPushToUser(userId, title, message, {
+      notificationId: notification.id,
+      type,
+      ...data,
+      link,
+    });
 
     return notification;
   } catch (error) {

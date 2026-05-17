@@ -151,9 +151,29 @@ export function useDevModePushNotifications() {
         kind?: string;
         runId?: string;
         prUrl?: string;
+        type?: string;
+        entityType?: string;
+        entityId?: string;
+        link?: string;
       };
       if (data?.kind === 'dev_mode' || data?.runId) {
         router.push('/dev-runs');
+        return;
+      }
+      // Phase 4.26 mobile parity: route auto_chain notifications to
+      // their entity tab. Mobile has tabs for SalesOrder, PurchaseOrder,
+      // Invoice, Quotation. ProformaInvoice / GoodsReceivedNote /
+      // PackingList have no mobile screen yet; fall back to dashboard.
+      if (data?.type === 'auto_chain' && data.entityType) {
+        const map: Record<string, string> = {
+          SalesOrder: '/(tabs)/sales-orders',
+          PurchaseOrder: '/(tabs)/purchase-orders',
+          Invoice: '/(tabs)/invoices',
+          Quotation: '/(tabs)/quotations',
+        };
+        const target = map[data.entityType] || '/(tabs)/dashboard';
+        router.push(target);
+        return;
       }
     });
     subRefs.current.push(sub);
