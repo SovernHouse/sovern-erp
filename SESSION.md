@@ -198,6 +198,84 @@ Tests pass individually and serialized (with bumped timeouts). When run unconstr
 
 ---
 
+## Session FINAL wrap, 2026-05-17 (everything shipped + DB incident + restore)
+
+This session's continuation closed out 4.24.x + 4.25a-h + 4.26 + 4.26b + latent fixes + carry-overs + L-058 stop-gap. Includes a production DB wipe incident (early in the session, before the SQLITE_STORAGE guard committed) and a successful restore from the 03:00 daily backup.
+
+**Final commit log (all pushed to GitHub):**
+
+`sovern-erp` (last 12):
+- `8dee580` fix(tests): L-058 stop-gap, bump integration timeouts to 180s
+- `eb092a2` feat(frontend): Phase 4.26b, admin portal listens to auto_chain notifications
+- `e719a03` docs(session): full 2026-05-17 wrap
+- `1f70243` feat(backend): Phase 4.26, emit notification events on every auto-chain hop
+- `41dbfca` feat(pwa): Phase 4.24.x, PWA install discoverability
+- `9f76ef7` feat(backend): Phase 4.25h, MCP exposure
+- `1e2fb0b` fix(backend): align status maps + deprecate legacy converter endpoints
+- (plus 4.25a-g feature commits earlier in the session)
+
+`sovern-instructions-skills`:
+- `8b86a12` lessons: L-061, production DB wipe incident + restoration
+- `2cf1c2b` lessons: L-059, L-060
+- `a9cf3f9` lessons: L-057, L-058
+- `71655cb` lessons: L-054, L-055, L-056
+
+**INCIDENT: production DB was wiped at ~07:30 today; restored at ~09:00.**
+
+Root cause: early integration test attempts (Phase 4.25a) used `__tests__/setup.js` BEFORE the SQLITE_STORAGE guard (cbe7d0b) committed. `.env` carries `SQLITE_STORAGE=/home/alex/sovern-erp/data/erp.db`, so `sequelize.sync({force:true})` ran against prod, dropping all 116 tables. `seedTestData()` then created the minimal "Customer Co" / "Test Factory" rows visible afterwards.
+
+Restoration: stopped PM2, snapshotted the corrupted state to `erp.db.corrupted-2026-05-17`, restored from `data/backups/erp-20260517.db` (today 03:00 daily cron backup). Verified: 6 customers (1 active: Milliken), 15 factories (2 active: HanHua + FlorWay), 14 active products. PM2 restarted on new code. Vercel auto-deploy unaffected.
+
+Documented as L-061 with stricter rules:
+1. Never run integration tests with NODE_ENV=test from this VM until boot path is hardened.
+2. Smoke tests against prod MUST be HTTP-only with auth + cleanup; direct-write smoke scripts are forbidden.
+3. `SQLITE_STORAGE` should be removed from `.env` and set via PM2 ecosystem.config.js or systemd instead.
+4. Hourly backups during active test-infra changes.
+
+**State of the order-to-cash auto-chain (PRODUCTION):**
+
+| Phase | Trigger | Auto-create | Status |
+|---|---|---|---|
+| 4.25a | Quotation.accept | ProformaInvoice (draft) | shipped, unit tested 5/5 |
+| 4.25b | ProformaInvoice.confirm | SalesOrder | shipped, unit tested 8/8 |
+| 4.25c | SalesOrder.confirm | PurchaseOrder per factory | shipped, unit tested 6/6 |
+| 4.25d | PurchaseOrder.confirm | GoodsReceivedNote (pending) | shipped, unit tested 4/4 |
+| 4.25e | GRN.accept | Invoice (draft, sales) | shipped, unit tested 5/5 |
+| 4.25f | Payment.confirm | Invoice status (paid / partially_paid) | shipped, unit tested 6/6 |
+| 4.25g | SO.shipped + Shipment.delivered | PackingList + SO.delivered | shipped, unit tested 8/8 |
+| 4.25h | MCP tools (cherry on top) | 7 tools | shipped, smoke tested 2/2 |
+| 4.26  | Notification events on chain hop | bell + Socket.IO emit | shipped |
+| 4.26b | Admin portal listens, toasts, dispatches CustomEvent | hook updated | shipped |
+
+49 unit tests, all passing when run individually or serialized.
+
+**Other work shipped this continuation:**
+
+- Latent status-machine alignment (statusMachine ↔ statusTransitions).
+- Latent /convert-order enum bug fix + deprecation.
+- Latent /convert-to-proforma-invoice deprecation.
+- L-058 stop-gap: integration test timeouts bumped to 180s globally + 33 test files patched. Even at 180s the health test sometimes flakes — actual boot+sync exceeds 180s under load. Real fix is a lightweight test-app bootstrap path (multi-hour refactor, future phase).
+- Carry-over: 2026-05-16 bulk Factory soft-delete — investigated; ZERO audit rows in the window; documented as L-060; rule added (synchronous audit on operational deletes).
+- Carry-over: EU sanctions URL probe cron — verified GitHub Actions schedule (Mondays 04:00 UTC; next run 2026-05-18).
+
+**What is NOT done (deferred, tracked):**
+
+1. Smoke test of the chain via UI — your job, intentionally not done by me from a script (per L-061 rule 2).
+2. Phase 4.26c (frontend list-page wiring to consume the `autoChain:created` window CustomEvent for refetch on each entity-type list page) — small per-page work, single follow-up commit.
+3. Mobile notification listener parity for Phase 4.26 — push notifications + REST polling path differs from web Socket.IO; separate small task.
+4. L-058 lightweight test-app refactor — multi-hour, separate session.
+5. Frontend toast deduplication — if the chain fires multiple notifications in quick succession (e.g. SO → multiple POs), the toast might fire N times. Polish task.
+
+**Pickup list for next session:**
+
+1. Live smoke test (you, via UI).
+2. Phase 4.26c (per-page refetch listeners).
+3. Mobile 4.26 notification parity.
+4. L-058 real fix.
+5. Audit `.env` and move SQLITE_STORAGE out per L-061 rule 3.
+
+---
+
 ## Last Updated — 2026-05-17 Taiwan time (late evening, Phase 4.23 wrap)
 
 **Picking up next:**
