@@ -81,13 +81,25 @@ function getConfig() {
 
   // Default to SQLite
   if (env === 'test') {
+    // L-061 defense: TEST MUST USE :memory: or a /tmp/* file. Any
+    // SQLITE_STORAGE pointing at a path outside /tmp is rejected and
+    // forced to :memory:. Prevents the prod-DB-wipe class of incidents
+    // where a stale dotenv-loaded SQLITE_STORAGE survived into a test
+    // run and got sync({force:true})'d.
+    let storage = process.env.SQLITE_STORAGE || ':memory:';
+    if (storage !== ':memory:' && !storage.startsWith('/tmp/')) {
+      // Eslint-disable-next-line no-console
+      console.warn('[config/database] TEST environment: refusing SQLITE_STORAGE=' + storage + ' (must be :memory: or under /tmp/). Forcing :memory:.');
+      storage = ':memory:';
+    }
     return {
       ...baseConfig,
       dialect: 'sqlite',
       // Phase 4.9.3.1: honor SQLITE_STORAGE in test so MCP cross-process
       // integration tests can route both the jest process and the
       // spawned MCP subprocess to a shared file DB. Default stays :memory:.
-      storage: process.env.SQLITE_STORAGE || ':memory:',
+      // L-061: only honored if the path is under /tmp.
+      storage,
       logging: false
     };
   }

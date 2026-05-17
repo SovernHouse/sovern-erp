@@ -7,7 +7,7 @@ process.env.NODE_ENV = 'test';
 // for test runs. (Macbook session 2026-05-17 caught this when the
 // SQLITE_STORAGE in .env pointed at /home/alex/sovern-erp/data/erp.db with
 // 116 tables and live customer/factory/product rows.)
-delete process.env.SQLITE_STORAGE;
+process.env.SQLITE_STORAGE = "";  // Empty string: dotenv (override:false default) will NOT replace it. delete would let dotenv re-set from .env.
 
 // L-058: getApp() takes ~13.6s for require + ~10s for sync({force:true})
 // in this environment. Default Jest beforeAll timeout is 5s; we set the
