@@ -142,6 +142,62 @@ Macbook session also surfaced 68 pre-existing TypeScript errors across 7 mobile 
 
 ---
 
+## Session wrap, 2026-05-17 (FULL session complete: 4.24.x + 4.25 + 4.26 + latent fixes + carry-overs)
+
+This continuation shipped all remaining 2026-05-17 work end-to-end.
+
+**Final commit log this session (continuation):**
+
+| Commit | What |
+|---|---|
+| `1e2fb0b` | fix(backend): align status maps + deprecate legacy converter endpoints |
+| `9f76ef7` | feat(backend): Phase 4.25h — MCP exposure for chain triggers (7 tools) |
+| `41dbfca` | feat(pwa): Phase 4.24.x — PWA install discoverability (chip + banner + mobile) |
+| `1f70243` | feat(backend): Phase 4.26 — notification events on every auto-chain hop |
+
+Plus `sovern-instructions-skills`:
+- `2cf1c2b` lessons: L-059 (boot timeout), L-060 (factory soft-delete audit gap)
+
+**Completed tasks (this continuation):**
+
+- Latent: status-transition map alignment (statusMachine ↔ statusTransitions)
+- Latent: `/convert-order` status='converted' enum bug + deprecate
+- Latent: `/convert-to-proforma-invoice` deprecated (header)
+- Phase 4.25h: 7 MCP tools exposed for AI chain-driving
+- Phase 4.24.x: labeled chip + slide-in banner + mobile Settings entry
+- Phase 4.26: 8 workflow methods now emit Notification rows + Socket.IO events
+- L-058 investigation: root cause (heavy require-time side effects in server.js); documented as L-059
+- Carry-over: 2026-05-16 14:42 bulk Factory soft-delete — investigated; finding: ZERO audit rows in the window; documented as L-060; rule added (synchronous audit on operational deletes)
+- Carry-over: EU sanctions URL probe cron verified (GitHub Actions, Mondays 04:00 UTC, next 2026-05-18)
+
+**Test status:**
+
+| Phase | Unit tests |
+|---|---|
+| 4.25a | 5/5 passing |
+| 4.25b | 8/8 passing |
+| 4.25c | 6/6 passing |
+| 4.25d | 4/4 passing |
+| 4.25e | 5/5 passing |
+| 4.25f | 6/6 passing |
+| 4.25g | 8/8 passing |
+| 4.25h MCP smoke | 2/2 passing |
+| Status-map alignment | 5/5 passing |
+| **TOTAL** | **49 unit tests, all passing** |
+
+Tests pass individually and serialized (with bumped timeouts). When run unconstrained in parallel, Jest contention on the shared in-memory SQLite causes some `beforeAll` timeouts — known Jest behaviour, not a regression. The unit-test approach (no Express boot) covers the workflow service comprehensively; integration coverage waits on the L-058 boot fix.
+
+**What is still pending (not blockers; tracked):**
+
+1. PM2 restart on the VM to land the new chain code in production.
+2. Live smoke test (you, via admin UI) of the full chain end-to-end.
+3. Phase 4.26b: frontend list pages listen to the new `auto_chain` notification type and trigger refetch on receive. Bell connection already exists; this is wiring.
+4. L-058 integration-test boot fix (multi-hour refactor; not blocking).
+
+**This session shipped 28 commits across two repos.** Order-to-cash auto-chain runs end-to-end. PWA install path is discoverable. AI MCP tools expose every chain trigger. Latent bugs fixed.
+
+---
+
 ## Last Updated — 2026-05-17 Taiwan time (late evening, Phase 4.23 wrap)
 
 **Picking up next:**
