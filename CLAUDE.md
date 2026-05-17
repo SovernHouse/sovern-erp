@@ -24,6 +24,8 @@ Alex is the CEO/Founder of Sovern House (New Route International Exchange Co., L
 
 **7. The Three-Surface Rule — every admin feature ships to mobile on the same commit.** Any feature added to the admin portal MUST be added to the mobile app (`mobile/sovern-ops-app/`) in the same PR/commit. No exceptions. If mobile UI cannot ship in the same commit (e.g. blocked on EAS native rebuild), the commit must be held until mobile is ready, OR the feature must be explicitly marked WIP with a companion task tracking the mobile half. Shipping admin-only is not "done."
 
+**8. Odoo logic + MCP coverage on every new feature.** Every entity feature you ship must (a) follow the five Odoo pillars from `trade-odoo-patterns.md` — breadcrumb, smart-button strip, form view, related-data tabs, chatter at bottom — AND (b) expose matching MCP write tools in `backend/mcp/erpToolServer.js` so the AI assistant can drive the same workflows from chat. New tools must be super_admin-gated, audit-logged via `auditAiWrite(ai_assistant_*, ...)` (Phase 4.19a invariant enforces this), and the entity must be in the chatter + scheduledActivity whitelists. If a feature is buildable in the UI but not from the assistant, it is not "done."
+
 ---
 
 ## The Team
