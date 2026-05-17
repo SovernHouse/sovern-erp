@@ -4366,24 +4366,39 @@ async function callTool(name, args) {
       // productId is optional — items can be free-form (sku + productName)
       // for entries that don't have a catalog Product row yet.
       const productId = args.productId || args.product_id || null;
+      let productRow = null;
       if (productId) {
-        const p = await getDb().Product.findByPk(productId);
-        if (!p) return `Error: Product ${productId} not found.`;
+        productRow = await getDb().Product.findByPk(productId);
+        if (!productRow) return `Error: Product ${productId} not found.`;
       }
+      // Denormalization: sku + productName are intentionally TEXT columns
+      // on PriceListItem (not just FK joins) so each line stays self-
+      // describing even if the catalog Product is later renamed or
+      // archived. When productId is provided and the caller doesn't
+      // pass sku/productName explicitly, copy from the Product row.
+      const resolvedSku =
+        args.sku && String(args.sku).trim()
+          ? String(args.sku).trim()
+          : (productRow ? productRow.sku : null);
+      const resolvedName =
+        (args.productName && String(args.productName).trim()) ||
+        (args.product_name && String(args.product_name).trim())
+          ? (args.productName || args.product_name).trim()
+          : (productRow ? productRow.name : null);
       const num = (v) => (v === undefined || v === null || v === '' ? null : parseFloat(v));
       const int = (v) => (v === undefined || v === null || v === '' ? null : parseInt(v, 10));
       const row = await getDb().PriceListItem.create({
         id: uuidv4(),
         priceListId,
         productId,
-        sku:          args.sku || null,
-        productName:  args.productName || args.product_name || null,
+        sku:          resolvedSku,
+        productName:  resolvedName,
         sellingPrice: num(args.sellingPrice ?? args.selling_price),
         costPrice:    num(args.costPrice    ?? args.cost_price),
         minimumOrder: num(args.minimumOrder ?? args.minimum_order),
         leadTimeDays: int(args.leadTimeDays ?? args.lead_time_days),
         margin:       num(args.margin),
-        unit:         args.unit || 'sqm',
+        unit:         args.unit || (productRow && productRow.unit) || 'sqm',
         customColumns: (args.customColumns && typeof args.customColumns === 'object')
           ? args.customColumns
           : (args.custom_columns && typeof args.custom_columns === 'object' ? args.custom_columns : {}),
@@ -4393,10 +4408,11 @@ async function callTool(name, args) {
         priceListId,
         productId,
         sku: row.sku,
+        productName: row.productName,
         sellingPrice: row.sellingPrice,
         costPrice: row.costPrice,
       }, requester.id);
-      return { success: true, id: row.id, priceListId, productId, sku: row.sku, productName: row.productName, sellingPrice: row.sellingPrice };
+      return { success: true, id: row.id, priceListId, productId, sku: row.sku, productName: row.productName, sellingPrice: row.sellingPrice, unit: row.unit };
     }
 
     case 'update_price_list_item': {
@@ -4422,9 +4438,16 @@ async function callTool(name, args) {
       for (const [k, v] of Object.entries(map)) {
         if (args[k] !== undefined) patch[v] = args[k];
       }
+      // If the caller is moving the line to a different productId AND
+      // doesn't explicitly pass sku/productName, denormalize from the
+      // new Product row (same shape as add_price_list_item). Keeps the
+      // line self-describing without requiring the AI to remember the
+      // override fields.
       if (patch.productId) {
         const p = await getDb().Product.findByPk(patch.productId);
         if (!p) return `Error: Product ${patch.productId} not found.`;
+        if (patch.sku === undefined) patch.sku = p.sku;
+        if (patch.productName === undefined) patch.productName = p.name;
       }
       const before = {};
       for (const k of Object.keys(patch)) before[k] = row[k];
