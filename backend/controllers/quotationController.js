@@ -532,6 +532,30 @@ const accept = async (req, res, next) => {
     await quotation.update({ status: 'accepted' });
     await notificationService.createQuotationNotification(quotation, quotation.customerId, 'accepted');
 
+    // Phase 4.25a: Quote.accept -> ProformaInvoice auto-chain.
+    // Best-effort: failure logs an audit row but does NOT roll back
+    // the accept. Awaited so the response only returns once the chain
+    // step (or its failure) has resolved; this keeps the chain
+    // observable in integration tests and exposes the Pro Forma to
+    // the very next list query.
+    try {
+      const workflowService = require('../services/workflowService');
+      await workflowService.onQuotationAccepted(quotation, {
+        userId: req.user && req.user.id,
+        ip: req.ip,
+        source: 'rest_accept',
+      });
+    } catch (chainErr) {
+      auditService.logAction(
+        (req.user && req.user.id) || null,
+        'auto_create_failed',
+        'Quotation',
+        id,
+        { error: chainErr && chainErr.message, chainStep: 'onQuotationAccepted', phase: '4.25a' },
+        req.ip || null,
+      ).catch(() => {});
+    }
+
     res.json(getSuccessResponse(quotation, 'Quotation accepted'));
 
     // Fire-and-forget audit log
