@@ -59,6 +59,15 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING(8),
       allowNull: true,
     },
+    // Phase 4.28d follow-up. List of standard column keys to HIDE from
+    // the PDF + UI. Standard keys: 'unit', 'moq', 'lead', 'cost'. Pass
+    // [] (default) to show every standard column; pass ['moq'] to hide
+    // the Min Order column. SKU + productName + price are always shown.
+    hiddenColumns: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: [],
+    },
     createdBy: {
       type: DataTypes.UUID,
       allowNull: true,

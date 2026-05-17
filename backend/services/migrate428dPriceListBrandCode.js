@@ -43,7 +43,7 @@ async function migrate428dPriceListBrandCode(db) {
 
   const stats = { columnAdded: false, rowsBackfilled: 0, rowsUnresolved: 0 };
 
-  // 1) Add column if missing.
+  // 1) Add columns if missing.
   const exists = await columnExists(db.sequelize, 'PriceList', 'brand_code');
   if (!exists) {
     try {
@@ -53,8 +53,23 @@ async function migrate428dPriceListBrandCode(db) {
       stats.columnAdded = true;
       logger.info('[phase4_28d] added PriceList.brand_code');
     } catch (err) {
-      logger.error(`[phase4_28d] failed to add column: ${err.message}`);
+      logger.error(`[phase4_28d] failed to add brand_code column: ${err.message}`);
       throw err;
+    }
+  }
+  // hidden_columns added in the same phase (follow-up). Separate boolean
+  // so the sentinel still reflects what got added on prior runs.
+  const hiddenExists = await columnExists(db.sequelize, 'PriceList', 'hidden_columns');
+  if (!hiddenExists) {
+    try {
+      await db.sequelize.query(
+        'ALTER TABLE "PriceList" ADD COLUMN "hidden_columns" TEXT NULL'
+      );
+      stats.hiddenColumnsAdded = true;
+      logger.info('[phase4_28d] added PriceList.hidden_columns');
+    } catch (err) {
+      logger.error(`[phase4_28d] failed to add hidden_columns column: ${err.message}`);
+      // non-fatal — brand_code is the critical one
     }
   }
 

@@ -43,7 +43,7 @@ import ActivityBanner from './ActivityBanner'
 import ActivityIndicator from './ActivityIndicator'
 import ChatBubble from './chat/ChatBubble'
 import Breadcrumb from './Breadcrumb'
-import { BreadcrumbProvider } from '../contexts/BreadcrumbContext'
+import { BreadcrumbProvider, useBreadcrumbContext } from '../contexts/BreadcrumbContext'
 
 // ── Brand tokens ─────────────────────────────────────────────────────────────
 const INK     = '#0E0D0C'
@@ -103,7 +103,20 @@ const iconMap = {
   BarChart3, Cog, Users, Users2, Building2, Package, TrendingUp, FileText, MessageCircle, Sparkles, HardDrive, Code,
 }
 
-export default function Layout({ children }) {
+// Phase 4.28d follow-up: BreadcrumbProvider wraps the whole Layout so the
+// top-bar crumb (which lives in the header, outside <main>) can read the
+// pageTitle set by useBreadcrumbs on detail pages. Previously the provider
+// was nested inside <main> and the header crumb only saw the default
+// null pageTitle — so UUIDs in the URL leaked into the header.
+export default function Layout(props) {
+  return (
+    <BreadcrumbProvider>
+      <LayoutBody {...props} />
+    </BreadcrumbProvider>
+  )
+}
+
+function LayoutBody({ children }) {
   const [sidebarOpen, setSidebarOpen]       = useState(true)
   const [expandedMenu, setExpandedMenu]     = useState(null)
   const [showNotifications, setShowNotifications] = useState(false)
@@ -115,6 +128,7 @@ export default function Layout({ children }) {
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications()
   const location  = useLocation()
   const navigate  = useNavigate()
+  const { pageTitle } = useBreadcrumbContext()
 
   useEffect(() => {
     if (user?.role) setMenuItems(getAllowedNavItems(user.role))
@@ -128,10 +142,21 @@ export default function Layout({ children }) {
   const toggleMenu   = (label) => setExpandedMenu(expandedMenu === label ? null : label)
   const isActive     = (path) => location.pathname === path
 
-  // Formatted breadcrumb
+  // Formatted breadcrumb. Phase 4.28d follow-up: UUID-looking segments
+  // are replaced with the entity title from BreadcrumbContext (set by
+  // useBreadcrumbs on detail pages) so the crumb reads "Price Lists ›
+  // IronLite Malaysia" instead of "price lists › 6eeab3ac-5569-…".
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const labelize = (s) => s
+    .split('-')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
   const crumb = location.pathname === '/'
     ? 'Dashboard'
-    : location.pathname.slice(1).split('/').map(s => s.replace(/-/g,' ')).join(' › ')
+    : location.pathname.slice(1).split('/').map(s => {
+        if (uuidRe.test(s)) return pageTitle || 'Details'
+        return labelize(s)
+      }).join(' › ')
 
   // User initials
   const initials = user
@@ -677,10 +702,8 @@ export default function Layout({ children }) {
         {/* Page content */}
         <main style={{ flex: 1, overflowY: 'auto' }}>
           <div style={{ padding: '24px 28px 48px' }}>
-            <BreadcrumbProvider>
-              <Breadcrumb />
-              {children}
-            </BreadcrumbProvider>
+            <Breadcrumb />
+            {children}
           </div>
         </main>
       </div>

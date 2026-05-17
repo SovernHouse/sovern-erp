@@ -16,8 +16,8 @@ import { useBreadcrumbContext } from '../contexts/BreadcrumbContext'
 
 // ── Route segment → display label ────────────────────────────────────────────
 const SEGMENT_LABELS = {
-  customers:          'Customers',
-  factories:          'Factories',
+  customers:          'Clients',
+  factories:          'Suppliers',
   products:           'Products',
   inquiries:          'Inquiries',
   leads:              'Leads',
@@ -40,6 +40,8 @@ const SEGMENT_LABELS = {
   chat:               'Chat',
   settings:           'Settings',
   reports:            'Reports',
+  'price-lists':      'Price Lists',
+  'price-list':       'Price Lists',
 }
 
 // Known named sub-routes that aren't record IDs

@@ -21,11 +21,13 @@ const { resolveTokens, registerBrandFonts } = require('./brandStyleTokens');
 const { resolveBrand, assertBrandSafe, BrandLeakError } = require('../priceListBrandResolver');
 
 const PAGE_MARGIN = 50;
-// Phase 4.28d follow-up: SKU rows like "IL-180x1220-12.0mm" (19 chars)
-// were wrapping at 0.16 (~67pt). Bumped to 0.22 (~110pt) and shaved the
-// product-name column to compensate. Product names get truncated with
-// ellipsis when too long — the SKU disambiguates the row.
-const COL_RATIOS = {
+// Phase 4.28d follow-up: per-PriceList column visibility. hidden_columns
+// JSON column lists standard column keys to skip; remaining columns
+// reflow to fill the row. SKU + productName + price are always shown
+// (the minimum needed for a useful price list). The renderer normalizes
+// the ratios so the remaining columns fill 100% of the row.
+const ALWAYS_VISIBLE = new Set(['sku', 'productName', 'price']);
+const DEFAULT_COL_RATIOS = {
   sku:          0.22,
   productName:  0.36,
   unit:         0.08,
@@ -33,6 +35,27 @@ const COL_RATIOS = {
   lead:         0.10,
   price:        0.14,
 };
+const COL_ORDER = ['sku', 'productName', 'unit', 'moq', 'lead', 'price'];
+const COL_HEADERS = {
+  sku:         'SKU',
+  productName: 'PRODUCT',
+  unit:        'UNIT',
+  moq:         'MOQ',
+  lead:        'LEAD (D)',
+  price:       'PRICE',
+};
+
+function resolveColumns(hiddenList) {
+  const hidden = new Set(
+    (Array.isArray(hiddenList) ? hiddenList : []).map(s => String(s).toLowerCase()),
+  );
+  const visible = COL_ORDER.filter(k => ALWAYS_VISIBLE.has(k) || !hidden.has(k));
+  const sumRatio = visible.reduce((s, k) => s + DEFAULT_COL_RATIOS[k], 0);
+  // Normalize so the visible columns fill 100% of pageWidth.
+  const ratios = {};
+  for (const k of visible) ratios[k] = DEFAULT_COL_RATIOS[k] / sumRatio;
+  return { visible, ratios };
+}
 
 function fmtDate(d) {
   if (!d) return '—';
@@ -147,72 +170,101 @@ async function renderPriceListPdf(priceList, opts = {}) {
       y += 36;
       const tableTop = y;
 
-      const colWidths = {
-        sku:         pageWidth * COL_RATIOS.sku,
-        productName: pageWidth * COL_RATIOS.productName,
-        unit:        pageWidth * COL_RATIOS.unit,
-        moq:         pageWidth * COL_RATIOS.moq,
-        lead:        pageWidth * COL_RATIOS.lead,
-        price:       pageWidth * COL_RATIOS.price,
-      };
+      // Resolve which standard columns to render based on PriceList.hidden_columns.
+      let hiddenList = priceList.hiddenColumns || priceList.hidden_columns || [];
+      if (typeof hiddenList === 'string') {
+        try { hiddenList = JSON.parse(hiddenList); } catch (_) { hiddenList = []; }
+      }
+      const { visible: visibleCols, ratios } = resolveColumns(hiddenList);
+
+      const colWidths = {};
+      for (const k of visibleCols) colWidths[k] = pageWidth * ratios[k];
       const colX = (() => {
         let cx = PAGE_MARGIN;
         const out = {};
-        for (const k of ['sku', 'productName', 'unit', 'moq', 'lead', 'price']) {
+        for (const k of visibleCols) {
           out[k] = cx;
           cx += colWidths[k];
         }
         return out;
       })();
+      const RIGHT_ALIGN = new Set(['moq', 'lead', 'price']);
 
       // Header row — brand-tinted (cream / accent) with primary-color text.
       doc.rect(PAGE_MARGIN, tableTop, pageWidth, 22).fill(tokens.accentColor || '#F1F5F9');
       doc.fillColor(tokens.primaryColor).fontSize(9).font(fonts.bodyBold);
-      doc.text('SKU',       colX.sku + 6, tableTop + 7);
-      doc.text('PRODUCT',   colX.productName + 6, tableTop + 7);
-      doc.text('UNIT',      colX.unit + 6, tableTop + 7);
-      doc.text('MOQ',       colX.moq + 6, tableTop + 7, { width: colWidths.moq - 12, align: 'right' });
-      doc.text('LEAD (D)',  colX.lead + 6, tableTop + 7, { width: colWidths.lead - 12, align: 'right' });
-      doc.text('PRICE',     colX.price + 6, tableTop + 7, { width: colWidths.price - 12, align: 'right' });
+      for (const k of visibleCols) {
+        const opts = { width: colWidths[k] - 12 };
+        if (RIGHT_ALIGN.has(k)) opts.align = 'right';
+        doc.text(COL_HEADERS[k], colX[k] + 6, tableTop + 7, opts);
+      }
 
-      // Rows
+      // Rows. Phase 4.28d follow-up: each row's height is now derived
+      // from the tallest cell's natural text height (productName is
+      // usually the longest). All cells wrap (lineBreak:true) so no
+      // truncation; the row rectangle grows to fit. Minimum 18pt for
+      // single-line readability.
       y = tableTop + 22;
-      const rowHeight = 18;
       const items = Array.isArray(priceList.items) ? priceList.items : [];
       const currency = priceList.currencyCode || 'USD';
+      const MIN_ROW_HEIGHT = 18;
+      const ROW_PAD_Y = 6;
+
+      const computeRowHeight = (item) => {
+        doc.font(fonts.body).fontSize(9);
+        let tallest = MIN_ROW_HEIGHT - ROW_PAD_Y;
+        for (const k of visibleCols) {
+          const val = k === 'sku' ? (item.sku || '—')
+                   : k === 'productName' ? (item.productName || '—')
+                   : k === 'unit' ? (item.unit || 'sqm')
+                   : '';
+          if (!val) continue;
+          const h = doc.heightOfString(String(val), { width: colWidths[k] - 12 });
+          if (h > tallest) tallest = h;
+        }
+        return Math.ceil(tallest + ROW_PAD_Y);
+      };
 
       doc.font(fonts.body).fontSize(9).fillColor(tokens.ink || '#0F172A');
       if (items.length === 0) {
         doc.fillColor(tokens.steel || '#94A3B8').font(fonts.body)
            .text('No items in this price list.', PAGE_MARGIN, y + 10, { width: pageWidth, align: 'center' });
-        y += rowHeight + 10;
+        y += MIN_ROW_HEIGHT + 10;
       } else {
         items.forEach((item, idx) => {
-          // New page if we run out of room.
-          if (y + rowHeight > doc.page.height - PAGE_MARGIN - 40) {
+          const rh = computeRowHeight(item);
+          // New page if this row won't fit. Leave room for the footer.
+          if (y + rh > doc.page.height - PAGE_MARGIN - 50) {
             doc.addPage();
             y = PAGE_MARGIN;
           }
           if (idx % 2 === 1) {
-            doc.rect(PAGE_MARGIN, y - 4, pageWidth, rowHeight).fill('#F8FAFC');
+            doc.rect(PAGE_MARGIN, y - 3, pageWidth, rh).fill('#F8FAFC');
           }
-          doc.fillColor(tokens.ink || '#0F172A').font(fonts.body).fontSize(9);
-          // lineBreak:false stops pdfkit from wrapping when text overflows;
-          // ellipsis truncates instead. Without this the SKU + long
-          // productName both wrap to a second line and overflow the row
-          // rectangle below.
-          doc.text(item.sku || '—',           colX.sku + 6, y, { width: colWidths.sku - 12, lineBreak: false, ellipsis: true });
-          doc.text(item.productName || '—',   colX.productName + 6, y, { width: colWidths.productName - 12, lineBreak: false, ellipsis: true });
-          doc.text(item.unit || 'sqm',        colX.unit + 6, y, { width: colWidths.unit - 12, lineBreak: false });
-          doc.text(item.minimumOrder != null ? String(item.minimumOrder) : '—',
-            colX.moq + 6, y, { width: colWidths.moq - 12, align: 'right' });
-          doc.text(item.leadTimeDays != null ? String(item.leadTimeDays) : '—',
-            colX.lead + 6, y, { width: colWidths.lead - 12, align: 'right' });
-          doc.font(fonts.bodyBold).fillColor(tokens.primaryColor)
-             .text(fmtMoney(item.sellingPrice, currency),
-               colX.price + 6, y, { width: colWidths.price - 12, align: 'right' });
-          doc.font(fonts.body).fillColor(tokens.ink || '#0F172A');
-          y += rowHeight;
+          // Render only the visible columns. lineBreak:true (default)
+          // lets each cell wrap into the row height we pre-computed;
+          // nothing gets truncated.
+          for (const k of visibleCols) {
+            const opts = { width: colWidths[k] - 12 };
+            let val;
+            switch (k) {
+              case 'sku':         val = item.sku || '—'; break;
+              case 'productName': val = item.productName || '—'; break;
+              case 'unit':        val = item.unit || 'sqm'; break;
+              case 'moq':         val = item.minimumOrder != null ? String(item.minimumOrder) : '—'; opts.align = 'right'; break;
+              case 'lead':        val = item.leadTimeDays != null ? String(item.leadTimeDays) : '—'; opts.align = 'right'; break;
+              case 'price': {
+                doc.font(fonts.bodyBold).fillColor(tokens.primaryColor);
+                doc.text(fmtMoney(item.sellingPrice, currency), colX[k] + 6, y, { ...opts, align: 'right' });
+                doc.font(fonts.body).fillColor(tokens.ink || '#0F172A');
+                continue;
+              }
+              default: val = '—';
+            }
+            doc.fillColor(tokens.ink || '#0F172A').font(fonts.body).fontSize(9);
+            doc.text(String(val), colX[k] + 6, y, opts);
+          }
+          y += rh;
         });
       }
 

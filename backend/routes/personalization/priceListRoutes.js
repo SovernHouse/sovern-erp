@@ -129,6 +129,17 @@ router.put('/price-lists/:id', requireAuth, requireRole('admin'), async (req, re
     if (!priceList) return res.status(404).json({ success: false, error: { message: 'Price list not found', statusCode: 404 } });
 
     const { items, ...listData } = req.body;
+    // Phase 4.28d: validate brandCode if the caller is changing it. Active
+    // brand required. Resilient enforcement happens in the renderer guard,
+    // not here, so the operator can stage a brand change before fixing
+    // items.
+    if (listData.brandCode) {
+      listData.brandCode = String(listData.brandCode).toUpperCase();
+      const brand = await db.Brand.findOne({ where: { code: listData.brandCode, active: true } });
+      if (!brand) {
+        return res.status(400).json({ success: false, error: { message: `Brand "${listData.brandCode}" not active.`, statusCode: 400 } });
+      }
+    }
     await priceList.update(listData);
 
     if (items) {

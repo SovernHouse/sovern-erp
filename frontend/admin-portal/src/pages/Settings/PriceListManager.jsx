@@ -14,7 +14,8 @@ import {
   Check
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import api, { customersAPI, factoriesAPI } from '../../services/api'
+import BrandPicker from '../../components/BrandPicker'
 import LoadingSpinner from '../../components/LoadingSpinner'
 
 const PriceListManager = () => {
@@ -35,6 +36,7 @@ const PriceListManager = () => {
     name: '',
     description: '',
     currencyCode: 'USD',
+    brandCode: '',
     validFrom: '',
     validTo: '',
     customerId: '',
@@ -44,6 +46,21 @@ const PriceListManager = () => {
   })
 
   const [items, setItems] = useState([])
+  // Phase 4.28d follow-up: parent option lists for the form's pickers
+  // (replaces the raw UUID text inputs). Loaded once on mount; each
+  // option shows the companyName + brand context so the operator picks
+  // by name not by UUID.
+  const [customers, setCustomers] = useState([])
+  const [factories, setFactories] = useState([])
+  const [columnDefs, setColumnDefs] = useState([])
+  // Phase 4.28d follow-up: which standard PDF columns to HIDE. Set of
+  // 'unit' / 'moq' / 'lead' / 'cost'. SKU + Product + Price always show.
+  const [hiddenStandardCols, setHiddenStandardCols] = useState([])
+
+  useEffect(() => {
+    customersAPI.getAll({ limit: 500 }).then(r => setCustomers(Array.isArray(r.data) ? r.data : (r.data?.data || []))).catch(() => {})
+    factoriesAPI.getAll({ limit: 500 }).then(r => setFactories(Array.isArray(r.data) ? r.data : (r.data?.data || []))).catch(() => {})
+  }, [])
 
   // Load price lists on mount
   useEffect(() => {
@@ -90,14 +107,22 @@ const PriceListManager = () => {
         name: priceList.name || '',
         description: priceList.description || '',
         currencyCode: priceList.currencyCode || 'USD',
-        validFrom: priceList.validFrom || '',
-        validTo: priceList.validTo || '',
+        brandCode: priceList.brandCode || '',
+        validFrom: priceList.validFrom ? String(priceList.validFrom).slice(0, 10) : '',
+        validTo:   priceList.validTo   ? String(priceList.validTo).slice(0, 10)   : '',
         customerId: priceList.customerId || '',
         factoryId: priceList.factoryId || '',
         isActive: priceList.isActive !== false,
         items: []
       })
       setItems(priceList.items || [])
+      setColumnDefs(Array.isArray(priceList.columnDefinitions) ? priceList.columnDefinitions : [])
+      // hiddenColumns may come back as a stringified JSON per L-053.
+      let hidden = priceList.hiddenColumns
+      if (typeof hidden === 'string') {
+        try { hidden = JSON.parse(hidden) } catch (_) { hidden = [] }
+      }
+      setHiddenStandardCols(Array.isArray(hidden) ? hidden : [])
     } catch (error) {
       console.error('Failed to load price list details:', error)
       toast.error('Failed to load price list details')
@@ -109,6 +134,7 @@ const PriceListManager = () => {
       name: '',
       description: '',
       currencyCode: 'USD',
+      brandCode: '',
       validFrom: '',
       validTo: '',
       customerId: '',
@@ -117,6 +143,8 @@ const PriceListManager = () => {
       items: []
     })
     setItems([])
+    setColumnDefs([])
+    setHiddenStandardCols([])
     setSelectedPriceList(null)
   }
 
@@ -205,9 +233,43 @@ const PriceListManager = () => {
 
     try {
       setIsSaving(true)
+      // Phase 4.28d follow-up: scrub items to only the writable columns
+      // before sending. The list-load includes nested Product objects,
+      // createdAt/updatedAt, and DB-managed id — passing those through
+      // confuses bulkCreate on the server (duplicate id conflicts,
+      // Sequelize warnings about unknown attributes). Whitelist the
+      // editable fields explicitly.
+      const ITEM_FIELDS = [
+        'productId', 'sku', 'productName',
+        'sellingPrice', 'costPrice', 'minimumOrder', 'leadTimeDays',
+        'margin', 'unit', 'customColumns', 'notes',
+      ]
+      const cleanItems = items.map((it) => {
+        const out = {}
+        for (const k of ITEM_FIELDS) {
+          if (it[k] !== undefined) out[k] = it[k]
+        }
+        // customColumns can come back from the API as a JSON string per
+        // L-053 — coerce to an object so Sequelize JSON column accepts it.
+        if (typeof out.customColumns === 'string') {
+          try { out.customColumns = JSON.parse(out.customColumns) } catch (_) { out.customColumns = {} }
+        }
+        return out
+      })
+
       const payload = {
-        ...formData,
-        items: items.map(({ id, ...rest }) => rest)
+        name: formData.name,
+        description: formData.description || null,
+        currencyCode: formData.currencyCode || 'USD',
+        brandCode: formData.brandCode || null,
+        validFrom: formData.validFrom || null,
+        validTo: formData.validTo || null,
+        customerId: formData.customerId || null,
+        factoryId: formData.factoryId || null,
+        isActive: !!formData.isActive,
+        columnDefinitions: columnDefs,
+        hiddenColumns: hiddenStandardCols,
+        items: cleanItems,
       }
 
       if (selectedPriceList) {
@@ -223,7 +285,11 @@ const PriceListManager = () => {
       loadPriceLists()
     } catch (error) {
       console.error('Failed to save price list:', error)
-      toast.error(error.response?.data?.message || 'Failed to save price list')
+      const apiMsg =
+        error.response?.data?.error?.message ||
+        error.response?.data?.message ||
+        error.message
+      toast.error(`Save failed: ${apiMsg || 'unknown error — check console'}`)
     } finally {
       setIsSaving(false)
     }
@@ -582,31 +648,141 @@ const PriceListManager = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-900 mb-1">
-                      Customer ID
+                      Client (optional)
                     </label>
-                    <input
-                      type="text"
+                    <select
                       name="customerId"
                       value={formData.customerId}
                       onChange={handleFormChange}
-                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Optional"
-                    />
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="">— None —</option>
+                      {customers.map((c) => (
+                        <option key={c.id} value={c.id}>{c.companyName}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-900 mb-1">
-                      Factory ID
+                      Supplier (optional)
                     </label>
-                    <input
-                      type="text"
+                    <select
                       name="factoryId"
                       value={formData.factoryId}
                       onChange={handleFormChange}
-                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Optional"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="">— None —</option>
+                      {factories.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.companyName}{f.brandCode ? ` · ${f.brandCode}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    {/* Phase 4.28d non-negotiable #9 — brand is mandatory on
+                        every PriceList. Resilient flooring must be FW
+                        (Malaysia) or HH (China), never SH. */}
+                    <BrandPicker
+                      value={formData.brandCode}
+                      onChange={(v) => setFormData(prev => ({ ...prev, brandCode: v }))}
+                      label="Brand *"
+                      required
+                      helperText="SH for Sovern House general trade. FW for FlorWay (Malaysia-origin Resilient). HH for HanHua (China-origin Resilient)."
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Phase 4.28d follow-up — standard column visibility. The
+                  PDF always shows SKU + Product + Price; toggle the other
+                  four off when not needed (e.g. Resilient lists where MOQ
+                  is irrelevant). */}
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">PDF columns</h3>
+                <div className="flex flex-wrap gap-3 text-sm">
+                  {[
+                    { k: 'unit', label: 'Unit' },
+                    { k: 'moq',  label: 'Min Order (MOQ)' },
+                    { k: 'lead', label: 'Lead time' },
+                  ].map((opt) => {
+                    const hidden = hiddenStandardCols.includes(opt.k)
+                    return (
+                      <label key={opt.k} className="inline-flex items-center gap-2 px-3 py-1.5 border border-slate-200 rounded-lg bg-white">
+                        <input
+                          type="checkbox"
+                          checked={!hidden}
+                          onChange={(e) => {
+                            const next = new Set(hiddenStandardCols)
+                            if (e.target.checked) next.delete(opt.k)
+                            else                  next.add(opt.k)
+                            setHiddenStandardCols(Array.from(next))
+                          }}
+                          className="w-4 h-4 rounded border-slate-300"
+                        />
+                        <span className="text-slate-800">{opt.label}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+                <p className="text-xs text-slate-500 mt-2 italic">SKU, Product name, and Price are always shown.</p>
+              </div>
+
+              {/* Phase 4.28d follow-up — column editor. Each entry { key,
+                  label, type } extends every PriceListItem.customColumns
+                  bucket. Remove with the trash icon; add with the +
+                  button. PDF doesn't render custom columns yet (future). */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-semibold text-slate-900">Custom columns</h3>
+                  <button
+                    type="button"
+                    onClick={() => setColumnDefs(prev => [...prev, { key: '', label: '', type: 'text' }])}
+                    className="flex items-center gap-1 px-3 py-1 text-blue-600 hover:bg-blue-50 rounded-lg text-sm"
+                  >
+                    <Plus className="w-4 h-4" /> Add column
+                  </button>
+                </div>
+                {columnDefs.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">No custom columns. Add one for any per-item attribute that isn't in the standard set (SKU, name, prices, MOQ, lead, unit, notes).</p>
+                ) : (
+                  <div className="space-y-2">
+                    {columnDefs.map((col, idx) => (
+                      <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                        <input
+                          className="col-span-4 px-3 py-1.5 border border-slate-300 rounded text-sm"
+                          placeholder="key (e.g. fire_rating)"
+                          value={col.key || ''}
+                          onChange={(e) => setColumnDefs(prev => prev.map((c, i) => i === idx ? { ...c, key: e.target.value } : c))}
+                        />
+                        <input
+                          className="col-span-4 px-3 py-1.5 border border-slate-300 rounded text-sm"
+                          placeholder="Label (e.g. Fire Rating)"
+                          value={col.label || ''}
+                          onChange={(e) => setColumnDefs(prev => prev.map((c, i) => i === idx ? { ...c, label: e.target.value } : c))}
+                        />
+                        <select
+                          className="col-span-3 px-3 py-1.5 border border-slate-300 rounded text-sm bg-white"
+                          value={col.type || 'text'}
+                          onChange={(e) => setColumnDefs(prev => prev.map((c, i) => i === idx ? { ...c, type: e.target.value } : c))}
+                        >
+                          <option value="text">text</option>
+                          <option value="number">number</option>
+                          <option value="boolean">boolean</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setColumnDefs(prev => prev.filter((_, i) => i !== idx))}
+                          className="col-span-1 p-1.5 text-red-600 hover:bg-red-50 rounded"
+                          aria-label="Remove column"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Items Section */}
