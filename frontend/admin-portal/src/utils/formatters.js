@@ -1,4 +1,12 @@
 import dayjs from 'dayjs'
+import relativeTime from 'dayjs/plugin/relativeTime'
+
+// dayjs's .fromNow() lives in the relativeTime plugin; without this
+// extend call formatRelativeTime throws "dayjs(...).fromNow is not a
+// function" and crashes every component that renders chatter timestamps
+// (Alex feedback 2026-05-17, surfaced by the new PriceList edit audit
+// posting the first chatter messages on that record).
+dayjs.extend(relativeTime)
 
 export const formatCurrency = (amount, currency = 'USD') => {
   if (amount === null || amount === undefined) return '-'

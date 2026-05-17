@@ -235,7 +235,13 @@ router.put('/price-lists/:id', requireAuth, requireRole('admin'), async (req, re
           ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email || 'User'
           : 'System';
         const body = `${userName} updated this price list:\n${lines.join('\n')}`;
-        await postSystemEvent('PriceList', priceList.id, 'edit', body, { changes: lines.length }, req.user?.id || null, userName);
+        // ChatterMessage.messageType is a strict ENUM ('comment',
+        // 'event', 'status_change', 'approval_request',
+        // 'approval_decision', 'activity', 'email_sent',
+        // 'file_attachment'). 'edit' is NOT in the set; passing it
+        // makes Sequelize reject the row silently. 'event' is the
+        // generic system-event bucket.
+        await postSystemEvent('PriceList', priceList.id, 'event', body, { changes: lines.length, kind: 'edit' }, req.user?.id || null, userName);
       }
     } catch (chatterErr) {
       // postSystemEvent already swallows; this catch guards the diff
