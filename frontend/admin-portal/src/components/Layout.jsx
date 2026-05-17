@@ -38,6 +38,7 @@ import { getAllowedNavItems } from '../config/rbacConfig'
 // LanguageSwitcher removed — react-i18next is not initialized in admin-portal
 import HelpPanel, { useHelpPanel } from './HelpPanel'
 import InstallPWA from './InstallPWA'
+import InstallPWABanner from './InstallPWABanner'
 import ActivityBanner from './ActivityBanner'
 import ActivityIndicator from './ActivityIndicator'
 import ChatBubble from './chat/ChatBubble'
@@ -668,6 +669,7 @@ export default function Layout({ children }) {
             </div>
           </div>
         </header>
+        <InstallPWABanner />
 
         {/* Scheduled activity reminder banner — Odoo-style */}
         <ActivityBanner />
