@@ -1,7 +1,16 @@
 // Sentry instrumentation MUST be the first require in this file. Loading order
 // is critical so the SDK can auto-instrument Express, HTTP, and other modules
 // before they are loaded. Do not move this line.
-const Sentry = require('./instrument');
+// L-058: skip Sentry init under TEST_LIGHT_BOOT to shave ~1.6s off test boot.
+const TEST_LIGHT_BOOT = process.env.NODE_ENV === 'test' && process.env.TEST_LIGHT_BOOT !== 'false';
+const Sentry = TEST_LIGHT_BOOT
+  ? {
+      Handlers: {
+        requestHandler: () => (req, res, next) => next(),
+        errorHandler: () => (err, req, res, next) => next(err),
+      },
+    }
+  : require('./instrument');
 
 const express = require('express');
 const http = require('http');
@@ -11,8 +20,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
 const hpp = require('hpp');
-const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./config/swagger');
+const swaggerUi = TEST_LIGHT_BOOT ? null : require('swagger-ui-express');
+const swaggerSpec = TEST_LIGHT_BOOT ? {} : require('./config/swagger');
 // Use __dirname so .env is always found relative to server.js regardless of PM2 cwd
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
@@ -208,7 +217,7 @@ const bankIntegrationRoutes = require('./routes/bankIntegrationRoutes');
 const crmRoutes = require('./routes/crm');
 const approvalRoutes = require('./routes/approvalRoutes');
 const triageRoutes = require('./routes/triageRoutes');
-const googleRoutes = require('./routes/googleRoutes');
+const googleRoutes = TEST_LIGHT_BOOT ? null : require('./routes/googleRoutes');
 const calendarRoutes = require('./routes/calendarRoutes');
 const driveRoutes = require('./routes/driveRoutes');
 const aiRoutes = require('./routes/aiRoutes');
@@ -276,7 +285,7 @@ app.use('/api/bank', bankIntegrationRoutes);
 app.use('/api/crm', crmRoutes);
 app.use('/api/approvals', approvalRoutes);
 app.use('/api/triage', triageRoutes);
-app.use('/api/google', googleRoutes);
+if (googleRoutes) app.use('/api/google', googleRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/drive', driveRoutes);
 app.use('/api/ai', aiRoutes);
@@ -324,11 +333,11 @@ app.use('/api/health', healthRoutes);
 // Swagger API Documentation — only in non-production to avoid the memory overhead
 // of the full Swagger UI bundle running 24/7 on the live server.
 if (process.env.NODE_ENV !== 'production') {
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  if (!TEST_LIGHT_BOOT) { app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     swaggerOptions: {
       persistAuthorization: true
     }
-  }));
+  })); }
 } else {
   app.get('/api-docs', (req, res) => {
     res.status(200).send('API documentation is disabled in production. Set NODE_ENV=development to enable.');

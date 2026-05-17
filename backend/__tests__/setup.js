@@ -15,6 +15,11 @@ process.env.SQLITE_STORAGE = "";  // Empty string: dotenv (override:false defaul
 // to boot the express app + sync the in-memory SQLite without flaking.
 jest.setTimeout(180000);
 
+// L-058 real fix: opt into the lightweight boot path. Skips Sentry init,
+// swagger spec generation, and googleRoutes mount (which loads googleapis).
+// Set TEST_LIGHT_BOOT=false to force the full boot path.
+process.env.TEST_LIGHT_BOOT = process.env.TEST_LIGHT_BOOT || 'true';
+
 
 process.env.JWT_SECRET = 'test-secret-key-for-testing-12345';
 process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-key-67890';
