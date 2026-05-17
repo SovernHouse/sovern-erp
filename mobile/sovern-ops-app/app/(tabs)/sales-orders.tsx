@@ -302,8 +302,8 @@ export default function SalesOrdersScreen() {
       draft: 0, confirmed: 1, in_production: 2, shipped: 3, delivered: 4, cancelled: 5,
     }
     return [...items].sort((a, b) => {
-      const oa = order[a.status] ?? 99
-      const ob = order[b.status] ?? 99
+      const oa = order[a.status ?? ''] ?? 99
+      const ob = order[b.status ?? ''] ?? 99
       if (oa !== ob) return oa - ob
       const da = a.createdAt ? new Date(a.createdAt).getTime() : 0
       const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
