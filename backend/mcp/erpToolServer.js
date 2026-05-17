@@ -4244,6 +4244,16 @@ async function callTool(name, args) {
       const requester = await requireSuperAdmin();
       const name = (args.name || '').trim();
       if (!name) return 'Error: name is required.';
+      // CRITICAL — non-negotiable #9. brandCode is mandatory at create
+      // time so no PriceList can be born brandless and silently fall
+      // back to SH on render. Allowed brands are validated against
+      // active Brand rows.
+      const brandCode = String(args.brandCode || args.brand_code || '').toUpperCase();
+      if (!brandCode) {
+        return 'Error: brandCode is required. SH for Sovern House, FW for FlorWay (Malaysia-origin Resilient), HH for HanHua (China-origin Resilient). Resilient flooring is NEVER SH.';
+      }
+      const brand = await getDb().Brand.findOne({ where: { code: brandCode, active: true } });
+      if (!brand) return `Error: brand "${brandCode}" not active.`;
       const customerId = args.customerId || args.customer_id || null;
       const factoryId  = args.factoryId  || args.factory_id  || null;
       if (customerId) {
@@ -4263,6 +4273,7 @@ async function callTool(name, args) {
         validTo: args.validTo || args.valid_to || null,
         customerId,
         factoryId,
+        brandCode,
         columnDefinitions: Array.isArray(args.columnDefinitions)
           ? args.columnDefinitions
           : (Array.isArray(args.column_definitions) ? args.column_definitions : []),
@@ -4271,13 +4282,14 @@ async function callTool(name, args) {
       });
       await auditAiWrite('create_price_list', 'PriceList', row.id, {
         name,
+        brandCode,
         customerId,
         factoryId,
         currencyCode: row.currencyCode,
         validFrom: row.validFrom,
         validTo: row.validTo,
       }, requester.id);
-      return { success: true, id: row.id, name, customerId, factoryId, currencyCode: row.currencyCode, validFrom: row.validFrom, validTo: row.validTo };
+      return { success: true, id: row.id, name, brandCode, customerId, factoryId, currencyCode: row.currencyCode, validFrom: row.validFrom, validTo: row.validTo };
     }
 
     case 'list_price_lists': {
@@ -4323,11 +4335,17 @@ async function callTool(name, args) {
         validTo: 'validTo', valid_to: 'validTo',
         customerId: 'customerId', customer_id: 'customerId',
         factoryId: 'factoryId', factory_id: 'factoryId',
+        brandCode: 'brandCode', brand_code: 'brandCode',
         isActive: 'isActive', is_active: 'isActive',
         columnDefinitions: 'columnDefinitions', column_definitions: 'columnDefinitions',
       };
       for (const [k, v] of Object.entries(map)) {
         if (args[k] !== undefined) patch[v] = args[k];
+      }
+      if (patch.brandCode) {
+        patch.brandCode = String(patch.brandCode).toUpperCase();
+        const brand = await getDb().Brand.findOne({ where: { code: patch.brandCode, active: true } });
+        if (!brand) return `Error: brand "${patch.brandCode}" not active.`;
       }
       // Validate FK changes if the caller is moving the list to a new parent.
       if (patch.customerId) {
@@ -6993,13 +7011,14 @@ const TOOL_DEFS = [
   },
   {
     name: 'update_price_list',
-    description: 'Phase 4.27 — Update a PriceList (super-admin only). Pass id + any subset of editable fields. ALWAYS show the before/after diff and wait for explicit confirmation. Writes ai_assistant_update_price_list to AuditLog.',
+    description: 'Phase 4.27 — Update a PriceList (super-admin only). Pass id + any subset of editable fields. brandCode change must respect non-negotiable #9 (Resilient is FW or HH, never SH). ALWAYS show the before/after diff and wait for explicit confirmation. Writes ai_assistant_update_price_list to AuditLog.',
     inputSchema: {
       type: 'object',
       required: ['id'],
       properties: {
         id:                { type: 'string' },
         name:              { type: 'string' },
+        brandCode:         { type: 'string', description: 'SH | FW | HH. Resilient lists must be FW or HH, never SH.' },
         description:       { type: ['string', 'null'] },
         currencyCode:      { type: 'string' },
         customerId:        { type: ['string', 'null'] },

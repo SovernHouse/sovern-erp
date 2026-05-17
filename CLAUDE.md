@@ -26,6 +26,8 @@ Alex is the CEO/Founder of Sovern House (New Route International Exchange Co., L
 
 **8. Odoo logic + MCP coverage on every new feature.** Every entity feature you ship must (a) follow the five Odoo pillars from `trade-odoo-patterns.md` — breadcrumb, smart-button strip, form view, related-data tabs, chatter at bottom — AND (b) expose matching MCP write tools in `backend/mcp/erpToolServer.js` so the AI assistant can drive the same workflows from chat. New tools must be super_admin-gated, audit-logged via `auditAiWrite(ai_assistant_*, ...)` (Phase 4.19a invariant enforces this), and the entity must be in the chatter + scheduledActivity whitelists. If a feature is buildable in the UI but not from the assistant, it is not "done."
 
+**9. Brand context must be explicit, asserted at render time, and never default to SH.** Every user-facing artifact (PDF, email body, attachment, generated document) must declare its brand context explicitly. Renderers MUST call `assertBrandSafe(...)` (or equivalent) and REFUSE to render — return 422 to the API caller, throw a `BrandLeakError` to the MCP caller — rather than fall back to a default. **Resilient flooring (LVT / SPC / Engineered SPC / WPC / Vinyl Sheet, or anything under the Resilient ProductCategory subtree) is FW (Malaysia origin) OR HH (China origin), NEVER SH.** All Sequelize includes that load entities for brand-sensitive rendering must explicitly load `brandCode` / `brandRelationships` / nested product `brand_code` / `product_type` / `category.default_brand`; forgetting one of these is the 2026-05-17 PriceList leak pattern. Every new renderer must ship with a regression test that locks the guard shut.
+
 ---
 
 ## The Team

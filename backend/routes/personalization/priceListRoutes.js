@@ -323,23 +323,28 @@ router.post('/products/import/confirm', requireAuth, requireRole('admin'), async
  */
 router.get('/price-lists/:id/pdf', requireAuth, async (req, res, next) => {
   try {
+    const { priceListIncludeForBrand, BrandLeakError } =
+      require('../../services/priceListBrandResolver');
     const priceList = await db.PriceList.findByPk(req.params.id, {
-      include: [
-        { model: db.Customer, attributes: ['id', 'companyName'] },
-        { model: db.Factory, attributes: ['id', 'companyName'] },
-        {
-          model: db.PriceListItem,
-          as: 'items',
-          include: [{ model: db.Product, attributes: ['id', 'name', 'sku'] }],
-        },
-      ],
+      include: priceListIncludeForBrand(db),
       order: [[{ model: db.PriceListItem, as: 'items' }, 'sku', 'ASC']],
     });
     if (!priceList) {
       return res.status(404).json({ success: false, error: { message: 'Price list not found', statusCode: 404 } });
     }
     const { renderPriceListPdf } = require('../../services/pdf/priceListRenderer');
-    const buffer = await renderPriceListPdf(priceList);
+    let buffer;
+    try {
+      buffer = await renderPriceListPdf(priceList);
+    } catch (renderErr) {
+      if (renderErr instanceof BrandLeakError) {
+        return res.status(422).json({
+          success: false,
+          error: { message: renderErr.message, code: renderErr.code, info: renderErr.info, statusCode: 422 },
+        });
+      }
+      throw renderErr;
+    }
     const slug = String(priceList.name || 'price-list').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 60);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${slug}-${priceList.id.slice(0, 8)}.pdf"`);
@@ -370,8 +375,9 @@ router.post('/price-lists/:id/send-email', requireAuth, async (req, res, next) =
     if (!result.ok) {
       const httpStatus = result.code === 'not_found' ? 404 :
                          result.code === 'no_recipients' ? 400 :
+                         result.code === 'brand_leak' ? 422 :
                          result.code === 'send_failed' ? 502 : 500;
-      return res.status(httpStatus).json({ success: false, error: { message: result.message, statusCode: httpStatus } });
+      return res.status(httpStatus).json({ success: false, error: { message: result.message, code: result.code, statusCode: httpStatus } });
     }
     res.json(getSuccessResponse({
       sent:       !result.disabled,

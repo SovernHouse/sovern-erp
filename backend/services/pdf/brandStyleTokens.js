@@ -85,7 +85,30 @@ const SH = {
   },
 };
 
-const BY_CODE = { FW, SH };
+// ─── HANHUA (HH) ───────────────────────────────────────────────────────────
+// Phase 4.28d. HanHua is the China-origin counterpart to FlorWay for
+// IronLite / Resilient flooring. Same sender stack (alexflorway@gmail.com,
+// Alexander McConnell) per Alex 2026-05-17: any Resilient product is
+// FW (Malaysia origin) OR HH (China origin), never Sovern House.
+// Tokens differ from FW only in displayName + footer legal so SH
+// branding cannot leak. Asset filenames TBD — falls through to
+// text-only header per the existing renderer pattern.
+const HH = {
+  code: 'HH',
+  displayName: 'HanHua',
+  primaryColor: '#1F2933',
+  accentColor:  '#F1EEE7',
+  ink:          '#0E0D0C',
+  steel:        '#94A3B8',
+  bronze:       '#92400E',
+  senderEmail:  'alexflorway@gmail.com',
+  senderName:   'Alexander McConnell',
+  senderTitle:  'Country Manager, USA',
+  footerLegal:  'Anhui HanHua Building Materials Technology Co., Ltd. · China',
+  assets: {},
+};
+
+const BY_CODE = { FW, SH, HH };
 
 /**
  * Resolve effective tokens for a brand. Brand record values (primaryColor,

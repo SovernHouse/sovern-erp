@@ -706,6 +706,18 @@ db.sequelize.authenticate()
       logger.warn('[boot] phase4.20 product category default_brand skipped:', e.message);
     }
 
+    // Phase 4.28d: CRITICAL. Add PriceList.brand_code column + backfill from
+    // factory/item brand consensus. Fixes the brand leak where the PDF
+    // renderer fell back to SH for FW PriceLists because the include didn't
+    // load brandRelationships / brandCode. Sentinel:
+    // phase4_28d_price_list_brand_code_added.
+    try {
+      const { migrate428dPriceListBrandCode } = require('./services/migrate428dPriceListBrandCode');
+      await migrate428dPriceListBrandCode(db);
+    } catch (e) {
+      logger.warn('[boot] phase4.28d price list brand_code skipped:', e.message);
+    }
+
     // Phase 4.5, C24: refresh FW Brand signature (HTML + text) to the
     // Country Manager / FlorWay+HanHua design. Idempotent via AuditLog
     // sentinel; SH untouched.

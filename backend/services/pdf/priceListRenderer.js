@@ -18,6 +18,7 @@
 const PDFDocument = require('pdfkit');
 const { formatCurrency } = require('../../utils/helpers');
 const { resolveTokens, registerBrandFonts } = require('./brandStyleTokens');
+const { resolveBrand, assertBrandSafe, BrandLeakError } = require('../priceListBrandResolver');
 
 const PAGE_MARGIN = 50;
 const COL_RATIOS = {
@@ -44,22 +45,19 @@ function fmtMoney(value, currency) {
 async function renderPriceListPdf(priceList, opts = {}) {
   return new Promise((resolve, reject) => {
     try {
-      // Brand resolution. The PriceList itself has no brand_code column;
-      // context flows through the parent. Customer brand: take the first
-      // entry in brandRelationships (typically the customer's primary
-      // brand). Factory brand: direct brand_code. Fallback to SH so the
-      // renderer always has palette + footer + sender.
-      let brandCode = opts.brandCode || null;
-      if (!brandCode) {
-        const cust = priceList.Customer || priceList.customer;
-        const fact = priceList.Factory  || priceList.factory;
-        if (cust && Array.isArray(cust.brandRelationships) && cust.brandRelationships.length) {
-          brandCode = cust.brandRelationships[0];
-        } else if (fact && fact.brandCode) {
-          brandCode = fact.brandCode;
-        }
+      // CRITICAL — brand resolution + assertion. Non-negotiable #9.
+      // Refuses to render rather than silently falling back to SH.
+      // Resilient flooring (LVT/SPC/Engineered SPC/WPC/Vinyl Sheet)
+      // is FW (Malaysia) or HH (China), never SH.
+      const resolution = resolveBrand(priceList, opts);
+      if (!resolution.brand) {
+        throw new BrandLeakError(
+          'Cannot render PriceList PDF: brand context unresolved. Set PriceList.brand_code to FW (Malaysia / FlorWay) or HH (China / HanHua) for Resilient items, or to the parent factory/customer brand otherwise.',
+          { priceListId: priceList.id, resolution },
+        );
       }
-      const tokens = resolveTokens(opts.brand || { code: brandCode || 'SH' });
+      assertBrandSafe(priceList, resolution.brand);
+      const tokens = resolveTokens(opts.brand || { code: resolution.brand });
 
       const doc = new PDFDocument({
         size: 'A4',

@@ -18,16 +18,12 @@ const auditService = require('./auditService');
 const { renderPriceListPdf } = require('./pdf/priceListRenderer');
 
 async function loadPriceList(priceListId) {
+  // CRITICAL: use the shared include so brandCode / brandRelationships /
+  // product brand fields are always loaded — forgetting these was the
+  // root cause of the 2026-05-17 brand leak (non-negotiable #9).
+  const { priceListIncludeForBrand } = require('./priceListBrandResolver');
   return db.PriceList.findByPk(priceListId, {
-    include: [
-      { model: db.Customer, attributes: ['id', 'companyName', 'email', 'brandRelationships'] },
-      { model: db.Factory,  attributes: ['id', 'companyName', 'email', 'brandCode'] },
-      {
-        model: db.PriceListItem,
-        as: 'items',
-        include: [{ model: db.Product, attributes: ['id', 'name', 'sku'] }],
-      },
-    ],
+    include: priceListIncludeForBrand(db),
     order: [[{ model: db.PriceListItem, as: 'items' }, 'sku', 'ASC']],
   });
 }
@@ -74,7 +70,19 @@ async function sendPriceListEmail(priceListId, options = {}) {
     return { ok: false, code: 'no_recipients', message: 'No recipients resolved — pass `to` and/or `leadId` / `customerId`.' };
   }
 
-  const pdfBuffer = await renderPriceListPdf(priceList);
+  // Render via the PDF helper; brand-leak guard fires here. Catch the
+  // BrandLeakError up so we never quietly email an SH-branded PDF of
+  // FW/HH goods.
+  const { BrandLeakError } = require('./priceListBrandResolver');
+  let pdfBuffer;
+  try {
+    pdfBuffer = await renderPriceListPdf(priceList);
+  } catch (err) {
+    if (err instanceof BrandLeakError) {
+      return { ok: false, code: 'brand_leak', message: err.message };
+    }
+    throw err;
+  }
   const slug = String(priceList.name || 'price-list').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 60);
   const filename = `${slug}-${priceList.id.slice(0, 8)}.pdf`;
 
