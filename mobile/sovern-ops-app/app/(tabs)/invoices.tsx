@@ -191,8 +191,8 @@ export default function InvoicesScreen() {
     if (sortMode !== 'stage') return items
     const order: Record<string, number> = { draft: 0, sent: 1, paid: 2, overdue: 3, cancelled: 4 }
     return [...items].sort((a, b) => {
-      const oa = order[a.status] ?? 99
-      const ob = order[b.status] ?? 99
+      const oa = order[a.status ?? ''] ?? 99
+      const ob = order[b.status ?? ''] ?? 99
       if (oa !== ob) return oa - ob
       const da = a.createdAt ? new Date(a.createdAt).getTime() : 0
       const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
