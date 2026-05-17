@@ -49,16 +49,48 @@ const COL_HEADERS = {
   price:       'PRICE',
 };
 
-function resolveColumns(hiddenList) {
+// Custom columns (defined per-PriceList via columnDefinitions) get a
+// base ratio share. The renderer normalizes all visible columns to
+// 100% of pageWidth, so this only matters as a relative weight against
+// the standard cols.
+const CUSTOM_COL_RATIO = 0.10;
+
+function resolveColumns(hiddenList, customDefs) {
   const hidden = new Set(
     (Array.isArray(hiddenList) ? hiddenList : []).map(s => String(s).toLowerCase()),
   );
-  const visible = COL_ORDER.filter(k => ALWAYS_VISIBLE.has(k) || !hidden.has(k));
-  const sumRatio = visible.reduce((s, k) => s + DEFAULT_COL_RATIOS[k], 0);
+  const visible = [];
+
+  for (const k of COL_ORDER) {
+    if (!ALWAYS_VISIBLE.has(k) && hidden.has(k)) continue;
+    visible.push({
+      kind:    'std',
+      key:     k,
+      header:  COL_HEADERS[k],
+      ratio:   DEFAULT_COL_RATIOS[k],
+      align:   (k === 'moq' || k === 'lead' || k === 'price') ? 'right' : 'left',
+    });
+  }
+
+  const customs = (Array.isArray(customDefs) ? customDefs : []).filter(c => c && c.key);
+  for (const c of customs) {
+    const type = c.type || 'text';
+    visible.push({
+      kind:      'custom',
+      key:       `custom:${c.key}`,
+      customKey: c.key,
+      header:    String(c.label || c.key).toUpperCase(),
+      ratio:     CUSTOM_COL_RATIO,
+      type,
+      align:     (type === 'number' || type === 'boolean') ? 'right' : 'left',
+    });
+  }
+
   // Normalize so the visible columns fill 100% of pageWidth.
-  const ratios = {};
-  for (const k of visible) ratios[k] = DEFAULT_COL_RATIOS[k] / sumRatio;
-  return { visible, ratios };
+  const sum = visible.reduce((s, v) => s + v.ratio, 0);
+  if (sum > 0) for (const v of visible) v.ratio = v.ratio / sum;
+
+  return visible;
 }
 
 function fmtDate(d) {
@@ -188,56 +220,85 @@ async function renderPriceListPdf(priceList, opts = {}) {
       y += 36;
       const tableTop = y;
 
-      // Resolve which standard columns to render based on PriceList.hidden_columns.
+      // Resolve which standard + custom columns to render. Both
+      // hiddenColumns (which standard cols to skip) and columnDefinitions
+      // (which custom cols to render) live on the PriceList row. Both
+      // come back as DataTypes.JSON which can arrive stringified per
+      // L-053; parse defensively.
       let hiddenList = priceList.hiddenColumns || priceList.hidden_columns || [];
       if (typeof hiddenList === 'string') {
         try { hiddenList = JSON.parse(hiddenList); } catch (_) { hiddenList = []; }
       }
-      const { visible: visibleCols, ratios } = resolveColumns(hiddenList);
+      let customDefs = priceList.columnDefinitions || priceList.column_definitions || [];
+      if (typeof customDefs === 'string') {
+        try { customDefs = JSON.parse(customDefs); } catch (_) { customDefs = []; }
+      }
+      const visibleCols = resolveColumns(hiddenList, customDefs);
 
-      const colWidths = {};
-      for (const k of visibleCols) colWidths[k] = pageWidth * ratios[k];
-      const colX = (() => {
+      // Precompute width + x for each column. Column object gets .width
+      // and .x mutated in place so the rest of the rendering can read
+      // either off the object.
+      {
         let cx = PAGE_MARGIN;
-        const out = {};
-        for (const k of visibleCols) {
-          out[k] = cx;
-          cx += colWidths[k];
+        for (const c of visibleCols) {
+          c.width = pageWidth * c.ratio;
+          c.x = cx;
+          cx += c.width;
         }
-        return out;
-      })();
-      const RIGHT_ALIGN = new Set(['moq', 'lead', 'price']);
+      }
 
       // Header row — brand-tinted (cream / accent) with primary-color text.
       doc.rect(PAGE_MARGIN, tableTop, pageWidth, 22).fill(tokens.accentColor || '#F1F5F9');
       doc.fillColor(tokens.primaryColor).fontSize(9).font(fonts.bodyBold);
-      for (const k of visibleCols) {
-        const opts = { width: colWidths[k] - 12 };
-        if (RIGHT_ALIGN.has(k)) opts.align = 'right';
-        doc.text(COL_HEADERS[k], colX[k] + 6, tableTop + 7, opts);
+      for (const c of visibleCols) {
+        const opts = { width: c.width - 12 };
+        if (c.align === 'right') opts.align = 'right';
+        doc.text(c.header, c.x + 6, tableTop + 7, opts);
       }
 
       // Rows. Phase 4.28d follow-up: each row's height is now derived
-      // from the tallest cell's natural text height (productName is
-      // usually the longest). All cells wrap (lineBreak:true) so no
-      // truncation; the row rectangle grows to fit. Minimum 18pt for
-      // single-line readability.
+      // from the tallest cell's natural text height (productName or a
+      // long custom value is usually the longest). All cells wrap
+      // (lineBreak:true) so no truncation; the row rectangle grows to
+      // fit. Minimum 18pt for single-line readability.
       y = tableTop + 22;
       const items = Array.isArray(priceList.items) ? priceList.items : [];
       const currency = priceList.currencyCode || 'USD';
       const MIN_ROW_HEIGHT = 18;
       const ROW_PAD_Y = 6;
 
+      // Resolve a cell's display value for a given column object + item.
+      // Returns null when the cell is meaningfully empty (no contribution
+      // to row height; '—' will be rendered in its place).
+      const cellValue = (col, item) => {
+        if (col.kind === 'custom') {
+          let cc = item.customColumns;
+          if (typeof cc === 'string') {
+            try { cc = JSON.parse(cc); } catch (_) { cc = {}; }
+          }
+          const raw = (cc && typeof cc === 'object') ? cc[col.customKey] : undefined;
+          if (raw == null || raw === '') return null;
+          if (col.type === 'boolean') return raw === true || raw === 'true' ? 'Yes' : 'No';
+          return String(raw);
+        }
+        switch (col.key) {
+          case 'sku':         return item.sku || null;
+          case 'productName': return item.productName || null;
+          case 'unit':        return item.unit || 'sqm';
+          case 'moq':         return item.minimumOrder != null ? String(item.minimumOrder) : null;
+          case 'lead':        return item.leadTimeDays != null ? String(item.leadTimeDays) : null;
+          case 'price':       return fmtMoney(item.sellingPrice, currency);
+          default:            return null;
+        }
+      };
+
       const computeRowHeight = (item) => {
         doc.font(fonts.body).fontSize(9);
         let tallest = MIN_ROW_HEIGHT - ROW_PAD_Y;
-        for (const k of visibleCols) {
-          const val = k === 'sku' ? (item.sku || '—')
-                   : k === 'productName' ? (item.productName || '—')
-                   : k === 'unit' ? (item.unit || 'sqm')
-                   : '';
-          if (!val) continue;
-          const h = doc.heightOfString(String(val), { width: colWidths[k] - 12 });
+        for (const c of visibleCols) {
+          const v = cellValue(c, item);
+          if (!v) continue;
+          const h = doc.heightOfString(String(v), { width: c.width - 12 });
           if (h > tallest) tallest = h;
         }
         return Math.ceil(tallest + ROW_PAD_Y);
@@ -259,28 +320,19 @@ async function renderPriceListPdf(priceList, opts = {}) {
           if (idx % 2 === 1) {
             doc.rect(PAGE_MARGIN, y - 3, pageWidth, rh).fill('#F8FAFC');
           }
-          // Render only the visible columns. lineBreak:true (default)
-          // lets each cell wrap into the row height we pre-computed;
-          // nothing gets truncated.
-          for (const k of visibleCols) {
-            const opts = { width: colWidths[k] - 12 };
-            let val;
-            switch (k) {
-              case 'sku':         val = item.sku || '—'; break;
-              case 'productName': val = item.productName || '—'; break;
-              case 'unit':        val = item.unit || 'sqm'; break;
-              case 'moq':         val = item.minimumOrder != null ? String(item.minimumOrder) : '—'; opts.align = 'right'; break;
-              case 'lead':        val = item.leadTimeDays != null ? String(item.leadTimeDays) : '—'; opts.align = 'right'; break;
-              case 'price': {
-                doc.font(fonts.bodyBold).fillColor(tokens.primaryColor);
-                doc.text(fmtMoney(item.sellingPrice, currency), colX[k] + 6, y, { ...opts, align: 'right' });
-                doc.font(fonts.body).fillColor(tokens.ink || '#0F172A');
-                continue;
-              }
-              default: val = '—';
+          for (const c of visibleCols) {
+            const opts = { width: c.width - 12 };
+            if (c.align === 'right') opts.align = 'right';
+            // Price gets the brand accent color + bold; every other cell
+            // renders in body weight.
+            if (c.kind === 'std' && c.key === 'price') {
+              doc.font(fonts.bodyBold).fillColor(tokens.primaryColor);
+              doc.text(cellValue(c, item) || '—', c.x + 6, y, opts);
+              doc.font(fonts.body).fillColor(tokens.ink || '#0F172A');
+              continue;
             }
             doc.fillColor(tokens.ink || '#0F172A').font(fonts.body).fontSize(9);
-            doc.text(String(val), colX[k] + 6, y, opts);
+            doc.text(cellValue(c, item) || '—', c.x + 6, y, opts);
           }
           y += rh;
         });

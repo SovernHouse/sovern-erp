@@ -18,6 +18,19 @@ import api, { customersAPI, factoriesAPI } from '../../services/api'
 import BrandPicker from '../../components/BrandPicker'
 import LoadingSpinner from '../../components/LoadingSpinner'
 
+// Single source of truth for optional standard item columns. The `k`
+// (key) matches what is stored in PriceList.hiddenColumns and what the
+// PDF renderer's COL_ORDER uses. `field` is the PriceListItem property
+// the input edits. Always-shown columns (SKU, Product, Selling Price,
+// Action) are not in this list and cannot be hidden.
+const STANDARD_ITEM_COLS = [
+  { k: 'cost',  label: 'Cost Price', field: 'costPrice',    type: 'number', align: 'right', step: '0.01' },
+  { k: 'moq',   label: 'Min Order',  field: 'minimumOrder', type: 'number', align: 'right', step: '1' },
+  { k: 'lead',  label: 'Lead Time',  field: 'leadTimeDays', type: 'number', align: 'right', step: '1' },
+  { k: 'unit',  label: 'Unit',       field: 'unit',         type: 'text',   align: 'left' },
+  { k: 'notes', label: 'Notes',      field: 'notes',        type: 'text',   align: 'left' },
+]
+
 const PriceListManager = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -115,7 +128,18 @@ const PriceListManager = () => {
         isActive: priceList.isActive !== false,
         items: []
       })
-      setItems(priceList.items || [])
+      // customColumns on each PriceListItem is a DataTypes.JSON field
+      // and comes back stringified per L-047 / L-053. Parse it eagerly
+      // so the custom-column inputs can bind without each input doing
+      // its own JSON.parse.
+      const normalizedItems = (priceList.items || []).map((it) => {
+        let cc = it.customColumns
+        if (typeof cc === 'string') {
+          try { cc = JSON.parse(cc) } catch (_) { cc = {} }
+        }
+        return { ...it, customColumns: cc && typeof cc === 'object' && !Array.isArray(cc) ? cc : {} }
+      })
+      setItems(normalizedItems)
       // columnDefinitions + hiddenColumns are DataTypes.JSON on SQLite and
       // come back stringified per L-047 / L-053. Without this parse the
       // Array.isArray check below fails and the form defaults to []; the
@@ -183,6 +207,14 @@ const PriceListManager = () => {
   }
 
   const handleAddItem = () => {
+    // Seed customColumns from the current columnDefinitions so the
+    // custom-column inputs render bound to a defined key from the very
+    // first keystroke (otherwise React inputs flicker between
+    // uncontrolled and controlled).
+    const seedCustom = {}
+    for (const c of columnDefs) {
+      if (c && c.key) seedCustom[c.key] = ''
+    }
     setItems(prev => [...prev, {
       id: Date.now(),
       sku: '',
@@ -192,7 +224,8 @@ const PriceListManager = () => {
       minimumOrder: '',
       leadTimeDays: '',
       unit: '',
-      notes: ''
+      notes: '',
+      customColumns: seedCustom,
     }])
   }
 
@@ -203,6 +236,17 @@ const PriceListManager = () => {
   const handleItemChange = (id, field, value) => {
     setItems(prev => prev.map(item =>
       item.id === id ? { ...item, [field]: value } : item
+    ))
+  }
+
+  // Edit a value in the item's customColumns bucket. The columnDefinitions
+  // editor on this page defines the available custom keys; each item
+  // stores its values keyed by the column key.
+  const handleCustomColumnChange = (id, key, value) => {
+    setItems(prev => prev.map(item =>
+      item.id === id
+        ? { ...item, customColumns: { ...(item.customColumns || {}), [key]: value } }
+        : item
     ))
   }
 
@@ -704,21 +748,18 @@ const PriceListManager = () => {
                 </div>
               </div>
 
-              {/* Phase 4.28d follow-up — standard column visibility. The
-                  PDF always shows SKU + Product + Price; toggle the other
-                  four off when not needed (e.g. Resilient lists where MOQ
-                  is irrelevant). */}
+              {/* Optional columns — controls visibility in BOTH the items
+                  table editor below AND the generated PDF. SKU, Product
+                  name, and Selling Price are always shown (the minimum
+                  needed for a useful price list). Untick anything that
+                  doesn't apply to this list (e.g. MOQ for Resilient). */}
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">PDF columns</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">Optional columns</h3>
                 <div className="flex flex-wrap gap-3 text-sm">
-                  {[
-                    { k: 'unit', label: 'Unit' },
-                    { k: 'moq',  label: 'Min Order (MOQ)' },
-                    { k: 'lead', label: 'Lead time' },
-                  ].map((opt) => {
+                  {STANDARD_ITEM_COLS.map((opt) => {
                     const hidden = hiddenStandardCols.includes(opt.k)
                     return (
-                      <label key={opt.k} className="inline-flex items-center gap-2 px-3 py-1.5 border border-slate-200 rounded-lg bg-white">
+                      <label key={opt.k} className="inline-flex items-center gap-2 px-3 py-1.5 border border-slate-200 rounded-lg bg-white cursor-pointer">
                         <input
                           type="checkbox"
                           checked={!hidden}
@@ -735,7 +776,7 @@ const PriceListManager = () => {
                     )
                   })}
                 </div>
-                <p className="text-xs text-slate-500 mt-2 italic">SKU, Product name, and Price are always shown.</p>
+                <p className="text-xs text-slate-500 mt-2 italic">SKU, Product name, and Selling Price are always shown. Toggle hides the column from both the editor below and the generated PDF.</p>
               </div>
 
               {/* Phase 4.28d follow-up — column editor. Each entry { key,
@@ -820,109 +861,121 @@ const PriceListManager = () => {
                   </div>
                 ) : (
                   <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200">
-                          <th className="px-4 py-3 text-left font-semibold text-slate-900 text-sm">SKU</th>
-                          <th className="px-4 py-3 text-left font-semibold text-slate-900 text-sm">Product Name</th>
-                          <th className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">Selling Price</th>
-                          <th className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">Cost Price</th>
-                          <th className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">Min Order</th>
-                          <th className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">Lead Time</th>
-                          <th className="px-4 py-3 text-left font-semibold text-slate-900 text-sm">Unit</th>
-                          <th className="px-4 py-3 text-left font-semibold text-slate-900 text-sm">Notes</th>
-                          <th className="px-4 py-3 text-center font-semibold text-slate-900 text-sm">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((item) => (
-                          <tr key={item.id} className="border-b border-slate-200 hover:bg-slate-50">
-                            <td className="px-4 py-3">
-                              <input
-                                type="text"
-                                value={item.sku}
-                                onChange={(e) => handleItemChange(item.id, 'sku', e.target.value)}
-                                className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                placeholder="SKU"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="text"
-                                value={item.productName}
-                                onChange={(e) => handleItemChange(item.id, 'productName', e.target.value)}
-                                className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                placeholder="Product name"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="number"
-                                value={item.sellingPrice}
-                                onChange={(e) => handleItemChange(item.id, 'sellingPrice', e.target.value)}
-                                className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-right"
-                                placeholder="0.00"
-                                step="0.01"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="number"
-                                value={item.costPrice}
-                                onChange={(e) => handleItemChange(item.id, 'costPrice', e.target.value)}
-                                className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-right"
-                                placeholder="0.00"
-                                step="0.01"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="number"
-                                value={item.minimumOrder}
-                                onChange={(e) => handleItemChange(item.id, 'minimumOrder', e.target.value)}
-                                className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-right"
-                                placeholder="1"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="number"
-                                value={item.leadTimeDays}
-                                onChange={(e) => handleItemChange(item.id, 'leadTimeDays', e.target.value)}
-                                className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-right"
-                                placeholder="0"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="text"
-                                value={item.unit}
-                                onChange={(e) => handleItemChange(item.id, 'unit', e.target.value)}
-                                className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                placeholder="Unit"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="text"
-                                value={item.notes}
-                                onChange={(e) => handleItemChange(item.id, 'notes', e.target.value)}
-                                className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                placeholder="Notes"
-                              />
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <button
-                                onClick={() => handleRemoveItem(item.id)}
-                                className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    {(() => {
+                      // Build the visible column set: SKU + Product +
+                      // Selling Price are always shown. Optional standard
+                      // cols are filtered by hiddenStandardCols. Custom
+                      // cols come from columnDefinitions (with non-empty
+                      // key). Action button is last.
+                      const visibleStandardCols = STANDARD_ITEM_COLS.filter(c => !hiddenStandardCols.includes(c.k))
+                      const visibleCustomCols = columnDefs.filter(c => c && c.key)
+                      return (
+                        <table className="w-full">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                              <th className="px-4 py-3 text-left font-semibold text-slate-900 text-sm">SKU</th>
+                              <th className="px-4 py-3 text-left font-semibold text-slate-900 text-sm">Product Name</th>
+                              <th className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">Selling Price</th>
+                              {visibleStandardCols.map((c) => (
+                                <th key={c.k} className={`px-4 py-3 font-semibold text-slate-900 text-sm ${c.align === 'right' ? 'text-right' : 'text-left'}`}>
+                                  {c.label}
+                                </th>
+                              ))}
+                              {visibleCustomCols.map((c) => (
+                                <th key={`custom-${c.key}`} className={`px-4 py-3 font-semibold text-slate-900 text-sm ${c.type === 'number' ? 'text-right' : 'text-left'}`}>
+                                  {c.label || c.key}
+                                </th>
+                              ))}
+                              <th className="px-4 py-3 text-center font-semibold text-slate-900 text-sm">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {items.map((item) => (
+                              <tr key={item.id} className="border-b border-slate-200 hover:bg-slate-50">
+                                <td className="px-4 py-3">
+                                  <input
+                                    type="text"
+                                    value={item.sku || ''}
+                                    onChange={(e) => handleItemChange(item.id, 'sku', e.target.value)}
+                                    className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                    placeholder="SKU"
+                                  />
+                                </td>
+                                <td className="px-4 py-3">
+                                  <input
+                                    type="text"
+                                    value={item.productName || ''}
+                                    onChange={(e) => handleItemChange(item.id, 'productName', e.target.value)}
+                                    className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                    placeholder="Product name"
+                                  />
+                                </td>
+                                <td className="px-4 py-3">
+                                  <input
+                                    type="number"
+                                    value={item.sellingPrice ?? ''}
+                                    onChange={(e) => handleItemChange(item.id, 'sellingPrice', e.target.value)}
+                                    className="w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-right"
+                                    placeholder="0.00"
+                                    step="0.01"
+                                  />
+                                </td>
+                                {visibleStandardCols.map((c) => (
+                                  <td key={c.k} className="px-4 py-3">
+                                    <input
+                                      type={c.type}
+                                      value={item[c.field] ?? ''}
+                                      onChange={(e) => handleItemChange(item.id, c.field, e.target.value)}
+                                      step={c.step}
+                                      className={`w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${c.align === 'right' ? 'text-right' : ''}`}
+                                      placeholder={c.type === 'number' ? '0' : c.label}
+                                    />
+                                  </td>
+                                ))}
+                                {visibleCustomCols.map((c) => {
+                                  const raw = (item.customColumns && item.customColumns[c.key]) ?? ''
+                                  const inputType =
+                                    c.type === 'number'  ? 'number'   :
+                                    c.type === 'boolean' ? 'checkbox' :
+                                                          'text'
+                                  if (inputType === 'checkbox') {
+                                    return (
+                                      <td key={`custom-${c.key}`} className="px-4 py-3 text-center">
+                                        <input
+                                          type="checkbox"
+                                          checked={!!raw}
+                                          onChange={(e) => handleCustomColumnChange(item.id, c.key, e.target.checked)}
+                                          className="w-4 h-4 rounded border-slate-300"
+                                        />
+                                      </td>
+                                    )
+                                  }
+                                  return (
+                                    <td key={`custom-${c.key}`} className="px-4 py-3">
+                                      <input
+                                        type={inputType}
+                                        value={raw}
+                                        onChange={(e) => handleCustomColumnChange(item.id, c.key, e.target.value)}
+                                        className={`w-full px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${inputType === 'number' ? 'text-right' : ''}`}
+                                        placeholder={c.label || c.key}
+                                      />
+                                    </td>
+                                  )
+                                })}
+                                <td className="px-4 py-3 text-center">
+                                  <button
+                                    onClick={() => handleRemoveItem(item.id)}
+                                    className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )
+                    })()}
                   </div>
                 )}
               </div>
