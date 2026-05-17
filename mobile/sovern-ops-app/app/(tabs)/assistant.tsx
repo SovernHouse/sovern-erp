@@ -32,6 +32,7 @@ import {
   type AIConversation, type AIMessage, type AIAttachment,
   type DevModeRun, type DevModeRunStatus,
   type ResearchTaskMode,
+  type Customer, type Factory, type Product,
 } from '../../src/services/api';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -184,23 +185,23 @@ async function runSlashCommand(
     case 'clients': {
       const arg = slash.arg.trim();
       const res = await getCustomers(arg ? { search: arg, page: 1 } : { page: 1 });
-      const rows = (res as any).data ?? (res as any).items ?? [];
+      const rows: Customer[] = (res as any).data ?? (res as any).items ?? [];
       if (!rows.length) return arg ? `No customers match "${arg}".` : 'No customers found.';
       return formatRowList(rows.slice(0, 20), c => `**${c.companyName}**${c.country ? ` — ${c.country}` : ''}${c.email ? ` — ${c.email}` : ''}`);
     }
     case 'suppliers': {
       const arg = slash.arg.trim();
       const res = await getFactories(arg ? { search: arg, page: 1, limit: 20 } : { page: 1, limit: 20 });
-      const rows = (res as any).data ?? (res as any).items ?? [];
+      const rows: Factory[] = (res as any).data ?? (res as any).items ?? [];
       if (!rows.length) return arg ? `No suppliers match "${arg}".` : 'No suppliers found.';
       return formatRowList(rows.slice(0, 20), f => `**${f.companyName}**${f.country ? ` — ${f.country}` : ''}${f.specializations?.length ? ` (${f.specializations.slice(0, 3).join(', ')})` : ''}`);
     }
     case 'products': {
       const arg = slash.arg.trim();
       const res = await getProducts(arg ? { search: arg, page: 1, limit: 20 } : { page: 1, limit: 20 });
-      const rows = (res as any).data ?? (res as any).items ?? [];
+      const rows: Product[] = (res as any).data ?? (res as any).items ?? [];
       if (!rows.length) return arg ? `No products match "${arg}".` : 'No products found.';
-      return formatRowList(rows.slice(0, 20), p => `**${p.name || p.sku}**${p.sku ? ` (${p.sku})` : ''}${p.category?.name ? ` — ${p.category.name}` : ''}`);
+      return formatRowList(rows.slice(0, 20), p => `**${p.name || p.sku}**${p.sku ? ` (${p.sku})` : ''}${typeof p.category === 'object' && p.category?.name ? ` — ${p.category.name}` : ''}`);
     }
 
     case 'expense': {
