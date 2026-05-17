@@ -71,7 +71,7 @@ describe('Phase 4.25a — Quote.accept auto-creates Pro Forma', () => {
     const quotation = await createTestQuotation();
 
     const response = await request
-      .post(`/api/quotations/${quotation.id}/accept`)
+      .patch(`/api/quotations/${quotation.id}/accept`)
       .set('Authorization', `Bearer ${testData.authToken}`);
 
     expect(response.status).toBe(200);
@@ -104,12 +104,12 @@ describe('Phase 4.25a — Quote.accept auto-creates Pro Forma', () => {
     const quotation = await createTestQuotation();
 
     const first = await request
-      .post(`/api/quotations/${quotation.id}/accept`)
+      .patch(`/api/quotations/${quotation.id}/accept`)
       .set('Authorization', `Bearer ${testData.authToken}`);
     expect(first.status).toBe(200);
 
     const second = await request
-      .post(`/api/quotations/${quotation.id}/accept`)
+      .patch(`/api/quotations/${quotation.id}/accept`)
       .set('Authorization', `Bearer ${testData.authToken}`);
     expect(second.status).toBe(200);
 
@@ -122,17 +122,24 @@ describe('Phase 4.25a — Quote.accept auto-creates Pro Forma', () => {
   it('inherits brandCode from the quotation (FW quotation -> FW Pro Forma)', async () => {
     const fwBrand = await db.Brand.findOne({ where: { code: 'FW' } });
     if (!fwBrand) {
+      // Brand model requires displayName + senderEmail + primaryColor +
+      // accentColor (notNull). The earlier minimal payload silently
+      // failed Sequelize validation. Use the same shape that
+      // backend/services/seedBrandsC1.js seeds in production.
       await db.Brand.create({
-        code: 'FW',
-        name: 'FlorWay',
-        isActive: true,
+        code:         'FW',
+        displayName:  'FlorWay',
+        senderEmail:  'no-reply@florway.example',
+        primaryColor: '#2D5A27',
+        accentColor:  '#F5F0E8',
+        active:       true,
       });
     }
 
     const quotation = await createTestQuotation({ brandCode: 'FW' });
 
     const response = await request
-      .post(`/api/quotations/${quotation.id}/accept`)
+      .patch(`/api/quotations/${quotation.id}/accept`)
       .set('Authorization', `Bearer ${testData.authToken}`);
     expect(response.status).toBe(200);
 
@@ -147,7 +154,7 @@ describe('Phase 4.25a — Quote.accept auto-creates Pro Forma', () => {
     const quotation = await createTestQuotation();
 
     await request
-      .post(`/api/quotations/${quotation.id}/accept`)
+      .patch(`/api/quotations/${quotation.id}/accept`)
       .set('Authorization', `Bearer ${testData.authToken}`);
 
     const proforma = await db.ProformaInvoice.findOne({
@@ -163,7 +170,7 @@ describe('Phase 4.25a — Quote.accept auto-creates Pro Forma', () => {
       audit = await db.AuditLog.findOne({
         where: {
           action: 'auto_create',
-          entityType: 'ProformaInvoice',
+          entity: 'ProformaInvoice',
           entityId: proforma.id,
         },
       });

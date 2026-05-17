@@ -81,15 +81,29 @@ function getConfig() {
 
   // Default to SQLite
   if (env === 'test') {
-    // L-061 defense: TEST MUST USE :memory: or a /tmp/* file. Any
-    // SQLITE_STORAGE pointing at a path outside /tmp is rejected and
-    // forced to :memory:. Prevents the prod-DB-wipe class of incidents
-    // where a stale dotenv-loaded SQLITE_STORAGE survived into a test
-    // run and got sync({force:true})'d.
+    // L-061 defense: TEST MUST USE :memory: or a file inside the OS
+    // temp directory. Any SQLITE_STORAGE pointing at a path outside
+    // os.tmpdir() is rejected and forced to :memory:. Prevents the
+    // prod-DB-wipe class of incidents where a stale dotenv-loaded
+    // SQLITE_STORAGE survived into a test run and got
+    // sync({force:true})'d.
+    //
+    // Cross-platform note: was `/tmp/` literal; now uses os.tmpdir()
+    // so macOS (/var/folders/...) and Windows (AppData\Local\Temp)
+    // tests can also route to file-backed sqlite when they need
+    // cross-process state sharing (e.g. mcpFromAddress493_1 routes
+    // both jest and the MCP subprocess to one file via SQLITE_STORAGE).
+    const os = require('os');
+    const path = require('path');
     let storage = process.env.SQLITE_STORAGE || ':memory:';
-    if (storage !== ':memory:' && !storage.startsWith('/tmp/')) {
+    const tmpRoot = path.resolve(os.tmpdir());
+    const isUnderTmp =
+      storage === ':memory:' ||
+      path.resolve(storage).startsWith(tmpRoot + path.sep) ||
+      path.resolve(storage) === tmpRoot;
+    if (!isUnderTmp) {
       // Eslint-disable-next-line no-console
-      console.warn('[config/database] TEST environment: refusing SQLITE_STORAGE=' + storage + ' (must be :memory: or under /tmp/). Forcing :memory:.');
+      console.warn('[config/database] TEST environment: refusing SQLITE_STORAGE=' + storage + ' (must be :memory: or under os.tmpdir()=' + tmpRoot + '). Forcing :memory:.');
       storage = ':memory:';
     }
     return {
@@ -98,7 +112,7 @@ function getConfig() {
       // Phase 4.9.3.1: honor SQLITE_STORAGE in test so MCP cross-process
       // integration tests can route both the jest process and the
       // spawned MCP subprocess to a shared file DB. Default stays :memory:.
-      // L-061: only honored if the path is under /tmp.
+      // L-061: only honored if the path is under the OS temp directory.
       storage,
       logging: false
     };
