@@ -13,6 +13,7 @@ import { CONFIG, COLORS } from '../src/constants/config';
 import { getCurrentUser } from '../src/services/api';
 import type { User } from '../src/services/api';
 import { useDevModePushNotifications } from '../src/hooks/useDevModePushNotifications';
+import { useAutoChainPoller } from '../src/hooks/useAutoChainPoller';
 import OfflineBanner from '../src/components/OfflineBanner';
 
 // ─── Error Boundary ───────────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ export default function RootLayout() {
   // until then this is a silent no-op and polling-based card / email
   // summary cover the notification surface.
   useDevModePushNotifications();
+  useAutoChainPoller();
 
   // On mount: check for an existing access token and validate it.
   // getCurrentUser() handles token refresh transparently — if the access

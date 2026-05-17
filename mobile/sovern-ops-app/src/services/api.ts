@@ -1988,3 +1988,36 @@ export async function updateContact(
 export async function deleteContact(id: string): Promise<void> {
   await request(`/api/contacts/${id}`, { method: "DELETE" });
 }
+
+// ─── Notifications (Phase 4.26 mobile parity) ─────────────────────────────
+//
+// Mobile mirror of the desktop notification bell. Polled by
+// useAutoChainPoller on app foreground to surface auto_chain events
+// (a downstream record was just created by the workflowService chain).
+
+export interface NotificationRow {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  data?: Record<string, unknown>;
+  isRead: boolean;
+  link?: string | null;
+  createdAt: string;
+}
+
+export async function listMyNotifications(opts?: { unreadOnly?: boolean; limit?: number }): Promise<NotificationRow[]> {
+  const qs = new URLSearchParams();
+  if (opts?.unreadOnly) qs.set('unreadOnly', 'true');
+  if (opts?.limit) qs.set('limit', String(opts.limit));
+  const s = qs.toString();
+  const res = await request<{ success: boolean; data: NotificationRow[] }>(
+    `/api/notifications${s ? `?${s}` : ''}`
+  );
+  return (res as any).data ?? [];
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  await request(`/api/notifications/${id}/read`, { method: 'PATCH' });
+}
