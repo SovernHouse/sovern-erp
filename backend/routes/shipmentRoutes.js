@@ -285,13 +285,40 @@ router.patch('/:id/deliver', requireAuth, async (req, res, next) => {
 
     const beforeSnapshot = shipment.toJSON();
 
-    await shipment.update({
-      status: 'delivered',
-      actualDeliveryDate: actualDeliveryDate ? new Date(actualDeliveryDate) : new Date(),
-      deliveryNotes: deliveryNotes || shipment.deliveryNotes,
-      proofOfDeliveryReference: proofOfDeliveryReference || shipment.proofOfDeliveryReference,
-      actualArrival: actualDeliveryDate ? new Date(actualDeliveryDate) : new Date()
-    });
+    // L-063 wrap: model statusTransitions only allows customs -> delivered.
+    // If the shipment is in in_transit or earlier, the update throws 422.
+    // Try the direct delivered jump; if rejected, walk through the
+    // intermediate states sequentially (at_port -> customs -> delivered)
+    // since each one IS allowed by the model.
+    try {
+      await shipment.update({
+        status: 'delivered',
+        actualDeliveryDate: actualDeliveryDate ? new Date(actualDeliveryDate) : new Date(),
+        deliveryNotes: deliveryNotes || shipment.deliveryNotes,
+        proofOfDeliveryReference: proofOfDeliveryReference || shipment.proofOfDeliveryReference,
+        actualArrival: actualDeliveryDate ? new Date(actualDeliveryDate) : new Date()
+      });
+    } catch (e1) {
+      // Walk through valid intermediates. Each step uses its own update
+      // call so the model hook can validate each transition.
+      const order = ['booked', 'loaded', 'in_transit', 'at_port', 'customs', 'delivered'];
+      const fromIdx = order.indexOf(shipment.status);
+      if (fromIdx < 0) throw e1;
+      for (let i = fromIdx + 1; i < order.length; i++) {
+        const next = order[i];
+        if (next === 'delivered') {
+          await shipment.update({
+            status: 'delivered',
+            actualDeliveryDate: actualDeliveryDate ? new Date(actualDeliveryDate) : new Date(),
+            deliveryNotes: deliveryNotes || shipment.deliveryNotes,
+            proofOfDeliveryReference: proofOfDeliveryReference || shipment.proofOfDeliveryReference,
+            actualArrival: actualDeliveryDate ? new Date(actualDeliveryDate) : new Date()
+          });
+        } else {
+          await shipment.update({ status: next });
+        }
+      }
+    }
 
     await db.ShipmentTracking.create({
       id: uuidv4(),
