@@ -26,7 +26,7 @@ describe('Phase 4.13b — drop sanctionsScreened boolean', () => {
     await getApp();
     db = getDb();
     testData = await seedTestData();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

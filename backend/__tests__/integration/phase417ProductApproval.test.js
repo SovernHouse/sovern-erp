@@ -11,7 +11,7 @@ describe('Phase 4.17 — product approval endpoints', () => {
     db = getDb();
     request = await getRequest();
     testData = await seedTestData();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

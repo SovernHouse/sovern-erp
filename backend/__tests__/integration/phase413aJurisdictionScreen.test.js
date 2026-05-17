@@ -46,7 +46,7 @@ describe('Phase 4.13a — Jurisdiction screening', () => {
         });
       }
     }
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

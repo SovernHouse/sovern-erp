@@ -23,7 +23,7 @@ describe('Phase 4.15b-1 — landedCostWriteService', () => {
     await getApp();
     db = getDb();
     testData = await seedTestData();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

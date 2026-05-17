@@ -14,7 +14,7 @@ describe('erp_describe_entity surfaces current model state (Phase 4.9.3 F)', () 
   beforeAll(async () => {
     await getApp();
     db = getDb();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

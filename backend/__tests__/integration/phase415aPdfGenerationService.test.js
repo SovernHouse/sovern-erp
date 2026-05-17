@@ -47,7 +47,7 @@ describe('Phase 4.15a — pdfGenerationService + quotation CRUD', () => {
         });
       }
     }
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

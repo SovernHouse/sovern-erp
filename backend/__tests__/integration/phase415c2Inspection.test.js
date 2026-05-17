@@ -12,7 +12,7 @@ describe('Phase 4.15c-2 — inspectionWriteService', () => {
     await getApp();
     db = getDb();
     testData = await seedTestData();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

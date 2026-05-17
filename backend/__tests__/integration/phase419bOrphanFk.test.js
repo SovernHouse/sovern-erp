@@ -20,7 +20,7 @@ describe('Phase 4.19b — orphan-FK detector', () => {
   beforeAll(async () => {
     await getApp();
     db = getDb();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

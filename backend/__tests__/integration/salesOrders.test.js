@@ -38,7 +38,7 @@ describe('Sales Orders Integration Tests', () => {
       categoryId: category.id,
       factoryId: factory.id
     });
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();
@@ -201,10 +201,10 @@ describe('Sales Orders Integration Tests', () => {
               unitPrice: 50
             }
           ]
-        }, 30000);
+        }, 180000);
 
       salesOrderId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should list sales orders', async () => {
       const response = await request
@@ -275,10 +275,10 @@ describe('Sales Orders Integration Tests', () => {
               unitPrice: 50
             }
           ]
-        }, 30000);
+        }, 180000);
 
       salesOrderId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should get sales order by ID', async () => {
       const response = await request
@@ -330,10 +330,10 @@ describe('Sales Orders Integration Tests', () => {
               unitPrice: 50
             }
           ]
-        }, 30000);
+        }, 180000);
 
       salesOrderId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should update sales order status', async () => {
       const response = await request
@@ -395,10 +395,10 @@ describe('Sales Orders Integration Tests', () => {
               unitPrice: 50
             }
           ]
-        }, 30000);
+        }, 180000);
 
       salesOrderId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should update sales order', async () => {
       const response = await request
@@ -461,10 +461,10 @@ describe('Sales Orders Integration Tests', () => {
               unitPrice: 50
             }
           ]
-        }, 30000);
+        }, 180000);
 
       salesOrderId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should cancel sales order (soft delete)', async () => {
       const response = await request
@@ -504,10 +504,10 @@ describe('Sales Orders Integration Tests', () => {
             }
           ],
           estimatedDelivery: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-        }, 30000);
+        }, 180000);
 
       salesOrderId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should get sales order timeline', async () => {
       const response = await request
@@ -547,10 +547,10 @@ describe('Sales Orders Integration Tests', () => {
               unitPrice: 50
             }
           ]
-        }, 30000);
+        }, 180000);
 
       salesOrderId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should get sales order documents', async () => {
       const response = await request

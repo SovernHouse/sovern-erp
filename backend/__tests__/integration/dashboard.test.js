@@ -9,7 +9,7 @@ describe('Dashboard Integration Tests', () => {
     db = getDb();
     request = await getRequest();
     testData = await seedTestData();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

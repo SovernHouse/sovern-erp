@@ -24,7 +24,9 @@
       "/node_modules/",
       "/seeds/",
       "/uploads/"
-    ]
+    ],
+    "testTimeout": 180000,
+    "maxWorkers": 1
   },
   "keywords": [
     "trading",

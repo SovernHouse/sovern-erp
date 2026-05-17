@@ -9,7 +9,7 @@ describe('Auth Integration Tests', () => {
     db = getDb();
     request = await getRequest();
     testData = await seedTestData();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();
@@ -116,8 +116,8 @@ describe('Auth Integration Tests', () => {
           password: testPassword,
           firstName: 'Login',
           lastName: 'Test'
-        }, 30000);
-    }, 30000);
+        }, 180000);
+    }, 180000);
 
     it('should login successfully with correct credentials', async () => {
       const response = await request
@@ -132,7 +132,7 @@ describe('Auth Integration Tests', () => {
       expect(response.body.data).toHaveProperty('user');
       expect(response.body.data).toHaveProperty('tokens');
       expect(response.body.data.tokens.accessToken).toBeDefined();
-    }, 30000);
+    }, 180000);
 
     it('should reject login with wrong password', async () => {
       const response = await request
@@ -196,10 +196,10 @@ describe('Auth Integration Tests', () => {
           password: 'TestPassword@123',
           firstName: 'Me',
           lastName: 'Test'
-        }, 30000);
+        }, 180000);
 
       authToken = registerResponse.body.data.tokens.accessToken;
-    }, 30000);
+    }, 180000);
 
     it('should get current user with valid token', async () => {
       const response = await request
@@ -210,7 +210,7 @@ describe('Auth Integration Tests', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.data.email).toBe(testEmail);
       expect(response.body.data.firstName).toBe('Me');
-    }, 30000);
+    }, 180000);
 
     it('should not return password in response', async () => {
       const response = await request
@@ -250,10 +250,10 @@ describe('Auth Integration Tests', () => {
           password: 'TestPassword@123',
           firstName: 'Original',
           lastName: 'Name'
-        }, 30000);
+        }, 180000);
 
       authToken = registerResponse.body.data.tokens.accessToken;
-    }, 30000);
+    }, 180000);
 
     it('should update profile with valid data', async () => {
       const response = await request
@@ -269,7 +269,7 @@ describe('Auth Integration Tests', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.data.firstName).toBe('Updated');
       expect(response.body.data.phone).toBe('+1234567890');
-    }, 30000);
+    }, 180000);
 
     it('should update only provided fields', async () => {
       const response = await request
@@ -310,10 +310,10 @@ describe('Auth Integration Tests', () => {
           password: oldPassword,
           firstName: 'Password',
           lastName: 'Test'
-        }, 30000);
+        }, 180000);
 
       authToken = registerResponse.body.data.tokens.accessToken;
-    }, 30000);
+    }, 180000);
 
     it('should change password successfully', async () => {
       const response = await request
@@ -326,7 +326,7 @@ describe('Auth Integration Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-    }, 30000);
+    }, 180000);
 
     it('should allow login with new password', async () => {
       const response = await request
@@ -390,8 +390,8 @@ describe('Auth Integration Tests', () => {
           password: 'TestPassword@123',
           firstName: 'Forgot',
           lastName: 'Test'
-        }, 30000);
-    }, 30000);
+        }, 180000);
+    }, 180000);
 
     it('should return success message for existing email', async () => {
       const response = await request
@@ -402,7 +402,7 @@ describe('Auth Integration Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-    }, 30000);
+    }, 180000);
 
     it('should return success message for non-existing email (security)', async () => {
       const response = await request

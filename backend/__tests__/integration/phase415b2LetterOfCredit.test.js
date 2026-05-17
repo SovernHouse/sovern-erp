@@ -21,7 +21,7 @@ describe('Phase 4.15b-2 — letterOfCreditWriteService', () => {
       role: 'admin',
       isActive: true,
     });
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

@@ -53,7 +53,7 @@ describe('Phase 4.12 — MCP/REST convergence via shared service layer', () => {
         });
       }
     }
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

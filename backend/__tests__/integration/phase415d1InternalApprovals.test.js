@@ -46,7 +46,7 @@ describe('Phase 4.15d-1 — internalApprovalWriteService', () => {
       firstName: 'Super', lastName: 'Admin',
       role: 'super_admin', isActive: true,
     });
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

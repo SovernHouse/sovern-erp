@@ -12,7 +12,7 @@ describe('Phase 4.15c-3 — sampleWriteService', () => {
     await getApp();
     db = getDb();
     testData = await seedTestData();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

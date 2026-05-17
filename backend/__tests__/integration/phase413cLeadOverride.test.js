@@ -46,7 +46,7 @@ describe('Phase 4.13c — POST /api/compliance/leads/:id/override', () => {
       process.env.JWT_SECRET,
       { expiresIn: '24h' },
     );
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

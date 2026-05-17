@@ -17,7 +17,7 @@ describe('Invoices Integration Tests', () => {
       email: `inv-customer-${uuidv4()}@example.com`,
       phone: '+1234567890'
     });
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();
@@ -121,10 +121,10 @@ describe('Invoices Integration Tests', () => {
           subtotal: 1000,
           tax: 100,
           total: 1100
-        }, 30000);
+        }, 180000);
 
       invoiceId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should get invoice by ID', async () => {
       const response = await request
@@ -158,10 +158,10 @@ describe('Invoices Integration Tests', () => {
           subtotal: 1000,
           tax: 100,
           total: 1100
-        }, 30000);
+        }, 180000);
 
       invoiceId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should update invoice', async () => {
       const response = await request
@@ -220,10 +220,10 @@ describe('Invoices Integration Tests', () => {
           subtotal: 1000,
           tax: 100,
           total: 1100
-        }, 30000);
+        }, 180000);
 
       invoiceId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should send invoice', async () => {
       const response = await request

@@ -12,7 +12,7 @@ describe('Phase 4.13.6 — sanctions source URLs + streak detector', () => {
     await getApp();
     db = getDb();
     await seedTestData();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

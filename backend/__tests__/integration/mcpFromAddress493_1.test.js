@@ -104,7 +104,7 @@ describe('MCP send_outreach_email brand-aware fromAddress (Phase 4.9.3.1)', () =
         NODE_ENV: 'test',
       },
     });
-  }, 90000);
+  }, 180000);
 
   afterAll(async () => {
     await stopMcp(mcp);
@@ -128,7 +128,7 @@ describe('MCP send_outreach_email brand-aware fromAddress (Phase 4.9.3.1)', () =
     expect(row.fromAddress).toBe('alexflorway@gmail.com');
     expect(row.leadId).toBe(fwLead.id);
     expect(row.status).toBe('draft');
-  }, 30000);
+  }, 180000);
 
   test('SH lead, no explicit fromAddress → resolves to SH Brand.senderEmail (alex@sovernhouse.co)', async () => {
     const result = await mcp.callTool('send_outreach_email', {
@@ -142,7 +142,7 @@ describe('MCP send_outreach_email brand-aware fromAddress (Phase 4.9.3.1)', () =
 
     const row = await db.OutreachEmail.findByPk(result.outreachEmail.id);
     expect(row.fromAddress).toBe('alex@sovernhouse.co');
-  }, 30000);
+  }, 180000);
 
   test('SH lead with explicit fromAddress override → override wins over brand default', async () => {
     const result = await mcp.callTool('send_outreach_email', {
@@ -154,5 +154,5 @@ describe('MCP send_outreach_email brand-aware fromAddress (Phase 4.9.3.1)', () =
     });
     expect(result?.success).toBe(true);
     expect(result?.outreachEmail?.fromAddress).toBe('alternative@sovernhouse.co');
-  }, 30000);
+  }, 180000);
 });

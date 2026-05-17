@@ -70,7 +70,7 @@ describe('Phase 4.18 — create_product audit-write convergence', () => {
       brandCode: 'FW',
     });
     factoryId = factory.id;
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

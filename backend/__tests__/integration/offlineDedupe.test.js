@@ -9,7 +9,7 @@ describe('Offline write dedupe (X-Client-Uuid)', () => {
     db = getDb();
     request = await getRequest();
     testData = await seedTestData();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

@@ -9,7 +9,7 @@ describe('Factories Integration Tests', () => {
     db = getDb();
     request = await getRequest();
     testData = await seedTestData();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();
@@ -120,10 +120,10 @@ describe('Factories Integration Tests', () => {
           companyName: 'Get Factory Test',
           email: `factory-${uuidv4()}@example.com`,
           phone: '+1234567890'
-        }, 30000);
+        }, 180000);
 
       factoryId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should get factory by ID', async () => {
       const response = await request
@@ -156,10 +156,10 @@ describe('Factories Integration Tests', () => {
           companyName: 'Update Factory Test',
           email: `factory-${uuidv4()}@example.com`,
           phone: '+1234567890'
-        }, 30000);
+        }, 180000);
 
       factoryId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should update factory', async () => {
       const response = await request
@@ -215,7 +215,7 @@ describe('Factories Integration Tests', () => {
           companyName: 'Products Test Factory',
           email: `factory-${uuidv4()}@example.com`,
           phone: '+1234567890'
-        }, 30000);
+        }, 180000);
 
       factoryId = factoryResponse.body.data.id;
 
@@ -233,7 +233,7 @@ describe('Factories Integration Tests', () => {
       });
 
       productId = productDb.id;
-    }, 30000);
+    }, 180000);
 
     it('should get factory products', async () => {
       const response = await request

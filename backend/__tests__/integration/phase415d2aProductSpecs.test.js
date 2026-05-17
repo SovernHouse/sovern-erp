@@ -24,7 +24,7 @@ describe('Phase 4.15d-2a — productSpecWriteService', () => {
     await getApp();
     db = getDb();
     testData = await seedTestData();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

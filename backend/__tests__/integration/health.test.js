@@ -6,7 +6,7 @@ describe('Health Check Tests', () => {
   beforeAll(async () => {
     await getApp();
     request = await getRequest();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

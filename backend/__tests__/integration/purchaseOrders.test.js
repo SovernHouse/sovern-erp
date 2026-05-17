@@ -30,7 +30,7 @@ describe('Purchase Orders Integration Tests', () => {
       categoryId: category.id,
       factoryId: factory.id
     });
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();
@@ -126,10 +126,10 @@ describe('Purchase Orders Integration Tests', () => {
               unitPrice: 30
             }
           ]
-        }, 30000);
+        }, 180000);
 
       poId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should get purchase order by ID', async () => {
       const response = await request
@@ -166,10 +166,10 @@ describe('Purchase Orders Integration Tests', () => {
               unitPrice: 30
             }
           ]
-        }, 30000);
+        }, 180000);
 
       poId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should update purchase order', async () => {
       const response = await request
@@ -202,10 +202,10 @@ describe('Purchase Orders Integration Tests', () => {
               unitPrice: 30
             }
           ]
-        }, 30000);
+        }, 180000);
 
       poId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should delete purchase order', async () => {
       const response = await request

@@ -51,7 +51,7 @@ describe('GET /api/products/:id/current-price (Phase 4.9.5)', () => {
       validFrom: new Date().toISOString().slice(0, 10),
       sourceNote: 'integration test seed',
     });
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();

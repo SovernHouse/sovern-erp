@@ -9,6 +9,12 @@ process.env.NODE_ENV = 'test';
 // 116 tables and live customer/factory/product rows.)
 delete process.env.SQLITE_STORAGE;
 
+// L-058: getApp() takes ~13.6s for require + ~10s for sync({force:true})
+// in this environment. Default Jest beforeAll timeout is 5s; we set the
+// per-hook timeout to 90s globally so every integration test has room
+// to boot the express app + sync the in-memory SQLite without flaking.
+jest.setTimeout(180000);
+
 
 process.env.JWT_SECRET = 'test-secret-key-for-testing-12345';
 process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-key-67890';

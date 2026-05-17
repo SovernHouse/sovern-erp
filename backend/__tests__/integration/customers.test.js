@@ -9,7 +9,7 @@ describe('Customers Integration Tests', () => {
     db = getDb();
     request = await getRequest();
     testData = await seedTestData();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await cleanup();
@@ -121,10 +121,10 @@ describe('Customers Integration Tests', () => {
           companyName: 'Get Customer Test',
           email: `customer-${uuidv4()}@example.com`,
           phone: '+1234567890'
-        }, 30000);
+        }, 180000);
 
       customerId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should get customer by ID', async () => {
       const response = await request
@@ -157,10 +157,10 @@ describe('Customers Integration Tests', () => {
           companyName: 'Update Customer Test',
           email: `customer-${uuidv4()}@example.com`,
           phone: '+1234567890'
-        }, 30000);
+        }, 180000);
 
       customerId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should update customer', async () => {
       const response = await request
@@ -213,10 +213,10 @@ describe('Customers Integration Tests', () => {
           companyName: 'Delete Customer Test',
           email: `customer-${uuidv4()}@example.com`,
           phone: '+1234567890'
-        }, 30000);
+        }, 180000);
 
       customerId = response.body.data.id;
-    }, 30000);
+    }, 180000);
 
     it('should delete customer (soft delete)', async () => {
       const response = await request

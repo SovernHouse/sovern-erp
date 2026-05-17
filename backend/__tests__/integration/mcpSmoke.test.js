@@ -18,7 +18,7 @@ describe('MCP tool smoke (Phase 4.11)', () => {
 
   beforeAll(async () => {
     mcp = await startMcp();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     await stopMcp(mcp);
@@ -42,7 +42,7 @@ describe('MCP tool smoke (Phase 4.11)', () => {
     for (const name of expected) {
       expect(names).toContain(name);
     }
-  }, 30000);
+  }, 180000);
 
   test('erp_list_entities returns a non-empty list including Factory + Customer + Product + ProductPrice', async () => {
     const result = await mcp.callTool('erp_list_entities', {});
@@ -52,19 +52,19 @@ describe('MCP tool smoke (Phase 4.11)', () => {
     for (const name of ['Factory', 'Customer', 'Product', 'ProductPrice', 'Brand']) {
       expect(entities).toContain(name);
     }
-  }, 30000);
+  }, 180000);
 
   test('erp_describe_entity Factory includes brandCode (Phase 4.9.2a)', async () => {
     const result = await mcp.callTool('erp_describe_entity', { entity: 'Factory' });
     expect(result).toBeTruthy();
     expect(result.attributes).toContain('brandCode');
     expect(result.tableName).toBe('Factory');
-  }, 30000);
+  }, 180000);
 
   test('erp_describe_entity Customer includes metadata (Phase 4.9.3a)', async () => {
     const result = await mcp.callTool('erp_describe_entity', { entity: 'Customer' });
     expect(result.attributes).toContain('metadata');
-  }, 30000);
+  }, 180000);
 
   test('erp_describe_entity_db Factory includes brand_code column (live schema)', async () => {
     const result = await mcp.callTool('erp_describe_entity_db', { entity: 'Factory' });
@@ -77,7 +77,7 @@ describe('MCP tool smoke (Phase 4.11)', () => {
     expect(result.mismatch).toBeTruthy();
     expect(result.mismatch).toHaveProperty('modelAttributesMissingFromDb');
     expect(result.mismatch).toHaveProperty('dbColumnsMissingFromModel');
-  }, 30000);
+  }, 180000);
 
   test('erp_describe_entity_db ProductPrice has the 4.9.2b temporal shape (cost_price_usd_per_m2 present)', async () => {
     const result = await mcp.callTool('erp_describe_entity_db', { entity: 'ProductPrice' });
@@ -86,5 +86,5 @@ describe('MCP tool smoke (Phase 4.11)', () => {
     expect(colNames).toContain('cost_price_usd_per_m2');
     expect(colNames).toContain('origin');
     expect(colNames).toContain('tariff_rate');
-  }, 30000);
+  }, 180000);
 });
