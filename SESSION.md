@@ -4,6 +4,44 @@
 
 ---
 
+## Cross-environment file sync request (for desktop-Claude, added 2026-05-17 from Macbook session)
+
+The canonical `Instructions & Skills/CLAUDE.md` (in `sovern-instructions-skills` repo) mandates a six-file session-start protocol. Three of those files could NOT be found anywhere on the GCP VM today:
+
+- `preferences.md` (referenced as workspace root)
+- `../docs/DECISIONS.md`
+- `../docs/GLOSSARY.md`
+
+These probably live on Alex's Windows desktop in a path that is not synced to the VM or to the `sovern-instructions-skills` repo. Macbook sessions only see the VM via SSH and only see git repos that have been cloned to the VM, so anything desktop-only is invisible.
+
+**Action requested next time Alex works from the desktop:**
+
+1. Locate the three files (`preferences.md`, `docs/DECISIONS.md`, `docs/GLOSSARY.md`).
+2. Move or copy them into the local clone of `sovern-instructions-skills` at the paths the CLAUDE.md expects (`preferences.md` at the repo root; `DECISIONS.md` and `GLOSSARY.md` inside `docs/`).
+3. Commit and push to `SovernHouse/instructions-skills` main.
+
+If any of the three does not actually exist yet, create a stub with a single-line header so the protocol can be satisfied and future content can accumulate. The next Macbook session will pull and see them automatically.
+
+This note can be deleted once the three files are in the skills repo and the next Macbook session has confirmed it can find them.
+
+---
+
+## Macbook session work pending Alex's push (2026-05-17)
+
+Two commits sit on `main` on the VM, NOT yet pushed (per L-001, Alex pushes from Windows):
+
+- `b129e19` feat(mobile): Phase 4.23 mobile parity, embedded ContactsSection. Closes the open Three-Surface Rule violation on the mobile Client/Supplier detail modals.
+- `eb47fb0` fix(mobile): 6 pre-existing api.ts type errors. Includes a real runtime bug fix (sendOutreachEmail referenced an undefined `api` symbol; would have thrown ReferenceError at runtime).
+
+Two directive drafts also written (untracked, awaiting Alex's review):
+
+- `docs/phase4_24x-pwa-install-discovery.md` (PWA install chip + banner so the existing PWA install path is discoverable; not a native desktop app, no Apple fee)
+- `docs/phase4_25-order-to-cash-autochain.md` (Odoo-style backend workflow: Quote.accept auto-creates SO, SO.confirm auto-creates Proforma + PO, etc. 7 trigger points scoped into sub-phases. AI/MCP exposure is a final optional cherry-on-top phase.)
+
+Macbook session also surfaced 68 pre-existing TypeScript errors across 7 mobile files (expenses.tsx 41, assistant.tsx 16, lead/quotation/shipment/SO/PO/invoice each 1-2). All authored before today's session, none introduced by today's commits. Per CLAUDE.md rule #1 they need fixing; Alex paused that work pending the skills audit and is expected to greenlight after.
+
+---
+
 ## Last Updated — 2026-05-17 Taiwan time (late evening, Phase 4.23 wrap)
 
 **Picking up next:**
