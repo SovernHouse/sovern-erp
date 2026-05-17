@@ -39,21 +39,35 @@ router.get('/price-lists', requireAuth, async (req, res, next) => {
     if (isActive !== undefined) where.isActive = isActive === 'true';
 
     const offset = (page - 1) * limit;
-    const { count, rows } = await db.PriceList.findAndCountAll({
+    const rows = await db.PriceList.findAll({
       where,
       include: [
         { model: db.Customer, attributes: ['id', 'companyName'] },
         { model: db.Factory, attributes: ['id', 'companyName'] },
-        { model: db.User, as: 'creator', attributes: ['id', 'firstName', 'lastName'] }
+        { model: db.User, as: 'creator', attributes: ['id', 'firstName', 'lastName'] },
+        // Phase 4.28d follow-up: include lightweight item rows so the
+        // list page can render Items count. itemCount derived below;
+        // separately exposed so the JSON shape stays stable for older
+        // consumers that read priceList.items.length.
+        { model: db.PriceListItem, as: 'items', attributes: ['id'], required: false },
       ],
       order: [['createdAt', 'DESC']],
       offset,
-      limit: parseInt(limit)
+      limit: parseInt(limit),
+    });
+    const total = await db.PriceList.count({ where });
+
+    // Add a top-level itemCount per row for clients that don't want to
+    // walk the items array (existing PriceListManager reads itemCount).
+    const shaped = rows.map((r) => {
+      const json = r.toJSON();
+      json.itemCount = Array.isArray(json.items) ? json.items.length : 0;
+      return json;
     });
 
     res.json(getSuccessResponse({
-      data: rows,
-      pagination: { total: count, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(count / limit) }
+      data: shaped,
+      pagination: { total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / limit) },
     }));
   } catch (error) {
     next(error);

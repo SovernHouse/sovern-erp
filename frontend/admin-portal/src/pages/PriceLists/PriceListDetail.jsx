@@ -66,7 +66,14 @@ export default function PriceListDetail() {
     }
   }
 
-  const items = useMemo(() => priceList?.items || [], [priceList])
+  // Phase 4.28d follow-up: sort items by SKU asc so the on-screen order
+  // matches the PDF (which orders by SKU on the include level). Otherwise
+  // the row order differs between detail page (DB insertion order) and
+  // PDF, leading to apparent "prices don't match" confusion.
+  const items = useMemo(() => {
+    const list = priceList?.items || []
+    return [...list].sort((a, b) => String(a.sku || '').localeCompare(String(b.sku || '')))
+  }, [priceList])
   const currency = priceList?.currencyCode || 'USD'
 
   if (loading) return <LoadingSpinner />

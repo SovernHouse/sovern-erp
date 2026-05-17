@@ -21,9 +21,13 @@ const { resolveTokens, registerBrandFonts } = require('./brandStyleTokens');
 const { resolveBrand, assertBrandSafe, BrandLeakError } = require('../priceListBrandResolver');
 
 const PAGE_MARGIN = 50;
+// Phase 4.28d follow-up: SKU rows like "IL-180x1220-12.0mm" (19 chars)
+// were wrapping at 0.16 (~67pt). Bumped to 0.22 (~110pt) and shaved the
+// product-name column to compensate. Product names get truncated with
+// ellipsis when too long — the SKU disambiguates the row.
 const COL_RATIOS = {
-  sku:          0.16,
-  productName:  0.42,
+  sku:          0.22,
+  productName:  0.36,
   unit:         0.08,
   moq:          0.10,
   lead:         0.10,
@@ -193,9 +197,13 @@ async function renderPriceListPdf(priceList, opts = {}) {
             doc.rect(PAGE_MARGIN, y - 4, pageWidth, rowHeight).fill('#F8FAFC');
           }
           doc.fillColor(tokens.ink || '#0F172A').font(fonts.body).fontSize(9);
-          doc.text(item.sku || '—',           colX.sku + 6, y, { width: colWidths.sku - 12, ellipsis: true });
-          doc.text(item.productName || '—',   colX.productName + 6, y, { width: colWidths.productName - 12, ellipsis: true });
-          doc.text(item.unit || 'sqm',        colX.unit + 6, y, { width: colWidths.unit - 12 });
+          // lineBreak:false stops pdfkit from wrapping when text overflows;
+          // ellipsis truncates instead. Without this the SKU + long
+          // productName both wrap to a second line and overflow the row
+          // rectangle below.
+          doc.text(item.sku || '—',           colX.sku + 6, y, { width: colWidths.sku - 12, lineBreak: false, ellipsis: true });
+          doc.text(item.productName || '—',   colX.productName + 6, y, { width: colWidths.productName - 12, lineBreak: false, ellipsis: true });
+          doc.text(item.unit || 'sqm',        colX.unit + 6, y, { width: colWidths.unit - 12, lineBreak: false });
           doc.text(item.minimumOrder != null ? String(item.minimumOrder) : '—',
             colX.moq + 6, y, { width: colWidths.moq - 12, align: 'right' });
           doc.text(item.leadTimeDays != null ? String(item.leadTimeDays) : '—',

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Plus,
   Edit2,
@@ -19,6 +19,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 
 const PriceListManager = () => {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   // State management
   const [priceLists, setPriceLists] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -48,6 +49,24 @@ const PriceListManager = () => {
   useEffect(() => {
     loadPriceLists()
   }, [])
+
+  // Phase 4.28d follow-up: when the detail page sends user back here with
+  // ?edit=<id>, auto-open the edit modal for that PriceList after the
+  // list loads. Clears the query param afterwards so refreshes don't
+  // re-trigger.
+  useEffect(() => {
+    const editId = searchParams.get('edit')
+    if (!editId || isLoading || priceLists.length === 0) return
+    const target = priceLists.find((p) => p.id === editId)
+    if (target) {
+      handleEditPriceList(target).then(() => {
+        const next = new URLSearchParams(searchParams)
+        next.delete('edit')
+        setSearchParams(next, { replace: true })
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, priceLists])
 
   const loadPriceLists = async () => {
     try {
