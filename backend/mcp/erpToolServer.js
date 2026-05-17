@@ -4228,6 +4228,229 @@ async function callTool(name, args) {
       return current;
     }
 
+    // ── Phase 4.27 — PriceList + PriceListItem MCP tools ──────────────────────
+    // The PriceList / PriceListItem entities are first-class but had no MCP
+    // write path before today; the assistant could only erp_query them and
+    // had to ask Alex to use the admin UI for any insert/update. These tools
+    // close that gap. All writes are super_admin-gated and emit ai_assistant_*
+    // AuditLog rows per L-045 + the Phase 4.19a audit invariant test.
+    //
+    // PriceList has no brand_code column — brand context flows through the
+    // parent customerId / factoryId (Customer.brandRelationships / Factory.
+    // brandCode). create/update validates the parent exists; cross-brand
+    // policy left to UI-layer checks.
+
+    case 'create_price_list': {
+      const requester = await requireSuperAdmin();
+      const name = (args.name || '').trim();
+      if (!name) return 'Error: name is required.';
+      const customerId = args.customerId || args.customer_id || null;
+      const factoryId  = args.factoryId  || args.factory_id  || null;
+      if (customerId) {
+        const c = await getDb().Customer.findByPk(customerId);
+        if (!c) return `Error: Customer ${customerId} not found.`;
+      }
+      if (factoryId) {
+        const f = await getDb().Factory.findByPk(factoryId);
+        if (!f) return `Error: Factory ${factoryId} not found.`;
+      }
+      const row = await getDb().PriceList.create({
+        id: uuidv4(),
+        name,
+        description: args.description || null,
+        currencyCode: args.currencyCode || args.currency_code || 'USD',
+        validFrom: args.validFrom || args.valid_from || null,
+        validTo: args.validTo || args.valid_to || null,
+        customerId,
+        factoryId,
+        columnDefinitions: Array.isArray(args.columnDefinitions)
+          ? args.columnDefinitions
+          : (Array.isArray(args.column_definitions) ? args.column_definitions : []),
+        isActive: args.isActive !== false && args.is_active !== false,
+        createdBy: requester.id,
+      });
+      await auditAiWrite('create_price_list', 'PriceList', row.id, {
+        name,
+        customerId,
+        factoryId,
+        currencyCode: row.currencyCode,
+        validFrom: row.validFrom,
+        validTo: row.validTo,
+      }, requester.id);
+      return { success: true, id: row.id, name, customerId, factoryId, currencyCode: row.currencyCode, validFrom: row.validFrom, validTo: row.validTo };
+    }
+
+    case 'list_price_lists': {
+      const where = {};
+      if (args.customerId || args.customer_id) where.customerId = args.customerId || args.customer_id;
+      if (args.factoryId  || args.factory_id)  where.factoryId  = args.factoryId  || args.factory_id;
+      if (args.isActive !== undefined) where.isActive = !!args.isActive;
+      else if (args.is_active !== undefined) where.isActive = !!args.is_active;
+      const rows = await getDb().PriceList.findAll({
+        where,
+        order: [['createdAt', 'DESC']],
+        attributes: ['id', 'name', 'description', 'currencyCode', 'validFrom', 'validTo', 'customerId', 'factoryId', 'isActive', 'createdAt'],
+      });
+      return rows.length ? rows.map(r => r.toJSON()) : 'No price lists found.';
+    }
+
+    case 'get_price_list': {
+      const id = args.id;
+      if (!id) return 'Error: id is required.';
+      const row = await getDb().PriceList.findByPk(id, {
+        include: [
+          { model: getDb().PriceListItem, as: 'items' },
+          { model: getDb().Customer, attributes: ['id', 'companyName'] },
+          { model: getDb().Factory, attributes: ['id', 'companyName'] },
+        ],
+      });
+      if (!row) return `Error: PriceList ${id} not found.`;
+      return row.toJSON();
+    }
+
+    case 'update_price_list': {
+      const requester = await requireSuperAdmin();
+      const id = args.id;
+      if (!id) return 'Error: id is required.';
+      const row = await getDb().PriceList.findByPk(id);
+      if (!row) return `Error: PriceList ${id} not found.`;
+      const patch = {};
+      const map = {
+        name: 'name',
+        description: 'description',
+        currencyCode: 'currencyCode', currency_code: 'currencyCode',
+        validFrom: 'validFrom', valid_from: 'validFrom',
+        validTo: 'validTo', valid_to: 'validTo',
+        customerId: 'customerId', customer_id: 'customerId',
+        factoryId: 'factoryId', factory_id: 'factoryId',
+        isActive: 'isActive', is_active: 'isActive',
+        columnDefinitions: 'columnDefinitions', column_definitions: 'columnDefinitions',
+      };
+      for (const [k, v] of Object.entries(map)) {
+        if (args[k] !== undefined) patch[v] = args[k];
+      }
+      // Validate FK changes if the caller is moving the list to a new parent.
+      if (patch.customerId) {
+        const c = await getDb().Customer.findByPk(patch.customerId);
+        if (!c) return `Error: Customer ${patch.customerId} not found.`;
+      }
+      if (patch.factoryId) {
+        const f = await getDb().Factory.findByPk(patch.factoryId);
+        if (!f) return `Error: Factory ${patch.factoryId} not found.`;
+      }
+      const before = {};
+      for (const k of Object.keys(patch)) before[k] = row[k];
+      await row.update(patch);
+      await auditAiWrite('update_price_list', 'PriceList', row.id, { before, after: patch }, requester.id);
+      return { success: true, id: row.id, updated: Object.keys(patch), before, after: patch };
+    }
+
+    case 'archive_price_list': {
+      const requester = await requireSuperAdmin();
+      const id = args.id;
+      if (!id) return 'Error: id is required.';
+      const row = await getDb().PriceList.findByPk(id);
+      if (!row) return `Error: PriceList ${id} not found.`;
+      if (!row.isActive) return `PriceList "${row.name}" is already inactive.`;
+      await row.update({ isActive: false });
+      await auditAiWrite('archive_price_list', 'PriceList', row.id, { name: row.name }, requester.id);
+      return { success: true, id: row.id, name: row.name, archived: true };
+    }
+
+    case 'add_price_list_item': {
+      const requester = await requireSuperAdmin();
+      const priceListId = args.priceListId || args.price_list_id;
+      if (!priceListId) return 'Error: priceListId is required.';
+      const priceList = await getDb().PriceList.findByPk(priceListId);
+      if (!priceList) return `Error: PriceList ${priceListId} not found.`;
+      // productId is optional — items can be free-form (sku + productName)
+      // for entries that don't have a catalog Product row yet.
+      const productId = args.productId || args.product_id || null;
+      if (productId) {
+        const p = await getDb().Product.findByPk(productId);
+        if (!p) return `Error: Product ${productId} not found.`;
+      }
+      const num = (v) => (v === undefined || v === null || v === '' ? null : parseFloat(v));
+      const int = (v) => (v === undefined || v === null || v === '' ? null : parseInt(v, 10));
+      const row = await getDb().PriceListItem.create({
+        id: uuidv4(),
+        priceListId,
+        productId,
+        sku:          args.sku || null,
+        productName:  args.productName || args.product_name || null,
+        sellingPrice: num(args.sellingPrice ?? args.selling_price),
+        costPrice:    num(args.costPrice    ?? args.cost_price),
+        minimumOrder: num(args.minimumOrder ?? args.minimum_order),
+        leadTimeDays: int(args.leadTimeDays ?? args.lead_time_days),
+        margin:       num(args.margin),
+        unit:         args.unit || 'sqm',
+        customColumns: (args.customColumns && typeof args.customColumns === 'object')
+          ? args.customColumns
+          : (args.custom_columns && typeof args.custom_columns === 'object' ? args.custom_columns : {}),
+        notes:        args.notes || null,
+      });
+      await auditAiWrite('add_price_list_item', 'PriceListItem', row.id, {
+        priceListId,
+        productId,
+        sku: row.sku,
+        sellingPrice: row.sellingPrice,
+        costPrice: row.costPrice,
+      }, requester.id);
+      return { success: true, id: row.id, priceListId, productId, sku: row.sku, productName: row.productName, sellingPrice: row.sellingPrice };
+    }
+
+    case 'update_price_list_item': {
+      const requester = await requireSuperAdmin();
+      const id = args.id;
+      if (!id) return 'Error: id is required.';
+      const row = await getDb().PriceListItem.findByPk(id);
+      if (!row) return `Error: PriceListItem ${id} not found.`;
+      const patch = {};
+      const map = {
+        productId: 'productId', product_id: 'productId',
+        sku: 'sku',
+        productName: 'productName', product_name: 'productName',
+        sellingPrice: 'sellingPrice', selling_price: 'sellingPrice',
+        costPrice: 'costPrice', cost_price: 'costPrice',
+        minimumOrder: 'minimumOrder', minimum_order: 'minimumOrder',
+        leadTimeDays: 'leadTimeDays', lead_time_days: 'leadTimeDays',
+        margin: 'margin',
+        unit: 'unit',
+        notes: 'notes',
+        customColumns: 'customColumns', custom_columns: 'customColumns',
+      };
+      for (const [k, v] of Object.entries(map)) {
+        if (args[k] !== undefined) patch[v] = args[k];
+      }
+      if (patch.productId) {
+        const p = await getDb().Product.findByPk(patch.productId);
+        if (!p) return `Error: Product ${patch.productId} not found.`;
+      }
+      const before = {};
+      for (const k of Object.keys(patch)) before[k] = row[k];
+      await row.update(patch);
+      await auditAiWrite('update_price_list_item', 'PriceListItem', row.id, { before, after: patch }, requester.id);
+      return { success: true, id: row.id, updated: Object.keys(patch), before, after: patch };
+    }
+
+    case 'remove_price_list_item': {
+      const requester = await requireSuperAdmin();
+      const id = args.id;
+      if (!id) return 'Error: id is required.';
+      const row = await getDb().PriceListItem.findByPk(id);
+      if (!row) return `Error: PriceListItem ${id} not found.`;
+      const snapshot = {
+        priceListId: row.priceListId,
+        productId:   row.productId,
+        sku:         row.sku,
+        productName: row.productName,
+        sellingPrice: row.sellingPrice,
+      };
+      await row.destroy();
+      await auditAiWrite('remove_price_list_item', 'PriceListItem', id, snapshot, requester.id);
+      return { success: true, id, removed: snapshot };
+    }
+
     case 'create_product_category': {
       const requester = await requireSuperAdmin();
       const name = (args.name || '').trim();
@@ -6628,6 +6851,131 @@ const TOOL_DEFS = [
       },
     },
   },
+
+  // ── Phase 4.27 — PriceList + PriceListItem tools ──────────────────────────
+  {
+    name: 'create_price_list',
+    description: 'Phase 4.27 — Create a PriceList (super-admin only). A PriceList groups SKU-level price quotes for a single Client (customerId) or Supplier (factoryId), or as a generic template (neither set). name is required; everything else optional. Pass validFrom/validTo to scope the window. Writes ai_assistant_create_price_list to AuditLog. ALWAYS show Alex a preview (name, parent, currency, window) and wait for explicit confirmation before calling.',
+    inputSchema: {
+      type: 'object',
+      required: ['name'],
+      properties: {
+        name:              { type: 'string',  description: 'Display name e.g. "Milliken Q3 2026 SPC pricing".' },
+        description:       { type: 'string' },
+        currencyCode:      { type: 'string',  description: 'ISO-3 currency code. Default USD.' },
+        customerId:        { type: 'string',  description: 'Client UUID. Mutually exclusive with factoryId in practice (a list is a quote either to a client or from a supplier).' },
+        factoryId:         { type: 'string',  description: 'Supplier UUID.' },
+        validFrom:         { type: 'string',  description: 'YYYY-MM-DD. Optional.' },
+        validTo:           { type: 'string',  description: 'YYYY-MM-DD. Optional, null = open-ended.' },
+        isActive:          { type: 'boolean', description: 'Default true.' },
+        columnDefinitions: { type: 'array',   description: 'Optional JSON array describing custom columns visible to the user (each entry { key, label, type }).' },
+      },
+    },
+  },
+  {
+    name: 'list_price_lists',
+    description: 'Phase 4.27 — List PriceList rows. Filter by customerId / factoryId / isActive. Returns a flat list of summaries; use get_price_list for full content including items.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        customerId: { type: 'string' },
+        factoryId:  { type: 'string' },
+        isActive:   { type: 'boolean' },
+      },
+    },
+  },
+  {
+    name: 'get_price_list',
+    description: 'Phase 4.27 — Fetch a single PriceList with its line items + parent Client/Supplier names.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'PriceList UUID.' } },
+    },
+  },
+  {
+    name: 'update_price_list',
+    description: 'Phase 4.27 — Update a PriceList (super-admin only). Pass id + any subset of editable fields. ALWAYS show the before/after diff and wait for explicit confirmation. Writes ai_assistant_update_price_list to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:                { type: 'string' },
+        name:              { type: 'string' },
+        description:       { type: ['string', 'null'] },
+        currencyCode:      { type: 'string' },
+        customerId:        { type: ['string', 'null'] },
+        factoryId:         { type: ['string', 'null'] },
+        validFrom:         { type: ['string', 'null'] },
+        validTo:           { type: ['string', 'null'] },
+        isActive:          { type: 'boolean' },
+        columnDefinitions: { type: 'array' },
+      },
+    },
+  },
+  {
+    name: 'archive_price_list',
+    description: 'Phase 4.27 — Soft-archive a PriceList by setting isActive=false (super-admin only). The row is preserved and can be reactivated via update_price_list { isActive: true }. Writes ai_assistant_archive_price_list to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string' } },
+    },
+  },
+  {
+    name: 'add_price_list_item',
+    description: 'Phase 4.27 — Add a PriceListItem to an existing PriceList (super-admin only). priceListId is required. productId is optional — entries can be free-form (sku + productName) for SKUs that are not in the catalog yet. Writes ai_assistant_add_price_list_item to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['priceListId'],
+      properties: {
+        priceListId:  { type: 'string' },
+        productId:    { type: 'string', description: 'Optional. UUID of a catalog Product. Omit for free-form items.' },
+        sku:          { type: 'string', description: 'Required when productId is omitted; optional otherwise (overrides the catalog SKU display label).' },
+        productName:  { type: 'string', description: 'Display name; required when productId is omitted.' },
+        sellingPrice: { type: 'number', description: 'Per-unit selling price in the PriceList currency.' },
+        costPrice:    { type: 'number', description: 'Per-unit cost in the PriceList currency.' },
+        minimumOrder: { type: 'number' },
+        leadTimeDays: { type: 'number' },
+        margin:       { type: 'number', description: 'Decimal margin override (e.g. 0.07 = 7%). Optional.' },
+        unit:         { type: 'string', description: 'Unit label (default "sqm").' },
+        customColumns:{ type: 'object', description: 'Free-form JSON map keyed by the PriceList.columnDefinitions keys.' },
+        notes:        { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'update_price_list_item',
+    description: 'Phase 4.27 — Update a PriceListItem (super-admin only). Pass id + any subset of editable fields. ALWAYS show the before/after diff. Writes ai_assistant_update_price_list_item to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id:           { type: 'string' },
+        productId:    { type: ['string', 'null'] },
+        sku:          { type: ['string', 'null'] },
+        productName:  { type: ['string', 'null'] },
+        sellingPrice: { type: ['number', 'null'] },
+        costPrice:    { type: ['number', 'null'] },
+        minimumOrder: { type: ['number', 'null'] },
+        leadTimeDays: { type: ['number', 'null'] },
+        margin:       { type: ['number', 'null'] },
+        unit:         { type: 'string' },
+        notes:        { type: ['string', 'null'] },
+        customColumns:{ type: 'object' },
+      },
+    },
+  },
+  {
+    name: 'remove_price_list_item',
+    description: 'Phase 4.27 — Hard-delete a PriceListItem row (super-admin only). PriceListItem has no soft-delete column; the row is destroyed. The snapshot of the deleted values is preserved in the ai_assistant_remove_price_list_item AuditLog row. ALWAYS confirm with Alex first.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string' } },
+    },
+  },
+
   {
     name: 'create_product_category',
     description: 'Phase 4.9.1 — Create a ProductCategory row (super-admin only). Use to add a new top-level category or sub-category. ALWAYS show Alex a preview (name, parent name, sortOrder, description) and wait for explicit confirmation before calling. Slug auto-derived from name when omitted. Refuses if (parentId, slug) collides with an existing non-archived row. Writes ai_assistant_create_taxonomy_category to AuditLog.',
