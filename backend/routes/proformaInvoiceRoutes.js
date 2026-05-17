@@ -246,13 +246,41 @@ router.post('/:id/confirm', requireAuth, async (req, res, next) => {
       { statusChange: { before: beforeStatus, after: 'confirmed' } },
       req.ip).catch(() => {});
 
+    // Phase 4.25c: SalesOrder.confirm -> PurchaseOrder(s) per factory.
+    // The SO is born with status='confirmed' (model default), so the
+    // chain continues immediately. Best-effort: PO auto-create failure
+    // logs an audit row but does NOT roll back the upstream PI or SO.
+    let poChainResult = null;
+    try {
+      const workflowService = require('../services/workflowService');
+      poChainResult = await workflowService.onSalesOrderConfirmed(chainResult.salesOrder, {
+        userId: req.user && req.user.id,
+        ip: req.ip,
+        source: 'rest_confirm_cascade',
+      });
+    } catch (poErr) {
+      auditService.logAction(
+        (req.user && req.user.id) || null,
+        'auto_create_failed',
+        'SalesOrder',
+        chainResult.salesOrder.id,
+        { error: poErr && poErr.message, chainStep: 'onSalesOrderConfirmed', phase: '4.25c' },
+        req.ip || null,
+      ).catch(() => {});
+    }
+
     res.json(getSuccessResponse({
       proformaInvoice: pi,
       salesOrder: chainResult.salesOrder,
       autoChainCreated: !chainResult.alreadyExisted,
+      purchaseOrders: poChainResult && poChainResult.ok ? {
+        created: poChainResult.created.map(po => ({ id: po.id, poNumber: po.poNumber, factoryId: po.factoryId })),
+        alreadyExisted: poChainResult.alreadyExisted.map(po => ({ id: po.id, poNumber: po.poNumber, factoryId: po.factoryId })),
+        skipped: poChainResult.skipped,
+      } : null,
     }, chainResult.alreadyExisted
       ? 'Proforma Invoice confirmed (SalesOrder already existed)'
-      : 'Proforma Invoice confirmed and Sales Order auto-created'));
+      : 'Proforma Invoice confirmed; SalesOrder + PurchaseOrder(s) auto-created'));
   } catch (error) {
     next(error);
   }

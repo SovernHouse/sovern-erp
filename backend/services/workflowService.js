@@ -269,7 +269,138 @@ async function onProformaInvoiceConfirmed(proforma, ctx = {}) {
   return { ok: true, salesOrder, alreadyExisted: false };
 }
 
+
+/**
+ * onSalesOrderConfirmed (Phase 4.25c).
+ *
+ * Side-effect of SalesOrder.confirm: auto-create one draft PurchaseOrder
+ * for each unique factory referenced by the SO line items. Third chain
+ * hop of the international-trade order-to-cash chain. Factories are
+ * grouped by Product.factoryId; line items for the same factory are
+ * bundled into the same PO.
+ *
+ * Idempotency: (PurchaseOrder.salesOrderId, factoryId) is the natural
+ * compound key. The method first lists existing POs for this SO; for
+ * each factory already represented, skip the create and reuse the
+ * existing PO. The return shape includes both created and alreadyExisted
+ * lists so the caller can report exactly what happened.
+ *
+ * Brand-code inheritance: each PO inherits brandCode from the SO.
+ *
+ * Line-item grouping: each SO item carries productId; the workflow
+ * looks up Product.factoryId for grouping. If an item is sourced from
+ * a product without a factoryId, it is skipped with a warning entry
+ * in the audit row. Future Phase 4.25 work may allow per-item factory
+ * override (i.e. line-level factoryId on SalesOrderItem).
+ *
+ * @param {object} salesOrder - Sequelize SalesOrder instance.
+ * @param {object} ctx - { userId, ip, source }
+ * @returns {Promise<{ok, created: PO[], alreadyExisted: PO[],
+ *   skipped: SOItem[], code?, message?}>}
+ */
+async function onSalesOrderConfirmed(salesOrder, ctx = {}) {
+  const { userId, ip, source = 'unknown' } = ctx;
+
+  if (!salesOrder || !salesOrder.id) {
+    return { ok: false, code: 'invalid_input', message: 'salesOrder with id is required' };
+  }
+
+  // Re-fetch with items + product so we know each line factoryId.
+  const fullSO = await db.SalesOrder.findByPk(salesOrder.id, {
+    include: [
+      {
+        association: 'items',
+        include: [{ model: db.Product, as: 'product' }],
+      },
+    ],
+  });
+  if (!fullSO) {
+    return { ok: false, code: 'not_found', message: 'SalesOrder not found at workflow time' };
+  }
+
+  // Group items by factoryId. Items without product.factoryId are skipped.
+  const groups = new Map();   // factoryId -> [items]
+  const skipped = [];
+  for (const item of (fullSO.items || [])) {
+    const fid = item.product && item.product.factoryId;
+    if (!fid) {
+      skipped.push({ itemId: item.id, productId: item.productId, reason: 'no factoryId on product' });
+      continue;
+    }
+    if (!groups.has(fid)) groups.set(fid, []);
+    groups.get(fid).push(item);
+  }
+
+  // Idempotency: existing POs for this SO.
+  const existingPOs = await db.PurchaseOrder.findAll({
+    where: { salesOrderId: fullSO.id },
+  });
+  const existingByFactory = new Map();
+  for (const po of existingPOs) existingByFactory.set(po.factoryId, po);
+
+  const created = [];
+  const alreadyExisted = [];
+
+  for (const [factoryId, items] of groups.entries()) {
+    if (existingByFactory.has(factoryId)) {
+      alreadyExisted.push(existingByFactory.get(factoryId));
+      continue;
+    }
+    const subtotal = items.reduce((s, it) => s + Number(it.total), 0);
+    const { generateDocumentNumber } = require('../utils/helpers');
+    const po = await db.PurchaseOrder.create({
+      id: uuidv4(),
+      poNumber: generateDocumentNumber('PO'),
+      salesOrderId: fullSO.id,
+      factoryId,
+      brandCode: fullSO.brandCode || 'SH',
+      status: 'draft',
+      subtotal,
+      total: subtotal,
+      currency: fullSO.currency,
+    });
+    for (const item of items) {
+      await db.PurchaseOrderItem.create({
+        id: uuidv4(),
+        purchaseOrderId: po.id,
+        productId: item.productId,
+        description: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        unitPrice: item.unitPrice,
+        total: item.total,
+      });
+    }
+    created.push(po);
+  }
+
+  auditService.logAction(
+    userId || null,
+    'auto_create',
+    'PurchaseOrder',
+    fullSO.id,   // anchor the audit on the SO (multiple POs created from one SO)
+    {
+      sourceEntity: 'SalesOrder',
+      sourceId: fullSO.id,
+      sourceOrderNumber: fullSO.orderNumber,
+      trigger: 'sales_order.confirm',
+      phase: '4.25c',
+      createdCount: created.length,
+      alreadyExistedCount: alreadyExisted.length,
+      skippedCount: skipped.length,
+      createdPOIds: created.map(po => po.id),
+      createdPONumbers: created.map(po => po.poNumber),
+      skippedItems: skipped,
+      source,
+    },
+    ip || null,
+  ).catch(() => {});
+
+  return { ok: true, created, alreadyExisted, skipped };
+}
+
 module.exports = {
   onQuotationAccepted,
   onProformaInvoiceConfirmed,
+  onSalesOrderConfirmed,
 };
