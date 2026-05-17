@@ -12,6 +12,7 @@ export const FLOORING_PRODUCT_TYPES = [
   'lvt',
   'spc',
   'wpc',
+  'engineered_spc',
   'hardwood',
   'laminate',
   'ceramic',

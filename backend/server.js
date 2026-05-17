@@ -687,6 +687,16 @@ db.sequelize.authenticate()
       logger.warn('[boot] phase4.15c-1 product cubic_meters skipped:', e.message);
     }
 
+    // Phase 4.20 (Bug 4b): add ProductCategory.default_brand column +
+    // backfill 'FW' on the Resilient flooring subtree. Sentinel:
+    // phase4_20_product_category_default_brand.
+    try {
+      const { migrate420ProductCategoryDefaultBrand } = require('./services/migrate420ProductCategoryDefaultBrand');
+      await migrate420ProductCategoryDefaultBrand(db);
+    } catch (e) {
+      logger.warn('[boot] phase4.20 product category default_brand skipped:', e.message);
+    }
+
     // Phase 4.5, C24: refresh FW Brand signature (HTML + text) to the
     // Country Manager / FlorWay+HanHua design. Idempotent via AuditLog
     // sentinel; SH untouched.

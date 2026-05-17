@@ -240,6 +240,59 @@ export async function getProduct(id: string) {
   return res.data;
 }
 
+// ─── Product Taxonomy (Phase 4.20 — mobile parity for desktop Settings/ProductTaxonomy) ───
+// Server endpoints: backend/controllers/productCategoryController.js
+// Same response envelope as the rest of the API: { success, data }.
+
+export interface ProductCategoryNode {
+  id: string;
+  name: string;
+  slug?: string;
+  icon?: string | null;
+  description?: string | null;
+  parentId?: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  isArchived?: boolean;
+  children?: ProductCategoryNode[];
+}
+
+export async function getCategoryTree(includeArchived = false) {
+  const qs = includeArchived ? '?includeArchived=true' : '';
+  const res = await request<{ success: boolean; data: ProductCategoryNode[] }>(
+    `/api/products/categories/tree${qs}`,
+  );
+  return res.data;
+}
+
+export async function createCategory(input: { name: string; parentId?: string | null; icon?: string | null; sortOrder?: number }) {
+  const res = await request<{ success: boolean; data: ProductCategoryNode }>('/api/products/categories', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.data;
+}
+
+export async function updateCategory(id: string, patch: { name?: string; icon?: string | null; sortOrder?: number; isActive?: boolean }) {
+  const res = await request<{ success: boolean; data: ProductCategoryNode }>(`/api/products/categories/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(patch),
+  });
+  return res.data;
+}
+
+export async function deleteCategoryNode(id: string): Promise<void> {
+  await request<{ success: boolean }>(`/api/products/categories/${id}`, { method: 'DELETE' });
+}
+
+export async function archiveCategoryNode(id: string): Promise<void> {
+  await request<{ success: boolean }>(`/api/products/categories/${id}/archive`, { method: 'PATCH' });
+}
+
+export async function restoreCategoryNode(id: string): Promise<void> {
+  await request<{ success: boolean }>(`/api/products/categories/${id}/restore`, { method: 'PATCH' });
+}
+
 // ─── Customers ────────────────────────────────────────────────────────────
 
 export async function getCustomers(params?: { search?: string; page?: number }) {

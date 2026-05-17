@@ -4,11 +4,22 @@
 
 ---
 
-## Last Updated — 2026-05-16 Taiwan time
+## Last Updated — 2026-05-17 Taiwan time
 
-**Picking up tomorrow:** four UI/UX bugs Alex spotted at end-of-day (see "Bugs to fix tomorrow" section below) plus Phase 4.19c — service-layer convergence for Product / ProductPrice / ProductSpec. Phase 4.19c is the structural fix that would have prevented the `sellingPrice` rename fan-out earlier today.
+**Picking up next:** Phase 4.19c — service-layer convergence for Product / ProductPrice / ProductSpec (highest-leverage open item; ~half-day). Still pending: deeper investigation into the 2026-05-16 14:42 bulk Factory soft-delete (5 factories in 9 seconds — script or bulk action, not 5 manual clicks; root cause unknown). EU sanctions URL webgate alert check-in cron-scheduled for 2026-05-18 09:37 TPE.
 
-**Latest:** Phase 4.19 — guardrails + emergency hotfix. Mid-session "failed to load products" alarm: `productController.getAll` included `ProductPrice.sellingPrice` but Phase 4.9.2b renamed that column to `sellingPriceUsdPerM2` long ago. Audit found 5 more stale `sellingPrice` references (factory price update, quote builder, logistics PDF, MCP create_product response in 2 spots) — all silently wrong since the rename. Patched all 6 in one commit. Then shipped **4.19a** (audit invariant test that walks every MCP `case` block, finds DB writes, requires a matching `auditAiWrite` — caught 4 real gaps which got fixed: add_lead_activity, log_activity, update_triage_item, send_outreach_email) and **4.19b** (orphan-FK detector that scans `sqlite_master` for `REFERENCES …_orphan_…`; pins L-052 from Phase 4.16.4). Suite 626/626 green.
+**Latest:** Phase 4.20 — IronLite visibility bug cluster fixed. Yesterday's IronLite shipping work landed 9 SKUs + 2 factories on prod but every UI surface for them was broken. Five sub-fixes in one wave:
+
+- **4.20 Bug 1A** — `BrandFilterPicker` only offered "All Brands" when super_admin opted into cross-brand viewMode via URL. Relaxed: any user with 2+ accessible brands sees the option (backend `brandWhere` still scopes to `accessibleBrands` on `?brandCode=all`, so non-super-admin multi-brand users are safe). `ProductCatalog.jsx` + mobile `products.tsx` now default super_admin's `brandFilter` to `'all'` so the catalog opens aggregated, not single-brand-locked.
+- **4.20 Bug 1B** — IronLite SKUs were created with `productType='other'` because the MCP enum didn't include `engineered_spc`. Added `engineered_spc` to the Product model ENUM, MCP create+update enum coercion, both MCP schema descriptions, desktop+mobile FLOORING_PRODUCT_TYPES filter arrays, and the desktop catalog dropdown. Direct prod UPDATE retagged the 9 IL-* SKUs from `product_type='other'` → `'engineered_spc'`.
+- **4.20 Bug 2** — Both HanHua + FlorWay factories were soft-deleted yesterday 2026-05-16 14:42 UTC as part of an unexplained bulk-delete of 5 factories. Restored both via direct DB `UPDATE Factory SET deleted_at=NULL` (the other 3 in the wave look like accidental duplicates of an older 2026-05-07 wave-1 delete; left deleted). Backup at `data/erp.db.pre-4_20-bug2-factory-restore.backup`.
+- **4.20 Bug 3** — `/products/categories` rendered a hardcoded stub component with 3 fake categories (Laminate Flooring / Vinyl Flooring / Hardwood). Real taxonomy lives at `/settings/product-taxonomy`. Deleted the stub, redirected the route, repointed Procurement nav entry. **Mobile parity gap closed:** new `mobile/sovern-ops-app/app/product-taxonomy.tsx` (~380 lines, core CRUD + archive + show-archived toggle) mirrors the desktop taxonomy UI; linked from Settings tab. Skipped vs desktop: drag reorder (uses up/down N/A — read-only sort), seed-defaults (desktop only), JSON import/export (heavy on mobile).
+- **4.20 Bug 4a** — `BrandPicker` on the Product edit form was visually present but `disabled={isEdit}`, so clicks did nothing. Added `'Product'` to `OVERRIDABLE_ENTITY_TYPES` in `brandRoutes.js` and surfaced a super_admin-only "Change brand…" button on the edit form that opens a `BrandOverrideModal` (new brand picker + reason textarea, posts to `/admin/brand-override`, audit-logged).
+- **4.20 Bug 4b** — Resilient flooring subtree now defaults `brand_code='FW'` on product create. Added `ProductCategory.default_brand` nullable column + `migrate420ProductCategoryDefaultBrand.js` (sentinel-guarded ALTER + seed 'FW' on slugs `resilient/lvt/spc/engineered-spc/wpc/vinyl-sheet`). `ProductCatalog.jsx` prefills `form.brandCode` on category change for new products. MCP `create_product` falls back to `category.defaultBrand` when no `brandCode` is passed. Both paths are still overridable.
+
+Test status: 46 product/MCP/audit-invariant/orphan-FK suite passes after the changes (phase417, phase418, phase419a, phase419b, mcpSmoke, mcpControllerConvergence). Wider 626-suite verification expected via CI on push.
+
+**Previous:** Phase 4.19 — guardrails + emergency hotfix. Mid-session "failed to load products" alarm: `productController.getAll` included `ProductPrice.sellingPrice` but Phase 4.9.2b renamed that column to `sellingPriceUsdPerM2` long ago. Audit found 5 more stale `sellingPrice` references (factory price update, quote builder, logistics PDF, MCP create_product response in 2 spots) — all silently wrong since the rename. Patched all 6 in one commit. Then shipped **4.19a** (audit invariant test that walks every MCP `case` block, finds DB writes, requires a matching `auditAiWrite` — caught 4 real gaps which got fixed: add_lead_activity, log_activity, update_triage_item, send_outreach_email) and **4.19b** (orphan-FK detector that scans `sqlite_master` for `REFERENCES …_orphan_…`; pins L-052 from Phase 4.16.4). Suite 626/626 green.
 
 2026-05-16 Taiwan time (earlier). Phase 4.18 — add missing `ai_assistant_create_product` AuditLog write. The 9 IronLite SKUs created 2026-05-16 had zero corresponding audit rows even though sibling `create_product_spec` (9) and `create_product_price` (18) audited correctly. Added `auditAiWrite('create_product', 'Product', product.id, {...key fields...}, USER_ID)` in the MCP handler after the row succeeds. Convergence test runs the handler in-process (new `__testing.callTool` shim) and asserts the audit row lands. Forward-only; existing 9 rows intact, no backfill. Suite 622/622 green.
 
@@ -28,6 +39,10 @@
 | `4668020` | 4.15 wrap | Container (5) + Inspection (9) + Sample (6) + LC (7) MCP tools + 4 services. **Phase 4.15 complete** (~70 tools across the sprint). |
 
 **Direct prod-DB fixes this session (no commit, applied via `vm_exec`):**
+- `4.20 Bug 2` — `UPDATE Factory SET deleted_at=NULL WHERE id IN (HanHua, FlorWay)`. Backup at `erp.db.pre-4_20-bug2-factory-restore.backup`.
+- `4.20 Bug 1B` — `UPDATE Product SET product_type='engineered_spc' WHERE sku LIKE 'IL-%' AND deleted_at IS NULL` (9 rows). Forward-only retag; the engineered_spc enum value lands in code via Phase 4.20 deploy.
+
+**Direct prod-DB fixes prior session (no commit, applied via `vm_exec`):**
 - `4.16.4` — Rebuilt `Product` table to drop the broken `REFERENCES ProductCategory_orphan_20260515` FK. 4 rows preserved. Backup at `erp.db.pre-4_16_4-fk-rebuild.backup`.
 - `4.17 fu` — Rebuilt `ProductAttribute` table to drop the same orphan FK. 0 rows. Backup at `erp.db.pre-4_17fu-fk-rebuild.backup`. Wrote retroactive Phase 4.15c-1 sentinel.
 - Cleared 9 stale IronLite ScheduledActivity rows (Product, type='approve', status='pending') after the products were activated by IronLite Turn 1.
@@ -38,15 +53,19 @@
 
 ## CI Status
 
-- **Latest deployed commit:** `8ee420b` (Phase 4.17 follow-up). `b06d6f7` (sweep) in flight.
-- **Backend health:** live at `https://erp.sovernhouse.co/api`. All boot-time migrations sentinel-recorded through `phase4_15c1_product_cubic_meters_added`. Parity check reports "checked 104 model(s) clean, 0 with mismatch(es)".
-- **Tests:** 619 passing + 4 skipped (real-URL probes — gated on `RUN_SANCTIONS_URL_CHECK=true`, fired weekly by `.github/workflows/sanctions-url-check.yml`).
-- **Mobile parity:** Phase 4.16 SSE branch is desktop-only opt-in via `Accept: text/event-stream`; mobile keeps the JSON-buffer branch and inherits the heartbeat watchdog + 900s budget automatically. No EAS rebuild needed for the 4.16/4.17 wave.
-- **Frontend:** Vercel auto-deploys on push. Phase 4.17 added `ProductApprovalModal.jsx` to the bundle; verify post-deploy by clicking any Product activity pill.
+- **Latest deployed commit:** `8ee420b` (Phase 4.17 follow-up). Phase 4.20 is staged locally, pending Alex's push.
+- **Backend health:** live at `https://erp.sovernhouse.co/api`. Boot-time migration sentinel chain will extend to `phase4_20_product_category_default_brand` on next restart.
+- **Tests:** Phase 4.20 verified against 6 representative suites (phase417/418/419a/419b/mcpSmoke/mcpControllerConvergence = 46 passes). Full 626-suite green expected via CI on push.
+- **Mobile parity:** new `app/product-taxonomy.tsx` screen closes the pre-existing taxonomy parity gap. Linked from Settings tab → "Product Taxonomy". OTA-deliverable (no EAS rebuild needed — pure JS).
+- **Frontend:** Vercel auto-deploys on push. Phase 4.20 adds `BrandOverrideModal` (inline in `ProductCatalog.jsx`) + removes `pages/Products/ProductCategories.jsx`. Verify post-deploy: (1) Settings → Products opens with All Brands selected for super_admin; (2) Procurement → Product Categories now redirects to `/settings/product-taxonomy`; (3) Edit product → "Change brand…" opens override modal.
 
 ---
 
-## Bugs to fix tomorrow (Alex's end-of-day report 2026-05-16)
+## Bugs from 2026-05-16 — ALL FIXED in Phase 4.20 (see Latest above)
+
+Original report retained below for context.
+
+
 
 All four spotted in a quick UI walkthrough after the Phase 4.19 deploy.
 Triage notes below — every DB-level fact was confirmed earlier via direct

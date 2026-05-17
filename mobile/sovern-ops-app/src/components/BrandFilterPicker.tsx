@@ -30,7 +30,10 @@ function BrandFilterPicker({ value, onChange }: Props) {
     () => brands.filter((b) => accessibleBrands.includes(b.code)),
     [brands, accessibleBrands],
   );
-  const showAll = isCrossBrand && visible.length > 1;
+  // Phase 4.20: parity with desktop BrandFilterPicker — any multi-brand user gets
+  // the "All" pill. Backend brandWhere falls through to scope.where on ?brandCode=
+  // missing, keeping the user scoped to accessibleBrands.
+  const showAll = visible.length > 1;
 
   // Stable per-code onPress map so the Pill children see referentially
   // equal handlers across re-renders. onAll is its own callback.

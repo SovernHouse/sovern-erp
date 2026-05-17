@@ -56,6 +56,16 @@ module.exports = (sequelize) => {
       defaultValue: false,
       allowNull: false,
     },
+    // Phase 4.20 (Bug 4b): per-category brand pre-fill. When set, the
+    // Product create form (and create_product MCP handler) defaults
+    // brand_code to this value on new products in this category. Null
+    // = no preference (caller picks). Resilient flooring subtree (LVT,
+    // SPC, Engineered SPC, WPC, Vinyl Sheet) seeds to 'FW' so IronLite-
+    // style creates don't accidentally land on SH.
+    defaultBrand: {
+      type: DataTypes.STRING(8),
+      allowNull: true,
+    },
   }, {
     tableName: 'ProductCategories',
     timestamps: true,

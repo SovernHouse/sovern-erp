@@ -109,9 +109,9 @@ module.exports = (sequelize) => {
     // prefixes (FW-*, SH-*) so collisions don't occur in practice. Per-brand
     // SKU uniqueness deferred to a Phase 5 table rebuild.
     productType: {
-      type: DataTypes.ENUM('lvt', 'spc', 'wpc', 'hardwood', 'laminate', 'tile', 'ceramic', 'other'),
+      type: DataTypes.ENUM('lvt', 'spc', 'wpc', 'engineered_spc', 'hardwood', 'laminate', 'tile', 'ceramic', 'other'),
       allowNull: true,
-      comment: 'Catalog filter dimension. Coexists with categoryId FK (existing hierarchy).',
+      comment: 'Catalog filter dimension. Coexists with categoryId FK (existing hierarchy). engineered_spc is a thicker/multi-ply SPC subtype (e.g. IronLite Core).',
     },
     baseFobPrice: {
       type: DataTypes.DECIMAL(12, 2),

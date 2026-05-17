@@ -75,6 +75,7 @@ export default function SettingsScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>System</Text>
         <NavRow label="Brands" onPress={() => router.push('/brands')} />
+        <NavRow label="Product Taxonomy" onPress={() => router.push('/product-taxonomy')} />
       </View>
 
       {/* Sign out */}

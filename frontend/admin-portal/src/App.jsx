@@ -28,7 +28,6 @@ const FactoryForm    = React.lazy(() => import('./pages/Factories/FactoryForm'))
 const ProductList       = React.lazy(() => import('./pages/Products/ProductList'))
 const ProductDetail     = React.lazy(() => import('./pages/Products/ProductDetail'))
 const ProductForm       = React.lazy(() => import('./pages/Products/ProductForm'))
-const ProductCategories = React.lazy(() => import('./pages/Products/ProductCategories'))
 const SpecTemplates     = React.lazy(() => import('./pages/Products/SpecTemplates'))
 
 // Inquiries
@@ -245,7 +244,7 @@ function AppRoutes() {
       {/* ── Products ── */}
       <Route path="/products"                  element={<P permission="products"><ProductList /></P>} />
       <Route path="/products/new"              element={<P permission="products"><ProductForm /></P>} />
-      <Route path="/products/categories"       element={<P permission="products"><ProductCategories /></P>} />
+      <Route path="/products/categories"       element={<Navigate to="/settings/product-taxonomy" replace />} />
       <Route path="/products/spec-templates"   element={<P permission="products"><SpecTemplates /></P>} />
       <Route path="/products/:id"              element={<P permission="products"><ProductDetail /></P>} />
       <Route path="/products/:id/edit"         element={<P permission="products"><ProductForm /></P>} />

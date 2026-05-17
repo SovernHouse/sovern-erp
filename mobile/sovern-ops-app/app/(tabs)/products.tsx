@@ -235,13 +235,15 @@ export default function ProductsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const user = useAuthStore(s => s.user);
+  const isSuperAdmin = user?.role === 'super_admin';
   // Phase 4, C14: brand filter at top of catalog. Hidden for single-brand users.
-  const [brandFilter, setBrandFilter] = useState<string | null>(null);
+  // Phase 4.20: super_admin opens to 'all' so multi-brand catalogs aggregate by
+  // default — avoids the IronLite trap where a single-brand default hid FW rows.
+  const [brandFilter, setBrandFilter] = useState<string | null>(isSuperAdmin ? 'all' : null);
   // Phase 4.5, C21: flooring-only by default. Super-admin toggle reveals
   // auto parts, garments, services, and other lines that exist in schema.
   const [showAllCategories, setShowAllCategories] = useShowAllCategories();
-  const user = useAuthStore(s => s.user);
-  const isSuperAdmin = user?.role === 'super_admin';
 
   async function load(isRefresh = false) {
     try {

@@ -3281,14 +3281,6 @@ async function callTool(name, args) {
     case 'create_product': {
       const { Op } = require('sequelize');
 
-      // Phase 4.9.3a: brandCode is required (was implicit-default 'SH').
-      // Validates against active Brand. AI must pick a brand context
-      // explicitly so cross-brand product creation is auditable.
-      const brandCode = (args.brandCode || args.brand_code || '').toUpperCase();
-      if (!brandCode) return 'Error: brandCode is required. Use list_brands to find a valid code (e.g. "FW" for HanHua / FlorWay / IronLite, "SH" for Sovern House).';
-      const brand = await getDb().Brand.findOne({ where: { code: brandCode, active: true } });
-      if (!brand) return `Error: brand "${brandCode}" not active.`;
-
       // Resolve factory: prefer factory_id, fall back to name search.
       // Now optional — products can be created without a factory in
       // the AI assistant flow (factory tagged later via create_product_price).
@@ -3306,15 +3298,35 @@ async function callTool(name, args) {
       // spec), fall back to name search. Refuse create_category fallback;
       // category provisioning is its own preview-confirm flow.
       let categoryId = args.productCategoryId || args.category_id;
+      let categoryDefaultBrand = null;
       if (!categoryId && args.category_name) {
         const cat = await getDb().ProductCategory.findOne({
           where: { name: { [Op.like]: `%${args.category_name}%` }, isActive: true, isArchived: false },
-          attributes: ['id', 'name'],
+          attributes: ['id', 'name', 'defaultBrand'],
         });
         if (!cat) return `Error: category "${args.category_name}" not found. Use list_product_categories to find one, or create_product_category to add a new one (with preview + confirm).`;
         categoryId = cat.id;
+        categoryDefaultBrand = cat.defaultBrand || null;
+      } else if (categoryId) {
+        // Look up defaultBrand even when category_id came in pre-resolved so
+        // the Phase 4.20 fallback applies symmetrically.
+        const cat = await getDb().ProductCategory.findOne({
+          where: { id: categoryId },
+          attributes: ['id', 'defaultBrand'],
+        });
+        if (cat) categoryDefaultBrand = cat.defaultBrand || null;
       }
       if (!categoryId) return 'Error: productCategoryId or category_name is required.';
+
+      // Phase 4.9.3a: brandCode is required (was implicit-default 'SH').
+      // Phase 4.20 (Bug 4b): if the AI doesn't pass brandCode and the
+      // category has a defaultBrand (e.g. Resilient subtree → 'FW'), use
+      // that as the fallback. Caller can still pass brandCode explicitly
+      // to override.
+      const brandCode = (args.brandCode || args.brand_code || categoryDefaultBrand || '').toUpperCase();
+      if (!brandCode) return 'Error: brandCode is required. Use list_brands to find a valid code (e.g. "FW" for HanHua / FlorWay / IronLite, "SH" for Sovern House).';
+      const brand = await getDb().Brand.findOne({ where: { code: brandCode, active: true } });
+      if (!brand) return `Error: brand "${brandCode}" not active.`;
 
       // Auto-generate SKU if not provided
       let sku = args.sku;
@@ -3363,12 +3375,12 @@ async function callTool(name, args) {
         Object.assign(specs, args.specs);
       }
 
-      // productType column is a STRICT ENUM (lvt/spc/wpc/hardwood/
-      // laminate/tile/ceramic/other). If the AI passes a free-form
-      // label that matches one of the enum values, use it; otherwise
-      // store the raw label in specs.productTypeLabel and set the
-      // column to 'other' so the catalog filter still sees it.
-      const productTypeEnum = ['lvt', 'spc', 'wpc', 'hardwood', 'laminate', 'tile', 'ceramic', 'other'];
+      // productType column is a STRICT ENUM (lvt/spc/wpc/engineered_spc/
+      // hardwood/laminate/tile/ceramic/other). If the AI passes a
+      // free-form label that matches one of the enum values, use it;
+      // otherwise store the raw label in specs.productTypeLabel and set
+      // the column to 'other' so the catalog filter still sees it.
+      const productTypeEnum = ['lvt', 'spc', 'wpc', 'engineered_spc', 'hardwood', 'laminate', 'tile', 'ceramic', 'other'];
       let typedProductType = null;
       if (args.productType) {
         const lower = String(args.productType).toLowerCase();
@@ -3618,7 +3630,7 @@ async function callTool(name, args) {
 
       // productType ENUM coercion
       if (args.productType !== undefined) {
-        const productTypeEnum = ['lvt', 'spc', 'wpc', 'hardwood', 'laminate', 'tile', 'ceramic', 'other'];
+        const productTypeEnum = ['lvt', 'spc', 'wpc', 'engineered_spc', 'hardwood', 'laminate', 'tile', 'ceramic', 'other'];
         const lower = String(args.productType).toLowerCase();
         if (productTypeEnum.includes(lower)) patch.productType = lower;
         else {
@@ -6559,7 +6571,7 @@ const TOOL_DEFS = [
         productCategoryId:    { type: 'string' },
         category_id:          { type: 'string' },
         factoryId:            { type: ['string', 'null'] },
-        productType:          { type: 'string', description: 'Free-form label; coerced to the strict ENUM (lvt/spc/wpc/hardwood/laminate/tile/ceramic/other) with the raw label stored in specifications.productTypeLabel on miss.' },
+        productType:          { type: 'string', description: 'Free-form label; coerced to the strict ENUM (lvt/spc/wpc/engineered_spc/hardwood/laminate/tile/ceramic/other) with the raw label stored in specifications.productTypeLabel on miss.' },
         active:               { type: 'boolean' },
         unitOfMeasure:        { type: 'string', description: 'm2 / sqft / piece / set; mapped to model moqUnit ENUM.' },
         currency:             { type: 'string' },
@@ -6617,7 +6629,7 @@ const TOOL_DEFS = [
         sales_description:    { type: 'string',  description: 'Client-facing description for quotations and sales orders' },
         purchase_description: { type: 'string',  description: 'Supplier-facing description for purchase orders' },
         // Catalog filters / typed columns
-        productType:          { type: 'string',  description: 'Product type. Strict enum: lvt | spc | wpc | hardwood | laminate | tile | ceramic | other. Free-form labels (e.g. "IronLite Core") land in specifications.productTypeLabel with productType=other.' },
+        productType:          { type: 'string',  description: 'Product type. Strict enum: lvt | spc | wpc | engineered_spc | hardwood | laminate | tile | ceramic | other. Free-form labels (e.g. "IronLite Core") land in specifications.productTypeLabel with productType=other.' },
         currency:             { type: 'string',  description: 'ISO-3 currency code. Default USD.' },
         unit:                 { type: 'string',  description: 'Unit: sqm, sqft, box, pallet, roll, piece, container. Default: sqm.' },
         min_order_qty:        { type: 'number',  description: 'Minimum order quantity' },

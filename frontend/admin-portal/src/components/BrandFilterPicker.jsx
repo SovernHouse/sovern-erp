@@ -31,7 +31,12 @@ export default function BrandFilterPicker({ value, onChange, label = 'Brand' }) 
 
   const visibleOptions = brands.filter((b) => accessibleBrands.includes(b.code))
   const isSingleBrand = visibleOptions.length <= 1
-  const allBrandsOption = isCrossBrand && visibleOptions.length > 1
+  // Phase 4.20: surface the "All Brands" option for any user with multi-brand access,
+  // not just super_admin in explicit cross-brand viewMode. Selecting "all" sends no
+  // ?brandCode= to the backend; brandWhere() then falls through to scope.where which
+  // is the user's accessibleBrands IN-clause — so a non-super-admin multi-brand user
+  // is still scoped to their accessible brands, just unioned across them.
+  const allBrandsOption = visibleOptions.length > 1
 
   // Initialize from localStorage or defaultBrand, ONCE on mount.
   useEffect(() => {

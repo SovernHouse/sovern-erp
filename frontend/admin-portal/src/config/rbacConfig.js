@@ -140,7 +140,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Factories', path: '/factories', permission: 'factories' },
         { label: 'Products', path: '/products', permission: 'products' },
         { label: 'Spec Templates', path: '/products/spec-templates', permission: 'products' },
-        { label: 'Product Categories', path: '/products/categories', permission: 'products' },
+        { label: 'Product Categories', path: '/settings/product-taxonomy', permission: 'settings' },
         { label: 'Purchase Orders', path: '/purchase-orders', permission: 'purchase-orders' },
       ],
     },

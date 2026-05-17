@@ -29,6 +29,10 @@ const OVERRIDABLE_ENTITY_TYPES = [
   'Invoice', 'ProformaInvoice',
   'Activity', 'OutreachEmail', 'TriageItem', 'ScheduledActivity',
   'Document', 'DocumentApproval',
+  // Phase 4.20 (Bug 4a): Product brand on existing rows is moved through
+  // the audited override flow rather than a silent update_product patch.
+  // Wired to the "Change brand" button on the desktop Product edit form.
+  'Product',
 ];
 
 // GET /api/brands/:code — single brand (used by brand admin editor).

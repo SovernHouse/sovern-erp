@@ -32,6 +32,7 @@ import { filterByFlooring, useShowAllCategories, FLOORING_PRODUCT_TYPES } from '
 const PRODUCT_TYPES = [
   { value: 'lvt', label: 'LVT' },
   { value: 'spc', label: 'SPC' },
+  { value: 'engineered_spc', label: 'Engineered SPC' },
   { value: 'wpc', label: 'WPC' },
   { value: 'hardwood', label: 'Hardwood' },
   { value: 'laminate', label: 'Laminate' },
@@ -45,7 +46,11 @@ const MOQ_UNITS = ['sqm', 'sqft', 'box', 'pallet', 'roll', 'piece', 'container']
 export default function ProductCatalog() {
   const { user } = useAuth()
   const isSuperAdmin = user?.role === 'super_admin'
-  const [brandFilter, setBrandFilter] = useState(null)
+  // Phase 4.20: super_admin opens the catalog with all accessible brands aggregated
+  // by default. Picker still lets them narrow to SH or FW individually. This avoids
+  // the trap where IronLite (FW) was hidden because defaultBrand=SH pre-selected
+  // a single-brand filter.
+  const [brandFilter, setBrandFilter] = useState(isSuperAdmin ? 'all' : null)
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
   const [factories, setFactories] = useState([])
@@ -197,8 +202,15 @@ export default function ProductCatalog() {
 }
 
 function ProductForm({ editing, categories, factories, onClose, onSaved }) {
+  const { user } = useAuth()
+  const isSuperAdmin = user?.role === 'super_admin'
   const isEdit = !!editing
   const [saving, setSaving] = useState(false)
+  // Phase 4.20 (Bug 4a): brand changes on existing products route through
+  // the audited /admin/brand-override flow rather than a silent patch. The
+  // disabled BrandPicker stays for visual reference; "Change brand" opens
+  // the override modal.
+  const [showBrandOverride, setShowBrandOverride] = useState(false)
   const [form, setForm] = useState({
     brandCode: editing?.brandCode || '',
     sku: editing?.sku || '',
@@ -282,6 +294,26 @@ function ProductForm({ editing, categories, factories, onClose, onSaved }) {
 
   const f = (k) => (e) => setForm(prev => ({ ...prev, [k]: e.target.value }))
 
+  // Phase 4.20 (Bug 4b): on category change for a NEW product, pre-fill
+  // brandCode from category.defaultBrand if present and the user hasn't
+  // already picked a brand. Resilient subtree (LVT, SPC, Engineered SPC,
+  // WPC, Vinyl Sheet) and Resilient itself default to FW per the
+  // migrate420ProductCategoryDefaultBrand seed. Editing an existing
+  // product leaves brandCode locked (handled by the brand-override flow).
+  const handleCategoryChange = (e) => {
+    const nextId = e.target.value
+    setForm(prev => {
+      const next = { ...prev, categoryId: nextId }
+      if (!isEdit && nextId) {
+        const picked = categories.find(c => c.id === nextId)
+        if (picked?.defaultBrand && !prev.brandCode) {
+          next.brandCode = picked.defaultBrand
+        }
+      }
+      return next
+    })
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -290,11 +322,38 @@ function ProductForm({ editing, categories, factories, onClose, onSaved }) {
             {isEdit ? `Edit ${editing.sku}` : 'New product'}
           </h2>
 
-          <BrandPicker
-            value={form.brandCode}
-            onChange={(v) => setForm(prev => ({ ...prev, brandCode: v }))}
-            disabled={isEdit}
-          />
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <BrandPicker
+                value={form.brandCode}
+                onChange={(v) => setForm(prev => ({ ...prev, brandCode: v }))}
+                disabled={isEdit}
+              />
+            </div>
+            {isEdit && isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => setShowBrandOverride(true)}
+                className="text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+                title="Change this product's brand. Requires reason; audit-logged."
+              >
+                Change brand…
+              </button>
+            )}
+          </div>
+
+          {showBrandOverride && (
+            <BrandOverrideModal
+              productId={editing.id}
+              currentBrandCode={form.brandCode}
+              onClose={() => setShowBrandOverride(false)}
+              onSaved={(newBrandCode) => {
+                setForm(prev => ({ ...prev, brandCode: newBrandCode }))
+                setShowBrandOverride(false)
+                onSaved()
+              }}
+            />
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <Field label="SKU *" value={form.sku} onChange={f('sku')} disabled={isEdit}
@@ -307,7 +366,7 @@ function ProductForm({ editing, categories, factories, onClose, onSaved }) {
             <SelectField label="Type" value={form.productType} onChange={f('productType')}
               options={[{ value: '', label: '— None —' }, ...PRODUCT_TYPES]}
             />
-            <SelectField label="Category *" value={form.categoryId} onChange={f('categoryId')}
+            <SelectField label="Category *" value={form.categoryId} onChange={handleCategoryChange}
               options={[{ value: '', label: '— Pick category —' }, ...categories.map(c => ({ value: c.id, label: c.name }))]}
             />
           </div>
@@ -459,6 +518,89 @@ function ProductForm({ editing, categories, factories, onClose, onSaved }) {
             <button type="button" onClick={onClose} className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg">Cancel</button>
             <button type="submit" disabled={saving} className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
               {saving ? 'Saving…' : (isEdit ? 'Save changes' : 'Create product')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// Phase 4.20 (Bug 4a) — audited Product brand change.
+// Opens from "Change brand…" on the edit form. Posts to /admin/brand-override
+// which writes an AuditLog row with the reason. Reason is required (min 3).
+function BrandOverrideModal({ productId, currentBrandCode, onClose, onSaved }) {
+  const [newBrandCode, setNewBrandCode] = useState('')
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const canSubmit = newBrandCode && newBrandCode !== currentBrandCode && reason.trim().length >= 3
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!canSubmit) return
+    setSaving(true)
+    try {
+      await api.patch('/admin/brand-override', {
+        entityType: 'Product',
+        entityId:   productId,
+        newBrandCode,
+        reason:     reason.trim(),
+      })
+      toast.success(`Brand changed to ${newBrandCode}`)
+      onSaved(newBrandCode)
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.response?.data?.message || 'Override failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg w-full max-w-md">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Change product brand</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Routes through <span className="font-mono">/admin/brand-override</span>.
+              Super-admin only. Audit-logged with your reason. Existing quotations and
+              prices remain on the old brand record until they are individually re-tagged.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Current brand</label>
+            <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded text-sm font-mono">
+              {currentBrandCode || '— unset —'}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">New brand *</label>
+            <BrandPicker value={newBrandCode} onChange={setNewBrandCode} />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Reason * <span className="text-xs text-slate-400">(min 3 chars; recorded in AuditLog)</span></label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              placeholder="e.g. Re-tagging from SH to FW after FlorWay absorbed the SKU line."
+              className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!canSubmit || saving}
+              className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {saving ? 'Saving…' : `Change to ${newBrandCode || '…'}`}
             </button>
           </div>
         </form>
