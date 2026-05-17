@@ -4,11 +4,22 @@
 
 ---
 
-## Last Updated — 2026-05-17 Taiwan time
+## Last Updated — 2026-05-17 Taiwan time (late evening)
 
-**Picking up next:** Phase 4.19c — service-layer convergence for Product / ProductPrice / ProductSpec (highest-leverage open item; ~half-day). Still pending: deeper investigation into the 2026-05-16 14:42 bulk Factory soft-delete (5 factories in 9 seconds — script or bulk action, not 5 manual clicks; root cause unknown). EU sanctions URL webgate alert check-in cron-scheduled for 2026-05-18 09:37 TPE.
+**Picking up next:** Phase 4.23 — Customer/Factory entity unification (NEW SPEC required, multi-day refactor). Also pending: Phase 4.19c — service-layer convergence for Product / ProductPrice / ProductSpec. Plus follow-up: apply Phase 4.22 quick-create pattern to LeadForm / InquiryForm / DealForm / PurchaseOrderForm. Investigation still open into the 2026-05-16 14:42 bulk Factory soft-delete root cause. EU sanctions URL webgate alert check-in cron-scheduled for 2026-05-18 09:37 TPE.
 
-**Latest:** Phase 4.20 — IronLite visibility bug cluster fixed. Yesterday's IronLite shipping work landed 9 SKUs + 2 factories on prod but every UI surface for them was broken. Five sub-fixes in one wave:
+**Latest:** Phase 4.21 + 4.22 + 4.24 — Odoo consistency pass. After the 4.20 IronLite cluster shipped, post-deploy verification surfaced another wave of issues (Intelligence tab 500s, taxonomy not recursive, multi-brand users silently scoped to SH-only). Fixed those (4.20.1), then drafted `docs/phase4_21-odoo-consistency-pass.md` directive + added `trade-odoo-patterns.md` skill to codify the entity-detail contract. Executed 4.21a (chatter sweep), 4.24 (Inventory removal), 4.21b (ProductDetail full upgrade), 4.22 (Many2one quick-create). 7 commits, 3 EAS Updates.
+
+- **4.20.1 L-047 fix** — Sequelize returns `User.accessibleBrands` as a stringified JSON array on SQLite, not a parsed array. `brandScope` middleware's `Array.isArray` check was false → fallback to `['SH']` → every multi-brand user (incl. alex@sovernhouse.co) silently scoped to single-brand. Patched parse-on-read in `backend/middleware/brandScope.js` AND `backend/mcp/erpToolServer.js brandScopeForMcp`. Verified alex now resolves `['SH','FW']`.
+- **4.20.1 Recursive taxonomy** — `productCategoryController.getCategoryTree` only attached direct children to roots; grandchildren (Resilient → Engineered SPC) were unreachable. Rewrote as recursive `buildNode`. Desktop `ProductTaxonomy.jsx SubCategoryRow` made recursive with progressive indent. Mobile `app/product-taxonomy.tsx` rewritten with unified `CategoryNode` component.
+- **4.20.1 Intelligence tab fixes** — `/api/analytics/shipment-timeline` 500 fixed (null `row.status` guard). `/api/reports/customer` 404 fixed: added `GET /api/reports/customers` (plural, list aggregate); `getCustomerReport` API client now points at it.
+- **4.21 directive** — `docs/phase4_21-odoo-consistency-pass.md` + new `trade-odoo-patterns.md` skill (separate repo SovernHouse/instructions-skills). Skill codifies the 5 pillars: breadcrumb, smart-button strip, form view, related tabs, chatter at bottom.
+- **4.21a chatter sweep** — ChatterPanel mounted on PaymentDetail / ProformaDetail / GRNDetail / PackingListDetail. Backend chatterController + scheduledActivityController whitelists extended with 'Product', 'GRN', 'PackingList'.
+- **4.21b ProductDetail full upgrade** — Backend: 4 new `GET /api/products/:id/{quotations,sales-orders,purchase-orders,inquiries}` endpoints, brand-scoped on the parent via `brandWhere`, deduplicated by parent id. Desktop: ProductDetail.jsx rewritten with smart-button strip (5 chips) + 7 tabs (Overview / Specifications / Pricing / Quotations / Sales Orders / POs / Inquiries) + Chatter at bottom. Mobile: ProductDetailModal extended with smart-button count chips + ChatterSection.
+- **4.22 Many2one quick-create** — Two new modals: `FactoryQuickCreate` + `CustomerQuickCreate`. Applied to ProductForm (Settings/ProductCatalog) and QuotationForm. "+ New" button next to picker → modal → save → auto-select. Follow-up: apply to LeadForm, InquiryForm, DealForm, PurchaseOrderForm.
+- **4.24 Inventory page removed** — Sovern House holds no inventory. Deleted `/inventory` route + InventoryList.jsx + InventoryAdjustment.jsx + 9 nav entries from rbacConfig.js + inventoryAPI from services/api.js. Kept `/reports/inventory` (historical aggregate; separate concern).
+
+**Phase 4.20 (earlier same day):** Phase 4.20 — IronLite visibility bug cluster fixed. Yesterday's IronLite shipping work landed 9 SKUs + 2 factories on prod but every UI surface for them was broken. Five sub-fixes in one wave:
 
 - **4.20 Bug 1A** — `BrandFilterPicker` only offered "All Brands" when super_admin opted into cross-brand viewMode via URL. Relaxed: any user with 2+ accessible brands sees the option (backend `brandWhere` still scopes to `accessibleBrands` on `?brandCode=all`, so non-super-admin multi-brand users are safe). `ProductCatalog.jsx` + mobile `products.tsx` now default super_admin's `brandFilter` to `'all'` so the catalog opens aggregated, not single-brand-locked.
 - **4.20 Bug 1B** — IronLite SKUs were created with `productType='other'` because the MCP enum didn't include `engineered_spc`. Added `engineered_spc` to the Product model ENUM, MCP create+update enum coercion, both MCP schema descriptions, desktop+mobile FLOORING_PRODUCT_TYPES filter arrays, and the desktop catalog dropdown. Direct prod UPDATE retagged the 9 IL-* SKUs from `product_type='other'` → `'engineered_spc'`.
@@ -27,6 +38,13 @@ Test status: 46 product/MCP/audit-invariant/orphan-FK suite passes after the cha
 
 | Commit | Phase | What |
 |---|---|---|
+| `61c2f9b` | 4.22 | Many2one inline quick-create (FactoryQuickCreate + CustomerQuickCreate modals). Wired into ProductForm + QuotationForm. Follow-up: extend to Lead/Inquiry/Deal/PO forms. |
+| `586c3c7` | 4.21b | ProductDetail full Odoo upgrade: 4 new /api/products/:id/* endpoints + desktop smart-button strip + 7 tabs + Chatter + mobile mirror with count chips. |
+| `02fe8d6` | 4.21a + 4.24 | Chatter sweep (Payment/Proforma/GRN/PackingList) + Inventory page removed entirely. Backend whitelist extended with Product/GRN/PackingList. |
+| `dd5b634` | docs (skills repo) | New `trade-odoo-patterns.md` skill + routing entry. |
+| `8902077` | docs | `docs/phase4_21-odoo-consistency-pass.md` feature directive + CLAUDE.md routing for trade-odoo-patterns. |
+| `7892610` | 4.20.1 | L-047 brand-scope parse-on-read fix + recursive category tree (backend + desktop + mobile) + shipment-timeline 500 fix + /reports/customers list endpoint. |
+| `2d35c7e` | 4.20 | IronLite visibility cluster (engineered_spc enum, BrandFilterPicker All-Brands, super_admin defaults to 'all', factory restore data fix, stub Categories page deleted, ChangeBrandModal for product edit, defaultBrand on ProductCategory). |
 | `b06d6f7` | 4.17 sweep | Drop no-op `ProductPrice.isActive` update + fix misleading status text in `create_product` response. CI in progress. |
 | `8ee420b` | 4.17 follow-up | Orphan-FK audit on prod found ProductAttribute had the same broken FK as Product — rebuilt the table (0 rows). Dropped inline `references` from the model per L-034. Patched `migrate415c1ProductCubicMeters.js` plural-vs-singular table name. Wrote retroactive sentinel so the migration stops looping on every boot. |
 | `821dd19` | 4.17 | Product approval modal + 3 endpoints (`/approve`, `/reject`, `/request-revision`) + handler-noise gate. Activity pills for `entityType='Product'+type='approve'` now open a full-detail modal with the 3 actions instead of routing nowhere. `create_product` skips the approval activity when `active:true` was passed. Cleared 9 stale IronLite chips on prod via direct UPDATE. 12 new endpoint tests. |
