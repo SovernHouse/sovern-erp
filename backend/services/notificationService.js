@@ -55,7 +55,13 @@ const createInquiryNotification = async (inquiry, action = 'created') => {
   );
 };
 
-const createQuotationNotification = async (quotation, customerId, action = 'created') => {
+const createQuotationNotification = async (quotation, userId, action = 'created') => {
+  // L-062 fix: userId must be a User.id (Notification.userId FK), NOT a
+  // Customer.id. Callers were historically passing customerId here, which
+  // threw SQLITE_CONSTRAINT FK and killed the upstream handler. The arg
+  // is now named userId and we early-return on falsy so a missing user
+  // (e.g. quotation with no salesPersonId) is a quiet no-op.
+  if (!userId) return null;
   const messages = {
     created: `Quotation QOT-${quotation.quotationNumber} has been created`,
     sent: `Your quotation QOT-${quotation.quotationNumber} has been sent`,
@@ -64,7 +70,7 @@ const createQuotationNotification = async (quotation, customerId, action = 'crea
   };
 
   return createNotification(
-    customerId,
+    userId,
     'quotation',
     'Quotation Update',
     messages[action],
@@ -73,7 +79,9 @@ const createQuotationNotification = async (quotation, customerId, action = 'crea
   );
 };
 
-const createProformaInvoiceNotification = async (pi, customerId, action = 'created') => {
+const createProformaInvoiceNotification = async (pi, userId, action = 'created') => {
+  // L-062 fix: see createQuotationNotification.
+  if (!userId) return null;
   const messages = {
     created: `Proforma Invoice PI-${pi.piNumber} has been created`,
     sent: `Your Proforma Invoice PI-${pi.piNumber} has been sent`,
@@ -81,7 +89,7 @@ const createProformaInvoiceNotification = async (pi, customerId, action = 'creat
   };
 
   return createNotification(
-    customerId,
+    userId,
     'quotation',
     'Proforma Invoice Update',
     messages[action],
@@ -108,7 +116,9 @@ const createSalesOrderNotification = async (salesOrder, userId, action = 'create
   );
 };
 
-const createShipmentNotification = async (shipment, customerId, action = 'created') => {
+const createShipmentNotification = async (shipment, userId, action = 'created') => {
+  // L-062 fix: see createQuotationNotification.
+  if (!userId) return null;
   const messages = {
     created: `Shipment SHP-${shipment.shipmentNumber} has been created`,
     loaded: `Shipment SHP-${shipment.shipmentNumber} has been loaded`,
@@ -117,7 +127,7 @@ const createShipmentNotification = async (shipment, customerId, action = 'create
   };
 
   return createNotification(
-    customerId,
+    userId,
     'shipment',
     'Shipment Update',
     messages[action],

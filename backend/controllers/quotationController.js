@@ -508,7 +508,7 @@ const send = async (req, res, next) => {
       ).catch(() => {});
     }
 
-    await notificationService.createQuotationNotification(quotation, quotation.customer.id, 'sent');
+    await notificationService.createQuotationNotification(quotation, quotation.salesPersonId, 'sent');
 
     res.json(getSuccessResponse({ quotation, pdfFile }, 'Quotation sent successfully'));
 
@@ -536,7 +536,7 @@ const accept = async (req, res, next) => {
     // accept handler (and the Phase 4.25a workflow that follows). Wrap so the
     // status update + workflow still complete. Underlying bug in
     // notificationService.createQuotationNotification tracked separately.
-    try { await notificationService.createQuotationNotification(quotation, quotation.customerId, 'accepted'); }
+    try { await notificationService.createQuotationNotification(quotation, quotation.salesPersonId, 'accepted'); }
     catch (notifErr) { /* L-062 best-effort */ }
 
     // Phase 4.25a: Quote.accept -> ProformaInvoice auto-chain.
@@ -583,7 +583,7 @@ const reject = async (req, res, next) => {
 
     const beforeStatus = quotation.status;
     await quotation.update({ status: 'rejected' });
-    try { await notificationService.createQuotationNotification(quotation, quotation.customerId, 'rejected'); }
+    try { await notificationService.createQuotationNotification(quotation, quotation.salesPersonId, 'rejected'); }
     catch (notifErr) { /* L-062 best-effort, see accept handler */ }
 
     res.json(getSuccessResponse(quotation, 'Quotation rejected'));
