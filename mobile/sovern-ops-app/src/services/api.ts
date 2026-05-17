@@ -591,6 +591,7 @@ export interface Lead {
   lastActivityAt?: string;
   score?: number;
   activities?: Activity[];
+  vertical?: string;
 }
 
 export interface OutreachEmailPayload {
