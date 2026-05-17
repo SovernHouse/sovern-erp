@@ -179,8 +179,8 @@ export default function ShipmentsScreen() {
     if (sortMode !== 'stage') return items
     const order: Record<string, number> = { pending: 0, in_transit: 1, customs: 2, delivered: 3 }
     return [...items].sort((a, b) => {
-      const oa = order[a.status] ?? 99
-      const ob = order[b.status] ?? 99
+      const oa = order[a.status ?? ''] ?? 99
+      const ob = order[b.status ?? ''] ?? 99
       if (oa !== ob) return oa - ob
       const da = a.createdAt ? new Date(a.createdAt).getTime() : 0
       const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
