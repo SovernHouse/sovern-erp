@@ -202,7 +202,41 @@ router.post('/:id/accept', requireAuth, async (req, res, next) => {
     }
 
     const updatedGrn = await db.GoodsReceivedNote.findByPk(grn.id);
-    res.json(getSuccessResponse(updatedGrn, 'Goods received and inventory updated'));
+
+    // Phase 4.25e: GRN.accept -> sales Invoice auto-chain.
+    let invoiceChainResult = null;
+    try {
+      const workflowService = require('../services/workflowService');
+      invoiceChainResult = await workflowService.onGoodsReceivedNoteAccepted(updatedGrn, {
+        userId: req.user && req.user.id,
+        ip: req.ip,
+        source: 'rest_grn_accept',
+      });
+    } catch (chainErr) {
+      auditService.logAction(
+        (req.user && req.user.id) || null,
+        'auto_create_failed',
+        'GoodsReceivedNote',
+        grn.id,
+        { error: chainErr && chainErr.message, chainStep: 'onGoodsReceivedNoteAccepted', phase: '4.25e' },
+        req.ip || null,
+      ).catch(() => {});
+    }
+
+    const payload = invoiceChainResult && invoiceChainResult.ok
+      ? {
+          grn: updatedGrn,
+          invoice: {
+            id: invoiceChainResult.invoice.id,
+            invoiceNumber: invoiceChainResult.invoice.invoiceNumber,
+            status: invoiceChainResult.invoice.status,
+            autoCreated: !invoiceChainResult.alreadyExisted,
+          },
+        }
+      : { grn: updatedGrn, invoice: null, autoChainError: invoiceChainResult && invoiceChainResult.message };
+    res.json(getSuccessResponse(payload, invoiceChainResult && invoiceChainResult.ok && !invoiceChainResult.alreadyExisted
+      ? 'Goods received, inventory updated, draft Invoice auto-created'
+      : 'Goods received and inventory updated'));
 
     // Fire-and-forget operations
     auditService.logAction(req.user.id, 'UPDATE', 'GoodsReceivedNote', grn.id, { before: beforeSnapshot, after: updatedGrn?.toJSON?.() || grn.toJSON(), action: 'accepted' }, req.ip).catch(() => {});

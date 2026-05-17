@@ -486,9 +486,143 @@ async function onPurchaseOrderConfirmed(purchaseOrder, ctx = {}) {
   return { ok: true, grn, alreadyExisted: false };
 }
 
+
+/**
+ * onGoodsReceivedNoteAccepted (Phase 4.25e).
+ *
+ * Side-effect of GRN.accept: auto-create a draft sales Invoice tied
+ * to the upstream SalesOrder. Fifth chain hop:
+ * Quote -> Proforma -> SO -> PO -> GRN -> Invoice.
+ *
+ * Idempotency: Invoice does not have a sourceGrnId column. Pending a
+ * future migration, we store the source GRN id inside Invoice.notes
+ * as the marker `[auto-from-grn:<grnId>]` and check for it via LIKE.
+ * This is a transitional pattern; a clean column comes with Phase
+ * 4.25.1 (the migration cleanup pass).
+ *
+ * Relationship chain: GRN -> PurchaseOrder -> SalesOrder -> Customer.
+ * If the upstream SO cannot be resolved (e.g. a free-standing PO with
+ * no salesOrderId), the workflow returns { ok: false,
+ * code: 'so_unresolved' }.
+ *
+ * @param {object} grn - Sequelize GoodsReceivedNote instance.
+ * @param {object} ctx - { userId, ip, source, dueDate? }
+ * @returns {Promise<{ok, invoice?, alreadyExisted?, code?, message?}>}
+ */
+async function onGoodsReceivedNoteAccepted(grn, ctx = {}) {
+  const { userId, ip, source = 'unknown', dueDate } = ctx;
+
+  if (!grn || !grn.id) {
+    return { ok: false, code: 'invalid_input', message: 'grn with id is required' };
+  }
+
+  // Re-fetch with PO so we can resolve the SO.
+  const fullGRN = await db.GoodsReceivedNote.findByPk(grn.id, {
+    include: [{ model: db.PurchaseOrder, as: 'purchaseOrder' }],
+  });
+  if (!fullGRN) {
+    return { ok: false, code: 'not_found', message: 'GRN not found at workflow time' };
+  }
+
+  const po = fullGRN.purchaseOrder;
+  if (!po || !po.salesOrderId) {
+    return {
+      ok: false,
+      code: 'so_unresolved',
+      message: 'Cannot auto-create Invoice: GRN PO has no salesOrderId.',
+    };
+  }
+
+  // Idempotency via notes marker.
+  const marker = `[auto-from-grn:${fullGRN.id}]`;
+  const existing = await db.Invoice.findOne({
+    where: {
+      salesOrderId: po.salesOrderId,
+      notes: { [db.Sequelize.Op.like]: `%${marker}%` },
+    },
+  });
+  if (existing) {
+    return { ok: true, invoice: existing, alreadyExisted: true };
+  }
+
+  const so = await db.SalesOrder.findByPk(po.salesOrderId);
+  if (!so) {
+    return { ok: false, code: 'so_unresolved', message: 'SalesOrder referenced by PO was not found.' };
+  }
+
+  // Items come from the GRN JSON. Use quantityReceived if set (post-receive
+  // accept) else fall back to the expected quantity from the PO.
+  const grnItems = Array.isArray(fullGRN.items) ? fullGRN.items
+    : (typeof fullGRN.items === 'string' ? JSON.parse(fullGRN.items) : []);
+  const subtotal = grnItems.reduce((s, it) => {
+    const qty = Number(it.quantityReceived != null ? it.quantityReceived : it.quantity) || 0;
+    const unitPrice = Number(it.unitPrice) || 0;
+    return s + qty * unitPrice;
+  }, 0);
+
+  const invoiceNumber = `INV-${Date.now()}`;
+  const dueDateResolved = dueDate || (so.estimatedDelivery
+    ? new Date(new Date(so.estimatedDelivery).getTime() + 30 * 24 * 60 * 60 * 1000)
+    : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+
+  const invoice = await db.Invoice.create({
+    id: uuidv4(),
+    invoiceNumber,
+    salesOrderId: so.id,
+    customerId: so.customerId,
+    brandCode: so.brandCode || 'SH',
+    type: 'sales',
+    status: 'draft',
+    subtotal,
+    total: subtotal,
+    balance: subtotal,
+    paidAmount: 0,
+    currency: so.currency,
+    dueDate: dueDateResolved,
+    paymentTerms: 'Net 30',
+    notes: marker,
+  });
+
+  for (const it of grnItems) {
+    const qty = Number(it.quantityReceived != null ? it.quantityReceived : it.quantity) || 0;
+    const unitPrice = Number(it.unitPrice) || 0;
+    await db.InvoiceItem.create({
+      id: uuidv4(),
+      invoiceId: invoice.id,
+      productId: it.productId,
+      description: it.description || '',
+      quantity: qty,
+      unit: it.unit || 'sqm',
+      unitPrice,
+      total: qty * unitPrice,
+    });
+  }
+
+  auditService.logAction(
+    userId || null,
+    'auto_create',
+    'Invoice',
+    invoice.id,
+    {
+      sourceEntity: 'GoodsReceivedNote',
+      sourceId: fullGRN.id,
+      sourceGrnNumber: fullGRN.grnNumber,
+      relatedSalesOrderId: so.id,
+      trigger: 'grn.accept',
+      phase: '4.25e',
+      invoiceNumber,
+      source,
+    },
+    ip || null,
+  ).catch(() => {});
+
+  return { ok: true, invoice, alreadyExisted: false };
+}
+
 module.exports = {
   onQuotationAccepted,
   onProformaInvoiceConfirmed,
   onSalesOrderConfirmed,
   onPurchaseOrderConfirmed,
+  onGoodsReceivedNoteAccepted,
 };
