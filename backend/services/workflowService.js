@@ -619,10 +619,104 @@ async function onGoodsReceivedNoteAccepted(grn, ctx = {}) {
   return { ok: true, invoice, alreadyExisted: false };
 }
 
+
+/**
+ * onPaymentConfirmed (Phase 4.25f).
+ *
+ * Side-effect of Payment.confirm: sum every confirmed Payment for the
+ * referenced Invoice and transition the Invoice status accordingly.
+ * Sixth chain hop. Unlike earlier hops this does NOT create a new
+ * entity; it updates Invoice.paidAmount, Invoice.balance, and
+ * Invoice.status based on the sum.
+ *
+ * Idempotency: the calculation re-sums ALL confirmed Payments for
+ * the Invoice from scratch every time. Re-running yields the same
+ * paidAmount and balance. Fixes a latent double-counting bug in the
+ * previous inline route handler logic (which incremented
+ * paidAmount with each call regardless of prior state).
+ *
+ * Status rules:
+ *   - sum >= total            -> paid
+ *   - 0 < sum < total         -> partially_paid
+ *   - sum == 0 (no confirmed) -> sent (or unchanged if draft)
+ *
+ * @param {object} payment - Sequelize Payment instance (status already set to confirmed).
+ * @param {object} ctx - { userId, ip, source }
+ * @returns {Promise<{ok, invoice?, paidAmount?, balance?,
+ *   statusBefore?, statusAfter?, code?, message?}>}
+ */
+async function onPaymentConfirmed(payment, ctx = {}) {
+  const { userId, ip, source = 'unknown' } = ctx;
+
+  if (!payment || !payment.id || !payment.invoiceId) {
+    return { ok: false, code: 'invalid_input', message: 'payment with id and invoiceId is required' };
+  }
+
+  const invoice = await db.Invoice.findByPk(payment.invoiceId);
+  if (!invoice) {
+    return { ok: false, code: 'not_found', message: 'Invoice not found at workflow time' };
+  }
+
+  // Sum every confirmed Payment against this Invoice.
+  const confirmed = await db.Payment.findAll({
+    where: { invoiceId: invoice.id, status: 'confirmed' },
+  });
+  const paidAmount = confirmed.reduce((s, p) => s + Number(p.amount), 0);
+  const total = Number(invoice.total);
+  const balance = Math.max(0, total - paidAmount);
+
+  let newStatus;
+  if (paidAmount >= total && total > 0) {
+    newStatus = 'paid';
+  } else if (paidAmount > 0) {
+    newStatus = 'partially_paid';
+  } else {
+    newStatus = invoice.status === 'draft' ? 'draft' : 'sent';
+  }
+
+  const statusBefore = invoice.status;
+  await invoice.update({
+    paidAmount,
+    balance,
+    status: newStatus,
+  });
+
+  auditService.logAction(
+    userId || null,
+    'auto_update',
+    'Invoice',
+    invoice.id,
+    {
+      sourceEntity: 'Payment',
+      sourceId: payment.id,
+      trigger: 'payment.confirm',
+      phase: '4.25f',
+      statusBefore,
+      statusAfter: newStatus,
+      paidAmountBefore: Number(invoice.paidAmount),
+      paidAmountAfter: paidAmount,
+      balance,
+      confirmedPaymentCount: confirmed.length,
+      source,
+    },
+    ip || null,
+  ).catch(() => {});
+
+  return {
+    ok: true,
+    invoice,
+    paidAmount,
+    balance,
+    statusBefore,
+    statusAfter: newStatus,
+  };
+}
+
 module.exports = {
   onQuotationAccepted,
   onProformaInvoiceConfirmed,
   onSalesOrderConfirmed,
   onPurchaseOrderConfirmed,
   onGoodsReceivedNoteAccepted,
+  onPaymentConfirmed,
 };

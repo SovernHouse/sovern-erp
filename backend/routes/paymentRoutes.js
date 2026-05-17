@@ -90,19 +90,32 @@ router.patch('/:id/confirm', requireAuth, async (req, res, next) => {
     // Update payment status within transaction
     await payment.update({ status: 'confirmed' }, { transaction });
 
-    // Calculate new amounts
-    const paidAmount = parseFloat(invoice.paidAmount) + parseFloat(payment.amount);
-    const newBalance = parseFloat(invoice.total) - paidAmount;
-    const newStatus = newBalance <= 0 ? 'paid' : 'partially_paid';
-
-    // Update invoice within same transaction
-    await invoice.update({
-      paidAmount,
-      balance: Math.max(0, newBalance),
-      status: newStatus
-    }, { transaction });
-
     await transaction.commit();
+
+    // Phase 4.25f: sum all confirmed Payments for the Invoice and
+    // update its status idempotently. Delegated to workflowService so
+    // the rule is shared between REST and future MCP/AI paths.
+    // Best-effort: failure logs but does not roll back the Payment
+    // confirm (the user already approved the payment record itself).
+    try {
+      const workflowService = require('../services/workflowService');
+      await workflowService.onPaymentConfirmed(payment, {
+        userId: req.user && req.user.id,
+        ip: req.ip,
+        source: 'rest_payment_confirm',
+      });
+    } catch (chainErr) {
+      const auditService = require('../services/auditService');
+      auditService.logAction(
+        (req.user && req.user.id) || null,
+        'auto_update_failed',
+        'Payment',
+        payment.id,
+        { error: chainErr && chainErr.message, chainStep: 'onPaymentConfirmed', phase: '4.25f' },
+        req.ip || null,
+      ).catch(() => {});
+    }
+
 
     // Send payment confirmation email (fire-and-forget)
     try {
