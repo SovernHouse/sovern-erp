@@ -360,6 +360,10 @@ function AppRoutes() {
       <Route path="/settings/logs"                  element={<P permission="settings"><SystemLog /></P>} />
       <Route path="/settings/bulk-import"           element={<P permission="settings"><BulkImport /></P>} />
       <Route path="/settings/product-attributes"    element={<P permission="settings"><ProductAttributes /></P>} />
+      {/* Phase 4.28: /price-lists is the canonical path (Sales submenu).
+          /settings/price-lists kept as an alias for back-compat / legacy
+          deep links from the prior Settings menu placement. */}
+      <Route path="/price-lists"                    element={<P permission="customers"><PriceListManager /></P>} />
       <Route path="/settings/price-lists"           element={<P permission="settings"><PriceListManager /></P>} />
       <Route path="/settings/modules"              element={<P roles={['admin']}><ModulesManager /></P>} />
       <Route path="/settings/mobile-app"           element={<P permission="settings"><MobileApp /></P>} />

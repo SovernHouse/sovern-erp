@@ -113,6 +113,7 @@ export const NAV_ITEMS_BY_ROLE = {
       icon: 'ShoppingCart',
       submenu: [
         { label: 'Clients', path: '/customers', permission: 'customers' },
+        { label: 'Price Lists', path: '/price-lists', permission: 'customers' },
         { label: 'Inquiries', path: '/inquiries', permission: 'inquiries' },
         { label: 'Quotations', path: '/quotations', permission: 'quotations' },
         { label: 'Proforma Invoices', path: '/proforma-invoices', permission: 'proforma' },
@@ -197,7 +198,9 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Email Signatures', path: '/settings/email-signatures', permission: 'settings' },
         { label: 'Product Attributes', path: '/settings/product-attributes', permission: 'settings' },
         { label: 'Product Taxonomy', path: '/settings/product-taxonomy', permission: 'settings' },
-        { label: 'Price Lists', path: '/settings/price-lists', permission: 'settings' },
+        // Phase 4.28: Price Lists moved out of Settings into Sales submenu.
+        // Route /settings/price-lists kept alive for back-compat / legacy
+        // deep links (see App.jsx) but no longer surfaced in this nav.
         { label: 'Bulk Import', path: '/settings/bulk-import', permission: 'settings' },
         { label: 'Mobile App', path: '/settings/mobile-app', permission: 'settings' },
         { label: 'Connected Accounts', path: '/settings/connected-accounts', roles: ['admin', 'super_admin'] },

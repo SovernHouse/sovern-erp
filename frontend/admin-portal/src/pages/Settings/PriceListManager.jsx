@@ -324,7 +324,11 @@ const PriceListManager = () => {
                 </thead>
                 <tbody>
                   {priceLists.map((priceList) => (
-                    <tr key={priceList.id} className="border-b border-slate-200 hover:bg-slate-50">
+                    <tr
+                      key={priceList.id}
+                      className="border-b border-slate-200 hover:bg-slate-50 cursor-pointer"
+                      onClick={() => handleViewItems(priceList)}
+                    >
                       <td className="px-6 py-4 font-medium text-slate-900">{priceList.name}</td>
                       <td className="px-6 py-4 text-slate-600">{priceList.currencyCode}</td>
                       <td className="px-6 py-4 text-slate-600">{priceList.itemCount || 0}</td>
@@ -349,7 +353,7 @@ const PriceListManager = () => {
                           <span>{priceList.isActive ? 'Active' : 'Inactive'}</span>
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => handleViewItems(priceList)}
