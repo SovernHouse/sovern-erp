@@ -71,6 +71,7 @@ Read the relevant skill file BEFORE starting any task in that domain. Skill file
 | Whitelabel / product / commercial decisions | `erp-whitelabel.md`, `erp-whitelabel-pm.md`, `trade-product.md` |
 | Security, auth, permissions | `trade-security.md`, `trade-cto.md` |
 | UX, IA, user flows | `trade-ux.md`, `trade-ui-audit.md` |
+| Entity detail pages (Odoo style: chatter, breadcrumbs, related-data tabs, smart buttons) | `trade-odoo-patterns.md` |
 | Trade compliance (HS codes, sanctions, Incoterms) | `trade-compliance.md` |
 | Legal (contracts, data privacy, liability) | `trade-attorney.md` |
 | Email, outreach, ERP email functions | `trade-email-rules.md` |
