@@ -607,8 +607,11 @@ export interface OutreachEmailPayload {
 }
 
 export async function sendOutreachEmail(leadId: string, payload: OutreachEmailPayload) {
-  const res = await api.post(`/crm/leads/${leadId}/outreach-emails`, payload);
-  return res.data;
+  const res = await request<{ success: boolean; data: any }>(
+    `/api/crm/leads/${leadId}/outreach-emails`,
+    { method: "POST", body: JSON.stringify(payload) }
+  );
+  return (res as any).data ?? res;
 }
 
 export interface Activity {
@@ -698,10 +701,8 @@ export interface Product {
   // single-origin (read baseFobPrice + originCountry above).
   originVariants?: ProductOriginVariant[];
   certifications?: Array<{ name: string; issuer?: string; expiresAt?: string | null }>;
-  originCountry?: string | null;
   // legacy compat
   unitPrice?: number;
-  currency?: string;
   moq?: number;
   leadTime?: string;
   status?: string;
