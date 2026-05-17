@@ -4505,6 +4505,123 @@ async function callTool(name, args) {
       return { success: true, entity, id: row.id, archived: true };
     }
 
+    case 'erp_accept_quotation': {
+      const requester = await getCurrentUserOrThrow();
+      const brandScope = await brandScopeForMcp(requester);
+      const quotation = await getDb().Quotation.findByPk(args.id);
+      if (!quotation || quotation.deletedAt) return formatMcpWriteError({ code: 'not_found', message: 'Quotation not found', httpStatus: 404 });
+      if (brandScope && !brandScope.isCrossBrand && Array.isArray(brandScope.accessibleBrands) && !brandScope.accessibleBrands.includes(quotation.brandCode)) {
+        return formatMcpWriteError({ code: 'not_found', message: 'Quotation not found', httpStatus: 404 });
+      }
+      const beforeStatus = quotation.status;
+      if (quotation.status !== 'accepted') {
+        await quotation.update({ status: 'accepted' });
+      }
+      const workflowService = require('../services/workflowService');
+      const chainResult = await workflowService.onQuotationAccepted(quotation, { userId: requester.id, ip: null, source: 'mcp' });
+      await auditAiWrite('accept_quotation', 'Quotation', quotation.id, { phase: '4.25h', beforeStatus, afterStatus: 'accepted', proformaInvoiceId: chainResult.proformaInvoice ? chainResult.proformaInvoice.id : null, proformaAlreadyExisted: !!chainResult.alreadyExisted }, requester.id);
+      return { success: true, quotationId: quotation.id, status: 'accepted', proformaInvoice: chainResult.ok ? { id: chainResult.proformaInvoice.id, piNumber: chainResult.proformaInvoice.piNumber, autoCreated: !chainResult.alreadyExisted } : null, message: chainResult.ok && !chainResult.alreadyExisted ? `Quotation accepted; Pro Forma ${chainResult.proformaInvoice.piNumber} auto-created.` : 'Quotation accepted.' };
+    }
+
+    case 'erp_confirm_proforma_invoice': {
+      const requester = await getCurrentUserOrThrow();
+      const brandScope = await brandScopeForMcp(requester);
+      const pi = await getDb().ProformaInvoice.findByPk(args.id);
+      if (!pi) return formatMcpWriteError({ code: 'not_found', message: 'Proforma Invoice not found', httpStatus: 404 });
+      if (brandScope && !brandScope.isCrossBrand && Array.isArray(brandScope.accessibleBrands) && !brandScope.accessibleBrands.includes(pi.brandCode)) {
+        return formatMcpWriteError({ code: 'not_found', message: 'Proforma Invoice not found', httpStatus: 404 });
+      }
+      if (pi.status !== 'confirmed') await pi.update({ status: 'confirmed' });
+      const workflowService = require('../services/workflowService');
+      const soResult = await workflowService.onProformaInvoiceConfirmed(pi, { userId: requester.id, ip: null, source: 'mcp', factoryId: args.factory_id || args.factoryId });
+      let poResult = null;
+      if (soResult.ok) {
+        poResult = await workflowService.onSalesOrderConfirmed(soResult.salesOrder, { userId: requester.id, ip: null, source: 'mcp_cascade' });
+      }
+      await auditAiWrite('confirm_proforma_invoice', 'ProformaInvoice', pi.id, { phase: '4.25h', salesOrderId: soResult.ok ? soResult.salesOrder.id : null, soAlreadyExisted: !!soResult.alreadyExisted, poCount: poResult && poResult.ok ? poResult.created.length : 0 }, requester.id);
+      if (!soResult.ok) return formatMcpWriteError({ code: soResult.code || 'workflow_failed', message: soResult.message, httpStatus: 400 });
+      return { success: true, proformaInvoiceId: pi.id, status: 'confirmed', salesOrder: { id: soResult.salesOrder.id, orderNumber: soResult.salesOrder.orderNumber, autoCreated: !soResult.alreadyExisted }, purchaseOrders: poResult && poResult.ok ? poResult.created.map(po => ({ id: po.id, poNumber: po.poNumber, factoryId: po.factoryId })) : [], message: `Pro Forma confirmed; ${!soResult.alreadyExisted ? 'SO ' + soResult.salesOrder.orderNumber + ' auto-created' : 'SO already existed'}; ${poResult && poResult.ok ? poResult.created.length : 0} PO(s) auto-created.` };
+    }
+
+    case 'erp_confirm_purchase_order': {
+      const requester = await getCurrentUserOrThrow();
+      const brandScope = await brandScopeForMcp(requester);
+      const po = await getDb().PurchaseOrder.findByPk(args.id);
+      if (!po) return formatMcpWriteError({ code: 'not_found', message: 'Purchase Order not found', httpStatus: 404 });
+      if (brandScope && !brandScope.isCrossBrand && Array.isArray(brandScope.accessibleBrands) && !brandScope.accessibleBrands.includes(po.brandCode)) {
+        return formatMcpWriteError({ code: 'not_found', message: 'Purchase Order not found', httpStatus: 404 });
+      }
+      if (po.status !== 'sent') return formatMcpWriteError({ code: 'invalid_state', message: 'Only sent POs can be confirmed', httpStatus: 400 });
+      await po.update({ status: 'confirmed' });
+      const workflowService = require('../services/workflowService');
+      const grnResult = await workflowService.onPurchaseOrderConfirmed(po, { userId: requester.id, ip: null, source: 'mcp' });
+      await auditAiWrite('confirm_purchase_order', 'PurchaseOrder', po.id, { phase: '4.25h', grnId: grnResult.ok ? grnResult.grn.id : null, grnAlreadyExisted: !!grnResult.alreadyExisted }, requester.id);
+      return { success: true, purchaseOrderId: po.id, status: 'confirmed', grn: grnResult.ok ? { id: grnResult.grn.id, grnNumber: grnResult.grn.grnNumber, autoCreated: !grnResult.alreadyExisted } : null, message: `PO confirmed; ${grnResult.ok && !grnResult.alreadyExisted ? 'pending GRN ' + grnResult.grn.grnNumber + ' auto-created' : 'no GRN action'}.` };
+    }
+
+    case 'erp_accept_grn': {
+      const requester = await getCurrentUserOrThrow();
+      const grn = await getDb().GoodsReceivedNote.findByPk(args.id, { include: [{ model: getDb().PurchaseOrder, as: 'purchaseOrder' }] });
+      if (!grn) return formatMcpWriteError({ code: 'not_found', message: 'GRN not found', httpStatus: 404 });
+      if (grn.status === 'accepted') return formatMcpWriteError({ code: 'invalid_state', message: 'GRN already accepted', httpStatus: 400 });
+      await grn.update({ status: 'accepted' });
+      if (grn.purchaseOrder && grn.purchaseOrder.status !== 'received' && grn.purchaseOrder.status !== 'completed') {
+        await grn.purchaseOrder.update({ status: 'received' });
+      }
+      const workflowService = require('../services/workflowService');
+      const invResult = await workflowService.onGoodsReceivedNoteAccepted(grn, { userId: requester.id, ip: null, source: 'mcp' });
+      await auditAiWrite('accept_grn', 'GoodsReceivedNote', grn.id, { phase: '4.25h', invoiceId: invResult.ok ? invResult.invoice.id : null, invoiceAlreadyExisted: !!invResult.alreadyExisted }, requester.id);
+      return { success: true, grnId: grn.id, status: 'accepted', invoice: invResult.ok ? { id: invResult.invoice.id, invoiceNumber: invResult.invoice.invoiceNumber, autoCreated: !invResult.alreadyExisted } : null, message: `GRN accepted; ${invResult.ok && !invResult.alreadyExisted ? 'draft Invoice ' + invResult.invoice.invoiceNumber + ' auto-created' : 'no Invoice action'}.` };
+    }
+
+    case 'erp_confirm_payment': {
+      const requester = await getCurrentUserOrThrow();
+      const payment = await getDb().Payment.findByPk(args.id);
+      if (!payment) return formatMcpWriteError({ code: 'not_found', message: 'Payment not found', httpStatus: 404 });
+      if (payment.status !== 'confirmed') await payment.update({ status: 'confirmed' });
+      const workflowService = require('../services/workflowService');
+      const result = await workflowService.onPaymentConfirmed(payment, { userId: requester.id, ip: null, source: 'mcp' });
+      await auditAiWrite('confirm_payment', 'Payment', payment.id, { phase: '4.25h', invoiceId: payment.invoiceId, statusBefore: result.statusBefore, statusAfter: result.statusAfter, paidAmount: result.paidAmount, balance: result.balance }, requester.id);
+      if (!result.ok) return formatMcpWriteError({ code: result.code, message: result.message, httpStatus: 400 });
+      return { success: true, paymentId: payment.id, status: 'confirmed', invoice: { id: result.invoice.id, statusBefore: result.statusBefore, statusAfter: result.statusAfter, paidAmount: result.paidAmount, balance: result.balance }, message: `Payment confirmed; Invoice ${result.statusAfter === 'paid' ? 'fully paid' : result.statusAfter}.` };
+    }
+
+    case 'erp_advance_sales_order': {
+      const requester = await getCurrentUserOrThrow();
+      const brandScope = await brandScopeForMcp(requester);
+      const so = await getDb().SalesOrder.findByPk(args.id);
+      if (!so) return formatMcpWriteError({ code: 'not_found', message: 'Sales Order not found', httpStatus: 404 });
+      if (brandScope && !brandScope.isCrossBrand && Array.isArray(brandScope.accessibleBrands) && !brandScope.accessibleBrands.includes(so.brandCode)) {
+        return formatMcpWriteError({ code: 'not_found', message: 'Sales Order not found', httpStatus: 404 });
+      }
+      const targetStatus = args.status || args.new_status;
+      if (!targetStatus) return formatMcpWriteError({ code: 'validation', message: 'status is required', httpStatus: 400 });
+      const beforeStatus = so.status;
+      try { await so.update({ status: targetStatus }); } catch (e) { return formatMcpWriteError({ code: 'status_transition_invalid', message: e.message, httpStatus: 422 }); }
+      let packingListResult = null;
+      if (targetStatus === 'shipped') {
+        const workflowService = require('../services/workflowService');
+        packingListResult = await workflowService.onSalesOrderShipped(so, { userId: requester.id, ip: null, source: 'mcp' });
+      }
+      await auditAiWrite('advance_sales_order', 'SalesOrder', so.id, { phase: '4.25h', beforeStatus, afterStatus: targetStatus, packingListId: packingListResult && packingListResult.ok ? packingListResult.packingList.id : null }, requester.id);
+      return { success: true, salesOrderId: so.id, statusBefore: beforeStatus, statusAfter: targetStatus, packingList: packingListResult && packingListResult.ok ? { id: packingListResult.packingList.id, packingListNumber: packingListResult.packingList.packingListNumber, autoCreated: !packingListResult.alreadyExisted } : null, message: `SO advanced ${beforeStatus} -> ${targetStatus}.` };
+    }
+
+    case 'erp_deliver_shipment': {
+      const requester = await getCurrentUserOrThrow();
+      const shipment = await getDb().Shipment.findByPk(args.id);
+      if (!shipment) return formatMcpWriteError({ code: 'not_found', message: 'Shipment not found', httpStatus: 404 });
+      if (shipment.status !== 'delivered') {
+        try { await shipment.update({ status: 'delivered', actualDeliveryDate: new Date(), actualArrival: new Date() }); } catch (e) {
+          return formatMcpWriteError({ code: 'status_transition_invalid', message: e.message, httpStatus: 422 });
+        }
+      }
+      const workflowService = require('../services/workflowService');
+      const result = await workflowService.onShipmentDelivered(shipment, { userId: requester.id, ip: null, source: 'mcp' });
+      await auditAiWrite('deliver_shipment', 'Shipment', shipment.id, { phase: '4.25h', salesOrderId: shipment.salesOrderId, soStatusBefore: result.statusBefore, soStatusAfter: result.statusAfter, soTransitioned: result.ok && !result.alreadyExisted }, requester.id);
+      return { success: true, shipmentId: shipment.id, status: 'delivered', salesOrder: result.ok ? { id: result.salesOrder.id, statusBefore: result.statusBefore, statusAfter: result.statusAfter, transitioned: !result.alreadyExisted } : null, message: result.ok ? `Shipment delivered; SO ${result.statusAfter === 'delivered' && !result.alreadyExisted ? 'auto-transitioned to delivered' : 'unchanged'}.` : `Shipment delivered; SO update skipped (${result.message}).` };
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}. Available tools: ${TOOL_DEFS.map(t => t.name).join(', ')}`);
   }
@@ -4662,6 +4779,43 @@ async function auditAiWrite(action, entity, entityId, changes, userId) {
 // ── Tool definitions ──────────────────────────────────────────────────────────
 
 const TOOL_DEFS = [
+  {
+    name: 'erp_accept_quotation',
+    description: 'Phase 4.25h: Accept a quotation. Auto-creates a draft Pro Forma Invoice via the workflow chain (Quote -> Proforma). Use when the customer has agreed to a quote and you want to advance the deal to the next document.',
+    inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string', description: 'Quotation id (UUID).' } } },
+  },
+  {
+    name: 'erp_confirm_proforma_invoice',
+    description: 'Phase 4.25h: Confirm a Pro Forma Invoice. Auto-creates the SalesOrder and per-factory PurchaseOrders via the workflow chain (Proforma -> SO -> POs). factory_id optional; if omitted, the workflow derives from line-item Product.factoryId.',
+    inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string', description: 'ProformaInvoice id (UUID).' }, factory_id: { type: 'string', description: 'Optional factory UUID. Overrides auto-derivation.' } } },
+  },
+  {
+    name: 'erp_confirm_purchase_order',
+    description: 'Phase 4.25h: Confirm a Purchase Order (factory has accepted). Auto-creates a pending expected-receipt GRN via the workflow chain (PO -> GRN). PO must be in sent status.',
+    inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string', description: 'PurchaseOrder id (UUID).' } } },
+  },
+  {
+    name: 'erp_accept_grn',
+    description: 'Phase 4.25h: Accept a GRN (goods have arrived in good condition). Auto-creates a draft sales Invoice via the workflow chain (GRN -> Invoice).',
+    inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string', description: 'GoodsReceivedNote id (UUID).' } } },
+  },
+  {
+    name: 'erp_confirm_payment',
+    description: 'Phase 4.25h: Confirm a Payment row. Re-sums all confirmed Payments for the related Invoice and transitions Invoice.status idempotently (paid / partially_paid). Fixes the latent double-count bug.',
+    inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string', description: 'Payment id (UUID).' } } },
+  },
+  {
+    name: 'erp_advance_sales_order',
+    description: 'Phase 4.25h: Advance a SalesOrder status. Subject to the model status-transition map (confirmed -> in_production -> ready -> shipped -> in_transit -> delivered -> completed). When advancing to shipped, auto-creates a draft PackingList.',
+    inputSchema: { type: 'object', required: ['id', 'status'], properties: { id: { type: 'string', description: 'SalesOrder id (UUID).' }, status: { type: 'string', enum: ['in_production', 'ready', 'shipped', 'in_transit', 'delivered', 'completed', 'cancelled'], description: 'Target status.' } } },
+  },
+  {
+    name: 'erp_deliver_shipment',
+    description: 'Phase 4.25h: Mark a Shipment as delivered. Auto-transitions the related SalesOrder to delivered (if SO currently in_transit). Closes the chain.',
+    inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string', description: 'Shipment id (UUID).' } } },
+  },
+
+
   // ── Generic ERP read tools ────────────────────────────────────────────────
   // Prefer these for ad-hoc reads. They cover every queryable entity in the
   // ERP without per-table wrappers, so they keep working even when the schema
@@ -7016,7 +7170,7 @@ process.stderr.write('[erp-mcp] Server listening on stdin\n');
 // which means AuditLog assertions are otherwise invisible to tests.
 // Production callers go through handleLine; nothing else uses this
 // shim.
-module.exports = { __testing: { callTool } };
+module.exports = { __testing: { callTool, TOOL_DEFS } };
 
 // pay the ~4s cost of loading 100+ models on every claude -p start.
 if (process.env.MCP_FORCE_SYNC === 'true') {
