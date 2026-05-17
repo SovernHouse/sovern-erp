@@ -712,6 +712,124 @@ async function onPaymentConfirmed(payment, ctx = {}) {
   };
 }
 
+
+/**
+ * onSalesOrderShipped (Phase 4.25g).
+ *
+ * Side-effect of SalesOrder.status -> 'shipped': auto-create a draft
+ * PackingList tied to the SO if none exists. Seventh chain hop.
+ *
+ * Idempotency: PackingList.salesOrderId is the natural key (one PL
+ * per SO; future enhancement may allow split packing for partial
+ * shipments).
+ */
+async function onSalesOrderShipped(salesOrder, ctx = {}) {
+  const { userId, ip, source = 'unknown' } = ctx;
+
+  if (!salesOrder || !salesOrder.id) {
+    return { ok: false, code: 'invalid_input', message: 'salesOrder with id is required' };
+  }
+
+  const existing = await db.PackingList.findOne({
+    where: { salesOrderId: salesOrder.id },
+  });
+  if (existing) {
+    return { ok: true, packingList: existing, alreadyExisted: true };
+  }
+
+  const pl = await db.PackingList.create({
+    id: uuidv4(),
+    packingListNumber: `PL-${Date.now()}`,
+    salesOrderId: salesOrder.id,
+    status: 'draft',
+    totalPackages: 0,
+    totalGrossWeight: 0,
+    totalNetWeight: 0,
+    totalVolume: 0,
+  });
+
+  auditService.logAction(
+    userId || null,
+    'auto_create',
+    'PackingList',
+    pl.id,
+    {
+      sourceEntity: 'SalesOrder',
+      sourceId: salesOrder.id,
+      sourceOrderNumber: salesOrder.orderNumber,
+      trigger: 'sales_order.shipped',
+      phase: '4.25g',
+      packingListNumber: pl.packingListNumber,
+      source,
+    },
+    ip || null,
+  ).catch(() => {});
+
+  return { ok: true, packingList: pl, alreadyExisted: false };
+}
+
+/**
+ * onShipmentDelivered (Phase 4.25g).
+ *
+ * Side-effect of Shipment.status -> 'delivered': auto-transition the
+ * related SalesOrder to 'delivered' if it is currently in_transit or
+ * shipped. Eighth chain hop. Closes the visible operational loop:
+ * once the carrier confirms physical delivery, the SO list reflects
+ * it without any manual user action.
+ *
+ * Idempotency: if SO is already 'delivered' or 'completed', no-op.
+ */
+async function onShipmentDelivered(shipment, ctx = {}) {
+  const { userId, ip, source = 'unknown' } = ctx;
+
+  if (!shipment || !shipment.id) {
+    return { ok: false, code: 'invalid_input', message: 'shipment with id is required' };
+  }
+  if (!shipment.salesOrderId) {
+    return { ok: false, code: 'so_unresolved', message: 'Shipment has no salesOrderId' };
+  }
+
+  const so = await db.SalesOrder.findByPk(shipment.salesOrderId);
+  if (!so) {
+    return { ok: false, code: 'not_found', message: 'SalesOrder not found at workflow time' };
+  }
+
+  if (so.status === 'delivered' || so.status === 'completed') {
+    return { ok: true, salesOrder: so, alreadyExisted: true, statusBefore: so.status, statusAfter: so.status };
+  }
+
+  if (so.status !== 'in_transit') {
+    return {
+      ok: false,
+      code: 'status_transition_invalid',
+      message: `Cannot auto-transition SO from ${so.status} to delivered. Model hook requires in_transit as prior status. Promote SO through shipped -> in_transit first.`,
+    };
+  }
+
+  const statusBefore = so.status;
+  await so.update({ status: 'delivered', actualDelivery: new Date() });
+
+  auditService.logAction(
+    userId || null,
+    'auto_update',
+    'SalesOrder',
+    so.id,
+    {
+      sourceEntity: 'Shipment',
+      sourceId: shipment.id,
+      sourceShipmentNumber: shipment.shipmentNumber,
+      trigger: 'shipment.delivered',
+      phase: '4.25g',
+      statusBefore,
+      statusAfter: 'delivered',
+      source,
+    },
+    ip || null,
+  ).catch(() => {});
+
+  return { ok: true, salesOrder: so, alreadyExisted: false, statusBefore, statusAfter: 'delivered' };
+}
+
 module.exports = {
   onQuotationAccepted,
   onProformaInvoiceConfirmed,
@@ -719,4 +837,6 @@ module.exports = {
   onPurchaseOrderConfirmed,
   onGoodsReceivedNoteAccepted,
   onPaymentConfirmed,
+  onSalesOrderShipped,
+  onShipmentDelivered,
 };

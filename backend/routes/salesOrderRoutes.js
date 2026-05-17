@@ -90,6 +90,24 @@ router.patch('/:id/status', requireAuth, async (req, res, next) => {
         { status: 'shipped' },
         { where: { salesOrderId: so.id } }
       );
+      // Phase 4.25g: SO.shipped -> PackingList auto-create.
+      try {
+        const workflowService = require('../services/workflowService');
+        await workflowService.onSalesOrderShipped(so, {
+          userId: req.user && req.user.id,
+          ip: req.ip,
+          source: 'rest_so_status_shipped',
+        });
+      } catch (chainErr) {
+        auditService.logAction(
+          (req.user && req.user.id) || null,
+          'auto_create_failed',
+          'SalesOrder',
+          so.id,
+          { error: chainErr && chainErr.message, chainStep: 'onSalesOrderShipped', phase: '4.25g' },
+          req.ip || null,
+        ).catch(() => {});
+      }
     }
 
     // Phase 4, C15: accrue commission on draft → confirmed transition.

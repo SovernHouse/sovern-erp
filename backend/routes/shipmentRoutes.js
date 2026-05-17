@@ -302,7 +302,39 @@ router.patch('/:id/deliver', requireAuth, async (req, res, next) => {
     });
 
     const updatedShipment = await db.Shipment.findByPk(shipment.id);
-    res.json(getSuccessResponse(updatedShipment, 'Shipment marked as delivered'));
+
+    // Phase 4.25g: Shipment.delivered -> SalesOrder.delivered auto-transition.
+    let soChainResult = null;
+    try {
+      const workflowService = require('../services/workflowService');
+      soChainResult = await workflowService.onShipmentDelivered(updatedShipment, {
+        userId: req.user && req.user.id,
+        ip: req.ip,
+        source: 'rest_shipment_deliver',
+      });
+    } catch (chainErr) {
+      const auditService = require('../services/auditService');
+      auditService.logAction(
+        (req.user && req.user.id) || null,
+        'auto_update_failed',
+        'Shipment',
+        shipment.id,
+        { error: chainErr && chainErr.message, chainStep: 'onShipmentDelivered', phase: '4.25g' },
+        req.ip || null,
+      ).catch(() => {});
+    }
+
+    const responsePayload = soChainResult && soChainResult.ok
+      ? {
+          shipment: updatedShipment,
+          salesOrder: {
+            id: soChainResult.salesOrder.id,
+            status: soChainResult.statusAfter,
+            transitioned: !soChainResult.alreadyExisted,
+          },
+        }
+      : { shipment: updatedShipment, salesOrder: null, autoChainSkipReason: soChainResult && soChainResult.message };
+    res.json(getSuccessResponse(responsePayload, 'Shipment marked as delivered'));
 
     // Fire-and-forget operations
     const fullShipment = await db.Shipment.findByPk(req.params.id, {
