@@ -15,6 +15,8 @@ const ALLOWED_ENTITY_TYPES = new Set([
   'Lead', 'Customer', 'Factory', 'Inquiry', 'Invoice', 'Payment',
   'Shipment', 'Inspection', 'Claim', 'SampleRequest', 'LetterOfCredit',
   'Product', 'GRN', 'PackingList',
+  // Phase 4.28b — assign approval / follow-up activities on PriceLists.
+  'PriceList',
 ]);
 
 // ── Activity type labels (for chatter messages) ───────────────────────────

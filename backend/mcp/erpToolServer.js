@@ -4474,6 +4474,42 @@ async function callTool(name, args) {
       return { success: true, id, removed: snapshot };
     }
 
+    // Phase 4.28b — assistant-driven approval request on a PriceList.
+    // Creates a ScheduledActivity row (type='approve', entityType='PriceList')
+    // assigned to the chosen user. Same pattern as the Product approval
+    // flow (Phase 4.17) and the REST endpoint at
+    // /api/personalization/price-lists/:id/request-approval.
+    case 'request_price_list_approval': {
+      const requester = await requireSuperAdmin();
+      const priceListId = args.priceListId || args.price_list_id;
+      if (!priceListId) return 'Error: priceListId is required.';
+      const assigneeId = args.assigneeId || args.assignee_id;
+      if (!assigneeId) return 'Error: assigneeId is required.';
+      const priceList = await getDb().PriceList.findByPk(priceListId, { attributes: ['id', 'name'] });
+      if (!priceList) return `Error: PriceList ${priceListId} not found.`;
+      const assignee = await getDb().User.findByPk(assigneeId, { attributes: ['id', 'firstName', 'lastName', 'email'] });
+      if (!assignee) return `Error: User ${assigneeId} not found.`;
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dueDate = args.dueDate || args.due_date || tomorrow.toISOString().slice(0, 10);
+      const activity = await getDb().ScheduledActivity.create({
+        type:         'approve',
+        entityType:   'PriceList',
+        entityId:     priceList.id,
+        entityLabel:  `Approve price list: ${priceList.name}`,
+        assignedToId: assignee.id,
+        assignedById: requester.id,
+        dueDate,
+        priority:     args.priority || 'normal',
+        note:         args.note || `${requester.firstName || 'A super-admin'} requested your approval on price list "${priceList.name}".`,
+        status:       'pending',
+      });
+      await auditAiWrite('request_price_list_approval', 'PriceList', priceList.id, {
+        assigneeId, dueDate, activityId: activity.id,
+      }, requester.id);
+      return { success: true, activityId: activity.id, priceListId: priceList.id, assigneeId, dueDate };
+    }
+
     case 'create_product_category': {
       const requester = await requireSuperAdmin();
       const name = (args.name || '').trim();
@@ -6996,6 +7032,21 @@ const TOOL_DEFS = [
       type: 'object',
       required: ['id'],
       properties: { id: { type: 'string' } },
+    },
+  },
+  {
+    name: 'request_price_list_approval',
+    description: 'Phase 4.28b — Assign a "Approve this PriceList" task to a user (super-admin only). Creates a ScheduledActivity row (type=approve, entityType=PriceList) the assignee sees in their pending activities. Same pattern as the Product approval flow. ALWAYS show Alex a preview (price list name, assignee name + role, due date) and wait for explicit confirmation before calling. Writes ai_assistant_request_price_list_approval to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['priceListId', 'assigneeId'],
+      properties: {
+        priceListId: { type: 'string', description: 'PriceList UUID.' },
+        assigneeId:  { type: 'string', description: 'User UUID who will approve.' },
+        dueDate:     { type: 'string', description: 'YYYY-MM-DD. Defaults to tomorrow.' },
+        priority:    { type: 'string', description: 'Activity priority: low / normal / high. Default normal.' },
+        note:        { type: 'string', description: 'Optional human-readable context for the approver.' },
+      },
     },
   },
 

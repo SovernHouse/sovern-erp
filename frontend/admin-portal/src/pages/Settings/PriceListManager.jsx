@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Plus,
   Edit2,
@@ -17,6 +18,7 @@ import api from '../../services/api'
 import LoadingSpinner from '../../components/LoadingSpinner'
 
 const PriceListManager = () => {
+  const navigate = useNavigate()
   // State management
   const [priceLists, setPriceLists] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -327,7 +329,7 @@ const PriceListManager = () => {
                     <tr
                       key={priceList.id}
                       className="border-b border-slate-200 hover:bg-slate-50 cursor-pointer"
-                      onClick={() => handleViewItems(priceList)}
+                      onClick={() => navigate(`/price-lists/${priceList.id}`)}
                     >
                       <td className="px-6 py-4 font-medium text-slate-900">{priceList.name}</td>
                       <td className="px-6 py-4 text-slate-600">{priceList.currencyCode}</td>

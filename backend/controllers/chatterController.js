@@ -29,6 +29,8 @@ const ALLOWED_ENTITY_TYPES = new Set([
   'Product',
   'GRN',
   'PackingList',
+  // Phase 4.28b: PriceList chatter for approval discussions + change history.
+  'PriceList',
 ]);
 
 /**

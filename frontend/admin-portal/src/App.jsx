@@ -115,6 +115,7 @@ const SystemLog        = React.lazy(() => import('./pages/Settings/SystemLog'))
 const BulkImport       = React.lazy(() => import('./pages/Settings/BulkImport'))
 const ProductAttributes = React.lazy(() => import('./pages/Settings/ProductAttributes'))
 const PriceListManager  = React.lazy(() => import('./pages/Settings/PriceListManager'))
+const PriceListDetail   = React.lazy(() => import('./pages/PriceLists/PriceListDetail'))
 const ModulesManager    = React.lazy(() => import('./pages/Settings/ModulesManager'))
 const MobileApp         = React.lazy(() => import('./pages/Settings/MobileApp'))
 const ConnectedAccounts = React.lazy(() => import('./pages/Settings/ConnectedAccounts'))
@@ -364,6 +365,9 @@ function AppRoutes() {
           /settings/price-lists kept as an alias for back-compat / legacy
           deep links from the prior Settings menu placement. */}
       <Route path="/price-lists"                    element={<P permission="customers"><PriceListManager /></P>} />
+      {/* Phase 4.28b: full Odoo detail page (smart buttons / tabs / chatter /
+          PDF / email / approval). PriceListManager rows route into this. */}
+      <Route path="/price-lists/:id"                element={<P permission="customers"><PriceListDetail /></P>} />
       <Route path="/settings/price-lists"           element={<P permission="settings"><PriceListManager /></P>} />
       <Route path="/settings/modules"              element={<P roles={['admin']}><ModulesManager /></P>} />
       <Route path="/settings/mobile-app"           element={<P permission="settings"><MobileApp /></P>} />
