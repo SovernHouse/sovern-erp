@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   ActionSheetIOS,
   Linking,
+  StyleSheet,
 } from 'react-native'
 import { Picker } from '@react-native-picker/picker'
 import { useRouter } from 'expo-router'
@@ -759,7 +760,7 @@ export default function ExpensesScreen() {
 }
 
 function useStyles() {
-  return {
+  return StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: COLORS.cream,
@@ -1076,5 +1077,5 @@ function useStyles() {
       fontSize: 14,
       fontWeight: '600',
     },
-  }
+  })
 }
