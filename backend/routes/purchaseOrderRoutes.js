@@ -540,7 +540,38 @@ router.post('/:id/confirm', requireAuth, async (req, res, next) => {
       ]
     });
 
-    res.json(getSuccessResponse(updatedPO, 'Purchase Order confirmed by factory'));
+    // Phase 4.25d: PO.confirm -> GRN auto-chain (expected receipt).
+    // Best-effort: failure logs but does NOT roll back the confirm.
+    let grnChainResult = null;
+    try {
+      const workflowService = require('../services/workflowService');
+      grnChainResult = await workflowService.onPurchaseOrderConfirmed(po, {
+        userId: req.user && req.user.id,
+        ip: req.ip,
+        source: 'rest_po_confirm',
+      });
+    } catch (chainErr) {
+      auditService.logAction(
+        (req.user && req.user.id) || null,
+        'auto_create_failed',
+        'PurchaseOrder',
+        po.id,
+        { error: chainErr && chainErr.message, chainStep: 'onPurchaseOrderConfirmed', phase: '4.25d' },
+        req.ip || null,
+      ).catch(() => {});
+    }
+
+    res.json(getSuccessResponse({
+      purchaseOrder: updatedPO,
+      grn: grnChainResult && grnChainResult.ok ? {
+        id: grnChainResult.grn.id,
+        grnNumber: grnChainResult.grn.grnNumber,
+        status: grnChainResult.grn.status,
+        autoCreated: !grnChainResult.alreadyExisted,
+      } : null,
+    }, grnChainResult && grnChainResult.ok && !grnChainResult.alreadyExisted
+      ? 'Purchase Order confirmed and GRN auto-created (pending receipt)'
+      : 'Purchase Order confirmed'));
 
     // Fire-and-forget audit log and real-time notification
     auditService.logAction(req.user.id, 'UPDATE', 'PurchaseOrder', po.id, { statusChange: { before: beforeStatus, after: 'confirmed' } }, req.ip).catch(() => {});

@@ -399,8 +399,96 @@ async function onSalesOrderConfirmed(salesOrder, ctx = {}) {
   return { ok: true, created, alreadyExisted, skipped };
 }
 
+
+/**
+ * onPurchaseOrderConfirmed (Phase 4.25d).
+ *
+ * Side-effect of PurchaseOrder.confirm: auto-create a pending GRN
+ * (expected receipt) with items copied from the PO. Fourth chain hop:
+ * Quote -> Proforma -> SO -> PO -> GRN.
+ *
+ * Idempotency: GoodsReceivedNote.poId is the natural key. If a GRN
+ * already exists for this PO, the existing row is returned.
+ *
+ * The GRN stores items as a JSON array (not a separate Item table)
+ * matching the existing GoodsReceivedNote model shape. Each entry:
+ * { productId, description, quantity, quantityReceived: 0, unit,
+ *   unitPrice, total }.
+ *
+ * @param {object} purchaseOrder - Sequelize PurchaseOrder instance.
+ * @param {object} ctx - { userId, ip, source, receivedDate? }
+ * @returns {Promise<{ok, grn?, alreadyExisted?, code?, message?}>}
+ */
+async function onPurchaseOrderConfirmed(purchaseOrder, ctx = {}) {
+  const { userId, ip, source = 'unknown', receivedDate } = ctx;
+
+  if (!purchaseOrder || !purchaseOrder.id) {
+    return { ok: false, code: 'invalid_input', message: 'purchaseOrder with id is required' };
+  }
+
+  const existing = await db.GoodsReceivedNote.findOne({
+    where: { poId: purchaseOrder.id },
+  });
+  if (existing) {
+    return { ok: true, grn: existing, alreadyExisted: true };
+  }
+
+  const fullPO = await db.PurchaseOrder.findByPk(purchaseOrder.id, {
+    include: [{ association: 'items' }],
+  });
+  if (!fullPO) {
+    return { ok: false, code: 'not_found', message: 'PurchaseOrder not found at workflow time' };
+  }
+
+  // GRN items are a JSON array of objects mirroring the PO line items.
+  // quantityReceived starts at 0 because this is an expected-receipt
+  // record. The actual receive flow will update quantityReceived when
+  // the goods physically arrive.
+  const items = (fullPO.items || []).map(it => ({
+    productId: it.productId,
+    description: it.description,
+    quantity: Number(it.quantity),
+    quantityReceived: 0,
+    unit: it.unit,
+    unitPrice: Number(it.unitPrice),
+    total: Number(it.total),
+  }));
+
+  const grn = await db.GoodsReceivedNote.create({
+    id: uuidv4(),
+    grnNumber: `GRN-${Date.now()}`,
+    poId: fullPO.id,
+    receivedDate: receivedDate || new Date(),
+    receivedBy: userId || null,
+    items,
+    status: 'pending',
+    inspectionStatus: 'pending',
+  });
+
+  auditService.logAction(
+    userId || null,
+    'auto_create',
+    'GoodsReceivedNote',
+    grn.id,
+    {
+      sourceEntity: 'PurchaseOrder',
+      sourceId: fullPO.id,
+      sourcePoNumber: fullPO.poNumber,
+      trigger: 'purchase_order.confirm',
+      phase: '4.25d',
+      grnNumber: grn.grnNumber,
+      itemCount: items.length,
+      source,
+    },
+    ip || null,
+  ).catch(() => {});
+
+  return { ok: true, grn, alreadyExisted: false };
+}
+
 module.exports = {
   onQuotationAccepted,
   onProformaInvoiceConfirmed,
   onSalesOrderConfirmed,
+  onPurchaseOrderConfirmed,
 };
