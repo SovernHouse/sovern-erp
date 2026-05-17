@@ -4,6 +4,83 @@
 
 ---
 
+## Session wrap, 2026-05-17 Desktop continuation (Phase 4.27 + 4.28 PriceList arc)
+
+Continuation of today's Macbook work. Started by reviewing the Macbook commits, then closed the PriceList loop end-to-end: MCP tools, Odoo detail page, brand-safe PDF + email, mobile parity, free-form column editing, footer notes, chatter audit, plus a brand-leak fix that became non-negotiable rule #9.
+
+**Commits this Desktop arc (all pushed and deployed):**
+
+| Commit | What |
+|---|---|
+| `f796bf6` | fix(tests): repair 7 pre-existing CI failures on main (Brand seed missing notNull fields, AuditLog `entityType` -> `entity`, phase425a POST -> PATCH on /accept) |
+| `50d86f4` | feat(mcp): Phase 4.27, PriceList + PriceListItem MCP write tools (10 tools, super_admin gated, auditAiWrite per 4.19a) |
+| `24ee66a` | fix(mcp): Phase 4.27.1, MCP backfills PriceListItem sku + productName from Product when productId set |
+| `6faf7ce` | feat(price-list): Phase 4.28a, clickable rows + Sales submenu (moved out of Settings) |
+| `a2821fd` | docs(rule): NEW non-negotiable #8 — Odoo logic + MCP coverage on every feature (+ L-067) |
+| `1f3085f` | feat(price-list): Phase 4.28b, full Odoo detail page + PDF + email + approval modals |
+| `15b3e90` | feat(price-list): Phase 4.28c, brand-aware PDF + shared email helper + send_price_list_email MCP + mobile parity |
+| `a2b9562` | fix(brand): Phase 4.28d, CRITICAL PriceList brand-leak guard (defense in depth) |
+| `15be15c` | fix(price-list): polish — PDF widths, items count on Manager, edit nav, item sort order |
+| `01e79e9` | fix(price-list): editable polish + PDF row expansion (heightOfString) + breadcrumb readability + hidden_columns column |
+| `b24c850` | fix(price-list): custom-column delete (parse-on-read columnDefinitions) + PDF meta row spacing + LEAD header |
+| `bbbd1d1` | feat(price-list): freely add and remove columns in form + PDF (column objects, custom-col rendering) |
+| `10bc7e3` | feat(price-list): rename columns + footer notes + chatter audit on edit + readable customer/factory display (+ migration 4.28e) |
+| `7e82b48` | fix(chatter): load dayjs relativeTime plugin + use valid messageType ENUM (was 'edit', now 'event') |
+
+**Architecture / Rules added this session:**
+
+- **Non-negotiable #8** (CLAUDE.md, repo + master): Every entity feature must follow the 5 Odoo pillars from `trade-odoo-patterns.md` (breadcrumb, smart-button strip, form view, related tabs, chatter) AND expose matching MCP write tools in `backend/mcp/erpToolServer.js`. If a feature is buildable in the UI but not from the assistant, it is NOT done. Captured as **L-067**.
+- **Non-negotiable #9** (CLAUDE.md): Brand context must be explicit, asserted at render time, never default to SH. Resilient flooring (LVT / SPC / Engineered SPC / WPC / Vinyl Sheet) is FW (Malaysia) OR HH (China), never SH. Renderers MUST call `assertBrandSafe(...)` and refuse to render (422 / `BrandLeakError`) rather than fall back. Captured as **L-068**.
+
+**The brand-leak incident:** Alex spotted the FW Engineered SPC PriceList PDF rendering with SH branding (Sovern House logo, alex@sovernhouse.co sender, Taiwan footer) on a product line that is exclusively FlorWay (Malaysia origin). Root cause: Sequelize include on the email path used `attributes: ['id', 'companyName']` for Customer/Factory, so brandCode never loaded; the renderer's nullish-chain fell through to SH defaults. Fix layered:
+
+1. Added explicit `PriceList.brand_code` column + migration phase4_28d (factory consensus + items + customer fallback).
+2. New `backend/services/priceListBrandResolver.js` with `resolveBrand()`, `assertBrandSafe()`, `priceListIncludeForBrand()`, `BrandLeakError`.
+3. Renderer + email helper refuse to send when brand is unresolved.
+4. MCP `create_price_list` now requires brandCode.
+5. Regression test `phase428dPriceListBrandLeak.test.js` locks the guard (9 cases).
+6. Reactivated HH brand row + added HH style tokens to `brandStyleTokens.js`.
+
+**PriceList feature set (final):**
+
+- 5-pillar Odoo detail page (breadcrumb, smart buttons, tabs Overview/Items/Approvals/Chatter, form view) — `frontend/admin-portal/src/pages/PriceLists/PriceListDetail.jsx`
+- PDF export with brand-aware tokens (FW / HH / SH), rows expand to fit text (heightOfString), columns reflow to 100% pageWidth when hidden
+- Send-by-email with brand-correct sender + PDF attachment (shared service for REST + MCP per L-045)
+- Request-approval modal creates ScheduledActivity for assignee
+- Chatter at bottom + edit audit log (who / when / field-by-field diff including renamed columns, added/removed custom columns, items count)
+- Editor lets the operator: show/hide each standard column, rename any column header (FOB / DDP / Min QTY / etc.), add/remove arbitrary custom columns (text/number/boolean), free-form footer notes for payment terms + duty breakdown
+- Mobile list + detail screens at parity (no editor on mobile yet; PDF improvements ship via shared backend)
+
+**Migrations registered (boot-time):**
+
+- `phase4_28d_price_list_brand_code_added` — adds `brand_code` + `hidden_columns` + backfills brand from factory consensus.
+- `phase4_28e_price_list_column_labels_footer_notes_added` — adds `column_labels` + `footer_notes` columns.
+
+**Latent bugs fixed in passing:**
+
+- 7 pre-existing CI failures on main (commit f796bf6).
+- L-061 cross-platform: `/tmp/` literal failed on Windows; switched to `path.resolve(os.tmpdir())`.
+- Chatter `dayjs(...).fromNow` undefined — pre-existing since chatter shipped; nobody hit it because no PriceList chatter messages existed until the edit-audit code created the first ones. `dayjs.extend(relativeTime)` added to `frontend/admin-portal/src/utils/formatters.js`. Crashed every detail page Chatter tab once messages were present.
+- MCP `create_price_list_item` returned null `sku` / `productName` when AI omitted them; handler now backfills from Product when productId is set (commit 24ee66a; backfilled 9 prod rows).
+- Brand-leak class-of-bug (see incident above).
+
+**Lessons added (`sovern-instructions-skills`):**
+
+- L-067 — Odoo + MCP coverage on every new feature (paired with non-negotiable #8)
+- L-068 — Brand-leak class incident root cause + fix pattern (paired with non-negotiable #9)
+
+**Pickup list for next session:**
+
+1. Live UX walkthrough of the new PriceList feature set in prod (rename columns, hide/show, custom columns, footer notes, edit then check chatter tab).
+2. Carry-over from Macbook arc: Phase 4.26d (mobile push for chain hops, optional fallback poll already shipped).
+3. Carry-over: SQLITE_STORAGE moved out of .env — verify defense in depth holds under load.
+4. Phase 4.28h candidate: mobile PriceList EDITOR (currently mobile is read-only for PriceLists). Three-Surface Rule allows this deferral since admin editing is the primary path.
+5. EU sanctions URL probe — Mondays 04:00 UTC; next run 2026-05-18. Watch for streak-alert if webgate still 500s.
+
+**Three-Surface Rule note:** PDF + email flows ship to mobile automatically (shared backend). Mobile list + detail at parity; editor is admin-only by design (operator workflow). No outstanding parity violations.
+
+---
+
 ## Cross-environment file sync request (for desktop-Claude, added 2026-05-17 from Macbook session)
 
 The canonical `Instructions & Skills/CLAUDE.md` (in `sovern-instructions-skills` repo) mandates a six-file session-start protocol. Three of those files could NOT be found anywhere on the GCP VM today:
