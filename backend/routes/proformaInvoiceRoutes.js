@@ -60,96 +60,79 @@ router.get('/:id', requireAuth, async (req, res, next) => {
 });
 
 /**
- * POST /:id/convert-order
- * Confirm a PI and create a Sales Order from it.
+ * POST /:id/convert-order — DEPRECATED — use POST /:id/confirm instead.
  *
- * Body: { factoryId (required), estimatedDelivery? (ISO date) }
+ * Legacy converter endpoint. Was wrong on two counts:
+ *   1. Set pi.status='converted' which is NOT in the ProformaInvoice
+ *      enum (draft/sent/confirmed/cancelled). The status was being
+ *      silently stored as text on SQLite but Sequelize ENUM validation
+ *      on other dialects would reject it.
+ *   2. Required factoryId in the body, blocking the auto-chain on
+ *      Proforma.confirm.
  *
- * Fixed bugs vs previous PATCH /:id/confirm:
- *   - factoryId now comes from request body (previously tried to derive from
- *     pi.quotation.inquiryId which (a) the PI query didn't include and
- *     (b) would have stored the inquiry ID not the factory ID anyway)
- *   - Wrapped in a transaction so a DB failure won't leave PI confirmed
- *     without a corresponding SO
- *   - Uses generateDocumentNumber for a readable, unique SO number instead
- *     of the raw Date.now() timestamp
- *   - Returns the created SO so the frontend can navigate to it
+ * This endpoint now delegates to workflowService.onProformaInvoiceConfirmed
+ * (the same code path as POST /:id/confirm) and adds a Deprecation header
+ * so legacy clients see the migration signal. The factoryId body param
+ * still takes precedence over auto-derivation for callers that explicitly
+ * choose one.
  */
 router.post('/:id/convert-order', requireAuth, async (req, res, next) => {
-  const { factoryId, estimatedDelivery } = req.body;
+  res.set('Deprecation', 'true');
+  res.set('Link', '</api/proforma-invoices/' + req.params.id + '/confirm>; rel="successor-version"');
+  res.set('Warning', '299 - "Deprecated API: use POST /:id/confirm; convert-order will be removed in a future release."');
 
-  if (!factoryId) {
-    return res.status(400).json({ success: false, message: 'factoryId is required to convert a PI to a Sales Order' });
-  }
+  const { factoryId, estimatedDelivery } = req.body || {};
 
-  const t = await db.sequelize.transaction();
   try {
-    const pi = await db.ProformaInvoice.findByPk(req.params.id, {
-      include: [
-        { association: 'items', include: [{ model: db.Product, as: 'product' }] },
-        { model: db.Customer, as: 'customer' }
-      ],
-      transaction: t,
-    });
-
+    const pi = await db.ProformaInvoice.findByPk(req.params.id);
     if (!pi) {
-      await t.rollback();
       return res.status(404).json({ success: false, message: 'Proforma Invoice not found' });
     }
 
-    if (pi.status === 'converted') {
-      await t.rollback();
-      return res.status(409).json({ success: false, message: 'This PI has already been converted to a Sales Order' });
+    const { isAccessibleByBrandCode } = require('../utils/notFoundOnWrongBrand');
+    if (!isAccessibleByBrandCode(req, pi.brandCode)) {
+      return res.status(404).json({ success: false, message: 'Proforma Invoice not found' });
     }
 
-    // Validate the factory exists
-    const factory = await db.Factory.findByPk(factoryId, { transaction: t });
-    if (!factory) {
-      await t.rollback();
-      return res.status(400).json({ success: false, message: 'Factory not found' });
+    if (pi.status !== 'confirmed') {
+      try { await pi.update({ status: 'confirmed' }); } catch (e) {
+        return res.status(422).json({ success: false, message: e.message });
+      }
     }
 
-    // Mark PI as converted
-    await pi.update({ status: 'converted' }, { transaction: t });
-
-    // Create the Sales Order
-    const salesOrder = await db.SalesOrder.create({
-      id: uuidv4(),
-      orderNumber: generateDocumentNumber('SO'),
-      proformaInvoiceId: pi.id,
-      customerId: pi.customerId,
+    const workflowService = require('../services/workflowService');
+    const chainResult = await workflowService.onProformaInvoiceConfirmed(pi, {
+      userId: req.user && req.user.id,
+      ip: req.ip,
+      source: 'rest_convert_order_legacy',
       factoryId,
-      status: 'confirmed',
-      subtotal: pi.subtotal,
-      discount: pi.discount,
-      tax: pi.tax,
-      total: pi.total,
-      currency: pi.currency,
-      estimatedDelivery: estimatedDelivery || null,
-    }, { transaction: t });
+      estimatedDelivery,
+    });
 
-    // Copy line items from PI to SO
-    for (const item of (pi.items || [])) {
-      await db.SalesOrderItem.create({
-        id: uuidv4(),
-        salesOrderId: salesOrder.id,
-        productId: item.productId,
-        description: item.description,
-        quantity: item.quantity,
-        unit: item.unit,
-        unitPrice: item.unitPrice,
-        total: item.total,
-      }, { transaction: t });
+    if (!chainResult.ok) {
+      const auditService = require('../services/auditService');
+      auditService.logAction(
+        (req.user && req.user.id) || null,
+        'auto_create_failed',
+        'ProformaInvoice',
+        pi.id,
+        { code: chainResult.code, message: chainResult.message, legacyEndpoint: 'convert-order' },
+        req.ip || null,
+      ).catch(() => {});
+      return res.status(400).json({ success: false, message: chainResult.message });
     }
-
-    await t.commit();
 
     res.json(getSuccessResponse(
-      { pi, salesOrder: { id: salesOrder.id, orderNumber: salesOrder.orderNumber } },
-      'Proforma Invoice confirmed and Sales Order created'
+      {
+        pi,
+        salesOrder: chainResult.salesOrder ? {
+          id: chainResult.salesOrder.id,
+          orderNumber: chainResult.salesOrder.orderNumber,
+        } : null,
+      },
+      'Proforma Invoice confirmed and Sales Order created (DEPRECATED endpoint, use /confirm)',
     ));
   } catch (error) {
-    await t.rollback();
     next(error);
   }
 });

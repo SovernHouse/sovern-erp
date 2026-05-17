@@ -639,6 +639,13 @@ const duplicate = async (req, res, next) => {
 
 const convertToProformaInvoice = async (req, res, next) => {
   try {
+    // DEPRECATED: as of Phase 4.25a, Pro Forma is auto-created on
+    // Quotation.accept. This manual converter remains as a back-fill
+    // path for quotations accepted before 4.25a shipped. The Deprecation
+    // header signals callers to migrate to /quotations/:id/accept.
+    res.set('Deprecation', 'true');
+    res.set('Link', '</api/quotations/' + req.params.id + '/accept>; rel="successor-version"');
+    res.set('Warning', '299 - "Deprecated API: Pro Forma auto-creates on quotation accept since Phase 4.25a. Use POST /:id/accept."');
     const { id } = req.params;
     const { paymentTerms } = req.body;
 

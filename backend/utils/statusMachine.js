@@ -17,14 +17,25 @@ const { ValidationError } = require('../middleware/errorHandler');
  * 'draft' is retained for explicit-draft callers; the model defaults
  * to 'confirmed' so most SOs never visit draft.
  */
+/**
+ * Valid status transitions for Sales Orders — aligned with the
+ * authoritative model hook in utils/statusTransitions.js as of
+ * 2026-05-17. The SO model enum is:
+ *   confirmed, in_production, ready, shipped, in_transit, delivered,
+ *   completed, cancelled
+ * The model has no 'draft' state — the previous map listed one,
+ * which would have been rejected by the model hook anyway.
+ *
+ * Transition rules mirror utils/statusTransitions.js TRANSITIONS.SalesOrder.
+ * If you change one of these maps, update the other.
+ */
 const SALES_ORDER_TRANSITIONS = {
-  draft: ['confirmed', 'cancelled'],
   confirmed: ['in_production', 'cancelled'],
-  in_production: ['ready', 'shipped', 'cancelled'],
+  in_production: ['ready', 'cancelled'],
   ready: ['shipped', 'cancelled'],
-  shipped: ['in_transit', 'delivered', 'cancelled'],
-  in_transit: ['delivered', 'cancelled'],
-  delivered: ['completed', 'cancelled'],
+  shipped: ['in_transit'],
+  in_transit: ['delivered'],
+  delivered: ['completed'],
   completed: [],
   cancelled: []
 };
@@ -32,14 +43,24 @@ const SALES_ORDER_TRANSITIONS = {
 /**
  * Valid status transitions for Purchase Orders
  */
+/**
+ * Valid status transitions for Purchase Orders — aligned with
+ * utils/statusTransitions.js TRANSITIONS.PurchaseOrder. The PO
+ * model enum is:
+ *   draft, sent, confirmed, in_production, ready, shipped, received,
+ *   completed, cancelled
+ * Previous map listed shipped -> delivered and delivered -> completed.
+ * 'delivered' is NOT a valid PO status; the correct post-shipped
+ * state is 'received'. Fixed here.
+ */
 const PURCHASE_ORDER_TRANSITIONS = {
   draft: ['sent', 'cancelled'],
   sent: ['confirmed', 'cancelled'],
   confirmed: ['in_production', 'cancelled'],
   in_production: ['ready', 'cancelled'],
-  ready: ['shipped', 'cancelled'],
-  shipped: ['delivered', 'cancelled'],
-  delivered: ['completed', 'cancelled'],
+  ready: ['shipped'],
+  shipped: ['received'],
+  received: ['completed'],
   completed: [],
   cancelled: []
 };
