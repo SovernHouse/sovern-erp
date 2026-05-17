@@ -244,6 +244,18 @@ export const leadsAPI = {
 }
 
 // Products endpoints
+// Phase 4.23 — Contacts as a unified resource. /api/contacts already
+// supports filtering by customerId or factoryId (or *NotNull=true to list
+// all contacts of a parent type). ContactsSection mounts on the embedded
+// Client / Supplier detail pages and uses these wrappers.
+export const contactsAPI = {
+  list:    (params) => api.get('/contacts', { params }),
+  getById: (id)    => api.get(`/contacts/${id}`),
+  create:  (data)  => api.post('/contacts', data),
+  update:  (id, data) => api.put(`/contacts/${id}`, data),
+  delete:  (id)    => api.delete(`/contacts/${id}`),
+}
+
 export const productsAPI = {
   getAll: (params) => api.get('/products', { params }),
   getById: (id) => api.get(`/products/${id}`),

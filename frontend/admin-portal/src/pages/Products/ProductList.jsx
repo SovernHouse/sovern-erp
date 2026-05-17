@@ -93,11 +93,14 @@ export default function ProductList() {
       </div>
 
       <div className="bg-white rounded-lg shadow">
+        {/* Phase 4.23 — Odoo row-click opens the product detail page.
+            Edit pencil now goes to the edit form specifically. */}
         <DataTable
           columns={columns}
           data={products}
           isLoading={isLoading}
-          onEdit={(product) => navigate(`/products/${product.id}`)}
+          onRowClick={(product) => navigate(`/products/${product.id}`)}
+          onEdit={(product) => navigate(`/products/${product.id}/edit`)}
           onDelete={() => toast.info('Delete functionality')}
         />
       </div>

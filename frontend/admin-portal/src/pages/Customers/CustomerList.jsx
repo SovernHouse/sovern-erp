@@ -72,13 +72,13 @@ export default function CustomerList() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-slate-900">Customers</h1>
+        <h1 className="text-3xl font-bold text-slate-900">Clients</h1>
         <button
           onClick={() => navigate('/customers/new')}
           className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
         >
           <Plus className="w-4 h-4" />
-          <span>New Customer</span>
+          <span>New Client</span>
         </button>
       </div>
 

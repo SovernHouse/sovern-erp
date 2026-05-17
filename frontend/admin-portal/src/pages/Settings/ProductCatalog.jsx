@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Plus, Edit2, Power } from 'lucide-react'
 import { productsAPI, factoriesAPI } from '../../services/api'
@@ -46,6 +47,7 @@ const MOQ_UNITS = ['sqm', 'sqft', 'box', 'pallet', 'roll', 'piece', 'container']
 
 export default function ProductCatalog() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const isSuperAdmin = user?.role === 'super_admin'
   // Phase 4.20: super_admin opens the catalog with all accessible brands aggregated
   // by default. Picker still lets them narrow to SH or FW individually. This avoids
@@ -158,8 +160,16 @@ export default function ProductCatalog() {
               </tr>
             </thead>
             <tbody>
+              {/* Phase 4.23 — Odoo row click → navigate to ProductDetail.
+                  Edit pencil opens the inline edit modal (in-context tweaks);
+                  the row body itself opens the full detail view with chatter,
+                  smart buttons, related-data tabs. */}
               {visibleProducts.map(p => (
-                <tr key={p.id} className={`border-b border-slate-100 hover:bg-slate-50 ${!p.isActive ? 'opacity-60' : ''}`}>
+                <tr
+                  key={p.id}
+                  className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${!p.isActive ? 'opacity-60' : ''}`}
+                  onClick={() => navigate(`/products/${p.id}`)}
+                >
                   <td className="px-4 py-3 font-mono text-xs text-slate-700">{p.sku}</td>
                   <td className="px-4 py-3 text-slate-900">{p.name}</td>
                   <td className="px-4 py-3"><BrandBadge code={p.brandCode || 'SH'} size="sm" /></td>
@@ -172,7 +182,7 @@ export default function ProductCatalog() {
                   </td>
                   <td className="px-4 py-3 text-right text-slate-700">{p.leadTimeDays ? `${p.leadTimeDays}d` : '—'}</td>
                   <td className="px-4 py-3 text-center">{p.isActive ? '✓' : '—'}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="inline-flex gap-2">
                       <button onClick={() => { setEditing(p); setShowForm(true) }} className="p-1.5 hover:bg-slate-200 rounded">
                         <Edit2 className="w-4 h-4 text-slate-600" />

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { ArrowLeft, Edit2, MessageSquare, Download, CalendarClock } from 'lucide-react'
 import ChatterPanel from '../../components/ChatterPanel'
+import ContactsSection from '../../components/ContactsSection'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import DataTable from '../../components/DataTable'
 import StatusBadge from '../../components/StatusBadge'
@@ -94,6 +95,8 @@ export default function CustomerDetail() {
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
+    // Phase 4.23 — embedded contacts replace the standalone Client Contacts page.
+    { id: 'contacts', label: 'Contacts' },
     { id: 'orders', label: 'Orders' },
     { id: 'quotations', label: 'Quotations' },
     { id: 'invoices', label: 'Invoices' },
@@ -420,6 +423,10 @@ export default function CustomerDetail() {
             <div className="text-center py-12">
               <p className="text-slate-600">No documents uploaded</p>
             </div>
+          )}
+
+          {activeTab === 'contacts' && (
+            <ContactsSection parentType="Customer" parentId={id} />
           )}
 
           {activeTab === 'chatter' && (

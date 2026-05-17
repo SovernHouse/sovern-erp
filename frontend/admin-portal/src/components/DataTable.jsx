@@ -17,6 +17,12 @@ export default function DataTable({
   isLoading,
   onEdit,
   onDelete,
+  // Phase 4.23 — Odoo row-click navigation. When set, clicking anywhere
+  // on a row (outside the actions column) fires this handler. Pages use
+  // it to open the detail page; the Edit pencil stays as a separate
+  // explicit action so a click on the action button doesn't accidentally
+  // double-fire navigation.
+  onRowClick,
   selectable = false,
   sortable = true,
   paginated = true,
@@ -130,9 +136,13 @@ export default function DataTable({
           </thead>
           <tbody>
             {paginatedData.map((row, idx) => (
-              <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
+              <tr
+                key={idx}
+                className={`border-b border-slate-200 hover:bg-slate-50 ${onRowClick ? 'cursor-pointer' : ''}`}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+              >
                 {selectable && (
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selectedRows.has(idx.toString())}
@@ -150,7 +160,7 @@ export default function DataTable({
                   </td>
                 ))}
                 {(onEdit || onDelete) && (
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center space-x-2">
                       {onEdit && (
                         <button

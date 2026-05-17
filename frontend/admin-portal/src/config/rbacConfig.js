@@ -112,7 +112,7 @@ export const NAV_ITEMS_BY_ROLE = {
       label: 'Sales',
       icon: 'ShoppingCart',
       submenu: [
-        { label: 'Customers', path: '/customers', permission: 'customers' },
+        { label: 'Clients', path: '/customers', permission: 'customers' },
         { label: 'Inquiries', path: '/inquiries', permission: 'inquiries' },
         { label: 'Quotations', path: '/quotations', permission: 'quotations' },
         { label: 'Proforma Invoices', path: '/proforma-invoices', permission: 'proforma' },
@@ -127,9 +127,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Leads', path: '/crm/leads', permission: 'outreach' },
         { label: 'Pipeline', path: '/crm/pipeline', permission: 'outreach' },
         { label: 'Activities', path: '/crm/activities', permission: 'outreach' },
-        { label: 'Supplier Contacts', path: '/crm/contacts', permission: 'outreach' },
         { label: 'Email Inbox', path: '/crm/inbox', permission: 'outreach' },
-        { label: 'Client Contacts', path: '/client-contacts', permission: 'outreach' },
       ],
     },
     // ── Supply Chain & Operations ────────────────────────────────────────
@@ -137,7 +135,7 @@ export const NAV_ITEMS_BY_ROLE = {
       label: 'Procurement',
       icon: 'Inbox',
       submenu: [
-        { label: 'Factories', path: '/factories', permission: 'factories' },
+        { label: 'Suppliers', path: '/factories', permission: 'factories' },
         { label: 'Products', path: '/products', permission: 'products' },
         { label: 'Spec Templates', path: '/products/spec-templates', permission: 'products' },
         { label: 'Product Categories', path: '/settings/product-taxonomy', permission: 'settings' },
@@ -214,7 +212,7 @@ export const NAV_ITEMS_BY_ROLE = {
       label: 'Sales',
       icon: 'ShoppingCart',
       submenu: [
-        { label: 'Customers', path: '/customers', permission: 'customers' },
+        { label: 'Clients', path: '/customers', permission: 'customers' },
         { label: 'Inquiries', path: '/inquiries', permission: 'inquiries' },
         { label: 'Quotations', path: '/quotations', permission: 'quotations' },
         {
@@ -229,7 +227,7 @@ export const NAV_ITEMS_BY_ROLE = {
       label: 'Procurement',
       icon: 'Inbox',
       submenu: [
-        { label: 'Factories', path: '/factories', permission: 'factories' },
+        { label: 'Suppliers', path: '/factories', permission: 'factories' },
         { label: 'Products', path: '/products', permission: 'products' },
         {
           label: 'Purchase Orders',
@@ -280,7 +278,7 @@ export const NAV_ITEMS_BY_ROLE = {
       label: 'Sales',
       icon: 'ShoppingCart',
       submenu: [
-        { label: 'Customers', path: '/customers', permission: 'customers' },
+        { label: 'Clients', path: '/customers', permission: 'customers' },
         { label: 'Inquiries', path: '/inquiries', permission: 'inquiries' },
         { label: 'Quotations', path: '/quotations', permission: 'quotations' },
         {
@@ -305,9 +303,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Leads',           path: '/crm/leads',        permission: 'outreach' },
         { label: 'Pipeline',        path: '/crm/pipeline',     permission: 'outreach' },
         { label: 'Activities',      path: '/crm/activities',   permission: 'outreach' },
-        { label: 'Supplier Contacts', path: '/crm/contacts',   permission: 'outreach' },
         { label: 'Email Inbox',     path: '/crm/inbox',        permission: 'outreach' },
-        { label: 'Client Contacts', path: '/client-contacts',  permission: 'outreach' },
       ],
     },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
@@ -318,7 +314,7 @@ export const NAV_ITEMS_BY_ROLE = {
       label: 'Procurement',
       icon: 'Inbox',
       submenu: [
-        { label: 'Factories', path: '/factories', permission: 'factories' },
+        { label: 'Suppliers', path: '/factories', permission: 'factories' },
         {
           label: 'Purchase Orders',
           path: '/purchase-orders',
@@ -359,7 +355,7 @@ export const NAV_ITEMS_BY_ROLE = {
       ],
     },
     {
-      label: 'Customers',
+      label: 'Clients',
       icon: 'Users',
       path: '/customers',
       permission: 'customers',
@@ -405,7 +401,7 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Procurement',
       icon: 'Inbox',
-      submenu: [{ label: 'Factories', path: '/factories', permission: 'factories' }],
+      submenu: [{ label: 'Suppliers', path: '/factories', permission: 'factories' }],
     },
     { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
     { label: 'AI Assistant', icon: 'Sparkles', path: '/ai/assistant' },
@@ -424,7 +420,7 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Sales', icon: 'ShoppingCart',
       submenu: [
-        { label: 'Customers', path: '/customers', permission: 'customers' },
+        { label: 'Clients', path: '/customers', permission: 'customers' },
         { label: 'Inquiries', path: '/inquiries', permission: 'inquiries' },
         { label: 'Quotations', path: '/quotations', permission: 'quotations' },
         { label: 'Proforma Invoices', path: '/proforma-invoices', permission: 'proforma' },
@@ -434,7 +430,7 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Procurement', icon: 'Inbox',
       submenu: [
-        { label: 'Factories', path: '/factories', permission: 'factories' },
+        { label: 'Suppliers', path: '/factories', permission: 'factories' },
         { label: 'Products', path: '/products', permission: 'products' },
         { label: 'Purchase Orders', path: '/purchase-orders', permission: 'purchase-orders' },
       ],
@@ -461,9 +457,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Leads',           path: '/crm/leads',        permission: 'outreach' },
         { label: 'Pipeline',        path: '/crm/pipeline',     permission: 'outreach' },
         { label: 'Activities',      path: '/crm/activities',   permission: 'outreach' },
-        { label: 'Supplier Contacts', path: '/crm/contacts',   permission: 'outreach' },
         { label: 'Email Inbox',     path: '/crm/inbox',        permission: 'outreach' },
-        { label: 'Client Contacts', path: '/client-contacts',  permission: 'outreach' },
       ],
     },
     { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
@@ -479,7 +473,7 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Sales', icon: 'ShoppingCart',
       submenu: [
-        { label: 'Customers', path: '/customers', permission: 'customers' },
+        { label: 'Clients', path: '/customers', permission: 'customers' },
         { label: 'Inquiries', path: '/inquiries', permission: 'inquiries' },
         { label: 'Quotations', path: '/quotations', permission: 'quotations' },
         { label: 'Proforma Invoices', path: '/proforma-invoices', permission: 'proforma' },
@@ -489,7 +483,7 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Procurement', icon: 'Inbox',
       submenu: [
-        { label: 'Factories', path: '/factories', permission: 'factories' },
+        { label: 'Suppliers', path: '/factories', permission: 'factories' },
         { label: 'Products', path: '/products', permission: 'products' },
         { label: 'Purchase Orders', path: '/purchase-orders', permission: 'purchase-orders' },
       ],
@@ -517,9 +511,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Leads',           path: '/crm/leads',        permission: 'outreach' },
         { label: 'Pipeline',        path: '/crm/pipeline',     permission: 'outreach' },
         { label: 'Activities',      path: '/crm/activities',   permission: 'outreach' },
-        { label: 'Supplier Contacts', path: '/crm/contacts',   permission: 'outreach' },
         { label: 'Email Inbox',     path: '/crm/inbox',        permission: 'outreach' },
-        { label: 'Client Contacts', path: '/client-contacts',  permission: 'outreach' },
       ],
     },
     { label: 'Chat', icon: 'MessageCircle', path: '/chat' },
@@ -536,7 +528,7 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Sales', icon: 'ShoppingCart',
       submenu: [
-        { label: 'Customers', path: '/customers', permission: 'customers' },
+        { label: 'Clients', path: '/customers', permission: 'customers' },
         { label: 'Inquiries', path: '/inquiries', permission: 'inquiries' },
         { label: 'Quotations', path: '/quotations', permission: 'quotations' },
         { label: 'Proforma Invoices', path: '/proforma-invoices', permission: 'proforma' },
@@ -551,9 +543,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Leads',           path: '/crm/leads',        permission: 'outreach' },
         { label: 'Pipeline',        path: '/crm/pipeline',     permission: 'outreach' },
         { label: 'Activities',      path: '/crm/activities',   permission: 'outreach' },
-        { label: 'Supplier Contacts', path: '/crm/contacts',   permission: 'outreach' },
         { label: 'Email Inbox',     path: '/crm/inbox',        permission: 'outreach' },
-        { label: 'Client Contacts', path: '/client-contacts',  permission: 'outreach' },
       ],
     },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
@@ -565,14 +555,14 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Sales', icon: 'ShoppingCart',
       submenu: [
-        { label: 'Customers', path: '/customers', permission: 'customers' },
+        { label: 'Clients', path: '/customers', permission: 'customers' },
         { label: 'Sales Orders', path: '/orders', permission: 'orders' },
       ],
     },
     {
       label: 'Procurement', icon: 'Inbox',
       submenu: [
-        { label: 'Factories', path: '/factories', permission: 'factories' },
+        { label: 'Suppliers', path: '/factories', permission: 'factories' },
         { label: 'Products', path: '/products', permission: 'products' },
         { label: 'Purchase Orders', path: '/purchase-orders', permission: 'purchase-orders' },
       ],
@@ -600,7 +590,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Claims', path: '/claims', permission: 'claims' },
       ],
     },
-    { label: 'Customers', icon: 'Users', path: '/customers', permission: 'customers' },
+    { label: 'Clients', icon: 'Users', path: '/customers', permission: 'customers' },
     { label: 'Sales Orders', icon: 'ShoppingCart', path: '/orders', permission: 'orders' },
     { label: 'Documents', icon: 'FileText', submenu: [{ label: 'Document Templates', path: '/documents/templates', permission: 'documents' }] },
     { label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' },
@@ -624,7 +614,7 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Sales', icon: 'ShoppingCart',
       submenu: [
-        { label: 'Customers', path: '/customers', permission: 'customers' },
+        { label: 'Clients', path: '/customers', permission: 'customers' },
         { label: 'Inquiries', path: '/inquiries', permission: 'inquiries' },
         { label: 'Quotations', path: '/quotations', permission: 'quotations' },
         { label: 'Proforma Invoices', path: '/proforma-invoices', permission: 'proforma' },
@@ -641,7 +631,7 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Procurement', icon: 'Inbox',
       submenu: [
-        { label: 'Factories', path: '/factories', permission: 'factories' },
+        { label: 'Suppliers', path: '/factories', permission: 'factories' },
         { label: 'Products', path: '/products', permission: 'products' },
         { label: 'Purchase Orders', path: '/purchase-orders', permission: 'purchase-orders' },
       ],
@@ -682,7 +672,7 @@ export const NAV_ITEMS_BY_ROLE = {
         { label: 'Claims', path: '/claims', permission: 'claims' },
       ],
     },
-    { label: 'Factories', icon: 'Building2', path: '/factories', permission: 'factories' },
+    { label: 'Suppliers', icon: 'Building2', path: '/factories', permission: 'factories' },
     { label: 'Products', icon: 'Package', path: '/products', permission: 'products' },
     { label: 'Documents', icon: 'FileText', submenu: [{ label: 'Document Templates', path: '/documents/templates', permission: 'documents' }] },
   ],
@@ -692,7 +682,7 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Sales', icon: 'ShoppingCart',
       submenu: [
-        { label: 'Customers', path: '/customers', permission: 'customers' },
+        { label: 'Clients', path: '/customers', permission: 'customers' },
         { label: 'Inquiries', path: '/inquiries', permission: 'inquiries' },
         { label: 'Sales Orders', path: '/orders', permission: 'orders' },
       ],
@@ -707,7 +697,7 @@ export const NAV_ITEMS_BY_ROLE = {
     {
       label: 'Procurement', icon: 'Inbox',
       submenu: [
-        { label: 'Factories', path: '/factories', permission: 'factories' },
+        { label: 'Suppliers', path: '/factories', permission: 'factories' },
         { label: 'Products', path: '/products', permission: 'products' },
       ],
     },
@@ -732,7 +722,7 @@ const buildNavFromPermissions = (permissions) => {
   if (has('dashboard')) nav.push({ label: 'Dashboard', icon: 'Home', path: '/', permission: 'dashboard' })
 
   const salesItems = [
-    has('customers')  && { label: 'Customers', path: '/customers', permission: 'customers' },
+    has('customers')  && { label: 'Clients', path: '/customers', permission: 'customers' },
     has('inquiries')  && { label: 'Inquiries', path: '/inquiries', permission: 'inquiries' },
     has('quotations') && { label: 'Quotations', path: '/quotations', permission: 'quotations' },
     has('proforma')   && { label: 'Proforma Invoices', path: '/proforma-invoices', permission: 'proforma' },
@@ -741,7 +731,7 @@ const buildNavFromPermissions = (permissions) => {
   if (salesItems.length) nav.push({ label: 'Sales', icon: 'ShoppingCart', submenu: salesItems })
 
   const procItems = [
-    has('factories')       && { label: 'Factories', path: '/factories', permission: 'factories' },
+    has('factories')       && { label: 'Suppliers', path: '/factories', permission: 'factories' },
     has('products')        && { label: 'Products', path: '/products', permission: 'products' },
     has('purchase-orders') && { label: 'Purchase Orders', path: '/purchase-orders', permission: 'purchase-orders' },
   ].filter(Boolean)
@@ -764,7 +754,9 @@ const buildNavFromPermissions = (permissions) => {
   // Operations / Inventory removed Phase 4.24 (no-stock business). The
   // 'inventory' permission may still exist on legacy role rows; intentionally
   // not pushing anything for it here.
-  if (has('outreach'))  nav.push({ label: 'Outreach', icon: 'Users2', submenu: [{ label: 'Client Contacts', path: '/client-contacts', permission: 'outreach' }] })
+  // Phase 4.23 — Client Contacts no longer a top-level nav entry; contacts
+  // live embedded in the Client (Customer) and Supplier (Factory) detail
+  // pages. /client-contacts route still resolves for any deep links.
   if (has('reports'))   nav.push({ label: 'Reports', icon: 'BarChart3', path: '/reports', permission: 'reports' })
   if (has('analytics')) nav.push({ label: 'Analytics', icon: 'TrendingUp', path: '/analytics', permission: 'analytics' })
   if (has('bi-dashboard')) nav.push({ label: 'BI Dashboard', icon: 'BarChart3', path: '/bi-dashboard', permission: 'bi-dashboard' })
