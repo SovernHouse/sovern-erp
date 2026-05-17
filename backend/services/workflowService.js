@@ -26,6 +26,29 @@ const auditService = require('./auditService');
 const { generateNumberWithCounter, incrementCounter } = require('./numberGenerator');
 
 /**
+ * Phase 4.26: shared notifier for auto-chain creates.
+ *
+ * Fires a persistent Notification + Socket.IO event so list views and
+ * the bell can update without a manual refresh. Best-effort: silently
+ * swallows errors (the upstream chain hop already succeeded; a missed
+ * notification must not roll back business state).
+ */
+async function notifyAutoChain(userId, entityType, entityId, data, link) {
+  if (!userId) return;
+  try {
+    const notificationService = require('./notificationService');
+    await notificationService.createNotification(
+      userId,
+      'auto_chain',
+      'Workflow update',
+      data && data.message ? data.message : `${entityType} auto-created`,
+      { entityType, entityId, ...(data || {}) },
+      link || null,
+    );
+  } catch (_) { /* best-effort */ }
+}
+
+/**
  * onQuotationAccepted (Phase 4.25a).
  *
  * Side-effect of Quote.accept: auto-create a draft Pro Forma Invoice
@@ -137,6 +160,8 @@ async function onQuotationAccepted(quotation, ctx = {}) {
     },
     ip || null,
   ).catch(() => {});
+
+  await notifyAutoChain(userId, 'ProformaInvoice', pi.id, { message: `Pro Forma ${piNumber} auto-created from accepted quotation ${fullQuotation.quotationNumber}.`, phase: '4.25a' }, `/proforma-invoices/${pi.id}`);
 
   return { ok: true, proformaInvoice: pi, alreadyExisted: false };
 }
@@ -265,6 +290,8 @@ async function onProformaInvoiceConfirmed(proforma, ctx = {}) {
     },
     ip || null,
   ).catch(() => {});
+
+  await notifyAutoChain(userId, 'SalesOrder', salesOrder.id, { message: `Sales Order ${salesOrder.orderNumber} auto-created from confirmed Pro Forma ${fullPI.piNumber}.`, phase: '4.25b' }, `/sales-orders/${salesOrder.id}`);
 
   return { ok: true, salesOrder, alreadyExisted: false };
 }
@@ -396,6 +423,10 @@ async function onSalesOrderConfirmed(salesOrder, ctx = {}) {
     ip || null,
   ).catch(() => {});
 
+  if (created.length > 0) {
+    await notifyAutoChain(userId, 'PurchaseOrder', fullSO.id, { message: `${created.length} Purchase Order(s) auto-created from confirmed Sales Order ${fullSO.orderNumber}.`, phase: '4.25c', poIds: created.map(po => po.id), poNumbers: created.map(po => po.poNumber) }, `/sales-orders/${fullSO.id}`);
+  }
+
   return { ok: true, created, alreadyExisted, skipped };
 }
 
@@ -482,6 +513,8 @@ async function onPurchaseOrderConfirmed(purchaseOrder, ctx = {}) {
     },
     ip || null,
   ).catch(() => {});
+
+  await notifyAutoChain(userId, 'GoodsReceivedNote', grn.id, { message: `Expected GRN ${grn.grnNumber} auto-created from confirmed PO ${fullPO.poNumber}.`, phase: '4.25d' }, `/grns/${grn.id}`);
 
   return { ok: true, grn, alreadyExisted: false };
 }
@@ -616,6 +649,8 @@ async function onGoodsReceivedNoteAccepted(grn, ctx = {}) {
     ip || null,
   ).catch(() => {});
 
+  await notifyAutoChain(userId, 'Invoice', invoice.id, { message: `Draft Invoice ${invoiceNumber} auto-created from accepted GRN ${fullGRN.grnNumber}.`, phase: '4.25e' }, `/invoices/${invoice.id}`);
+
   return { ok: true, invoice, alreadyExisted: false };
 }
 
@@ -702,6 +737,10 @@ async function onPaymentConfirmed(payment, ctx = {}) {
     ip || null,
   ).catch(() => {});
 
+  if (statusBefore !== newStatus) {
+    await notifyAutoChain(userId, 'Invoice', invoice.id, { message: `Invoice ${invoice.invoiceNumber} status: ${statusBefore} -> ${newStatus}.`, phase: '4.25f', statusBefore, statusAfter: newStatus, paidAmount, balance }, `/invoices/${invoice.id}`);
+  }
+
   return {
     ok: true,
     invoice,
@@ -765,6 +804,8 @@ async function onSalesOrderShipped(salesOrder, ctx = {}) {
     ip || null,
   ).catch(() => {});
 
+  await notifyAutoChain(userId, 'PackingList', pl.id, { message: `Draft Packing List ${pl.packingListNumber} auto-created for shipped SO.`, phase: '4.25g' }, `/packing-lists/${pl.id}`);
+
   return { ok: true, packingList: pl, alreadyExisted: false };
 }
 
@@ -826,6 +867,8 @@ async function onShipmentDelivered(shipment, ctx = {}) {
     },
     ip || null,
   ).catch(() => {});
+
+  await notifyAutoChain(userId, 'SalesOrder', so.id, { message: `SO ${so.orderNumber} auto-transitioned to delivered (shipment delivered).`, phase: '4.25g', statusBefore, statusAfter: 'delivered' }, `/sales-orders/${so.id}`);
 
   return { ok: true, salesOrder: so, alreadyExisted: false, statusBefore, statusAfter: 'delivered' };
 }
