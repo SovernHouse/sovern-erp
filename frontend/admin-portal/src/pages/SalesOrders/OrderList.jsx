@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import useAutoChainRefresh from '../../hooks/useAutoChainRefresh'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Plus, X } from 'lucide-react'
@@ -18,6 +19,11 @@ export default function OrderList() {
   const [searchParams, setSearchParams] = useSearchParams()
   const statusFilter = searchParams.get('status') || ''
 
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useAutoChainRefresh('SalesOrder', () => setRefreshKey((k) => k + 1))
+
+
   useEffect(() => {
     const fetchOrders = async () => {
       setIsLoading(true)
@@ -33,7 +39,7 @@ export default function OrderList() {
       }
     }
     fetchOrders()
-  }, [statusFilter])
+  }, [statusFilter, refreshKey])
 
   function clearStatus() {
     const next = new URLSearchParams(searchParams)

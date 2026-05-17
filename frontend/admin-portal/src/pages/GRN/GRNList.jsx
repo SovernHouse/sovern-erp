@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import useAutoChainRefresh from '../../hooks/useAutoChainRefresh'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Plus, Filter } from 'lucide-react'
@@ -23,9 +24,14 @@ export default function GRNList() {
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, item: null })
   const navigate = useNavigate()
 
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useAutoChainRefresh('GoodsReceivedNote', () => setRefreshKey((k) => k + 1))
+
+
   useEffect(() => {
     fetchGRNs()
-  }, [searchQuery, status, dateFrom, dateTo])
+  }, [searchQuery, status, dateFrom, dateTo, refreshKey])
 
   const fetchGRNs = async () => {
     try {

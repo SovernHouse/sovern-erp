@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import useAutoChainRefresh from '../../hooks/useAutoChainRefresh'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Plus } from 'lucide-react'
@@ -12,6 +13,11 @@ export default function PurchaseOrderList() {
   const [isLoading, setIsLoading] = useState(true)
   const navigate = useNavigate()
 
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useAutoChainRefresh('PurchaseOrder', () => setRefreshKey((k) => k + 1))
+
+
   useEffect(() => {
     const fetch = async () => {
       try {
@@ -24,7 +30,7 @@ export default function PurchaseOrderList() {
       }
     }
     fetch()
-  }, [])
+  }, [refreshKey])
 
   return (
     <div className="space-y-6">
