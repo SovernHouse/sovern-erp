@@ -358,83 +358,27 @@ router.get('/price-lists/:id/pdf', requireAuth, async (req, res, next) => {
  */
 router.post('/price-lists/:id/send-email', requireAuth, async (req, res, next) => {
   try {
-    const priceList = await db.PriceList.findByPk(req.params.id, {
-      include: [
-        { model: db.Customer, attributes: ['id', 'companyName', 'email'] },
-        { model: db.Factory, attributes: ['id', 'companyName', 'email'] },
-        {
-          model: db.PriceListItem,
-          as: 'items',
-          include: [{ model: db.Product, attributes: ['id', 'name', 'sku'] }],
-        },
-      ],
-      order: [[{ model: db.PriceListItem, as: 'items' }, 'sku', 'ASC']],
+    const { sendPriceListEmail } = require('../../services/priceListEmailService');
+    const result = await sendPriceListEmail(req.params.id, {
+      to:         req.body.to,
+      leadId:     req.body.leadId,
+      customerId: req.body.customerId,
+      subject:    req.body.subject,
+      message:    req.body.message,
+      ctx: { userId: req.user?.id || null, ip: req.ip || null, source: 'rest' },
     });
-    if (!priceList) {
-      return res.status(404).json({ success: false, error: { message: 'Price list not found', statusCode: 404 } });
+    if (!result.ok) {
+      const httpStatus = result.code === 'not_found' ? 404 :
+                         result.code === 'no_recipients' ? 400 :
+                         result.code === 'send_failed' ? 502 : 500;
+      return res.status(httpStatus).json({ success: false, error: { message: result.message, statusCode: httpStatus } });
     }
-
-    // Resolve recipient list — explicit `to` plus optional lead/customer resolution.
-    const recipients = new Set();
-    const rawTo = req.body.to;
-    if (Array.isArray(rawTo)) rawTo.forEach((e) => e && recipients.add(String(e).trim()));
-    else if (typeof rawTo === 'string') rawTo.split(',').forEach((e) => e && recipients.add(e.trim()));
-
-    if (req.body.leadId) {
-      const lead = await db.Lead.findByPk(req.body.leadId, { attributes: ['email', 'companyName'] });
-      if (lead && lead.email) recipients.add(lead.email);
-    }
-    if (req.body.customerId) {
-      const customer = await db.Customer.findByPk(req.body.customerId, { attributes: ['email', 'companyName'] });
-      if (customer && customer.email) recipients.add(customer.email);
-    }
-    if (recipients.size === 0) {
-      return res.status(400).json({ success: false, error: { message: 'No recipients resolved — pass `to` and/or `leadId` / `customerId`.', statusCode: 400 } });
-    }
-
-    const { renderPriceListPdf } = require('../../services/pdf/priceListRenderer');
-    const pdfBuffer = await renderPriceListPdf(priceList);
-    const slug = String(priceList.name || 'price-list').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 60);
-    const filename = `${slug}-${priceList.id.slice(0, 8)}.pdf`;
-
-    const subject = (req.body.subject && String(req.body.subject).trim()) ||
-      `Price List · ${priceList.name || 'Sovern House'}`;
-    const messageHtml = String(req.body.message || '').trim() ||
-      `<p>Please find the attached price list <strong>${priceList.name || ''}</strong>.</p>` +
-      `<p>Valid: ${priceList.validFrom || 'open'} to ${priceList.validTo || 'open'}.</p>` +
-      `<p>Reply to this email if you have any questions.</p>`;
-
-    const emailService = require('../../services/emailService');
-    const sendResult = await emailService.sendEmail(
-      Array.from(recipients).join(', '),
-      subject,
-      messageHtml,
-      {
-        attachments: [{
-          filename,
-          content: pdfBuffer,
-          contentType: 'application/pdf',
-        }],
-      },
-    );
-
-    // Audit log via AuditLog directly (this route hasn't been MCP-converged
-    // so auditService.logAction is the right call site).
-    const auditService = require('../../services/auditService');
-    auditService.logAction(
-      req.user?.id || null,
-      'send_price_list_email',
-      'PriceList',
-      priceList.id,
-      { recipients: Array.from(recipients), subject, leadId: req.body.leadId || null, customerId: req.body.customerId || null },
-      req.ip || null,
-    ).catch(() => {});
-
     res.json(getSuccessResponse({
-      sent: true,
-      recipients: Array.from(recipients),
-      subject,
-      messageId: sendResult && sendResult.messageId ? sendResult.messageId : null,
+      sent:       !result.disabled,
+      disabled:   !!result.disabled,
+      recipients: result.recipients,
+      subject:    result.subject,
+      messageId:  result.messageId,
     }));
   } catch (error) {
     next(error);

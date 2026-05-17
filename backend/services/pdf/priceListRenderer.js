@@ -17,6 +17,7 @@
 
 const PDFDocument = require('pdfkit');
 const { formatCurrency } = require('../../utils/helpers');
+const { resolveTokens, registerBrandFonts } = require('./brandStyleTokens');
 
 const PAGE_MARGIN = 50;
 const COL_RATIOS = {
@@ -43,17 +44,35 @@ function fmtMoney(value, currency) {
 async function renderPriceListPdf(priceList, opts = {}) {
   return new Promise((resolve, reject) => {
     try {
+      // Brand resolution. The PriceList itself has no brand_code column;
+      // context flows through the parent. Customer brand: take the first
+      // entry in brandRelationships (typically the customer's primary
+      // brand). Factory brand: direct brand_code. Fallback to SH so the
+      // renderer always has palette + footer + sender.
+      let brandCode = opts.brandCode || null;
+      if (!brandCode) {
+        const cust = priceList.Customer || priceList.customer;
+        const fact = priceList.Factory  || priceList.factory;
+        if (cust && Array.isArray(cust.brandRelationships) && cust.brandRelationships.length) {
+          brandCode = cust.brandRelationships[0];
+        } else if (fact && fact.brandCode) {
+          brandCode = fact.brandCode;
+        }
+      }
+      const tokens = resolveTokens(opts.brand || { code: brandCode || 'SH' });
+
       const doc = new PDFDocument({
         size: 'A4',
         margin: PAGE_MARGIN,
         info: {
           Title:    `Price List — ${priceList.name || priceList.id}`,
-          Author:   process.env.PDF_COMPANY_NAME || 'Sovern House',
+          Author:   tokens.displayName,
           Subject:  'Price List',
           Creator:  'Sovern ERP',
         },
       });
 
+      const fonts = registerBrandFonts(doc);
       const buffers = [];
       doc.on('data', (b) => buffers.push(b));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
@@ -61,27 +80,31 @@ async function renderPriceListPdf(priceList, opts = {}) {
 
       const pageWidth = doc.page.width - PAGE_MARGIN * 2;
 
-      // ── Header
-      doc.fillColor('#0F172A')
-         .fontSize(20).font('Helvetica-Bold')
-         .text(process.env.PDF_COMPANY_NAME || 'Sovern House', PAGE_MARGIN, PAGE_MARGIN);
-      doc.fontSize(9).font('Helvetica').fillColor('#475569')
-         .text(process.env.PDF_COMPANY_ADDRESS || '', PAGE_MARGIN, PAGE_MARGIN + 24)
-         .text(process.env.PDF_COMPANY_EMAIL   || '', PAGE_MARGIN, PAGE_MARGIN + 38);
+      // ── Header — brand-themed strip on the left, sender details right.
+      doc.rect(PAGE_MARGIN, PAGE_MARGIN, 4, 56).fill(tokens.primaryColor);
+      doc.fillColor(tokens.ink || '#0F172A')
+         .fontSize(22).font(fonts.display)
+         .text(tokens.displayName, PAGE_MARGIN + 14, PAGE_MARGIN);
+      doc.fontSize(9).font(fonts.body).fillColor(tokens.steel || '#475569')
+         .text(tokens.senderName || '', PAGE_MARGIN + 14, PAGE_MARGIN + 28)
+         .text(tokens.senderTitle ? `${tokens.senderTitle}` : '', PAGE_MARGIN + 14, PAGE_MARGIN + 40);
+      // Right column: sender email + footer-legal snippet anchored top-right.
+      doc.fontSize(9).font(fonts.body).fillColor(tokens.steel || '#475569')
+         .text(tokens.senderEmail || '', PAGE_MARGIN, PAGE_MARGIN + 28, { width: pageWidth, align: 'right' });
 
       // ── Document title
-      doc.moveTo(PAGE_MARGIN, PAGE_MARGIN + 60)
-         .lineTo(PAGE_MARGIN + pageWidth, PAGE_MARGIN + 60)
-         .strokeColor('#CBD5E1').lineWidth(0.8).stroke();
+      doc.moveTo(PAGE_MARGIN, PAGE_MARGIN + 64)
+         .lineTo(PAGE_MARGIN + pageWidth, PAGE_MARGIN + 64)
+         .strokeColor(tokens.primaryColor).lineWidth(1).stroke();
 
-      doc.fillColor('#0F172A').fontSize(22).font('Helvetica-Bold')
-         .text('PRICE LIST', PAGE_MARGIN, PAGE_MARGIN + 72);
+      doc.fillColor(tokens.primaryColor).fontSize(22).font(fonts.display)
+         .text('PRICE LIST', PAGE_MARGIN, PAGE_MARGIN + 76);
 
-      doc.fontSize(14).font('Helvetica-Bold').fillColor('#0F172A')
-         .text(priceList.name || '(unnamed)', PAGE_MARGIN, PAGE_MARGIN + 100);
+      doc.fontSize(14).font(fonts.bodyBold).fillColor(tokens.ink || '#0F172A')
+         .text(priceList.name || '(unnamed)', PAGE_MARGIN, PAGE_MARGIN + 104);
 
       // ── Meta block (2 columns)
-      const metaY = PAGE_MARGIN + 130;
+      const metaY = PAGE_MARGIN + 134;
       const colWidth = pageWidth / 2 - 10;
       const meta = [
         ['Currency',  priceList.currencyCode || 'USD'],
@@ -107,13 +130,13 @@ async function renderPriceListPdf(priceList, opts = {}) {
         const col = idx % 2;
         const x = PAGE_MARGIN + col * (colWidth + 20);
         if (col === 0 && idx > 0) y += 18;
-        doc.fontSize(8).fillColor('#64748B').font('Helvetica').text(label.toUpperCase(), x, y);
-        doc.fontSize(11).fillColor('#0F172A').font('Helvetica-Bold').text(String(value), x, y + 10);
+        doc.fontSize(8).fillColor(tokens.steel || '#64748B').font(fonts.body).text(label.toUpperCase(), x, y);
+        doc.fontSize(11).fillColor(tokens.ink || '#0F172A').font(fonts.bodyBold).text(String(value), x, y + 10);
       });
 
       if (priceList.description) {
         y += 28;
-        doc.fontSize(9).fillColor('#475569').font('Helvetica')
+        doc.fontSize(9).fillColor(tokens.steel || '#475569').font(fonts.body)
            .text(priceList.description, PAGE_MARGIN, y, { width: pageWidth });
         y += doc.heightOfString(priceList.description, { width: pageWidth });
       }
@@ -140,9 +163,9 @@ async function renderPriceListPdf(priceList, opts = {}) {
         return out;
       })();
 
-      // Header row
-      doc.rect(PAGE_MARGIN, tableTop, pageWidth, 22).fill('#F1F5F9');
-      doc.fillColor('#0F172A').fontSize(9).font('Helvetica-Bold');
+      // Header row — brand-tinted (cream / accent) with primary-color text.
+      doc.rect(PAGE_MARGIN, tableTop, pageWidth, 22).fill(tokens.accentColor || '#F1F5F9');
+      doc.fillColor(tokens.primaryColor).fontSize(9).font(fonts.bodyBold);
       doc.text('SKU',       colX.sku + 6, tableTop + 7);
       doc.text('PRODUCT',   colX.productName + 6, tableTop + 7);
       doc.text('UNIT',      colX.unit + 6, tableTop + 7);
@@ -156,9 +179,9 @@ async function renderPriceListPdf(priceList, opts = {}) {
       const items = Array.isArray(priceList.items) ? priceList.items : [];
       const currency = priceList.currencyCode || 'USD';
 
-      doc.font('Helvetica').fontSize(9).fillColor('#0F172A');
+      doc.font(fonts.body).fontSize(9).fillColor(tokens.ink || '#0F172A');
       if (items.length === 0) {
-        doc.fillColor('#94A3B8').font('Helvetica-Oblique')
+        doc.fillColor(tokens.steel || '#94A3B8').font(fonts.body)
            .text('No items in this price list.', PAGE_MARGIN, y + 10, { width: pageWidth, align: 'center' });
         y += rowHeight + 10;
       } else {
@@ -171,7 +194,7 @@ async function renderPriceListPdf(priceList, opts = {}) {
           if (idx % 2 === 1) {
             doc.rect(PAGE_MARGIN, y - 4, pageWidth, rowHeight).fill('#F8FAFC');
           }
-          doc.fillColor('#0F172A').font('Helvetica').fontSize(9);
+          doc.fillColor(tokens.ink || '#0F172A').font(fonts.body).fontSize(9);
           doc.text(item.sku || '—',           colX.sku + 6, y, { width: colWidths.sku - 12, ellipsis: true });
           doc.text(item.productName || '—',   colX.productName + 6, y, { width: colWidths.productName - 12, ellipsis: true });
           doc.text(item.unit || 'sqm',        colX.unit + 6, y, { width: colWidths.unit - 12 });
@@ -179,23 +202,25 @@ async function renderPriceListPdf(priceList, opts = {}) {
             colX.moq + 6, y, { width: colWidths.moq - 12, align: 'right' });
           doc.text(item.leadTimeDays != null ? String(item.leadTimeDays) : '—',
             colX.lead + 6, y, { width: colWidths.lead - 12, align: 'right' });
-          doc.font('Helvetica-Bold')
+          doc.font(fonts.bodyBold).fillColor(tokens.primaryColor)
              .text(fmtMoney(item.sellingPrice, currency),
                colX.price + 6, y, { width: colWidths.price - 12, align: 'right' });
-          doc.font('Helvetica');
+          doc.font(fonts.body).fillColor(tokens.ink || '#0F172A');
           y += rowHeight;
         });
       }
 
       // ── Footer
-      const footerY = doc.page.height - PAGE_MARGIN - 24;
+      const footerY = doc.page.height - PAGE_MARGIN - 36;
       doc.moveTo(PAGE_MARGIN, footerY)
          .lineTo(PAGE_MARGIN + pageWidth, footerY)
-         .strokeColor('#E2E8F0').lineWidth(0.5).stroke();
-      doc.fillColor('#94A3B8').fontSize(8).font('Helvetica')
+         .strokeColor(tokens.primaryColor).lineWidth(0.8).stroke();
+      doc.fillColor(tokens.steel || '#94A3B8').fontSize(8).font(fonts.body)
+         .text(tokens.footerLegal || '', PAGE_MARGIN, footerY + 6, { width: pageWidth });
+      doc.fontSize(7).fillColor(tokens.steel || '#CBD5E1')
          .text(
-           `Generated ${new Date().toISOString().slice(0, 19).replace('T', ' ')} UTC · PriceList ${priceList.id}`,
-           PAGE_MARGIN, footerY + 6,
+           `Generated ${new Date().toISOString().slice(0, 19).replace('T', ' ')} UTC · PriceList ${priceList.id} · Brand ${tokens.code}`,
+           PAGE_MARGIN, footerY + 22, { width: pageWidth },
          );
       if (opts.note) {
         doc.text(opts.note, PAGE_MARGIN, footerY + 6, { width: pageWidth, align: 'right' });

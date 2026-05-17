@@ -2021,3 +2021,87 @@ export async function listMyNotifications(opts?: { unreadOnly?: boolean; limit?:
 export async function markNotificationRead(id: string): Promise<void> {
   await request(`/api/notifications/${id}/read`, { method: 'PATCH' });
 }
+
+// ─── PriceLists — Phase 4.28b mobile parity ──────────────────────────────────
+
+export interface PriceListRow {
+  id: string;
+  name: string;
+  description?: string | null;
+  currencyCode: string;
+  validFrom?: string | null;
+  validTo?: string | null;
+  customerId?: string | null;
+  factoryId?: string | null;
+  isActive: boolean;
+  itemCount?: number;
+  Customer?: { id: string; companyName: string } | null;
+  Factory?: { id: string; companyName: string } | null;
+}
+
+export interface PriceListItemRow {
+  id: string;
+  priceListId: string;
+  productId?: string | null;
+  sku?: string | null;
+  productName?: string | null;
+  sellingPrice?: number | string | null;
+  costPrice?: number | string | null;
+  minimumOrder?: number | string | null;
+  leadTimeDays?: number | null;
+  margin?: number | string | null;
+  unit?: string | null;
+  notes?: string | null;
+}
+
+export interface PriceListDetail extends PriceListRow {
+  items: PriceListItemRow[];
+}
+
+export async function listPriceLists(params?: { customerId?: string; factoryId?: string; isActive?: boolean }): Promise<PriceListRow[]> {
+  const qs = new URLSearchParams();
+  if (params?.customerId) qs.set('customerId', params.customerId);
+  if (params?.factoryId)  qs.set('factoryId',  params.factoryId);
+  if (params?.isActive !== undefined) qs.set('isActive', String(params.isActive));
+  const s = qs.toString();
+  const res = await request<{ success: boolean; data: { data: PriceListRow[] } | PriceListRow[] }>(
+    `/api/personalization/price-lists${s ? `?${s}` : ''}`,
+  );
+  const payload = (res as any).data;
+  if (Array.isArray(payload)) return payload as PriceListRow[];
+  if (payload && Array.isArray(payload.data)) return payload.data as PriceListRow[];
+  return [];
+}
+
+export async function getPriceList(id: string): Promise<PriceListDetail | null> {
+  try {
+    const res = await request<{ success: boolean; data: PriceListDetail }>(
+      `/api/personalization/price-lists/${id}`,
+    );
+    return (res as any).data ?? null;
+  } catch (_) {
+    return null;
+  }
+}
+
+export async function sendPriceListEmail(id: string, body: { to?: string | string[]; leadId?: string; customerId?: string; subject?: string; message?: string }): Promise<{ sent: boolean; recipients: string[]; messageId?: string | null; disabled?: boolean }> {
+  const res = await request<{ success: boolean; data: any }>(
+    `/api/personalization/price-lists/${id}/send-email`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+  return (res as any).data ?? { sent: false, recipients: [] };
+}
+
+export async function requestPriceListApproval(id: string, body: { assigneeId: string; dueDate?: string; note?: string }): Promise<{ activityId: string; dueDate: string }> {
+  const res = await request<{ success: boolean; data: any }>(
+    `/api/personalization/price-lists/${id}/request-approval`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+  return (res as any).data;
+}
+
+// PDF download URL — caller passes to Linking.openURL when needed. Auth
+// still required so an unauthenticated open won't return the PDF.
+export function priceListPdfUrl(id: string): string {
+  return `/api/personalization/price-lists/${id}/pdf`;
+}

@@ -4474,6 +4474,45 @@ async function callTool(name, args) {
       return { success: true, id, removed: snapshot };
     }
 
+    // Phase 4.28b carry-over — assistant-driven email send. Calls the
+    // shared priceListEmailService helper so REST + MCP behave identically
+    // (L-045). Generates the brand-aware PDF, attaches it, sends via
+    // emailService, writes a send_price_list_email AuditLog row.
+    case 'send_price_list_email': {
+      const requester = await requireSuperAdmin();
+      const priceListId = args.priceListId || args.price_list_id || args.id;
+      if (!priceListId) return 'Error: priceListId is required.';
+      const { sendPriceListEmail } = require('../services/priceListEmailService');
+      const result = await sendPriceListEmail(priceListId, {
+        to:         args.to,
+        leadId:     args.leadId     || args.lead_id     || null,
+        customerId: args.customerId || args.customer_id || null,
+        subject:    args.subject,
+        message:    args.message,
+        ctx: { userId: requester.id, source: 'mcp' },
+      });
+      if (!result.ok) return `Error: ${result.message}`;
+      // Audit row was written by the service. Don't double-write here —
+      // the 4.19a invariant test treats the case block as "has audit" as
+      // long as some auditAiWrite/auditService.logAction call fires.
+      // To stay explicit, we also log via auditAiWrite so the assistant
+      // family of action_names stays uniform.
+      await auditAiWrite('send_price_list_email', 'PriceList', priceListId, {
+        recipients: result.recipients,
+        subject: result.subject,
+        messageId: result.messageId,
+        disabled: !!result.disabled,
+      }, requester.id);
+      return {
+        success: true,
+        priceListId,
+        recipients: result.recipients,
+        subject: result.subject,
+        messageId: result.messageId,
+        disabled: !!result.disabled,
+      };
+    }
+
     // Phase 4.28b — assistant-driven approval request on a PriceList.
     // Creates a ScheduledActivity row (type='approve', entityType='PriceList')
     // assigned to the chosen user. Same pattern as the Product approval
@@ -7032,6 +7071,22 @@ const TOOL_DEFS = [
       type: 'object',
       required: ['id'],
       properties: { id: { type: 'string' } },
+    },
+  },
+  {
+    name: 'send_price_list_email',
+    description: 'Phase 4.28b — Email a PriceList as a PDF attachment (super-admin only). Brand-aware PDF rendered server-side. Recipients can be any combination of explicit `to` addresses, a leadId (uses Lead.email), or a customerId (uses Customer.email). ALWAYS show Alex a preview of (recipient list, subject) and wait for explicit confirmation before calling. Returns the resolved recipient list + messageId. If EMAIL_ENABLED is not "true" the call returns { disabled: true } and no actual delivery happens. Writes ai_assistant_send_price_list_email to AuditLog.',
+    inputSchema: {
+      type: 'object',
+      required: ['priceListId'],
+      properties: {
+        priceListId: { type: 'string', description: 'PriceList UUID.' },
+        to:          { type: ['array', 'string'], description: 'Explicit recipient emails — array of strings or comma-separated string.' },
+        leadId:      { type: 'string', description: 'Optional. If set, Lead.email is added to the recipient list.' },
+        customerId:  { type: 'string', description: 'Optional. If set, Customer.email is added to the recipient list.' },
+        subject:     { type: 'string', description: 'Email subject. Default: "Price List · {name}".' },
+        message:     { type: 'string', description: 'HTML body. Default copy is generated when omitted.' },
+      },
     },
   },
   {
