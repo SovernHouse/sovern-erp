@@ -530,7 +530,14 @@ const accept = async (req, res, next) => {
 
     const beforeStatus = quotation.status;
     await quotation.update({ status: 'accepted' });
-    await notificationService.createQuotationNotification(quotation, quotation.customerId, 'accepted');
+    // L-062 best-effort: createQuotationNotification passes customerId as the
+    // userId argument to Notification.create, but Notification.userId is a NOT
+    // NULL FK to User. The mismatch throws SQLITE_CONSTRAINT FK and kills the
+    // accept handler (and the Phase 4.25a workflow that follows). Wrap so the
+    // status update + workflow still complete. Underlying bug in
+    // notificationService.createQuotationNotification tracked separately.
+    try { await notificationService.createQuotationNotification(quotation, quotation.customerId, 'accepted'); }
+    catch (notifErr) { /* L-062 best-effort */ }
 
     // Phase 4.25a: Quote.accept -> ProformaInvoice auto-chain.
     // Best-effort: failure logs an audit row but does NOT roll back
@@ -576,7 +583,8 @@ const reject = async (req, res, next) => {
 
     const beforeStatus = quotation.status;
     await quotation.update({ status: 'rejected' });
-    await notificationService.createQuotationNotification(quotation, quotation.customerId, 'rejected');
+    try { await notificationService.createQuotationNotification(quotation, quotation.customerId, 'rejected'); }
+    catch (notifErr) { /* L-062 best-effort, see accept handler */ }
 
     res.json(getSuccessResponse(quotation, 'Quotation rejected'));
 
