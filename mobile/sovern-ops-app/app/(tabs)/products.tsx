@@ -5,10 +5,15 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView, Switch, Platform,
 } from 'react-native';
-import { getProducts, getProduct, type Product, type ProductPrice } from '../../src/services/api';
+import {
+  getProducts, getProduct,
+  getProductQuotations, getProductSalesOrders, getProductPurchaseOrders, getProductInquiries,
+  type Product, type ProductPrice,
+} from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
 import { BrandBadge } from '../../src/components/BrandBadge';
 import BrandFilterPicker from '../../src/components/BrandFilterPicker';
+import ChatterSection from '../../src/components/ChatterSection';
 import { filterByFlooring, useShowAllCategories } from '../../src/utils/productCategoryFilter';
 import { useAuthStore } from '../../src/store/authStore';
 
@@ -93,12 +98,31 @@ function DetailRow({ label, value }: { label: string; value?: string | number | 
 function ProductDetailModal({ productId, onClose }: { productId: string; onClose: () => void }) {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  // Phase 4.21b — related counts shown as smart-button-like chips. Each is
+  // fetched in parallel and tolerates single-endpoint failure.
+  const [counts, setCounts] = useState({ quotations: 0, salesOrders: 0, purchaseOrders: 0, inquiries: 0 });
 
   useEffect(() => {
-    getProduct(productId)
-      .then(setProduct)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    setLoading(true);
+    Promise.allSettled([
+      getProduct(productId),
+      getProductQuotations(productId),
+      getProductSalesOrders(productId),
+      getProductPurchaseOrders(productId),
+      getProductInquiries(productId),
+    ]).then((res) => {
+      if (cancelled) return;
+      if (res[0].status === 'fulfilled') setProduct(res[0].value);
+      setCounts({
+        quotations:     res[1].status === 'fulfilled' ? res[1].value.length : 0,
+        salesOrders:    res[2].status === 'fulfilled' ? res[2].value.length : 0,
+        purchaseOrders: res[3].status === 'fulfilled' ? res[3].value.length : 0,
+        inquiries:      res[4].status === 'fulfilled' ? res[4].value.length : 0,
+      });
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
   }, [productId]);
 
   const prices = product?.prices ?? [];
@@ -120,6 +144,28 @@ function ProductDetailModal({ productId, onClose }: { productId: string; onClose
           <ActivityIndicator style={{ marginTop: 40 }} color={COLORS.forest} />
         ) : product ? (
           <ScrollView contentContainerStyle={styles.detailScroll}>
+
+            {/* Phase 4.21b — Smart-button counts (Odoo style). Tapping
+                a chip is informational only for now; full drill-down lives
+                on the desktop ProductDetail tabs. */}
+            <View style={smartButtonStyles.row}>
+              <View style={smartButtonStyles.chip}>
+                <Text style={smartButtonStyles.count}>{counts.quotations}</Text>
+                <Text style={smartButtonStyles.label}>Quotes</Text>
+              </View>
+              <View style={smartButtonStyles.chip}>
+                <Text style={smartButtonStyles.count}>{counts.salesOrders}</Text>
+                <Text style={smartButtonStyles.label}>Sales Orders</Text>
+              </View>
+              <View style={smartButtonStyles.chip}>
+                <Text style={smartButtonStyles.count}>{counts.purchaseOrders}</Text>
+                <Text style={smartButtonStyles.label}>POs</Text>
+              </View>
+              <View style={smartButtonStyles.chip}>
+                <Text style={smartButtonStyles.count}>{counts.inquiries}</Text>
+                <Text style={smartButtonStyles.label}>Inquiries</Text>
+              </View>
+            </View>
 
             {/* Basic Info */}
             <Text style={styles.sectionTitle}>Product Info</Text>
@@ -217,6 +263,11 @@ function ProductDetailModal({ productId, onClose }: { productId: string; onClose
               </>
             ) : null}
 
+            {/* Phase 4.21b — Chatter (mobile equivalent of desktop
+                <Chatter entityType="Product" />). 'Product' was added to
+                the chatterController whitelist in Phase 4.21a. */}
+            <ChatterSection entityType="Product" entityId={productId} />
+
           </ScrollView>
         ) : (
           <Text style={styles.emptyText}>Product not found.</Text>
@@ -225,6 +276,27 @@ function ProductDetailModal({ productId, onClose }: { productId: string; onClose
     </Modal>
   );
 }
+
+const smartButtonStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 16,
+  },
+  chip: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  count: { fontSize: 20, fontWeight: '800', color: COLORS.ink },
+  label: { fontSize: 10, fontWeight: '700', color: COLORS.muted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
+});
 
 // ─── Screen ───────────────────────────────────────────────────────────────
 

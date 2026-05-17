@@ -108,4 +108,13 @@ router.post('/:id/request-revision', requireAuth, requireRole('super_admin', 'ad
   productController.requestRevision
 );
 
+// Phase 4.21b — Odoo-style related data for the ProductDetail page.
+// All four endpoints are brand-scoped on the parent (Quotation / SalesOrder /
+// PurchaseOrder / Inquiry). The Item join tables don't carry brandCode so the
+// scope lives on the include where.
+router.get('/:id/quotations',      requireAuth, productController.getRelatedQuotations);
+router.get('/:id/sales-orders',    requireAuth, productController.getRelatedSalesOrders);
+router.get('/:id/purchase-orders', requireAuth, productController.getRelatedPurchaseOrders);
+router.get('/:id/inquiries',       requireAuth, productController.getRelatedInquiries);
+
 module.exports = router;

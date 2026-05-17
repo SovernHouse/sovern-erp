@@ -251,6 +251,13 @@ export const productsAPI = {
   update: (id, data) => api.put(`/products/${id}`, data),
   delete: (id) => api.delete(`/products/${id}`),
   getPriceHistory: (id) => api.get(`/products/${id}/price-history`),
+  // Phase 4.21b — Odoo-style related-data endpoints. Each returns a
+  // deduplicated array of parent entities that include this product on
+  // their line items. Brand-scoped server-side.
+  getRelatedQuotations:     (id) => api.get(`/products/${id}/quotations`),
+  getRelatedSalesOrders:    (id) => api.get(`/products/${id}/sales-orders`),
+  getRelatedPurchaseOrders: (id) => api.get(`/products/${id}/purchase-orders`),
+  getRelatedInquiries:      (id) => api.get(`/products/${id}/inquiries`),
   createPrice: (id, data) => api.post(`/products/${id}/prices`, data),
   updatePrice: (id, priceId, data) => api.put(`/products/${id}/prices/${priceId}`, data),
   deletePrice: (id, priceId) => api.delete(`/products/${id}/prices/${priceId}`),

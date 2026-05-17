@@ -240,6 +240,26 @@ export async function getProduct(id: string) {
   return res.data;
 }
 
+// Phase 4.21b — Odoo-style related-data endpoints. Each returns a deduplicated
+// list of parent transactional entities that reference this product on their
+// line items. Brand-scoped server-side. Used by ProductDetailModal.
+export async function getProductQuotations(id: string) {
+  const res = await request<{ success: boolean; data: any[] }>(`/api/products/${id}/quotations`);
+  return res.data || [];
+}
+export async function getProductSalesOrders(id: string) {
+  const res = await request<{ success: boolean; data: any[] }>(`/api/products/${id}/sales-orders`);
+  return res.data || [];
+}
+export async function getProductPurchaseOrders(id: string) {
+  const res = await request<{ success: boolean; data: any[] }>(`/api/products/${id}/purchase-orders`);
+  return res.data || [];
+}
+export async function getProductInquiries(id: string) {
+  const res = await request<{ success: boolean; data: any[] }>(`/api/products/${id}/inquiries`);
+  return res.data || [];
+}
+
 // ─── Product Taxonomy (Phase 4.20 — mobile parity for desktop Settings/ProductTaxonomy) ───
 // Server endpoints: backend/controllers/productCategoryController.js
 // Same response envelope as the rest of the API: { success, data }.

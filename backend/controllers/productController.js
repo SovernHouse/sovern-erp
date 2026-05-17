@@ -695,6 +695,97 @@ const requestRevision = async (req, res, next) => {
   }
 };
 
+// ── Phase 4.21b — Odoo-style related-data endpoints ─────────────────────────
+// Each fetches the parent transactional entities that reference this product
+// through their *Item line tables. Brand-scoped via brandWhere on the parent
+// (the Item table doesn't carry brandCode; the parent does). Returns a
+// deduplicated array of parents — duplicate join rows are collapsed by id.
+//
+// Used by the ProductDetail smart-button strip + related-data tabs.
+
+const { brandWhere } = require('../utils/brandFilterUtils');
+
+function _dedupeAndShape(items, alias) {
+  const seen = new Set();
+  const out = [];
+  for (const row of items) {
+    const parent = row[alias];
+    if (!parent || seen.has(parent.id)) continue;
+    seen.add(parent.id);
+    out.push(parent);
+  }
+  return out;
+}
+
+// Item-to-parent associations in models/index.js are declared WITHOUT an
+// `as:` alias, so Sequelize uses the capitalized model name as the include
+// key (row.Quotation, not row.quotation). The _dedupeAndShape helper reads
+// the same key.
+
+const getRelatedQuotations = async (req, res, next) => {
+  try {
+    const items = await db.QuotationItem.findAll({
+      where: { productId: req.params.id },
+      include: [{
+        model:    db.Quotation,
+        where:    brandWhere(req),
+        required: true,
+        include:  [{ model: db.Customer, as: 'customer', attributes: ['id', 'companyName'], required: false }],
+      }],
+      order: [[db.Quotation, 'createdAt', 'DESC']],
+    });
+    res.json(getSuccessResponse(_dedupeAndShape(items, 'Quotation')));
+  } catch (error) { next(error); }
+};
+
+const getRelatedSalesOrders = async (req, res, next) => {
+  try {
+    const items = await db.SalesOrderItem.findAll({
+      where: { productId: req.params.id },
+      include: [{
+        model:    db.SalesOrder,
+        where:    brandWhere(req),
+        required: true,
+        include:  [{ model: db.Customer, as: 'customer', attributes: ['id', 'companyName'], required: false }],
+      }],
+      order: [[db.SalesOrder, 'createdAt', 'DESC']],
+    });
+    res.json(getSuccessResponse(_dedupeAndShape(items, 'SalesOrder')));
+  } catch (error) { next(error); }
+};
+
+const getRelatedPurchaseOrders = async (req, res, next) => {
+  try {
+    const items = await db.PurchaseOrderItem.findAll({
+      where: { productId: req.params.id },
+      include: [{
+        model:    db.PurchaseOrder,
+        where:    brandWhere(req),
+        required: true,
+        include:  [{ model: db.Factory, as: 'factory', attributes: ['id', 'companyName', 'brandCode'], required: false }],
+      }],
+      order: [[db.PurchaseOrder, 'createdAt', 'DESC']],
+    });
+    res.json(getSuccessResponse(_dedupeAndShape(items, 'PurchaseOrder')));
+  } catch (error) { next(error); }
+};
+
+const getRelatedInquiries = async (req, res, next) => {
+  try {
+    const items = await db.InquiryItem.findAll({
+      where: { productId: req.params.id },
+      include: [{
+        model:    db.Inquiry,
+        where:    brandWhere(req),
+        required: true,
+        include:  [{ model: db.Customer, as: 'customer', attributes: ['id', 'companyName'], required: false }],
+      }],
+      order: [[db.Inquiry, 'createdAt', 'DESC']],
+    });
+    res.json(getSuccessResponse(_dedupeAndShape(items, 'Inquiry')));
+  } catch (error) { next(error); }
+};
+
 module.exports = {
   create,
   getAll,
@@ -712,4 +803,9 @@ module.exports = {
   approve,
   reject,
   requestRevision,
+  // Phase 4.21b — Odoo related-data endpoints
+  getRelatedQuotations,
+  getRelatedSalesOrders,
+  getRelatedPurchaseOrders,
+  getRelatedInquiries,
 };
