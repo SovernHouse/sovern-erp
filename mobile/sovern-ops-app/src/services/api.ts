@@ -1908,3 +1908,80 @@ export function extractFromReceipt(driveFileId: string) {
     { method: 'POST', body: JSON.stringify({ driveFileId }) },
   )
 }
+
+// ─── Contacts (Phase 4.23 mobile parity) ──────────────────────────────────
+//
+// Mobile mirror of the desktop contactsAPI surface. Backed by the same
+// /api/contacts endpoints; supports filtering by customerId or factoryId
+// so the embedded ContactsSection on Client + Supplier detail modals can
+// reuse the existing controllers without backend changes.
+
+export interface Contact {
+  id: string;
+  customerId?: string | null;
+  factoryId?: string | null;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string | null;
+  mobile?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  isPrimary: boolean;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ContactInput {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string | null;
+  mobile?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  isPrimary?: boolean;
+  notes?: string | null;
+  customerId?: string | null;
+  factoryId?: string | null;
+}
+
+export async function listContacts(params: {
+  customerId?: string;
+  factoryId?: string;
+  limit?: number;
+}): Promise<Contact[]> {
+  const qs = new URLSearchParams(
+    Object.entries(params)
+      .filter(([, v]) => v !== undefined && v !== null && v !== "")
+      .map(([k, v]) => [k, String(v)])
+  ).toString();
+  const res = await request<{ success: boolean; data: Contact[] }>(
+    `/api/contacts${qs ? `?${qs}` : ""}`
+  );
+  return (res as any).data ?? [];
+}
+
+export async function createContact(input: ContactInput): Promise<Contact> {
+  const res = await request<{ success: boolean; data: Contact }>(
+    "/api/contacts",
+    { method: "POST", body: JSON.stringify(input) }
+  );
+  return (res as any).data ?? (res as any);
+}
+
+export async function updateContact(
+  id: string,
+  patch: Partial<ContactInput>
+): Promise<Contact> {
+  const res = await request<{ success: boolean; data: Contact }>(
+    `/api/contacts/${id}`,
+    { method: "PUT", body: JSON.stringify(patch) }
+  );
+  return (res as any).data ?? (res as any);
+}
+
+export async function deleteContact(id: string): Promise<void> {
+  await request(`/api/contacts/${id}`, { method: "DELETE" });
+}

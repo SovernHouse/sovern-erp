@@ -11,6 +11,7 @@ import {
 import { useLocalSearchParams } from 'expo-router';
 import { getFactories, getFactory, deleteFactory, type Factory } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
+import ContactsSection from '../../src/components/ContactsSection';
 
 // ─── Factory Row ──────────────────────────────────────────────────────────
 
@@ -218,6 +219,8 @@ function FactoryDetailModal({
                 <Text style={styles.notesText}>{factory.notes}</Text>
               </View>
             ) : null}
+
+            <ContactsSection parentType="Factory" parentId={factory.id} />
 
           </ScrollView>
         ) : (

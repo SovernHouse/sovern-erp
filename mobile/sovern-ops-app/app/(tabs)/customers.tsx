@@ -18,6 +18,7 @@ import { COLORS } from '../../src/constants/config';
 import { BrandBadge, BrandBadgeGroup } from '../../src/components/BrandBadge';
 import { useBrands } from '../../src/hooks/useBrands';
 import ProductBrandingModePicker from '../../src/components/ProductBrandingModePicker';
+import ContactsSection from '../../src/components/ContactsSection';
 
 // ─── Profitability helpers ───────────────────────────────────────────────
 
@@ -441,6 +442,8 @@ function CustomerDetailModal({
             ) : null}
 
             <ProfitabilitySection customerId={customer.id} />
+
+            <ContactsSection parentType="Customer" parentId={customer.id} />
 
           </ScrollView>
         ) : (
