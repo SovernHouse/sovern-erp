@@ -116,8 +116,17 @@ const PriceListManager = () => {
         items: []
       })
       setItems(priceList.items || [])
-      setColumnDefs(Array.isArray(priceList.columnDefinitions) ? priceList.columnDefinitions : [])
-      // hiddenColumns may come back as a stringified JSON per L-053.
+      // columnDefinitions + hiddenColumns are DataTypes.JSON on SQLite and
+      // come back stringified per L-047 / L-053. Without this parse the
+      // Array.isArray check below fails and the form defaults to []; the
+      // user sees zero custom columns even when the DB has some, adds new
+      // ones, saves, then on reopen the list is empty again — looks like
+      // "add works but delete doesn't" (2026-05-17 Alex feedback).
+      let colDefs = priceList.columnDefinitions
+      if (typeof colDefs === 'string') {
+        try { colDefs = JSON.parse(colDefs) } catch (_) { colDefs = [] }
+      }
+      setColumnDefs(Array.isArray(colDefs) ? colDefs : [])
       let hidden = priceList.hiddenColumns
       if (typeof hidden === 'string') {
         try { hidden = JSON.parse(hidden) } catch (_) { hidden = [] }

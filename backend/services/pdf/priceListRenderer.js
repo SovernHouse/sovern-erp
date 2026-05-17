@@ -29,19 +29,23 @@ const PAGE_MARGIN = 50;
 const ALWAYS_VISIBLE = new Set(['sku', 'productName', 'price']);
 const DEFAULT_COL_RATIOS = {
   sku:          0.22,
-  productName:  0.36,
+  productName:  0.34,
   unit:         0.08,
   moq:          0.10,
-  lead:         0.10,
+  lead:         0.12,
   price:        0.14,
 };
 const COL_ORDER = ['sku', 'productName', 'unit', 'moq', 'lead', 'price'];
+// "LEAD (D)" was overflowing the 0.10-ratio column (Alex feedback
+// 2026-05-17, header rendered as "LEAD (D" with the closing paren
+// cut). Bumped lead to 0.12 and stripped the parenthetical; the unit
+// (days) is implicit on a trade price list.
 const COL_HEADERS = {
   sku:         'SKU',
   productName: 'PRODUCT',
   unit:        'UNIT',
   moq:         'MOQ',
-  lead:        'LEAD (D)',
+  lead:        'LEAD',
   price:       'PRICE',
 };
 
@@ -129,8 +133,20 @@ async function renderPriceListPdf(priceList, opts = {}) {
          .text(priceList.name || '(unnamed)', PAGE_MARGIN, PAGE_MARGIN + 104);
 
       // ── Meta block (2 columns)
+      //
+      // Each entry is rendered as a stacked label + value pair. The
+      // previous version used a fixed 18pt row advance and no width on
+      // the value, so the value (font 11, line height ~14pt) bled into
+      // the next row's label, and long values like "FlorWay SDN. BHD"
+      // ran past the column boundary into the next cell. Alex feedback
+      // 2026-05-17: meta rows are too small / running together.
+      //
+      // Fix: explicit width on label and value, ellipsis on overflow so
+      // the value stays on one line, and a 30pt row advance so the
+      // 22pt-tall label/value stack never overlaps the next row.
       const metaY = PAGE_MARGIN + 134;
       const colWidth = pageWidth / 2 - 10;
+      const META_ROW_GAP = 30;
       const meta = [
         ['Currency',  priceList.currencyCode || 'USD'],
         ['Valid from', fmtDate(priceList.validFrom)],
@@ -154,9 +170,11 @@ async function renderPriceListPdf(priceList, opts = {}) {
       meta.forEach(([label, value], idx) => {
         const col = idx % 2;
         const x = PAGE_MARGIN + col * (colWidth + 20);
-        if (col === 0 && idx > 0) y += 18;
-        doc.fontSize(8).fillColor(tokens.steel || '#64748B').font(fonts.body).text(label.toUpperCase(), x, y);
-        doc.fontSize(11).fillColor(tokens.ink || '#0F172A').font(fonts.bodyBold).text(String(value), x, y + 10);
+        if (col === 0 && idx > 0) y += META_ROW_GAP;
+        doc.fontSize(8).fillColor(tokens.steel || '#64748B').font(fonts.body)
+           .text(label.toUpperCase(), x, y, { width: colWidth, lineBreak: false });
+        doc.fontSize(11).fillColor(tokens.ink || '#0F172A').font(fonts.bodyBold)
+           .text(String(value), x, y + 11, { width: colWidth, lineBreak: false, ellipsis: true });
       });
 
       if (priceList.description) {
