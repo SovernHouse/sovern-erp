@@ -73,6 +73,75 @@ Macbook session also surfaced 68 pre-existing TypeScript errors across 7 mobile 
 
 ---
 
+## Session wrap, 2026-05-17 (Phase 4.25a-g complete)
+
+**Order-to-Cash auto-chain SHIPPED end-to-end.** International-trade-standard order: Quote → Proforma → SalesOrder → PurchaseOrder(s) per factory → GRN → Invoice → Payment status updates → PackingList on shipped → SO.delivered on Shipment.
+
+**Commits this session (continued from prior wrap):**
+
+`sovern-erp`:
+- `cbe7d0b` fix(tests): isolate from prod DB via SQLITE_STORAGE guard
+- `9487278` feat(backend): Phase 4.25a — Quote.accept auto-creates ProformaInvoice
+- `3673c96` docs: Phase 4.24.x PWA install + Phase 4.25 auto-chain directives
+- `87b5249` docs(session): Phase 4.25a wrap + pickup list refresh
+- `0b130ed` feat(backend): Phase 4.25b — ProformaInvoice.confirm auto-creates SalesOrder
+- `d10a324` feat(backend): Phase 4.25c — SalesOrder.confirm auto-creates PurchaseOrder per factory
+- `42fd6b4` feat(backend): Phase 4.25d — PO.confirm auto-creates pending GRN
+- `f34a1cd` feat(backend): Phase 4.25e — GRN.accept auto-creates sales Invoice
+- `80af011` feat(backend): Phase 4.25f — Payment.confirm updates Invoice status idempotently
+- `53dc18d` feat(backend): Phase 4.25g — SO.shipped -> PackingList, Shipment.delivered -> SO.delivered
+
+`sovern-instructions-skills`:
+- `71655cb` lessons: L-054, L-055, L-056
+- `a9cf3f9` lessons: L-057, L-058
+
+**All commits pushed** to GitHub. Vercel auto-deploys the frontend; backend code is on disk on the VM but PM2 has NOT been restarted yet, so the running backend is still on the prior version. Restart pm2 when ready to land the new chain behavior in production.
+
+**Coverage by chain hop:**
+
+| Phase | Trigger | Output | Workflow method | Unit tests |
+|---|---|---|---|---|
+| 4.25a | Quotation.accept | ProformaInvoice (draft) | onQuotationAccepted | 5 passing |
+| 4.25b | ProformaInvoice.confirm | SalesOrder (confirmed) | onProformaInvoiceConfirmed | 8 passing |
+| 4.25c | SalesOrder.confirm | PurchaseOrder per factory (draft) | onSalesOrderConfirmed | 6 passing |
+| 4.25d | PurchaseOrder.confirm | GoodsReceivedNote (pending) | onPurchaseOrderConfirmed | 4 passing |
+| 4.25e | GRN.accept | Invoice (draft, sales) | onGoodsReceivedNoteAccepted | 5 passing |
+| 4.25f | Payment.confirm | Invoice status (paid / partially_paid) | onPaymentConfirmed | 6 passing |
+| 4.25g | SO.shipped + Shipment.delivered | PackingList + SO.delivered | onSalesOrderShipped + onShipmentDelivered | 8 passing |
+| 4.25h | (optional, deferred) | MCP exposure for AI driving | not yet built | n/a |
+
+**Total: 42 unit tests, all passing.** Integration tests pending the boot-timeout fix (L-058).
+
+**Architectural notes:**
+
+- All workflow methods live in `backend/services/workflowService.js`. One file, ~600 lines.
+- Idempotency is mandatory: every method skips creation when the downstream record already exists for the upstream id.
+- Best-effort failure mode: each route handler awaits the workflow but does NOT roll back the upstream status change on failure. Failures log an `auto_create_failed` (or `auto_update_failed`) audit row.
+- Brand-code inheritance: every downstream record inherits brandCode from its upstream parent. Fixes a latent bug in the manual Quote→Proforma converter that defaulted to SH regardless of upstream.
+- Service-layer convergence per L-045: any future MCP / AI exposure will call the same workflow methods.
+
+**Latent bugs found and fixed during chain build:**
+
+- Payment.confirm double-counting (commit 80af011). Re-running the route handler doubled `paidAmount`. Now idempotent.
+- ProformaInvoice manual converter defaulted brandCode to SH even for FW quotations (fixed quietly as part of 4.25a).
+- The legacy /convert-order endpoint sets `status='converted'` which is NOT in the ProformaInvoice enum (draft/sent/confirmed/cancelled). Noted as a quiet bug; the new /confirm endpoint uses the valid `confirmed`. /convert-order kept for back compat but should be deprecated.
+
+**Status-transition inconsistency surfaced (not fixed):**
+
+`utils/statusMachine.js` (used by route validators) and `utils/statusTransitions.js` (used by Sequelize model hooks) have different SO transition rules. statusMachine allows `shipped -> delivered`; statusTransitions does not. The workflow aligns with the stricter model hook (only `in_transit -> delivered`). Worth a follow-up directive to align the two maps.
+
+**Pickup list for next session:**
+
+1. Restart PM2 backend (`pm2 restart sovern-erp`) to land the new chain code in production. Or do it via the desktop deploy workflow.
+2. Live smoke test: create a test quotation in admin, accept it, verify Proforma auto-creates; confirm Proforma, verify SO + POs created; confirm a PO, verify GRN; accept GRN, verify Invoice; confirm Payment, verify Invoice status.
+3. UI updates: each chain hop's list page should refresh / show toast on the auto-created downstream record. Currently the backend creates them silently; the frontend needs to be told. Phase 4.26 candidate.
+4. Phase 4.25h (MCP exposure) when 4.25a-g has run in prod 2+ weeks without issues.
+5. L-058 integration test boot fix (still pending; blocks end-to-end test coverage of the chain).
+6. Phase 4.24.x PWA install discoverability directive still awaiting Alex sign-off.
+7. Two carry-overs: 2026-05-16 14:42 bulk Factory soft-delete root cause; EU sanctions URL webgate alert check-in 2026-05-18 09:37 TPE.
+
+---
+
 ## Last Updated — 2026-05-17 Taiwan time (late evening, Phase 4.23 wrap)
 
 **Picking up next:**
