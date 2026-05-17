@@ -25,6 +25,7 @@ import BrandPicker from '../../components/BrandPicker'
 import BrandBadge from '../../components/BrandBadge'
 import ProductPriceHistory from '../../components/ProductPriceHistory'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import FactoryQuickCreate from '../../components/FactoryQuickCreate'
 import { formatCurrency } from '../../utils/formatters'
 import { useAuth } from '../../hooks/useAuth'
 import { filterByFlooring, useShowAllCategories, FLOORING_PRODUCT_TYPES } from '../../utils/productCategoryFilter'
@@ -211,6 +212,11 @@ function ProductForm({ editing, categories, factories, onClose, onSaved }) {
   // disabled BrandPicker stays for visual reference; "Change brand" opens
   // the override modal.
   const [showBrandOverride, setShowBrandOverride] = useState(false)
+  // Phase 4.22 — Odoo quick-create. localFactories starts from the parent
+  // prop and grows when the user creates a new factory inline. The parent's
+  // factories prop refresh is not required for the local form to function.
+  const [localFactories, setLocalFactories] = useState(factories)
+  const [showFactoryQuickCreate, setShowFactoryQuickCreate] = useState(false)
   const [form, setForm] = useState({
     brandCode: editing?.brandCode || '',
     sku: editing?.sku || '',
@@ -355,6 +361,18 @@ function ProductForm({ editing, categories, factories, onClose, onSaved }) {
             />
           )}
 
+          {/* Phase 4.22 — quick-create supplier from inside the product form. */}
+          <FactoryQuickCreate
+            open={showFactoryQuickCreate}
+            defaultBrandCode={form.brandCode}
+            onClose={() => setShowFactoryQuickCreate(false)}
+            onCreated={(factory) => {
+              setLocalFactories((prev) => [...prev, factory])
+              setForm((prev) => ({ ...prev, factoryId: factory.id }))
+              setShowFactoryQuickCreate(false)
+            }}
+          />
+
           <div className="grid grid-cols-2 gap-4">
             <Field label="SKU *" value={form.sku} onChange={f('sku')} disabled={isEdit}
               help={isEdit ? 'SKU is locked on edit.' : 'Use brand prefix (e.g., FW-SPC-65). Globally unique.'}
@@ -372,9 +390,29 @@ function ProductForm({ editing, categories, factories, onClose, onSaved }) {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <SelectField label="Factory *" value={form.factoryId} onChange={f('factoryId')}
-              options={[{ value: '', label: '— Pick factory —' }, ...factories.map(fy => ({ value: fy.id, label: fy.companyName || fy.name }))]}
-            />
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Supplier *{' '}
+                <button
+                  type="button"
+                  onClick={() => setShowFactoryQuickCreate(true)}
+                  className="ml-2 text-xs font-semibold text-primary-600 hover:text-primary-700"
+                  title="Create a new supplier without leaving this form"
+                >
+                  + New
+                </button>
+              </label>
+              <select
+                value={form.factoryId || ''}
+                onChange={f('factoryId')}
+                className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+              >
+                <option value="">— Pick supplier —</option>
+                {localFactories.map(fy => (
+                  <option key={fy.id} value={fy.id}>{fy.companyName || fy.name}</option>
+                ))}
+              </select>
+            </div>
             <Field label="Origin country (ISO-2)" value={form.originCountry} onChange={f('originCountry')}
               placeholder="MY, CN, …" maxLength={2}
             />

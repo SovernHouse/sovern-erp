@@ -11,6 +11,8 @@ import {
 } from '../../components/FormFields'
 import { quotationsAPI, customersAPI, productsAPI, factoriesAPI, leadsAPI, tariffRatesAPI } from '../../services/api'
 import BrandPicker from '../../components/BrandPicker'
+import CustomerQuickCreate from '../../components/CustomerQuickCreate'
+import FactoryQuickCreate from '../../components/FactoryQuickCreate'
 import { filterByFlooring, useShowAllCategories } from '../../utils/productCategoryFilter'
 import { useAuth } from '../../hooks/useAuth'
 import { displayPricePerArea, AREA_LABEL } from '../../../../shared/units'
@@ -54,6 +56,10 @@ export default function QuotationForm() {
   // Super-admin can flip the toggle on (shared with the catalog page).
   const [showAllCategories, setShowAllCategories] = useShowAllCategories()
   const visibleProducts = filterByFlooring(products, showAllCategories)
+
+  // Phase 4.22 — Odoo quick-create modals for Customer + Factory.
+  const [showCustomerQuickCreate, setShowCustomerQuickCreate] = useState(false)
+  const [showFactoryQuickCreate, setShowFactoryQuickCreate] = useState(false)
 
   const [formData, setFormData] = useState({
     // Phase 3, C13: brand context. BrandPicker auto-fills from
@@ -492,33 +498,60 @@ export default function QuotationForm() {
           <h2 className="text-lg font-semibold text-slate-900 mb-4">
             Customer Information
           </h2>
-          <SelectInput
-            label="Customer"
-            name="customerId"
-            value={formData.customerId}
-            onChange={handleFormChange}
-            options={customers.map((c) => ({
-              value: c.id,
-              label: c.name || c.companyName,
-            }))}
-            error={errors.customerId}
-            required
-          />
+          {/* Phase 4.22 — Odoo lightning-bolt: "+ New" lets you create a
+              client without leaving the quotation form. */}
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <SelectInput
+                label="Customer"
+                name="customerId"
+                value={formData.customerId}
+                onChange={handleFormChange}
+                options={customers.map((c) => ({
+                  value: c.id,
+                  label: c.name || c.companyName,
+                }))}
+                error={errors.customerId}
+                required
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCustomerQuickCreate(true)}
+              className="mb-1 px-3 py-2 text-xs font-semibold text-primary-600 border border-primary-200 rounded-lg hover:bg-primary-50"
+              title="Create a new client without leaving this form"
+            >
+              + New
+            </button>
+          </div>
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <SelectInput
-              label="Source factory (optional)"
-              name="factoryId"
-              value={formData.factoryId}
-              onChange={handleFormChange}
-              options={[
-                { value: '', label: '— None —' },
-                ...factories.map((f) => ({
-                  value: f.id,
-                  label: f.companyName,
-                })),
-              ]}
-              error={errors.factoryId}
-            />
+            {/* Phase 4.22 — "+ New" supplier inline */}
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <SelectInput
+                  label="Source supplier (optional)"
+                  name="factoryId"
+                  value={formData.factoryId}
+                  onChange={handleFormChange}
+                  options={[
+                    { value: '', label: '— None —' },
+                    ...factories.map((f) => ({
+                      value: f.id,
+                      label: f.companyName,
+                    })),
+                  ]}
+                  error={errors.factoryId}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFactoryQuickCreate(true)}
+                className="mb-1 px-3 py-2 text-xs font-semibold text-primary-600 border border-primary-200 rounded-lg hover:bg-primary-50"
+                title="Create a new supplier without leaving this form"
+              >
+                + New
+              </button>
+            </div>
             <SelectInput
               label="Originating lead (optional)"
               name="leadId"
@@ -989,6 +1022,28 @@ export default function QuotationForm() {
           </button>
         </div>
       </form>
+
+      {/* Phase 4.22 — quick-create modals */}
+      <CustomerQuickCreate
+        open={showCustomerQuickCreate}
+        defaultBrandCode={formData.brandCode}
+        onClose={() => setShowCustomerQuickCreate(false)}
+        onCreated={(c) => {
+          setCustomers((prev) => [...prev, c])
+          setFormData((prev) => ({ ...prev, customerId: c.id }))
+          setShowCustomerQuickCreate(false)
+        }}
+      />
+      <FactoryQuickCreate
+        open={showFactoryQuickCreate}
+        defaultBrandCode={formData.brandCode}
+        onClose={() => setShowFactoryQuickCreate(false)}
+        onCreated={(fy) => {
+          setFactories((prev) => [...prev, fy])
+          setFormData((prev) => ({ ...prev, factoryId: fy.id }))
+          setShowFactoryQuickCreate(false)
+        }}
+      />
     </div>
   )
 }
