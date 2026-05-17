@@ -42,6 +42,37 @@ Macbook session also surfaced 68 pre-existing TypeScript errors across 7 mobile 
 
 ---
 
+## Session wrap — 2026-05-17 Macbook session continuation (Phase 4.25a shipped)
+
+**Macbook session pending Alex's push from Windows (all local on the VM):**
+
+`sovern-erp` repo (in addition to commits noted above):
+- `cbe7d0b` fix(tests): isolate from prod DB via SQLITE_STORAGE guard
+- `9487278` feat(backend): Phase 4.25a, Quote.accept auto-creates ProformaInvoice
+- `3673c96` docs: Phase 4.24.x PWA install + Phase 4.25 auto-chain directives
+
+`sovern-instructions-skills` repo (separate repo, separate push):
+- `71655cb` lessons: L-054 (StyleSheet.create), L-055 (mobile request<T>), L-056 (interface drift)
+- `a9cf3f9` lessons: L-057 (SQLITE_STORAGE test safety), L-058 (integration test boot broken)
+
+**Pickup list updated (replaces prior list at top of SESSION.md):**
+
+1. **Push commits from Windows.** Both `sovern-erp` (10 commits this session) and `sovern-instructions-skills` (2 commits).
+2. **Approve Phase 4.24.x directive** (`docs/phase4_24x-pwa-install-discovery.md`). 4-item approval gate; PWA install discoverability via labeled chip + banner. No code lands until Alex signs the gate.
+3. **Phase 4.25b: ProformaInvoice.confirm to SalesOrder auto-create.** Next chain hop. Same pattern as 4.25a: extend `workflowService.js`, hook the route, ship unit test. ProformaInvoice currently has no explicit `confirm` endpoint; first design step is to add one to `proformaInvoiceRoutes.js`.
+4. **Phase 4.25c-h** remaining chain hops per `docs/phase4_25-order-to-cash-autochain.md`. Sequential.
+5. **Investigate integration-test boot timeout (L-058).** Pre-existing infra bug: `__tests__/integration/health.test.js` and any test that calls `getApp()` time out at >60s on this VM. Phase 4.25 phases verifiable via unit tests in the meantime, but the integration suite is dark right now. Worth one investigation pass to unblock end-to-end coverage.
+6. **EU sanctions URL webgate alert check-in** cron-scheduled for 2026-05-18 09:37 TPE (tomorrow morning).
+7. **2026-05-16 14:42 bulk Factory soft-delete root cause investigation** still open (carry-over).
+
+**Session findings worth pinning:**
+
+- The 68 pre-existing mobile TypeScript errors that surfaced this session were all latent because mobile builds via Babel and no CI step runs tsc. Now zero errors after the file-by-file cleanup commits (`0e487f6` through `8db1995`).
+- The mobile `services/api.ts` had a real runtime ReferenceError in `sendOutreachEmail` (commit `eb47fb0` fixes it). Anyone who calls that function from the mobile app would have hit `ReferenceError: api is not defined`. Latent since 2026-05-15.
+- The test infrastructure had two unrelated bugs: SQLITE_STORAGE pointed at prod (now guarded), and the integration test boot hangs (L-058, pending investigation).
+
+---
+
 ## Last Updated — 2026-05-17 Taiwan time (late evening, Phase 4.23 wrap)
 
 **Picking up next:**
