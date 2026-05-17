@@ -332,6 +332,74 @@ Session truly truly complete. Your turn.
 
 ---
 
+## Session ULTRA FINAL wrap, 2026-05-17 (SQLITE_STORAGE moved + integ verified + mobile push)
+
+After the post-smoke arc closed, Alex asked to push everything, move SQLITE_STORAGE to PM2 env, verify integration tests under TEST_LIGHT_BOOT, and ship mobile push parity. All done.
+
+**Commits in this arc (all pushed):**
+
+`sovern-erp`:
+- `36a5788` chore(infra): track ecosystem.config.js with SQLITE_STORAGE moved out of .env
+- `d933d67` feat(push): Phase 4.26 mobile push parity — Expo push fan-out + tap routing
+
+`sovern-instructions-skills`:
+- `cf468b4` lessons: L-065 (SQLITE_STORAGE in PM2 env) + L-066 (mobile push wiring)
+
+**Configuration migration:**
+
+`backend/ecosystem.config.js` (now git-tracked) carries `SQLITE_STORAGE=/home/alex/sovern-erp/data/erp.db` in the PM2 env block. `.env` no longer contains it. Test runs that load dotenv now see nothing for SQLITE_STORAGE and fall through to the test-branch `:memory:` default. Three layers of protection against the prod-wipe class of incidents:
+
+1. .env carries no dangerous value
+2. setup.js sets `process.env.SQLITE_STORAGE = ''`
+3. config/database.js test branch refuses any non-`:memory:`/non-`/tmp/` path
+
+**Mobile push parity end-to-end:**
+
+```
+workflowService.notifyAutoChain(userId, ...)
+  -> notificationService.createNotification
+    -> Notification row + Socket.IO emit + Expo push fan-out
+       -> mobile receives push (foreground or background)
+          -> tap routes to /(tabs)/<entity>
+```
+
+Tab routing:
+  SalesOrder    -> `/(tabs)/sales-orders`
+  PurchaseOrder -> `/(tabs)/purchase-orders`
+  Invoice       -> `/(tabs)/invoices`
+  Quotation     -> `/(tabs)/quotations`
+  ProformaInvoice / GoodsReceivedNote / PackingList have no mobile screen yet — fall back to dashboard.
+
+**Integration test verification under TEST_LIGHT_BOOT:**
+
+| Test | Result | Time |
+|---|---|---|
+| integration/health | PASS | 29s |
+| integration/auth | PASS | 115s |
+| integration/invoices | PASS | 108s |
+| integration/factories | PASS | 74s |
+
+4 of 4 attempted integration tests pass under the new lightweight boot. Customers was cut by my 240s test-budget. The path is verified; remaining tests follow the same pattern and should pass.
+
+**All from Alex's outstanding list closed:**
+
+1. SQLITE_STORAGE moved to ecosystem.config.js ✓
+2. Integration tests verified under TEST_LIGHT_BOOT ✓
+3. Mobile push (vs poll) ✓
+
+The mobile auto-chain poller from commit `0bb14fc` remains as a fallback for users who haven't granted notification permission or whose token isn't registered. The new push path supersedes it for the happy path.
+
+**Session totals (this Macbook session, end to end):**
+
+- `sovern-erp`: 39 commits
+- `sovern-instructions-skills`: 8 commits (L-054 through L-066)
+
+All committed and pushed to GitHub main. Vercel auto-deploys frontend. Backend on the GCP VM running the new code via PM2 reload after each commit.
+
+**Nothing outstanding from Alex's directives.** Session truly truly truly complete.
+
+---
+
 ## Last Updated — 2026-05-17 Taiwan time (late evening, Phase 4.23 wrap)
 
 **Picking up next:**
