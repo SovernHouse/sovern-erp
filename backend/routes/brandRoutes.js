@@ -35,6 +35,34 @@ const OVERRIDABLE_ENTITY_TYPES = [
   'Product',
 ];
 
+// GET /api/brands/me — return the caller's brand scope. Used by the
+// frontend on app boot to know what to show in the brand picker and which
+// surface to render (single vs cross-brand views).
+//
+// CRITICAL: this MUST be declared before `/brands/:code` below. Express
+// matches routes in declaration order; if `/brands/:code` comes first,
+// `/brands/me` matches with code='me', then the handler looks up a
+// Brand row with code='me', finds none, and returns 404. That
+// silently broke BrandsContext on app boot — accessibleBrands stayed
+// at ['SH'] default, and the BrandPicker on FW leads couldn't show
+// FW as an option. Confirmed 2026-05-18 via pm2 logs:
+//   GET /brands/me -> 404
+router.get('/brands/me', requireAuth, brandScope, (req, res) => {
+  if (!req.brandScope) {
+    return res.status(500).json({ error: 'Brand scope not initialised' });
+  }
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    success: true,
+    data: {
+      accessibleBrands: req.brandScope.accessibleBrands,
+      defaultBrand: req.brandScope.defaultBrand,
+      viewMode: req.brandScope.viewMode,
+      isCrossBrand: req.brandScope.isCrossBrand,
+    },
+  });
+});
+
 // GET /api/brands/:code — single brand (used by brand admin editor).
 router.get('/brands/:code', requireAuth, async (req, res) => {
   try {
@@ -117,24 +145,10 @@ router.get('/brands', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/brands/me — return the caller's brand scope. Used by the
-// frontend on app boot to know what to show in the brand picker and which
-// surface to render (single vs cross-brand views).
-router.get('/brands/me', requireAuth, brandScope, (req, res) => {
-  if (!req.brandScope) {
-    return res.status(500).json({ error: 'Brand scope not initialised' });
-  }
-  res.set('Cache-Control', 'no-store');
-  res.json({
-    success: true,
-    data: {
-      accessibleBrands: req.brandScope.accessibleBrands,
-      defaultBrand: req.brandScope.defaultBrand,
-      viewMode: req.brandScope.viewMode,
-      isCrossBrand: req.brandScope.isCrossBrand,
-    },
-  });
-});
+// (Note: GET /brands/me was moved above /brands/:code earlier in this
+// file. The Express route table walks declarations in order and a
+// `/brands/:code` decl ahead of /brands/me silently captured the
+// /me request — root cause of the 2026-05-18 UNKNOWN BRAND incident.)
 
 // PATCH /api/admin/brand-override — super_admin only (L-031 bare-string +
 // L-036 super_admin-only). Forces an entity's brandCode to a new value
