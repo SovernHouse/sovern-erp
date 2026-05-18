@@ -40,6 +40,14 @@ Sovern House has a direct factory relationship with a Malaysian LVT/SPC manufact
 **L-015 — No em dashes in any written output, ever**
 Em dashes (—) are prohibited in all copy, emails, documents, and communications written for Alex. Use periods, commas, colons, semicolons, or parentheses instead. This rule has been violated repeatedly. Check every draft before presenting it.
 
+**L-050 — All resilient/flooring leads default to FW brand**
+
+2026-05-18 directive from Alex. The Sovern-side trading business is pausing general buying-house outreach for now and focusing the cold-email programme on resilient flooring (LVT, SPC, Engineered SPC, WPC, vinyl sheet). All flooring leads — whether sourced via /new-clients, created manually, or promoted from triage — must be tagged brandCode=FW (FlorWay) at creation, not SH. SH-branded resilient-flooring rows trigger CLAUDE.md rule #9 brand-leak guards and cannot have PDFs/emails rendered through brand-aware composers.
+
+- **Root cause:** Default lead-creation paths (manual create_lead, /new-clients background sourcing, triage promotion) stamp brandCode=SH unless explicitly overridden. The MCP update_lead tool does not expose brandCode, so once a lead is misbranded the AI cannot fix it from chat — the user has to flip it in the admin UI. This created friction on Adleta, Compass and Woodwudy on 2026-05-18 when three new flooring leads needed to be re-branded one-by-one.
+- **Fix:** Going forward: (a) any time a lead's vertical is "flooring" or the productInterest mentions LVT / SPC / WPC / vinyl / engineered / dryback / rigid-core / resilient, the AI assistant must verify the lead is brandCode=FW before drafting outreach copy and must flag the brand mismatch to Alex if it is SH; (b) when proposing /new-clients briefs or create_lead calls for flooring prospects, the AI must explicitly request brandCode=FW be set at creation time; (c) the brand-leak guard already enforced at the renderer layer is the safety net, but the AI should not rely on the guard — it should pre-check the brand and ask Alex to flip it before drafting any artifact.
+- **Rule:** When the lead is in the resilient-flooring vertical (LVT, SPC, Engineered SPC, WPC, vinyl sheet, dryback, rigid-core), the brand MUST be FW. Before drafting any cold email, quotation, PDF, or other brand-aware artifact for a flooring lead, verify brandCode=FW via get_lead or erp_query. If the lead is brandCode=SH, do NOT draft the artifact: tell Alex the brand needs to be flipped in the admin UI first, link the lead row, and pause. Never silently proceed against an SH-branded flooring lead. New /new-clients and create_lead requests for flooring should explicitly specify brandCode=FW. Update update_lead to support brandCode is a code-change-tracked separately; until then this is a manual-flip workflow.
+
 ---
 
 ## Website & Technical Lessons
