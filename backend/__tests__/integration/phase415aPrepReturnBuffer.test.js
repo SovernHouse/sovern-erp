@@ -26,6 +26,36 @@
 const fs = require('fs');
 const path = require('path');
 
+// Phase 4.20: every generator in this file now resolves a Brand row via
+// brandSafetyGateway.resolveBrandOrThrow. We mock that resolver here so
+// the integration test doesn't need a seeded DB — the dual-mode helper
+// (disk vs returnBuffer) is what's actually under test, not brand
+// resolution. Fixtures below carry brandCode:'SH' + non-resilient items,
+// which is the only combination the gateway permits without an items
+// walk that requires Sequelize-loaded Products.
+jest.mock('../../services/brandSafetyGateway', () => {
+  const actual = jest.requireActual('../../services/brandSafetyGateway');
+  return {
+    ...actual,
+    resolveBrandOrThrow: jest.fn(async (_db, brandCode) => ({
+      brand: {
+        code: brandCode,
+        displayName: 'Sovern House',
+        legalName: 'New Route International Exchange Co., Ltd.',
+        senderEmail: 'hello@sovernhouse.co',
+        primaryColor: '#1D5A32',
+        footerLegalText: 'New Route International Exchange Co., Ltd. — Taiwan',
+      },
+      displayName: 'Sovern House',
+      fromDisplayName: 'Sovern House',
+      senderEmail: 'hello@sovernhouse.co',
+      signatureHtml: '',
+      signatureText: '',
+    })),
+  };
+});
+jest.mock('../../models', () => ({}), { virtual: true });
+
 const { pipeToBufferOrDisk } = require('../../services/pdf/pdfHelpers');
 const sales = require('../../services/pdf/salesDocumentsPDF');
 const order = require('../../services/pdf/orderDocumentsPDF');
@@ -41,8 +71,11 @@ function pdfBufferLooksValid(buf) {
 }
 
 // Minimal valid Quotation-shape fixture for the salesDocumentsPDF generator.
+// Phase 4.20: brandCode is required by the gateway.
 const sampleQuotation = {
+  id: 'q-test-1',
   quotationNumber: 'QOT-TEST-001',
+  brandCode: 'SH',
   createdAt: new Date('2026-05-16T00:00:00Z'),
   validUntil: new Date('2026-06-15T00:00:00Z'),
   currency: 'USD',
@@ -65,7 +98,9 @@ const sampleSalesPerson = { firstName: 'Sales', lastName: 'Rep' };
 
 // Sales Order fixture
 const sampleSO = {
+  id: 'so-test-1',
   orderNumber: 'SO-TEST-001',
+  brandCode: 'SH',
   createdAt: new Date('2026-05-16T00:00:00Z'),
   status: 'confirmed',
   estimatedDelivery: new Date('2026-07-01'),
@@ -93,7 +128,9 @@ const sampleInspectionReport = {
 
 // Invoice fixture
 const sampleInvoice = {
+  id: 'inv-test-1',
   invoiceNumber: 'INV-TEST-001',
+  brandCode: 'SH',
   createdAt: new Date('2026-05-16T00:00:00Z'),
   dueDate: new Date('2026-06-15'),
   status: 'sent',
