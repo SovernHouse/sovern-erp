@@ -297,13 +297,21 @@ const LeadForm = () => {
           <fieldset disabled={!!(id && !editMode)} className={id && !editMode ? 'opacity-95' : ''}>
             <div className="space-y-8">
           {/* Phase 3, C13: brand picker — top of the form so it's the
-              first decision. Auto-fills to useBrands().defaultBrand;
-              disabled in edit mode (brand-locked-at-creation per D-5). */}
+              first decision. Auto-fills to useBrands().defaultBrand.
+              2026-05-18: brand-locked-at-creation EXCEPT for super_admin
+              in edit mode, who can flip the brand. Backend writes a
+              super_admin_brand_override AuditLog + Lead chatter event
+              + cascades to active OutreachEmail drafts. */}
           <div className="mb-4">
             <BrandPicker
               value={formData.brandCode}
               onChange={(v) => setFormData((prev) => ({ ...prev, brandCode: v }))}
-              disabled={!!id}
+              disabled={!!id && !(editMode && currentUser?.role === 'super_admin')}
+              helperText={
+                !!id && editMode && currentUser?.role === 'super_admin'
+                  ? 'Super Admin override: changing this writes an audit row + Lead chatter event and re-labels active drafts.'
+                  : null
+              }
             />
           </div>
 

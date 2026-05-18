@@ -146,17 +146,30 @@ function LayoutBody({ children }) {
   // are replaced with the entity title from BreadcrumbContext (set by
   // useBreadcrumbs on detail pages) so the crumb reads "Price Lists ›
   // IronLite Malaysia" instead of "price lists › 6eeab3ac-5569-…".
+  // 2026-05-18: each non-last segment is rendered as a clickable Link
+  // so the operator can jump back to any parent level without hitting
+  // a custom "Back to X" button or the browser arrow.
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   const labelize = (s) => s
     .split('-')
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
-  const crumb = location.pathname === '/'
-    ? 'Dashboard'
-    : location.pathname.slice(1).split('/').map(s => {
-        if (uuidRe.test(s)) return pageTitle || 'Details'
-        return labelize(s)
-      }).join(' › ')
+  // Some container path segments don't have a real landing page
+  // (`/crm`, `/personalization`, `/settings/x` parents, etc.). Tag
+  // them as non-navigable so we render them as muted text instead of
+  // a Link that 404s. Extend this list when adding new namespaces.
+  const NON_NAVIGABLE_SEGMENTS = new Set(['crm', 'personalization'])
+  const crumbSegments = location.pathname === '/'
+    ? [{ label: 'Dashboard', to: null }]
+    : location.pathname.slice(1).split('/').map((s, i, all) => {
+        const isUuid = uuidRe.test(s)
+        const isLast = i === all.length - 1
+        const label = isUuid ? (pageTitle || 'Details') : labelize(s)
+        const to = (isLast || NON_NAVIGABLE_SEGMENTS.has(s))
+          ? null
+          : '/' + all.slice(0, i + 1).join('/')
+        return { label, to }
+      })
 
   // User initials
   const initials = user
@@ -457,7 +470,9 @@ function LayoutBody({ children }) {
           zIndex: 20,
           boxShadow: '0 1px 3px rgba(14,13,12,0.05)',
         }}>
-          {/* Breadcrumb */}
+          {/* Breadcrumb — each non-last segment is a clickable Link
+              (2026-05-18). Navigable segments are forest-coloured;
+              terminal segment is plain text. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               className="md:hidden"
@@ -466,9 +481,45 @@ function LayoutBody({ children }) {
             >
               <Menu size={18} />
             </button>
-            <span style={{ fontSize: 13, color: c(INK, 0.40), letterSpacing: '0.04em', textTransform: 'uppercase', fontWeight: 500 }}>
-              {crumb}
-            </span>
+            <nav
+              aria-label="Header breadcrumb"
+              style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}
+            >
+              {crumbSegments.map((seg, i) => (
+                <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {i > 0 && (
+                    <span style={{ fontSize: 13, color: c(INK, 0.25) }}>›</span>
+                  )}
+                  {seg.to ? (
+                    <Link
+                      to={seg.to}
+                      style={{
+                        fontSize: 13,
+                        color: c(INK, 0.55),
+                        letterSpacing: '0.04em',
+                        textTransform: 'uppercase',
+                        fontWeight: 500,
+                        textDecoration: 'none',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = FOREST; e.currentTarget.style.textDecoration = 'underline' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = c(INK, 0.55); e.currentTarget.style.textDecoration = 'none' }}
+                    >
+                      {seg.label}
+                    </Link>
+                  ) : (
+                    <span style={{
+                      fontSize: 13,
+                      color: c(INK, 0.40),
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                      fontWeight: 500,
+                    }}>
+                      {seg.label}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </nav>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

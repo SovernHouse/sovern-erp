@@ -181,6 +181,10 @@ exports.updateLead = async (req, res) => {
   try {
     const result = await leadWriteService.updateLead(req.params.id, req.body || {}, {
       userId: req.user?.id || null,
+      userRole: req.user?.role || null,
+      userName: req.user
+        ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email || null
+        : null,
       brandScope: req.brandScope || null,
       ip: req.ip || null,
       source: 'rest',

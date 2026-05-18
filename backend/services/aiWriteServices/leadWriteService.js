@@ -134,7 +134,7 @@ async function createLead(payload, ctx) {
 }
 
 async function updateLead(id, patch, ctx) {
-  const { brandScope, userId } = ctx || {};
+  const { brandScope, userId, userRole, userName } = ctx || {};
 
   if (isCrossBrand(brandScope)) {
     return {
@@ -154,14 +154,102 @@ async function updateLead(id, patch, ctx) {
     return { ok: false, code: 'not_found', httpStatus: 404, message: 'Lead not found' };
   }
 
-  // brandCode is immutable on the standard update path. Mirrors the
-  // controller — silently stripped rather than 400 so the frontend
-  // can submit the full form back without churn.
-  const { brandCode: _ignored, ...allowed } = patch || {};
+  // 2026-05-18: Super Admin brand override. Lead.brandCode is normally
+  // locked at creation, but a super_admin can flip it from the UI (e.g.
+  // when a flooring lead got mis-tagged SH at import time and needs to
+  // go to FW per rule #9). Every override writes a
+  // super_admin_brand_override audit row, posts a Lead chatter event,
+  // and cascades to active OutreachEmail drafts so the brand context
+  // stays consistent. Non-super_admins get the brandCode key silently
+  // stripped (original behaviour).
+  const { brandCode: requestedBrand, ...allowed } = patch || {};
+  let brandOverride = null;
+  if (requestedBrand && requestedBrand !== lead.brandCode && userRole === 'super_admin') {
+    const target = String(requestedBrand).toUpperCase();
+    if (!brandIsAccessible(brandScope, target)) {
+      return {
+        ok: false,
+        code: 'brand_not_writable',
+        httpStatus: 403,
+        message: `Cannot move Lead to brand '${target}': your account doesn't have access to it.`,
+      };
+    }
+    const targetBrand = await db.Brand.findOne({ where: { code: target, active: true } });
+    if (!targetBrand) {
+      return {
+        ok: false,
+        code: 'validation',
+        httpStatus: 400,
+        message: `Brand '${target}' is not active.`,
+      };
+    }
+    brandOverride = { from: lead.brandCode, to: target, displayName: targetBrand.displayName };
+    allowed.brandCode = target;
+  }
 
   const before = lead.toJSON();
   await lead.update(allowed);
   const after = lead.toJSON();
+
+  // Super Admin brand override side-effects. Done AFTER the update so
+  // the row state reflects the new brand when downstream queries fire.
+  if (brandOverride) {
+    let outreachRowsRelabeled = 0;
+    try {
+      // Cascade brandCode to ACTIVE drafts (status='draft'). Historical
+      // sent rows record what actually went out and stay as they were.
+      const [res] = await db.sequelize.query(
+        "UPDATE OutreachEmails SET brand_code = ?, from_address = ? WHERE lead_id = ? AND status = 'draft'",
+        { replacements: [brandOverride.to, (await db.Brand.findOne({ where: { code: brandOverride.to } })).senderEmail, lead.id] },
+      );
+      // SQLite returns rowsAffected via the second tuple element on some
+      // Sequelize versions; fall back to a count query.
+      const rowsChanged = (res && typeof res === 'object' && res.changes != null)
+        ? res.changes
+        : (typeof res === 'number' ? res : null);
+      outreachRowsRelabeled = rowsChanged != null
+        ? rowsChanged
+        : await db.OutreachEmail.count({
+            where: { leadId: lead.id, status: 'draft', brandCode: brandOverride.to },
+          });
+    } catch (_) { /* cascade is best-effort */ }
+
+    try {
+      await auditService.logAction(
+        userId || null,
+        'super_admin_brand_override',
+        'Lead',
+        lead.id,
+        {
+          from: brandOverride.from,
+          to: brandOverride.to,
+          reason: 'super-admin-toggle',
+          outreachDraftRowsRelabeled: outreachRowsRelabeled,
+          userName: userName || null,
+          source: ctx?.source || 'rest',
+        },
+        ctx?.ip || null,
+      );
+    } catch (_) { /* best-effort */ }
+
+    try {
+      const { postSystemEvent } = require('../../controllers/chatterController');
+      await postSystemEvent(
+        'Lead',
+        lead.id,
+        'event',
+        `Brand changed: ${brandOverride.from} → ${brandOverride.to} (${brandOverride.displayName}). ${outreachRowsRelabeled} active draft${outreachRowsRelabeled === 1 ? '' : 's'} re-labelled. Sent rows untouched.`,
+        {
+          kind: 'brand_override',
+          from: brandOverride.from,
+          to: brandOverride.to,
+          outreachDraftRowsRelabeled: outreachRowsRelabeled,
+        },
+        userId || null,
+        userName || 'Super Admin',
+      );
+    } catch (_) { /* best-effort */ }
+  }
 
   // Phase 4.17: when callers (REST or MCP update_lead) write the
   // deprecated Lead.draftEmailSubject / Lead.draftEmailBody fields,
