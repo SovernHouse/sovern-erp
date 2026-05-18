@@ -745,7 +745,64 @@ const sendOutreachEmailViaGmailAPI = async ({ fromAddress, toAddress, toName, su
  *
  * Set OUTREACH_FORCE_SMTP=1 to disable Gmail API entirely (debugging only).
  */
-const sendOutreachEmail = async ({ fromAddress, toAddress, toName, subject, bodyText, replyTo, cc, bcc, signatureHtml: customSignatureHtml, signatureText: customSignatureText, fromDisplayName }) => {
+const sendOutreachEmail = async ({ fromAddress, toAddress, toName, subject, bodyText, replyTo, cc, bcc, signatureHtml: customSignatureHtml, signatureText: customSignatureText, fromDisplayName, brandCode, brandDisplayName }) => {
+  // 2026-05-18 brand-leak gateway (rule #9 / L-068 class). Refuse to send
+  // when the proposed From + signature combination doesn't all agree on
+  // the same brand. Callers that pass brandCode get full enforcement;
+  // legacy callers (no brandCode) get a softer check that just refuses
+  // when an FW/HH-shaped from_address has no brand display name override.
+  //
+  // The actual leak today (17 emails): MCP send_outreach_email omitted
+  // fromDisplayName so the Gmail API path defaulted to "Sovern House |
+  // Alex", AND loaded a user-level (SH) EmailSignature with no brand
+  // filter. Combined: FW lead, FW sender email, SH branding in From +
+  // signature. BPI's auto-responder echoed "Hi Sovern House | Alex"
+  // back to us — that's how it surfaced.
+  if (brandCode && brandDisplayName) {
+    const expectedFromName = `${brandDisplayName} | Alex`;
+    if (fromDisplayName && fromDisplayName !== expectedFromName) {
+      throw new Error(
+        `Brand-leak refused: fromDisplayName="${fromDisplayName}" does not match brand "${brandCode}" (${brandDisplayName}). ` +
+        `Expected "${expectedFromName}". This is the rule #9 gateway. ` +
+        `Fix the caller to pass the brand's display name, then retry.`
+      );
+    }
+    // Signature must mention the brand display name OR be the brand's
+    // configured signatureHtml (which is verified to match by definition).
+    // We accept the brand-configured signature as-is and reject ad-hoc
+    // signatures that hard-code a foreign brand name.
+    if (customSignatureHtml) {
+      // Other-brand mentions in the signature constitute a leak. SH text
+      // ("Sovern House", "sovernhouse.co", "Your buying office in Asia",
+      // "New Route International Exchange") leaking into FW/HH outreach
+      // is the exact 2026-05-18 BPI incident.
+      if (brandCode !== 'SH' && /(\bSovern\s*House\b|sovernhouse\.co|buying\s+office\s+in\s+Asia|New\s+Route\s+International\s+Exchange)/i.test(customSignatureHtml)) {
+        throw new Error(
+          `Brand-leak refused: signature for brand "${brandCode}" contains Sovern House identity markers. ` +
+          `Rule #9 violation. Fix the signature resolver to load the brand's signature, not the SH default.`
+        );
+      }
+      // FW/HH must not advertise SH brand. SH must not advertise FW/HH brand.
+      if (brandCode === 'SH' && /(\bFlorWay\b|\bHanHua\b|alexflorway@gmail\.com)/i.test(customSignatureHtml)) {
+        throw new Error(
+          `Brand-leak refused: SH outreach signature contains FW/HH identity markers (rule #9).`
+        );
+      }
+    }
+  } else if (fromAddress) {
+    // Legacy caller without brandCode. Best-effort: if the from_address
+    // is the FW/HH sender but fromDisplayName looks like SH default,
+    // refuse. This protects un-migrated callers without requiring them
+    // to pass brandCode immediately.
+    const isFwHhSender = /alexflorway@gmail\.com/i.test(fromAddress);
+    if (isFwHhSender && (!fromDisplayName || /Sovern\s*House/i.test(fromDisplayName))) {
+      throw new Error(
+        `Brand-leak refused: sending from ${fromAddress} but fromDisplayName missing or contains "Sovern House". ` +
+        `Pass brandCode + brandDisplayName so the gateway can verify, or set fromDisplayName explicitly to the FW/HH display name.`
+      );
+    }
+  }
+
   // Try Gmail API first unless explicitly disabled
   if (process.env.OUTREACH_FORCE_SMTP !== '1') {
     try {

@@ -1319,21 +1319,46 @@ async function callTool(name, args) {
         args.from_address ||
         _brandForFrom.senderEmail;
 
-      // Resolve user's default signature, if any (mirrors triageController.sendEmail).
+      // 2026-05-18 brand-leak fix (rule #9 / L-068 class). The pre-fix
+      // implementation loaded the user's default EmailSignature with NO
+      // brand filter, so an FW/HH lead got Alex's SH signature stamped
+      // onto every MCP-sent outreach email. Combined with the missing
+      // fromDisplayName below, 17 FW emails went out today claiming
+      // "Sovern House | Alex" + the SH "Your buying office in Asia"
+      // signature — direct rule #9 violation surfaced by BPI's auto-
+      // responder echoing our From display name as "Hi Sovern House |
+      // Alex". Fix: prefer brand.signatureHtml (the brand-correct one
+      // seeded by migrateBrandSignaturesC24) over user-level signatures.
+      // Only fall through to a user signature when the brand has none
+      // (legacy SH case before brand signatures shipped).
       let signatureHtml = null;
       let signatureText = null;
-      try {
-        const { generateSignatureHtml, generateSignatureText } =
-          require('../controllers/emailSignatureController');
-        const sig = USER_ID
-          ? await getDb().EmailSignature.findOne({ where: { userId: USER_ID, isDefault: true } })
-            || await getDb().EmailSignature.findOne({ where: { isDefault: true } })
-          : await getDb().EmailSignature.findOne({ where: { isDefault: true } });
-        if (sig) {
-          signatureHtml = generateSignatureHtml(sig);
-          signatureText = generateSignatureText(sig);
-        }
-      } catch (_) { /* signature is non-critical */ }
+      if (_brandForFrom.signatureHtml) {
+        signatureHtml = _brandForFrom.signatureHtml;
+        signatureText = _brandForFrom.signatureText || null;
+      } else {
+        try {
+          const { generateSignatureHtml, generateSignatureText } =
+            require('../controllers/emailSignatureController');
+          // Filter user signatures by brand when possible so a multi-brand
+          // operator's signatures don't leak across brands.
+          const userSigQuery = { where: { isDefault: true } };
+          if (USER_ID) userSigQuery.where.userId = USER_ID;
+          if (getDb().EmailSignature.rawAttributes.brandCode) {
+            userSigQuery.where.brandCode = lead.brandCode;
+          }
+          const sig = await getDb().EmailSignature.findOne(userSigQuery);
+          if (sig) {
+            signatureHtml = generateSignatureHtml(sig);
+            signatureText = generateSignatureText(sig);
+          }
+        } catch (_) { /* signature lookup is non-critical */ }
+      }
+
+      // 2026-05-18 brand-leak fix: also pass fromDisplayName so the From
+      // header reads "<Brand> | Alex" not "Sovern House | Alex" (the
+      // emailService.js default when fromDisplayName is omitted).
+      const fromDisplayName = `${_brandForFrom.displayName} | Alex`;
 
       // Phase 4.9.3b PART C: draft-only mode. When draftOnly=true,
       // skip the SMTP call entirely; the OutreachEmail row is created
@@ -1350,6 +1375,7 @@ async function callTool(name, args) {
         try {
           smtpResult = await sendOutreachEmail({
             fromAddress,
+            fromDisplayName,
             toAddress: lead.email,
             toName: lead.contactName,
             subject,
@@ -1358,6 +1384,10 @@ async function callTool(name, args) {
             bcc: args.bcc || null,
             signatureHtml,
             signatureText,
+            // 2026-05-18 brand-leak gateway: pass through so the
+            // downstream assertion can refuse on mismatch.
+            brandCode: lead.brandCode,
+            brandDisplayName: _brandForFrom.displayName,
           });
         } catch (e) {
           sendError = e.message || String(e);
