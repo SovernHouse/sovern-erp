@@ -5094,6 +5094,109 @@ async function callTool(name, args) {
       return { success: true, shipmentId: shipment.id, status: 'delivered', salesOrder: result.ok ? { id: result.salesOrder.id, statusBefore: result.statusBefore, statusAfter: result.statusAfter, transitioned: !result.alreadyExisted } : null, message: result.ok ? `Shipment delivered; SO ${result.statusAfter === 'delivered' && !result.alreadyExisted ? 'auto-transitioned to delivered' : 'unchanged'}.` : `Shipment delivered; SO update skipped (${result.message}).` };
     }
 
+    // ── Phase 4.18b — skill-file loader ─────────────────────────────────
+    case 'list_sovern_skills': {
+      const skillIndex = require('../services/skillIndex');
+      const idx = skillIndex.getIndex();
+      return {
+        success: true,
+        skills: idx,
+        count: idx.length,
+      };
+    }
+
+    case 'read_sovern_skill': {
+      const skillIndex = require('../services/skillIndex');
+      const slug = args?.skill_name;
+      const result = skillIndex.readSkill(slug);
+      if (result.error) {
+        return formatMcpWriteError({
+          code: 'invalid_skill',
+          message: result.error,
+          httpStatus: 400,
+        });
+      }
+      return {
+        success: true,
+        slug: result.slug,
+        content: result.content,
+        bytes: result.bytes,
+      };
+    }
+
+    // ── Phase 4.18e — per-user persistent memory ────────────────────────
+    case 'list_memories': {
+      const memReq = await getCurrentUserOrThrow();
+      const aiMemoryService = require('../services/aiMemoryService');
+      const memories = await aiMemoryService.list({
+        userId: memReq.id,
+        kind: args?.kind,
+        limit: args?.limit || 50,
+      });
+      return { success: true, memories, count: memories.length };
+    }
+
+    case 'remember_fact': {
+      const memReq = await getCurrentUserOrThrow();
+      if (memReq.role !== 'super_admin') {
+        return formatMcpWriteError({
+          code: 'forbidden',
+          message: 'remember_fact is super_admin-only.',
+          httpStatus: 403,
+        });
+      }
+      const aiMemoryService = require('../services/aiMemoryService');
+      const { key, value, kind, source } = args || {};
+      if (typeof key !== 'string' || !key.trim()) {
+        return formatMcpWriteError({ code: 'bad_input', message: 'key is required', httpStatus: 422 });
+      }
+      if (typeof value !== 'string' || !value.trim()) {
+        return formatMcpWriteError({ code: 'bad_input', message: 'value is required', httpStatus: 422 });
+      }
+      const saved = await aiMemoryService.upsert({
+        userId: memReq.id,
+        key: key.trim(),
+        value: value.trim(),
+        kind: kind || 'fact',
+        source: source || 'explicit-remember-command',
+      });
+      await auditAiWrite('ai_assistant_remember_fact', 'AiMemory', saved.id, {
+        key: saved.key,
+        kind: saved.kind,
+        source: saved.source,
+        valueLength: saved.value.length,
+      }, memReq.id);
+      return { success: true, memory: saved };
+    }
+
+    case 'forget_fact': {
+      const memReq = await getCurrentUserOrThrow();
+      if (memReq.role !== 'super_admin') {
+        return formatMcpWriteError({
+          code: 'forbidden',
+          message: 'forget_fact is super_admin-only.',
+          httpStatus: 403,
+        });
+      }
+      const aiMemoryService = require('../services/aiMemoryService');
+      const { key } = args || {};
+      if (typeof key !== 'string' || !key.trim()) {
+        return formatMcpWriteError({ code: 'bad_input', message: 'key is required', httpStatus: 422 });
+      }
+      const result = await aiMemoryService.softDelete({ userId: memReq.id, key: key.trim() });
+      if (!result.deleted) {
+        return formatMcpWriteError({
+          code: 'not_found',
+          message: `No active memory found for key "${key.trim()}".`,
+          httpStatus: 404,
+        });
+      }
+      await auditAiWrite('ai_assistant_forget_fact', 'AiMemory', result.id, {
+        key: key.trim(),
+      }, memReq.id);
+      return { success: true, key: key.trim(), deletedId: result.id };
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}. Available tools: ${TOOL_DEFS.map(t => t.name).join(', ')}`);
   }
@@ -5251,6 +5354,62 @@ async function auditAiWrite(action, entity, entityId, changes, userId) {
 // ── Tool definitions ──────────────────────────────────────────────────────────
 
 const TOOL_DEFS = [
+  // ── Phase 4.18b — skill-file loader ──────────────────────────────────────
+  {
+    name: 'list_sovern_skills',
+    description: 'Phase 4.18b: List every skill markdown file available in the ERP knowledge base. Returns slug + one-line description for each. Call this once when you need to find which skill to read; the file set is curated for brand voice, ICP, prospecting, compliance, email rules, factory operations, and trade frameworks.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'read_sovern_skill',
+    description: 'Phase 4.18b: Read a skill markdown file by slug. Slugs come from list_sovern_skills. Use when Alex asks a question whose answer lives in a curated skill (e.g. "what is our ICP", "what is the Egypt BCC rule", "what is the brand voice"). Path-traversal-guarded — only files in backend/skills/ are readable.',
+    inputSchema: {
+      type: 'object',
+      required: ['skill_name'],
+      properties: {
+        skill_name: { type: 'string', description: 'Skill slug, e.g. "trade-sales", "brand-safety", "sovern-icp". Lowercase, hyphenated, no .md extension.' },
+      },
+    },
+  },
+
+  // ── Phase 4.18e — per-user persistent memory ─────────────────────────────
+  {
+    name: 'list_memories',
+    description: 'Phase 4.18e: List durable memories Alex (or the current user) has saved across past chat sessions. Useful at the start of a session and when the user references something previously corrected ("like I told you before..."). Returns { key, value, kind, createdAt, lastReferencedAt } per row.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', description: 'Optional filter: preference, fact, correction, voice_rule.' },
+        limit: { type: 'number', description: 'Default 50.' },
+      },
+    },
+  },
+  {
+    name: 'remember_fact',
+    description: 'Phase 4.18e: Save a durable fact, preference, voice rule, or correction for the current user. Call when Alex says "remember that..." or when you detect an explicit correction ("don\'t say X, say Y"). Super_admin only. Audit-logged.',
+    inputSchema: {
+      type: 'object',
+      required: ['key', 'value'],
+      properties: {
+        key: { type: 'string', description: 'Short slug identifier, e.g. "phrasing-ironlite" or "country-capitalisation".' },
+        value: { type: 'string', description: 'The fact / rule / preference text. Up to 2 KB.' },
+        kind: { type: 'string', description: 'preference | fact | correction | voice_rule. Default fact.' },
+        source: { type: 'string', description: 'explicit-remember-command | auto-detected-correction. Default explicit.' },
+      },
+    },
+  },
+  {
+    name: 'forget_fact',
+    description: 'Phase 4.18e: Soft-delete a memory by key (sets isActive=false; row stays for audit). Super_admin only. Audit-logged.',
+    inputSchema: {
+      type: 'object',
+      required: ['key'],
+      properties: {
+        key: { type: 'string', description: 'The memory key to forget.' },
+      },
+    },
+  },
+
   {
     name: 'erp_accept_quotation',
     description: 'Phase 4.25h: Accept a quotation. Auto-creates a draft Pro Forma Invoice via the workflow chain (Quote -> Proforma). Use when the customer has agreed to a quote and you want to advance the deal to the next document.',

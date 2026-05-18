@@ -188,6 +188,54 @@ const WRITING_RULES = `
 **Timezone — global rule:** Every timestamp surfaced to Alex must be rendered in Asia/Taipei (UTC+8). This applies to every field returned by ERP tools (updatedAt, createdAt, sentAt, validUntil, ETAs, payment timestamps, calendar events, audit logs, ANYTHING). Never display raw UTC. Never display "Z"-suffixed ISO strings. Never display "UTC" as a suffix. Convert before printing. The database stores UTC; the display layer (you) always renders Taipei. Default formatter: \`date.toLocaleString('en-GB', { timeZone: 'Asia/Taipei' })\` or equivalent. When the user mentions a time, it is Taipei time unless they explicitly state otherwise.
 `;
 
+// Phase 4.18a (2026-05-18): brand-voice + product-knowledge rules that
+// codify the non-negotiables that kept slipping in cold-email drafts
+// (Stevens Omni session: "malaysia and china" lowercase, "powered by
+// IronLite Core" phrasing, missing factory-direct framing). These are
+// loaded into every super_admin/admin system prompt unconditionally.
+const BRAND_VOICE_RULES = `
+## Brand Voice & Product Phrasing (non-negotiable)
+
+### Country names — always capitalized
+Country names ALWAYS appear in Title Case on word boundary. Never "malaysia",
+"china", "vietnam", "canada", "united states". Applies to subject lines,
+body text, email greetings, internal notes, anywhere copy is produced.
+
+### Brand positioning
+- **SH (Sovern House)** — Taiwan-based buying house. Voice: trusted
+  intermediary, 30-year founder Asia story, multi-supplier network.
+  Never frame SH as a manufacturer.
+- **FW (FlorWay)** — Malaysia-origin resilient flooring. Voice:
+  factory-direct. "We ship from our factory in Malaysia." Never use
+  "middleman" or "trader" framing for FW.
+- **HH (HanHua)** — China-origin resilient flooring. Voice:
+  factory-direct. "We ship from our factory in China." Same rule
+  as FW — factory-direct, no middleman framing.
+
+### IronLite Core Technology — required phrasing
+- Correct: "with IronLite Core Technology"
+- WRONG: "powered by IronLite", "containing IronLite", "uses IronLite",
+  "IronLite-powered". Never use any "powered by" variant.
+- IronLite Core is the FW-branded structural core. JetCore is the legacy
+  brand for the same technology made on the same factory line. Treat
+  JetCore equivalence as internal-only unless Alex explicitly approves
+  public co-mention in a given draft.
+- HGTV: phrase as "recently seen on HGTV" unless you have a specific
+  show + air date confirmed by Alex. Don't invent show names or dates.
+
+### Rule #9 — Resilient flooring is FW or HH, never SH
+LVT, SPC, WPC, Engineered SPC, Vinyl Sheet, Rigid Core Vinyl are FW
+(Malaysia) or HH (China) products. If you see a lead tagged SH with
+resilient interest, the brand assignment is wrong — flag it and
+either update_lead to flip the brand or surface the mismatch to Alex.
+Never draft SH-branded outreach to a resilient-flooring lead.
+
+### Trade tariff citations
+When stating a duty rate, AD/CV rate, or rule-of-origin determination,
+cite the CBSA / USITC / source URL. Don't invent rate numbers. If
+unsure, web-search or read the relevant skill file first.
+`;
+
 // ── Live ERP snapshot ─────────────────────────────────────────────────────────
 
 async function getLiveERPSnapshot(userRole) {
@@ -324,11 +372,34 @@ async function buildSystemPrompt(user) {
 You have access to ERP data relevant to your role. Be concise, accurate, and professional. All prices in USD. Use Incoterms correctly. Do not discuss matters outside your role's scope.
 
 Today's date: ${new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+
+${BRAND_VOICE_RULES}
 `;
   }
 
   // Full context for super_admin / admin
   const snapshot = await getLiveERPSnapshot(user.role);
+
+  // Phase 4.18e: fetch top durable memories for this user. Capped at
+  // 30 rows / ~500 tokens to keep the per-turn budget under control.
+  let memoryText = '';
+  try {
+    const aiMemoryService = require('./aiMemoryService');
+    const memories = await aiMemoryService.topForPrompt({ userId: user.id, limit: 30 });
+    if (memories.length > 0) {
+      memoryText = '\n## Your durable memory (saved across past chat sessions)\n';
+      for (const m of memories) {
+        const tag = m.kind === 'voice_rule' ? '[voice]'
+          : m.kind === 'preference' ? '[pref]'
+          : m.kind === 'correction' ? '[correction]'
+          : '[fact]';
+        memoryText += `- ${tag} **${m.key}**: ${m.value}\n`;
+      }
+      memoryText += '\nThese were saved via the `remember_fact` MCP tool. If a memory becomes stale, call `forget_fact(key)`. To save a new one, call `remember_fact(key, value, kind?)`.\n';
+    }
+  } catch (e) {
+    logger.warn('[ai-context] memory injection failed:', e.message);
+  }
 
   let snapshotText = '\n## Live ERP Snapshot\n';
 
@@ -381,6 +452,8 @@ ${TEAM_FRAMEWORK}
 
 ${WRITING_RULES}
 
+${BRAND_VOICE_RULES}
+${memoryText}
 ${snapshotText}
 
 ## Your role in this chat

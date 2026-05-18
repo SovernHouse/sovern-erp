@@ -764,6 +764,16 @@ db.sequelize.authenticate()
       logger.warn('[boot] phase4.17 resilient brand correction skipped:', e.message);
     }
 
+    // Phase 4.18e — ensure the AiMemory table exists for per-user
+    // persistent AI memory. Sentinel-guarded via AuditLog row
+    // phase4_18e_ai_memory_table_created.
+    try {
+      const { migrate418eAiMemory } = require('./services/migrate418eAiMemory');
+      await migrate418eAiMemory(db);
+    } catch (e) {
+      logger.warn('[boot] phase4.18e AiMemory table create skipped:', e.message);
+    }
+
     // Phase 4.5, C24: refresh FW Brand signature (HTML + text) to the
     // Country Manager / FlorWay+HanHua design. Idempotent via AuditLog
     // sentinel; SH untouched.

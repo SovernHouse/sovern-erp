@@ -59,6 +59,7 @@ db.InvoiceItem = require('./InvoiceItem')(sequelize);
 db.Payment = require('./Payment')(sequelize);
 db.Notification = require('./Notification')(sequelize);
 db.AuditLog = require('./AuditLog')(sequelize);
+db.AiMemory = require('./AiMemory')(sequelize);
 db.Brand = require('./Brand')(sequelize);
 // Phase 4.8, Commit 1: singleton row for company-wide settings. Replaces
 // the in-memory `let companySettings` literal in settingsRoutes.js that
