@@ -136,13 +136,16 @@ describe('Phase 4.17 — Lead Draft Cold Email widget (OutreachEmail canonical)'
       .put(`/api/crm/leads/${lead.id}/outreach-draft`)
       .set(authHeaders())
       .send({ subject: 'v1', bodyText: 'body v1' });
+    // Phase 4.18f: the voice-rule linter rewrites em-dashes to commas
+    // server-side. Use straight punctuation in the fixture so the
+    // round-trip assertion lines up.
     const second = await request
       .put(`/api/crm/leads/${lead.id}/outreach-draft`)
       .set(authHeaders())
-      .send({ subject: 'v2 — tighter', bodyText: 'body v2 — shorter ask' });
+      .send({ subject: 'v2: tighter', bodyText: 'body v2: shorter ask' });
     expect(second.status).toBe(200);
     expect(second.body.data.id).toBe(first.body.data.id);
-    expect(second.body.data.subject).toBe('v2 — tighter');
+    expect(second.body.data.subject).toBe('v2: tighter');
     const count = await db.OutreachEmail.count({ where: { leadId: lead.id, status: 'draft' } });
     expect(count).toBe(1);
   });
