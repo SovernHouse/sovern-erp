@@ -118,14 +118,22 @@ jobs:
             echo "Dist swapped OK — $(ls "$DIST/assets/" 2>/dev/null | wc -l) assets"
 
             echo "=== Restarting backend ==="
+            # 2026-05-18 fix: always start via ecosystem.config.js so the
+            # env block (SQLITE_STORAGE, etc.) is injected. The previous
+            # `pm2 start server.js --name sovern-erp` cold-start path
+            # ignored ecosystem.config.js, which made Sequelize fall back
+            # to backend/database.sqlite (a different, empty file) and
+            # broke the Gmail-account lookup (ConnectedGoogleAccount.findOne
+            # returned null even with FW + SH accounts in the prod DB).
+            # That left two failed OutreachEmail rows on Ultimate Floors
+            # and confused subsequent debugging until the issue was
+            # reproduced live.
             if pm2 describe sovern-erp > /dev/null 2>&1; then
-              pm2 restart sovern-erp
+              # Use --update-env so any change to ecosystem.config.js's env
+              # block reaches the process on the next restart.
+              pm2 restart ecosystem.config.js --update-env
             else
-              NODE_ENV=production pm2 start server.js \
-                --name sovern-erp \
-                --cwd ~/sovern-erp/backend \
-                --exp-backoff-restart-delay 100 \
-                --max-restarts 15
+              pm2 start ecosystem.config.js
             fi
             pm2 save --force 2>/dev/null || true
 
