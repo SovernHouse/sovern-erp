@@ -1,11 +1,17 @@
 /**
- * Phase 4.19b/c/d/e/g — Sales document PDF brand-leak gateway.
+ * Phase 4.19b/c/d/e/g + Phase 4.20 — Sales document PDF brand-safety gate.
  *
  * Locks the shared `assertSalesDocBrandSafe` helper from pdfHelpers.js
  * that gates ProformaInvoice, SalesOrder, PurchaseOrder, PackingList,
- * Invoice, CreditNote, and Sales Note PDFs. These renderers all share
- * `getCompanyHeader` which reads PDF_COMPANY_NAME (SH-only env var) —
- * they cannot safely render FW/HH branded output until Phase 4.20.
+ * Invoice, CreditNote, and Sales Note PDFs.
+ *
+ * Phase 4.19 refused FW/HH brands outright because `getCompanyHeader`
+ * was SH-only. Phase 4.20 made `getCompanyHeader` + `addFooter`
+ * brand-aware (they resolve a Brand row through brandStyleTokens), so
+ * the gateway now PERMITS FW/HH while still refusing:
+ *   - missing brandCode
+ *   - unknown brandCode
+ *   - SH brand + Resilient items (rule #9)
  *
  * Pure-function tests against the helper itself; the individual PDF
  * generators each call this helper at their entry point so the lock
@@ -25,7 +31,7 @@ function hardwoodItem() {
   return { id: 'it-3', Product: { id: 'p-3', productType: 'hardwood', category: { slug: 'engineered-wood' } } };
 }
 
-describe('assertSalesDocBrandSafe — Phase 4.19b/c/d/e/g shared lock', () => {
+describe('assertSalesDocBrandSafe — Phase 4.19/4.20 shared lock', () => {
   test('refuses missing brandCode', () => {
     expect(() => assertSalesDocBrandSafe({ id: 'pi-1' }, [hardwoodItem()], 'Proforma Invoice'))
       .toThrow(BrandLeakError);
@@ -38,17 +44,7 @@ describe('assertSalesDocBrandSafe — Phase 4.19b/c/d/e/g shared lock', () => {
       .toThrow(/unknown brandCode "XX"/);
   });
 
-  test('refuses FW brand (renderer not brand-aware until Phase 4.20)', () => {
-    expect(() => assertSalesDocBrandSafe({ id: 'pi-1', brandCode: 'FW' }, [lvtItem()], 'Proforma Invoice'))
-      .toThrow(/renderer is SH-only.*Phase 4\.20/);
-  });
-
-  test('refuses HH brand (same reason)', () => {
-    expect(() => assertSalesDocBrandSafe({ id: 'so-1', brandCode: 'HH' }, [lvtItem()], 'Sales Order'))
-      .toThrow(/renderer is SH-only/);
-  });
-
-  test('refuses SH brand + Resilient items (rule #9)', () => {
+  test('refuses SH brand + Resilient (LVT) items (rule #9)', () => {
     expect(() => assertSalesDocBrandSafe({ id: 'inv-1', brandCode: 'SH' }, [lvtItem()], 'Invoice'))
       .toThrow(/Resilient flooring.*never SH/i);
   });
@@ -79,14 +75,56 @@ describe('assertSalesDocBrandSafe — Phase 4.19b/c/d/e/g shared lock', () => {
       .not.toThrow();
   });
 
-  test('error carries leakField + entityId for downstream surfacing', () => {
+  // ─── Phase 4.20: FW/HH renderers now brand-aware ──────────────────────────
+  test('Phase 4.20: accepts FW brand + Resilient items (FW is the correct brand for Resilient)', () => {
+    expect(() => assertSalesDocBrandSafe({ id: 'pi-1', brandCode: 'FW' }, [lvtItem()], 'Proforma Invoice'))
+      .not.toThrow();
+  });
+
+  test('Phase 4.20: accepts HH brand + Resilient items (HH is the correct brand for Resilient)', () => {
+    expect(() => assertSalesDocBrandSafe({ id: 'so-1', brandCode: 'HH' }, [lvtItem()], 'Sales Order'))
+      .not.toThrow();
+  });
+
+  test('Phase 4.20: accepts FW brand + no items', () => {
+    expect(() => assertSalesDocBrandSafe({ id: 'inv-1', brandCode: 'FW' }, [], 'Invoice'))
+      .not.toThrow();
+  });
+
+  test('Phase 4.20: accepts HH brand + non-resilient items', () => {
+    expect(() => assertSalesDocBrandSafe({ id: 'so-2', brandCode: 'HH' }, [hardwoodItem()], 'Sales Order'))
+      .not.toThrow();
+  });
+
+  test('error on missing brandCode carries leakField + entityId for downstream surfacing', () => {
     try {
-      assertSalesDocBrandSafe({ id: 'inv-x', brandCode: 'FW' }, [], 'Invoice');
+      assertSalesDocBrandSafe({ id: 'inv-x' }, [], 'Invoice');
     } catch (e) {
       expect(e).toBeInstanceOf(BrandLeakError);
       expect(e.entityId).toBe('inv-x');
-      expect(e.brandCode).toBe('FW');
-      expect(e.leakField).toBe('renderer_not_brand_aware');
+      expect(e.leakField).toBe('brandCode');
+    }
+  });
+
+  test('error on unknown brandCode carries brandCode + entityId', () => {
+    try {
+      assertSalesDocBrandSafe({ id: 'inv-y', brandCode: 'ZZ' }, [], 'Invoice');
+    } catch (e) {
+      expect(e).toBeInstanceOf(BrandLeakError);
+      expect(e.entityId).toBe('inv-y');
+      expect(e.brandCode).toBe('ZZ');
+      expect(e.leakField).toBe('brandCode');
+    }
+  });
+
+  test('error on SH + Resilient carries items_resilient_under_sh leakField', () => {
+    try {
+      assertSalesDocBrandSafe({ id: 'so-9', brandCode: 'SH' }, [lvtItem()], 'Sales Order');
+    } catch (e) {
+      expect(e).toBeInstanceOf(BrandLeakError);
+      expect(e.entityId).toBe('so-9');
+      expect(e.brandCode).toBe('SH');
+      expect(e.leakField).toBe('items_resilient_under_sh');
     }
   });
 });

@@ -5,12 +5,24 @@ const { PDFDocument, fs, path, formatCurrency, uploadDir,
 
 // Phase 4.15a: opts.returnBuffer=true returns a Buffer instead of writing
 // to disk. Default false keeps every existing caller unchanged.
+//
+// Phase 4.20 (2026-05-18): every generator now resolves the entity's Brand
+// row via brandSafetyGateway.resolveBrandOrThrow and threads it through
+// getCompanyHeader + addFooter so FW/HH entities render with their own
+// displayName, primaryColor, footerLegal, and senderEmail. SH entities
+// still resolve a Brand row — no env-var fallback in the hot path.
 
 const generateSalesOrderPDF = (salesOrder, items, customer, factory, opts = {}) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
-      // Phase 4.19c: brand-safety gateway.
+      // Phase 4.19c: brand-safety gateway (rule #9 + brandCode required).
       assertSalesDocBrandSafe(salesOrder, items, 'Sales Order');
+      // Phase 4.20: resolve Brand row so header/footer print the right
+      // displayName/color/legal text. Throws if brand row missing.
+      const { resolveBrandOrThrow } = require('../brandSafetyGateway');
+      const db = require('../../models');
+      const { brand } = await resolveBrandOrThrow(db, salesOrder.brandCode);
+
       createDir(path.join(uploadDir, 'sales_orders'));
       const filename = `so-${salesOrder.orderNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'sales_orders', filename);
@@ -21,7 +33,7 @@ const generateSalesOrderPDF = (salesOrder, items, customer, factory, opts = {}) 
       // Phase 4, C16: FW internal-record banner (no-op for non-FW).
       addFwInternalRecordBanner(doc, salesOrder);
 
-      getCompanyHeader(doc);
+      getCompanyHeader(doc, brand);
       getDocumentTitle(doc, 'SALES ORDER');
 
       const details = {
@@ -58,7 +70,7 @@ const generateSalesOrderPDF = (salesOrder, items, customer, factory, opts = {}) 
       y += 20;
       doc.fontSize(12).text(`TOTAL: ${formatCurrency(salesOrder.total, salesOrder.currency)}`, 50, y);
 
-      addFooter(doc);
+      addFooter(doc, brand);
 
       doc.end();
       sink.then(resolve).catch(reject);
@@ -69,14 +81,18 @@ const generateSalesOrderPDF = (salesOrder, items, customer, factory, opts = {}) 
 };
 
 const generatePurchaseOrderPDF = (purchaseOrder, items, factory, opts = {}) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       // Phase 4.19g: brand-safety gateway. PurchaseOrders go to the
       // factory (which already knows both brands), so leak risk is
       // reversed vs the buyer-facing docs — but rule #9 still applies:
-      // an SH PO must not have Resilient items, an FW/HH PO must not
-      // render through this generic SH-styled renderer.
+      // an SH PO must not have Resilient items.
       assertSalesDocBrandSafe(purchaseOrder, items, 'Purchase Order');
+      // Phase 4.20: resolve Brand row for brand-aware header/footer.
+      const { resolveBrandOrThrow } = require('../brandSafetyGateway');
+      const db = require('../../models');
+      const { brand } = await resolveBrandOrThrow(db, purchaseOrder.brandCode);
+
       createDir(path.join(uploadDir, 'purchase_orders'));
       const filename = `po-${purchaseOrder.poNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'purchase_orders', filename);
@@ -84,7 +100,7 @@ const generatePurchaseOrderPDF = (purchaseOrder, items, factory, opts = {}) => {
       const doc = new PDFDocument();
       const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
-      getCompanyHeader(doc);
+      getCompanyHeader(doc, brand);
       getDocumentTitle(doc, 'PURCHASE ORDER');
 
       const details = {
@@ -117,7 +133,7 @@ const generatePurchaseOrderPDF = (purchaseOrder, items, factory, opts = {}) => {
       y += 15;
       doc.fontSize(12).text(`TOTAL: ${formatCurrency(purchaseOrder.total, purchaseOrder.currency)}`, 50, y);
 
-      addFooter(doc);
+      addFooter(doc, brand);
 
       doc.end();
       sink.then(resolve).catch(reject);
@@ -128,10 +144,15 @@ const generatePurchaseOrderPDF = (purchaseOrder, items, factory, opts = {}) => {
 };
 
 const generatePackingListPDF = (packingList, items, opts = {}) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       // Phase 4.19e: brand-safety gateway.
       assertSalesDocBrandSafe(packingList, items, 'Packing List');
+      // Phase 4.20: resolve Brand row for brand-aware header/footer.
+      const { resolveBrandOrThrow } = require('../brandSafetyGateway');
+      const db = require('../../models');
+      const { brand } = await resolveBrandOrThrow(db, packingList.brandCode);
+
       createDir(path.join(uploadDir, 'packing_lists'));
       const filename = `pl-${packingList.packingListNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'packing_lists', filename);
@@ -139,7 +160,7 @@ const generatePackingListPDF = (packingList, items, opts = {}) => {
       const doc = new PDFDocument();
       const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
-      getCompanyHeader(doc);
+      getCompanyHeader(doc, brand);
       getDocumentTitle(doc, 'PACKING LIST');
 
       const details = {
@@ -167,7 +188,7 @@ const generatePackingListPDF = (packingList, items, opts = {}) => {
 
       y = createTable(doc, columns, rows, y);
 
-      addFooter(doc);
+      addFooter(doc, brand);
 
       doc.end();
       sink.then(resolve).catch(reject);

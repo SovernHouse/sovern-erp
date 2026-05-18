@@ -10,14 +10,17 @@ const { PDFDocument, fs, path, formatCurrency, uploadDir,
 // as before).
 
 const generateQuotationPDF = (quotation, items, customer, salesPerson, opts = {}) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
-      // Phase 4.19a: brand-safety gateway. Note: documentGenerator.js
-      // overrides generateQuotationPDF to route through
-      // brandedQuotationRenderer.dispatch which has its own richer
-      // gateway. This raw entry is reachable from /api/pdf/quotation/:id
-      // and from tests; the assertion here is defense in depth.
+      // Phase 4.19a + 4.20: brand-safety gateway with brand-aware
+      // header/footer. The primary Quotation path goes through
+      // brandedQuotationRenderer.dispatch (richer per-variant
+      // templates); this generic generator is a fallback for callers
+      // that use the raw salesDocumentsPDF entry.
       assertSalesDocBrandSafe(quotation, items, 'Quotation');
+      const { resolveBrandOrThrow } = require('../brandSafetyGateway');
+      const db = require('../../models');
+      const { brand } = await resolveBrandOrThrow(db, quotation.brandCode);
       createDir(path.join(uploadDir, 'quotations'));
       const filename = `quotation-${quotation.quotationNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'quotations', filename);
@@ -25,7 +28,7 @@ const generateQuotationPDF = (quotation, items, customer, salesPerson, opts = {}
       const doc = new PDFDocument();
       const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
-      getCompanyHeader(doc);
+      getCompanyHeader(doc, brand);
       getDocumentTitle(doc, 'QUOTATION');
 
       const details = {
@@ -73,7 +76,7 @@ const generateQuotationPDF = (quotation, items, customer, salesPerson, opts = {}
         doc.font('Helvetica').fontSize(9).text(quotation.terms, 50, y, { width: 500 });
       }
 
-      addFooter(doc);
+      addFooter(doc, brand);
 
       doc.end();
       sink.then(resolve).catch(reject);
@@ -84,12 +87,16 @@ const generateQuotationPDF = (quotation, items, customer, salesPerson, opts = {}
 };
 
 const generateProformaInvoicePDF = (pi, items, customer, opts = {}) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
-      // Phase 4.19b: brand-safety gateway. Refuses missing brandCode,
-      // refuses FW/HH (this renderer is SH-only until Phase 4.20),
-      // refuses SH + Resilient items (rule #9).
+      // Phase 4.19b: brand-safety gateway. Phase 4.20: renderer is now
+      // brand-aware via resolved Brand row + brand-aware getCompanyHeader
+      // and addFooter.
       assertSalesDocBrandSafe(pi, items, 'Proforma Invoice');
+      const { resolveBrandOrThrow } = require('../brandSafetyGateway');
+      const db = require('../../models');
+      const { brand } = await resolveBrandOrThrow(db, pi.brandCode);
+
       createDir(path.join(uploadDir, 'proforma_invoices'));
       const filename = `pi-${pi.piNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'proforma_invoices', filename);
@@ -100,7 +107,7 @@ const generateProformaInvoicePDF = (pi, items, customer, opts = {}) => {
       // Phase 4, C16: FW internal-record banner (no-op for non-FW).
       addFwInternalRecordBanner(doc, pi);
 
-      getCompanyHeader(doc);
+      getCompanyHeader(doc, brand);
       getDocumentTitle(doc, 'PROFORMA INVOICE');
 
       const details = {
@@ -149,7 +156,7 @@ const generateProformaInvoicePDF = (pi, items, customer, opts = {}) => {
         });
       }
 
-      addFooter(doc);
+      addFooter(doc, brand);
 
       doc.end();
       sink.then(resolve).catch(reject);
@@ -160,11 +167,14 @@ const generateProformaInvoicePDF = (pi, items, customer, opts = {}) => {
 };
 
 const generateSalesNotePDF = (pi, items, customer, signedBy = {}, opts = {}) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
-      // Phase 4.19b: brand-safety gateway. Sales notes attach to PIs;
-      // same brand-safety constraints apply.
+      // Phase 4.19b + 4.20: brand-safety gateway + brand-aware
+      // header/footer. Sales notes attach to PIs; inherit brand.
       assertSalesDocBrandSafe(pi, items, 'Sales Note');
+      const { resolveBrandOrThrow } = require('../brandSafetyGateway');
+      const db = require('../../models');
+      const { brand } = await resolveBrandOrThrow(db, pi.brandCode);
       createDir(path.join(uploadDir, 'sales_notes'));
       const filename = `sales-note-${pi.piNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'sales_notes', filename);
@@ -172,13 +182,15 @@ const generateSalesNotePDF = (pi, items, customer, signedBy = {}, opts = {}) => 
       const doc = new PDFDocument({ margin: 50, size: 'A4' });
       const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
-      // ── Header ──────────────────────────────────────────────────────────────
-      doc.fontSize(16).font('Helvetica-Bold')
-         .text(process.env.PDF_COMPANY_NAME || 'Sovern House', 50, 30);
-      doc.fontSize(9).font('Helvetica')
-         .text(process.env.PDF_COMPANY_ADDRESS || '', 50, 50)
+      // ── Header (Phase 4.20: brand-aware) ────────────────────────────
+      const _tokens = require('./brandStyleTokens').resolveTokens(brand);
+      doc.fontSize(16).font('Helvetica-Bold').fillColor(_tokens.primaryColor)
+         .text(_tokens.displayName, 50, 30);
+      doc.fontSize(9).font('Helvetica').fillColor(_tokens.ink)
+         .text(_tokens.footerLegal || '', 50, 50)
          .text(`Tel: ${process.env.PDF_COMPANY_PHONE || ''}`, 50, 63)
-         .text(`Email: ${process.env.PDF_COMPANY_EMAIL || ''}`, 50, 76);
+         .text(`Email: ${_tokens.senderEmail || process.env.PDF_COMPANY_EMAIL || ''}`, 50, 76);
+      doc.fillColor(_tokens.ink);
 
       // Document title + number (right-aligned)
       doc.fontSize(18).font('Helvetica-Bold')
@@ -359,8 +371,8 @@ const generateSalesNotePDF = (pi, items, customer, signedBy = {}, opts = {}) => 
       doc.text(`Date: ${signedBy.date || new Date().toLocaleDateString('en-GB')}`, 50, y);
       doc.text('Date: ______________________', 300, y);
 
-      // ── Footer ───────────────────────────────────────────────────────────────
-      addFooter(doc);
+      // ── Footer (Phase 4.20: brand-aware) ─────────────────────────────────
+      addFooter(doc, brand);
       doc.end();
       sink.then(resolve).catch(reject);
     } catch (error) {

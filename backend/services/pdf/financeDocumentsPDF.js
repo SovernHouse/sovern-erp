@@ -5,19 +5,25 @@ const { PDFDocument, fs, path, formatCurrency, uploadDir,
 
 // Phase 4.15a: opts.returnBuffer=true returns a Buffer instead of writing
 // to disk. Default false keeps every existing caller unchanged.
+//
+// Phase 4.20 (2026-05-18): every generator resolves the entity's Brand
+// row via brandSafetyGateway.resolveBrandOrThrow and threads it through
+// getCompanyHeader + addFooter so FW/HH entities render with their own
+// displayName, primaryColor, footerLegal, and senderEmail.
 
 const generateInvoicePDF = (invoice, salesOrder, customer, opts = {}) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       // Phase 4.19d: brand-safety gateway. Invoice is a legal payment
-      // instrument — highest correctness bar. Refuses missing
-      // brandCode, refuses FW/HH on this SH-only renderer (pending
-      // Phase 4.20), refuses SH + Resilient items (rule #9).
-      // Item slug walk uses salesOrder.items if available; the invoice
-      // table itself doesn't carry items in this signature, so we pass
-      // an empty array if salesOrder is null (assertResilientNotSH
-      // is a no-op without items).
+      // instrument — highest correctness bar. Refuses missing brandCode
+      // and refuses SH + Resilient items (rule #9). Item slug walk uses
+      // salesOrder.items if available.
       assertSalesDocBrandSafe(invoice, salesOrder?.items || [], 'Invoice');
+      // Phase 4.20: resolve Brand row for brand-aware header/footer.
+      const { resolveBrandOrThrow } = require('../brandSafetyGateway');
+      const db = require('../../models');
+      const { brand } = await resolveBrandOrThrow(db, invoice.brandCode);
+
       createDir(path.join(uploadDir, 'invoices'));
       const filename = `inv-${invoice.invoiceNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'invoices', filename);
@@ -28,7 +34,7 @@ const generateInvoicePDF = (invoice, salesOrder, customer, opts = {}) => {
       // Phase 4, C16: FW internal-record banner (no-op for non-FW).
       addFwInternalRecordBanner(doc, invoice);
 
-      getCompanyHeader(doc);
+      getCompanyHeader(doc, brand);
       getDocumentTitle(doc, 'INVOICE');
 
       const details = {
@@ -73,7 +79,7 @@ const generateInvoicePDF = (invoice, salesOrder, customer, opts = {}) => {
       doc.font('Helvetica').fontSize(9);
       doc.text('Please contact accounting for bank transfer details', 50, y);
 
-      addFooter(doc);
+      addFooter(doc, brand);
 
       doc.end();
       sink.then(resolve).catch(reject);
@@ -84,11 +90,16 @@ const generateInvoicePDF = (invoice, salesOrder, customer, opts = {}) => {
 };
 
 const generateCreditNotePDF = (creditNote, customer, opts = {}) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       // Phase 4.19d: brand-safety gateway. Credit notes inherit brand
-      // from the parent invoice; same SH-only constraint.
+      // from the parent invoice.
       assertSalesDocBrandSafe(creditNote, [], 'Credit Note');
+      // Phase 4.20: resolve Brand row for brand-aware header/footer.
+      const { resolveBrandOrThrow } = require('../brandSafetyGateway');
+      const db = require('../../models');
+      const { brand } = await resolveBrandOrThrow(db, creditNote.brandCode);
+
       createDir(path.join(uploadDir, 'credit_notes'));
       const filename = `cn-${creditNote.invoiceNumber || creditNote.id}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'credit_notes', filename);
@@ -96,7 +107,7 @@ const generateCreditNotePDF = (creditNote, customer, opts = {}) => {
       const doc = new PDFDocument();
       const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
-      getCompanyHeader(doc);
+      getCompanyHeader(doc, brand);
       getDocumentTitle(doc, 'CREDIT NOTE');
 
       const details = {
@@ -127,7 +138,7 @@ const generateCreditNotePDF = (creditNote, customer, opts = {}) => {
       doc.font('Helvetica').fontSize(9);
       doc.text(creditNote.notes || 'Credit note for adjustment', 50, y, { width: 500 });
 
-      addFooter(doc);
+      addFooter(doc, brand);
 
       doc.end();
       sink.then(resolve).catch(reject);
@@ -138,12 +149,14 @@ const generateCreditNotePDF = (creditNote, customer, opts = {}) => {
 };
 
 const generateStatementOfAccountPDF = (customer, invoices, payments, opts = {}) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       // Phase 4.19d: brand-safety gateway. Statements span multiple
-      // invoices — refuse if any invoice has a non-SH brand (rule #9;
-      // FW/HH need brand-aware statements pending Phase 4.20).
-      const { BrandLeakError } = require('../brandSafetyGateway');
+      // invoices — refuse if invoices mix brands (one statement per
+      // brand is required by rule #9). Single-brand statements are
+      // permitted for any of SH/FW/HH thanks to Phase 4.20 brand-aware
+      // header/footer.
+      const { BrandLeakError, resolveBrandOrThrow } = require('../brandSafetyGateway');
       const brands = [...new Set((invoices || []).map(i => i.brandCode).filter(Boolean))];
       if (brands.length > 1) {
         throw new BrandLeakError(
@@ -152,13 +165,17 @@ const generateStatementOfAccountPDF = (customer, invoices, payments, opts = {}) 
           { entityId: customer?.id, leakField: 'mixed_brands_on_statement' }
         );
       }
-      if (brands.length === 1 && brands[0] !== 'SH') {
+      if (brands.length === 0) {
         throw new BrandLeakError(
-          `Refusing to render Statement of Account for brand "${brands[0]}": ` +
-          `this generic renderer is SH-only (rule #9). Pending Phase 4.20 brand-aware version.`,
-          { entityId: customer?.id, brandCode: brands[0], leakField: 'renderer_not_brand_aware' }
+          `Refusing to render Statement of Account for customer ${customer?.id || customer?.companyName}: ` +
+          `no brandCode found on any invoice. Statements must be brand-explicit.`,
+          { entityId: customer?.id, leakField: 'brandCode' }
         );
       }
+      // Phase 4.20: resolve Brand row for brand-aware header/footer.
+      const db = require('../../models');
+      const { brand } = await resolveBrandOrThrow(db, brands[0]);
+
       createDir(path.join(uploadDir, 'statements'));
       const filename = `stmt-${customer.id}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'statements', filename);
@@ -166,7 +183,7 @@ const generateStatementOfAccountPDF = (customer, invoices, payments, opts = {}) 
       const doc = new PDFDocument();
       const sink = pipeToBufferOrDisk(doc, opts, filepath, filename);
 
-      getCompanyHeader(doc);
+      getCompanyHeader(doc, brand);
       getDocumentTitle(doc, 'STATEMENT OF ACCOUNT');
 
       const details = {
@@ -208,7 +225,7 @@ const generateStatementOfAccountPDF = (customer, invoices, payments, opts = {}) 
 
       y = createTable(doc, invColumns, invRows, y);
 
-      addFooter(doc);
+      addFooter(doc, brand);
 
       doc.end();
       sink.then(resolve).catch(reject);
