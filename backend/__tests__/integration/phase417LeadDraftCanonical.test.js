@@ -89,7 +89,11 @@ describe('Phase 4.17 — Lead Draft Cold Email widget (OutreachEmail canonical)'
       email: `contact-${uuidv4().slice(0, 6)}@example.com`,
       status: 'new',
       brandCode,
-      leadNumber: `LD-20260518-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+      // 2026-05-18 flake fix: was `LD-20260518-${0-999}` — birthday paradox
+      // at ~38 inserts caused intermittent UNIQUE constraint violations on
+      // CI (locally fast enough to skip the collision). 12 hex chars from
+      // a uuid keeps collision probability ~0 across the whole test file.
+      leadNumber: `LD-TEST-${uuidv4().slice(0, 12)}`,
       draftEmailSubject: draftSubject || null,
       draftEmailBody: draftBody || null,
     });
