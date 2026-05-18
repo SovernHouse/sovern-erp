@@ -518,8 +518,14 @@ const saveLeadOutreachDraft = async (req, res) => {
       order: [['createdAt', 'DESC']],
     });
 
-    const subjectToSave = subject.trim() || '(draft subject — add before sending)';
-    const bodyToSave = bodyText.trim() || '(draft body — add content before sending)';
+    // Phase 4.18f: server-side voice rule linter. Title-case country
+    // names, replace em-dashes, rewrite "powered by IronLite" phrasing.
+    // Runs BEFORE the draft placeholders so the lint operates on the
+    // user-provided text, not the placeholder strings.
+    const { lintEmailParts } = require('../services/voiceRuleLinter');
+    const linted = lintEmailParts({ subject: subject.trim(), bodyText: bodyText.trim() });
+    const subjectToSave = linted.subject || '(draft subject - add before sending)';
+    const bodyToSave = linted.bodyText || '(draft body - add content before sending)';
     const fromAddress = brand.senderEmail;
     let row;
     let created = false;
@@ -565,9 +571,27 @@ const saveLeadOutreachDraft = async (req, res) => {
         created,
         brandCode: lead.brandCode,
         subjectPreview: subjectToSave.slice(0, 120),
+        voiceLintCorrections: linted.corrections,
       },
       req.ip,
     ).catch(() => {});
+
+    // Phase 4.18f: post a chatter note when the linter actually
+    // changed text — operators can see what the server normalised.
+    if (linted.corrections.length > 0) {
+      const summary = linted.corrections
+        .map(c => `${c.rule} (${c.count} on ${c.field})`)
+        .join(', ');
+      await postSystemEvent(
+        'Lead',
+        id,
+        'event',
+        `Voice lint applied: ${summary}.`,
+        { outreachEmailId: row.id, corrections: linted.corrections },
+        req.user?.id || null,
+        req.user
+      ).catch(() => {});
+    }
 
     // Phase 4.17 bugfix: chatter event so the operator can see who edited
     // the draft and when. `created` differentiates "new draft" vs "edited

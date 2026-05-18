@@ -1292,10 +1292,21 @@ async function callTool(name, args) {
     }
 
     case 'send_outreach_email': {
-      const { lead_id, subject, body_text } = args;
+      const { lead_id } = args;
+      let { subject, body_text } = args;
       if (!lead_id || !subject || !body_text) {
         return 'Missing required fields. Need: lead_id, subject, body_text.';
       }
+      // Phase 4.18f: voice rule linter runs server-side on every MCP
+      // outreach. Title-cases country names, rewrites "powered by
+      // IronLite", and strips em-dashes. Defence in depth: the system
+      // prompt tells the AI not to emit these, but this catches the
+      // failure mode if it slips.
+      const { lintEmailParts } = require('../services/voiceRuleLinter');
+      const _linted = lintEmailParts({ subject, bodyText: body_text });
+      subject = _linted.subject;
+      body_text = _linted.bodyText;
+
       const lead = await getDb().Lead.findByPk(lead_id);
       if (!lead) return `Lead ${lead_id} not found.`;
 
@@ -1440,6 +1451,7 @@ async function callTool(name, args) {
         subject: subject.slice(0, 120), touchNumber, status,
         smtpMessageId: smtpResult?.messageId || null,
         errorMessage: sendError || null,
+        voiceLintCorrections: _linted.corrections,
       }, USER_ID);
 
       // Phase 4.17 bugfix: AI-initiated drafts/sends/failures must also
