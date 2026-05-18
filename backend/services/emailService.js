@@ -110,6 +110,26 @@ const generateEmailTemplate = (title, content, footer = null) => {
 
 const sendEmail = async (to, subject, htmlContent, options = {}) => {
   try {
+    // 2026-05-18 brand-safety gateway: every transactional send funnels
+    // through this function. Callers can pass `brandCode` in options
+    // to opt into the rule #9 check. When brandCode is provided, the
+    // gateway scans htmlContent + subject for foreign-brand identity
+    // markers and refuses to ship if found. Existing callers that
+    // don't pass brandCode keep their pre-fix behaviour (which today
+    // is "fails silently because SMTP isn't configured anyway" — but
+    // the gateway protects them the moment SMTP turns on).
+    if (options.brandCode) {
+      const { assertBrandSafe } = require('./brandSafetyGateway');
+      assertBrandSafe({
+        brandCode: options.brandCode,
+        contentFields: {
+          subject: subject,
+          htmlContent: htmlContent,
+        },
+        entityId: options.entityId || null,
+      });
+    }
+
     // Allow disabling via env var (default is OFF for dev)
     if (process.env.EMAIL_ENABLED !== 'true') {
       logger.info(`[EMAIL] (disabled) To: ${to}, Subject: ${subject}`);
@@ -118,12 +138,15 @@ const sendEmail = async (to, subject, htmlContent, options = {}) => {
 
     const transporterInstance = await getTransporter();
 
+    // Strip the brand-safety-only fields before handing to nodemailer.
+    const { brandCode: _bc, entityId: _eid, ...mailOpts } = options;
+
     const mailOptions = {
       from: process.env.SMTP_FROM || 'noreply@trading-erp.com',
       to: to,
       subject: subject,
       html: htmlContent,
-      ...options
+      ...mailOpts
     };
 
     const result = await transporterInstance.sendMail(mailOptions);
@@ -746,53 +769,26 @@ const sendOutreachEmailViaGmailAPI = async ({ fromAddress, toAddress, toName, su
  * Set OUTREACH_FORCE_SMTP=1 to disable Gmail API entirely (debugging only).
  */
 const sendOutreachEmail = async ({ fromAddress, toAddress, toName, subject, bodyText, replyTo, cc, bcc, signatureHtml: customSignatureHtml, signatureText: customSignatureText, fromDisplayName, brandCode, brandDisplayName }) => {
-  // 2026-05-18 brand-leak gateway (rule #9 / L-068 class). Refuse to send
-  // when the proposed From + signature combination doesn't all agree on
-  // the same brand. Callers that pass brandCode get full enforcement;
-  // legacy callers (no brandCode) get a softer check that just refuses
-  // when an FW/HH-shaped from_address has no brand display name override.
-  //
-  // The actual leak today (17 emails): MCP send_outreach_email omitted
-  // fromDisplayName so the Gmail API path defaulted to "Sovern House |
-  // Alex", AND loaded a user-level (SH) EmailSignature with no brand
-  // filter. Combined: FW lead, FW sender email, SH branding in From +
-  // signature. BPI's auto-responder echoed "Hi Sovern House | Alex"
-  // back to us — that's how it surfaced.
+  // 2026-05-18 brand-leak gateway (rule #9 / L-068 class). Delegates to
+  // the shared services/brandSafetyGateway so every renderer in the
+  // codebase uses the same marker regex + assertion logic. See
+  // brand-safety.md for the contract.
   if (brandCode && brandDisplayName) {
-    const expectedFromName = `${brandDisplayName} | Alex`;
-    if (fromDisplayName && fromDisplayName !== expectedFromName) {
-      throw new Error(
-        `Brand-leak refused: fromDisplayName="${fromDisplayName}" does not match brand "${brandCode}" (${brandDisplayName}). ` +
-        `Expected "${expectedFromName}". This is the rule #9 gateway. ` +
-        `Fix the caller to pass the brand's display name, then retry.`
-      );
-    }
-    // Signature must mention the brand display name OR be the brand's
-    // configured signatureHtml (which is verified to match by definition).
-    // We accept the brand-configured signature as-is and reject ad-hoc
-    // signatures that hard-code a foreign brand name.
-    if (customSignatureHtml) {
-      // Other-brand mentions in the signature constitute a leak. SH text
-      // ("Sovern House", "sovernhouse.co", "Your buying office in Asia",
-      // "New Route International Exchange") leaking into FW/HH outreach
-      // is the exact 2026-05-18 BPI incident.
-      if (brandCode !== 'SH' && /(\bSovern\s*House\b|sovernhouse\.co|buying\s+office\s+in\s+Asia|New\s+Route\s+International\s+Exchange)/i.test(customSignatureHtml)) {
-        throw new Error(
-          `Brand-leak refused: signature for brand "${brandCode}" contains Sovern House identity markers. ` +
-          `Rule #9 violation. Fix the signature resolver to load the brand's signature, not the SH default.`
-        );
-      }
-      // FW/HH must not advertise SH brand. SH must not advertise FW/HH brand.
-      if (brandCode === 'SH' && /(\bFlorWay\b|\bHanHua\b|alexflorway@gmail\.com)/i.test(customSignatureHtml)) {
-        throw new Error(
-          `Brand-leak refused: SH outreach signature contains FW/HH identity markers (rule #9).`
-        );
-      }
-    }
+    const { assertBrandSafe } = require('./brandSafetyGateway');
+    assertBrandSafe({
+      brandCode,
+      expectedFromDisplayName: `${brandDisplayName} | Alex`,
+      actualFromDisplayName: fromDisplayName || null,
+      contentFields: {
+        signatureHtml: customSignatureHtml,
+        signatureText: customSignatureText,
+        bodyText: bodyText,
+      },
+    });
   } else if (fromAddress) {
-    // Legacy caller without brandCode. Best-effort: if the from_address
-    // is the FW/HH sender but fromDisplayName looks like SH default,
-    // refuse. This protects un-migrated callers without requiring them
+    // Legacy caller without brandCode. Refuse if from_address is the
+    // FW/HH sender but fromDisplayName is missing or contains "Sovern
+    // House". This protects un-migrated callers without requiring them
     // to pass brandCode immediately.
     const isFwHhSender = /alexflorway@gmail\.com/i.test(fromAddress);
     if (isFwHhSender && (!fromDisplayName || /Sovern\s*House/i.test(fromDisplayName))) {

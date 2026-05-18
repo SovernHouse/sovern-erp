@@ -110,7 +110,7 @@ describe('Outreach brand-leak gateway (rule #9 / L-068)', () => {
       signatureHtml: FW_SIGNATURE_HTML,
       brandCode: 'SH',
       brandDisplayName: 'Sovern House',
-    })).rejects.toThrow(/SH outreach signature contains FW/);
+    })).rejects.toThrow(/signatureHtml.*SH.*FlorWay/i);
   });
 
   test('refuses legacy callers (no brandCode) that send from FW address without overriding display name', async () => {
