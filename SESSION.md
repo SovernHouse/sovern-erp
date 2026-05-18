@@ -4,6 +4,121 @@
 
 ---
 
+## Session wrap, 2026-05-18 Desktop (continuation: brand-safety rollout + Phase 4.18 AI knowledge base + voice linter)
+
+Long continuation arc from this morning's Phase 4.17 / 4.26d / 4.28h work. The morning closed with the Milliken-test cold-email flow surfacing a real incident: the MCP `send_outreach_email` path stamped 17 FW leads with SH branding because it omitted `fromDisplayName` and loaded a brand-agnostic EmailSignature. Rest of the session was the response: centralised brand-safety gateway, every PDF renderer locked behind it, then Phase 4.18 AI knowledge base + persistent memory + voice rule linter, then today's sanctions URL probe drift.
+
+**Commits this arc (all pushed, CI + Deploy green on `f4de091`):**
+
+| Commit | What |
+|---|---|
+| `af1e54b` | fix(BRAND-LEAK): MCP `send_outreach_email` stamped SH branding on FW outreach (17 emails affected) — strict brand resolution + brand-correct fromDisplayName + brand.signatureHtml priority |
+| `d06ad84` | feat(brand-safety): centralised gateway + transactional email lock + Phase 4.19 rollout directive |
+| `6dc9a23` | feat(brand-safety): Phase 4.19a — Quotation PDF + 8 transactional email senders locked behind brandSafetyGateway |
+| `ab23e3e` | feat(brand-safety): Phase 4.19b/c/d/e/g — lock 8 sales-doc PDF renderers via shared `assertSalesDocBrandSafe` helper |
+| `45c3a7b` | feat(brand-safety): Phase 4.20 — brand-aware PI / SO / PO / PackingList / Invoice / CreditNote / Statement / SalesNote renderers |
+| `00b0b66` | fix(test): Phase 4.15a-prep fixtures must carry brandCode (Phase 4.20 gateway) |
+| `4669f7d` | fix(sanctions): UN URL migrated to Azure Blob; `expect()` API misuse blew up the Monday probe |
+| `a45315e` | feat(ai): Phase 4.18a/b/e — brand voice rules in system prompt + skill loader MCP + per-user AiMemory |
+| `ca30a0a` | feat(ai): Phase 4.18f — server-side voice rule linter (country Title Case, em-dash, IronLite phrasing) |
+| `d85f989` | fix(test): Phase 4.17 draft test asserted em-dash; Phase 4.18f linter strips them |
+| `f4de091` | feat(ai): extend voice linter + system prompt with 6 new brand-voice rules (British English, no trader/middleman, no trading company, no JetCore, no Sovern compensation language, HQ over 40HC) |
+
+**BPI brand-leak incident (af1e54b → d06ad84)**
+
+- Trigger: BPI's auto-responder echoed our From display name back as "Hi Sovern House | Alex" on an FW outreach email. Audit walk: 17 FW leads sent today with SH `fromDisplayName` + SH EmailSignature.
+- Root cause: MCP `send_outreach_email` (a) omitted `fromDisplayName` so `sendOutreachEmail` defaulted to SH; (b) loaded the user's default EmailSignature with no brand filter so FW/HH leads got the SH "Your buying office in Asia" signature.
+- Fix: brand resolution refuses on missing / inactive brandCode (no fallback to `alex@sovernhouse.co`), `fromDisplayName = ${brand.displayName} | Alex`, and `_brandForFrom.signatureHtml` takes priority over user signatures.
+- 17 leads tagged `brand-leak-post-mortem-2026-05-18`. Alex's call: don't send corrective emails. They'd confirm the cross-brand relationship to the very prospects we want to keep SH/FW separate from.
+
+**Phase 4.19 — gateway rollout across every brand-bearing renderer (d06ad84 + 6dc9a23 + ab23e3e)**
+
+- `backend/services/brandSafetyGateway.js` (new) is the single chokepoint:
+  - `assertBrandSafe({ brandCode, expectedFromDisplayName, actualFromDisplayName, contentFields, entityId })`
+  - `assertNoForeignMarkers(content, brandCode, fieldName, entityId)` — refuses SH markers in FW/HH, FW markers in SH, HH markers in SH. FW <-> HH co-mention allowed (Resilient family).
+  - `resolveBrandOrThrow(db, brandCode)` returns `{ brand, displayName, fromDisplayName, senderEmail, signatureHtml, signatureText }`.
+  - `assertResilientNotSH({ brandCode, productSlugs, entityId })`.
+  - Typed `BrandLeakError` with `entityId`, `brandCode`, `leakField`, `foreignBrand`.
+- Phase 4.19a — `brandedQuotationRenderer.dispatch` gateway lock + 9 transactional email senders refuse missing brandCode (8 senders pass `{brandCode, entityId}` through to `sendEmail`).
+- Phase 4.19b/c/d/e/g — shared `assertSalesDocBrandSafe(entity, items, docKind)` helper in `pdfHelpers.js` called at the entry point of every generic PDF renderer (PI, SO, PO, PackingList, Invoice, CreditNote, Statement, SalesNote). Refuses missing brandCode, unknown brandCode, SH + Resilient items. Mixed-brand Statement of Account refused outright.
+- New `Instructions & Skills/brand-safety.md` skill (~280 lines): durable contract, identity markers, directional asymmetry, gateway templates, audit SQL queries.
+- L-068, L-069, L-070, L-071, L-072, L-073 added to `lessons.md`.
+
+**Phase 4.20 — brand-aware renderers (45c3a7b + 00b0b66)**
+
+- Phase 4.19 refused FW/HH outright at the gateway because the shared `getCompanyHeader` was SH-only (`PDF_COMPANY_NAME` env var). Phase 4.20 made it brand-aware so FW/HH render with their own displayName / primaryColor / footerLegal / senderEmail.
+- `pdfHelpers.getCompanyHeader(doc, brand)` + `addFooter(doc, brand)` consume `brandStyleTokens.resolveTokens(brand)`.
+- `assertSalesDocBrandSafe` updated to PERMIT FW/HH; still refuses missing/unknown brandCode and SH + Resilient items.
+- Every generator in `salesDocumentsPDF.js`, `orderDocumentsPDF.js`, `financeDocumentsPDF.js` now resolves the entity's Brand row via `resolveBrandOrThrow` and threads it through header + footer.
+- Tests: 14 gateway tests + 19 brand-aware render tests, all green.
+- Fixture fix in `00b0b66` — `phase415aPrepReturnBuffer` integration test had no `brandCode` on its Quotation / SO / Invoice fixtures so the gateway refused them. Added `brandCode: 'SH'` + mocked `resolveBrandOrThrow` so the test doesn't need a seeded DB.
+
+**Sanctions URL probe (4669f7d)**
+
+- Today's Monday 04:00 UTC probe (`Sanctions Source URL Check` workflow) FAILED. Two bugs surfaced together:
+  - Real URL drift: UN consolidated XML at `scsanctions.un.org/resources/xml/en/consolidated.xml` started returning 404. UN Subsidiary Organs Branch migrated the public XML to Azure Blob storage. New URL: `https://unsolprodfiles.blob.core.windows.net/publiclegacyxmlfiles/EN/consolidated.xml` (CONSOLIDATED_LIST root, sc-sanctions.xsd, ~2.4 MB).
+  - Test bug: the HEAD probe was passing a second-arg "message" to `expect()`. Modern Jest (28+) refuses with "Expect takes at most one argument". This masqueraded as a probe failure for all 4 URLs even though OFAC SDN / OFAC consolidated / EU consolidated were green.
+- Re-run via `gh workflow run` confirmed green.
+
+**Phase 4.18a/b/e (a45315e) — AI knowledge base + per-user memory**
+
+- 4.18a — `BRAND_VOICE_RULES` block injected into both scoped and full-context system prompts: Title Case countries, SH/FW/HH positioning (buying-house vs factory-direct), required IronLite phrasing, IronLite ≡ JetCore internal-only by default, rule #9 reminder, tariff citation requirement.
+- 4.18b — Skill-file loader:
+  - `backend/skills/` (new, 24 curated skill .md files committed). Production-shippable so the knowledge base reaches prod, not only Alex's desktop.
+  - `backend/services/skillIndex.js` (new): path-traversal-guarded reader + 10-min-cached index. Refuses absolute paths, ".." segments, path separators, NUL bytes, leading dots, anything outside the curated set. Accepts "trade-sales" or "trade-sales.md".
+  - MCP tools `list_sovern_skills` + `read_sovern_skill`.
+- 4.18e — Per-user persistent memory:
+  - `AiMemory` model (new): id, userId, kind (preference|fact|correction|voice_rule), key (slug ≤ 80), value (TEXT ≤ 2 KB), source, isActive, lastReferencedAt. Indexed (user_id, is_active) and (user_id, key) — column names snake_case because the codebase has `underscored: true` globally.
+  - `migrate418eAiMemory.js` (new): sentinel-guarded boot migration via AuditLog `phase4_18e_ai_memory_table_created`. Wired into `server.js` after the Phase 4.17 resilient brand correction.
+  - `aiMemoryService.js` (new): upsert / softDelete / list / topForPrompt / touchReferenced. Soft-deletes flip isActive=false; upsert resurrects soft-deleted rows. 2 KB value cap server-side.
+  - MCP tools `list_memories` (any user), `remember_fact` (super_admin, audit-logged), `forget_fact` (super_admin, audit-logged).
+  - `aiContextService.buildSystemPrompt` injects top 30 active memories per user, ordered by `lastReferencedAt DESC` then `updatedAt DESC`. ~500 token budget.
+
+**Phase 4.18f (ca30a0a + d85f989) — server-side voice rule linter**
+
+- Initial three rules: country Title Case, no em-dash, IronLite phrasing.
+- Wired into `outreachController.saveLeadOutreachDraft` + MCP `send_outreach_email`. Audit logs the corrections array; chatter event posted when corrections > 0.
+- Collateral: `phase417LeadDraftCanonical.test.js` had `'v2 — tighter'` em-dash in a round-trip assertion. Patched to `'v2: tighter'`. Linter rewrite behaviour locked by `phase418VoiceRuleLinter.test.js`.
+
+**Phase 4.18 product knowledge docs (Alex authored: product-ironlite-core.md + product-flooring-industry.md)**
+
+- Two large skill files landed under `backend/skills/`. Authoritative for product spec, voice rules, approved cold-email openers, HGTV citation language, tariff figures, defect diagnosis.
+- IronLite skill hardest rules: never JetCore in customer-facing output; never trader/middleman for SH/FW/HH; never trading company for SH; never commission/sourcing-fee/markup tied to Sovern compensation; British English; default 180 mm x 1220 mm plank; HQ over 40HC.
+
+**Voice linter extension (f4de091)**
+
+- 6 new rules wired:
+  - `british-english` — organise/finalise/optimise/colour/programme/metre/fibre/behaviour/aluminium families. Case preserved.
+  - `no-trader-middleman` — sentence-scoped. SH context → "buying house in Asia". FW/HH context → "factory". Competitor / broker uses pass through.
+  - `no-trading-company` — sentence-scoped. SH context → "buying house in Asia".
+  - `no-jetcore` — whole-word strip → "IronLite Core". Runs BEFORE British spellings + Title Case so the IronLite Core token isn't touched downstream.
+  - `sovern-compensation-language` — sentence-scoped. If sentence has Sovern marker + any of [commission, sourcing fee, buying commission, agency fee, markup], the entire sentence is replaced with "Alex will confirm our commercial terms with you directly."
+  - `container-hq-preferred` — "40HC" / "40 HC" / "40-HC" → "40 HQ".
+- System prompt updated with the same rules + pointer to the two product skill files (the AI should call `read_sovern_skill('product-ironlite-core')` and `read_sovern_skill('product-flooring-industry')` before writing IronLite or flooring copy).
+- Default plank dimension (rule 10 in Alex's brief) is enforced in the system prompt only, not the linter. Auto-rewriting an arbitrary dimension at server layer would risk corrupting legitimate quotes.
+- Tests: 45 voice linter tests; 334 / 334 unit total across 24 suites.
+
+**CI / Deploy state on session end:**
+
+| | |
+|---|---|
+| CI/CD Pipeline | green on `f4de091` (last CI run 11:32 UTC) |
+| Deploy to Sovern ERP | green on `f4de091` (11:35 UTC) |
+| Sanctions Source URL Check (manual + scheduled) | green on `4669f7d` |
+
+**Mobile parity note:** the Phase 4.18 changes are backend-only (system prompt + MCP tools + linter at the API layer). Admin portal, mobile assistant tab, and chat page all hit `/api/ai/chat` so they get the fix for free. No mobile-side commits required by the Three-Surface Rule.
+
+**Pickup list for next session:**
+
+1. **PM2 restart on the VM** to land Phase 4.18 + 4.19 + 4.20 + voice linter. Deploy CI was green; verify pm2 picked up the new server.js + MCP tool list.
+2. **Live smoke test on the Milliken Lead** of the Phase 4.18f linter. Write a draft with em-dash + lowercase malaysia + "powered by IronLite" and confirm the saved row carries the cleaned text + voice-lint chatter event.
+3. **Memory smoke test.** Call `remember_fact` from the AI assistant ("remember that I prefer British English"), close the chat, open a new chat, verify the memory is injected into the top of the prompt and that the answer reflects it.
+4. **Confirm `read_sovern_skill` auto-fires.** Alex shipped the two product knowledge docs today (`product-ironlite-core.md`, `product-flooring-industry.md`); the system prompt's auto-pointer should trigger the read when IronLite or flooring topics come up. Verify in a live session.
+5. **Phase 4.17.x — drop deprecated `Lead.draftEmailSubject` / `Lead.draftEmailBody`** via SQLite ALTER table rebuild. Sentinel-guarded.
+6. **Mobile signature wiring** — the brand signature preview in the mobile Send confirmation modal is hard-coded HTML; should be pulled from the resolved Brand row to stay aligned with desktop behaviour.
+
+---
+
 ## Session wrap, 2026-05-18 Desktop (Phase 4.17 Lead Draft widget + 4.26d push refactor + 4.17 guard regression + 4.28h footer notes)
 
 Continuation from the 2026-05-17 PriceList arc. Closed Alex's directive on the Lead detail Draft Cold Email widget end-to-end (OutreachEmail canonical, inline editor, rule #9 brand-safe guard, mobile parity, MCP coverage). Then knocked the four pickup-list items: Phase 4.26d Expo push refactor (DRY + dead-token cleanup), SQLITE_STORAGE-out-of-.env defense-in-depth regression lock, and a minimal Phase 4.28h footer-notes editor on mobile.
