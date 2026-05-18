@@ -75,7 +75,12 @@ const generateEmailTemplate = (title, content, footer = null) => {
       <head>
         <meta charset="utf-8">
         <style>
-          body { font-family: Arial, sans-serif; color: #333; line-height: 1.6; }
+          /* 2026-05-18: system font stack — renders as San Francisco on
+             Apple, Segoe UI on Windows / Outlook, Roboto on Android.
+             Falls all the way back to Arial for Outlook 2007-2019 (no
+             regression vs the prior value). Removes the template-y
+             Arial-everywhere look while staying email-client-safe. */
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #333; line-height: 1.6; font-size: 15px; }
           .container { max-width: 600px; margin: 0 auto; padding: 20px; }
           .header { background-color: #2c3e50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
           .content { background-color: #f9f9f9; padding: 20px; border: 1px solid #eee; border-radius: 0 0 5px 5px; }
@@ -558,7 +563,7 @@ function buildOutreachContent({ bodyText, customSignatureHtml, customSignatureTe
     .join('\n');
 
   const signatureHtml = customSignatureHtml || `
-    <div style="margin-top: 36px; font-family: Arial, sans-serif; color: #0E0D0C; line-height: 1.5;">
+    <div style="margin-top: 36px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #0E0D0C; line-height: 1.5;">
       <div style="height: 2px; background-color: #1D5A32; margin-bottom: 24px;"></div>
       <div style="margin-bottom: 12px;">
         <img src="https://sovernhouse.co/images/alex-signature@2x.png" alt="" width="116" height="65" style="display: block; border: 0;">
@@ -581,7 +586,7 @@ function buildOutreachContent({ bodyText, customSignatureHtml, customSignatureTe
   `;
 
   const htmlContent = `
-    <div style="font-family: Arial, sans-serif; font-size: 14px; color: #0E0D0C; line-height: 1.7; max-width: 600px;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 15px; color: #0E0D0C; line-height: 1.6; max-width: 600px;">
       <div style="margin-bottom: 24px;">${bodyHtml}</div>
       ${signatureHtml}
     </div>
