@@ -12,7 +12,8 @@ import {
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import {
   getLead, addActivity, updateLeadStatus, aiChat, sendOutreachEmail,
-  type Lead, type Activity,
+  saveLeadOutreachDraft, discardLeadOutreachDraft,
+  type Lead, type Activity, type OutreachEmailRow,
 } from '../../src/services/api';
 import { COLORS } from '../../src/constants/config';
 import ChatterSection from '../../src/components/ChatterSection';
@@ -124,6 +125,18 @@ export default function LeadDetailScreen() {
   // Outreach via ERP
   const [sendingOutreach, setSendingOutreach] = useState(false);
 
+  // Phase 4.17 — Draft Cold Email widget (inline-editable).
+  // Editor state is held locally; the source of truth is the lead's
+  // OutreachEmail draft surfaced via lead.outreachDraft.
+  const [draftSubject, setDraftSubject] = useState('');
+  const [draftBody, setDraftBody] = useState('');
+  const [draftSavedSubject, setDraftSavedSubject] = useState('');
+  const [draftSavedBody, setDraftSavedBody] = useState('');
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [confirmSendModal, setConfirmSendModal] = useState(false);
+  const [confirmDiscardModal, setConfirmDiscardModal] = useState(false);
+  const [pendingFollowUp, setPendingFollowUp] = useState(false);
+
   // Add note modal
   const [noteModal, setNoteModal] = useState(false);
   const [noteText, setNoteText] = useState('');
@@ -146,6 +159,16 @@ export default function LeadDetailScreen() {
       setLead(data);
       // Set the header title to the company name
       navigation.setOptions({ title: data.companyName });
+
+      // Phase 4.17: seed the draft editor from the OutreachEmail source
+      // of truth. Fall back to the latest sent row's body (so sent-state
+      // shows what went out). Reset follow-up flag on every refresh.
+      const seed = data.outreachDraft?.draft || data.outreachDraft?.sent || null;
+      setDraftSubject(seed?.subject || '');
+      setDraftBody(seed?.bodyText || '');
+      setDraftSavedSubject(data.outreachDraft?.draft?.subject || '');
+      setDraftSavedBody(data.outreachDraft?.draft?.bodyText || '');
+      setPendingFollowUp(false);
     } catch (err: any) {
       Alert.alert('Error', err.message);
     } finally {
@@ -171,6 +194,10 @@ export default function LeadDetailScreen() {
   }
 
   function buildAiContext(l: Lead): string {
+    // Phase 4.17 — OutreachEmail is canonical. Pull draft from there
+    // first; fall back to deprecated inline columns only for legacy data.
+    const liveSubject = l.outreachDraft?.draft?.subject || l.draftEmailSubject || '';
+    const liveBody = l.outreachDraft?.draft?.bodyText || l.draftEmailBody || '';
     const parts: (string | null)[] = [
       `## Lead context — you are helping the user with this specific lead. Be conversational and direct.`,
       ``,
@@ -184,11 +211,11 @@ export default function LeadDetailScreen() {
       `Country: ${l.country || '(empty)'}`,
       l.vertical ? `Vertical: ${l.vertical}` : null,
       ``,
-      `Current draft email subject: ${l.draftEmailSubject || '(empty)'}`,
+      `Current draft email subject: ${liveSubject || '(empty)'}`,
       ``,
       `Current draft email body:`,
       `"""`,
-      l.draftEmailBody || '(empty)',
+      liveBody || '(empty)',
       `"""`,
       ``,
       `## What you can do for the user`,
@@ -252,45 +279,94 @@ export default function LeadDetailScreen() {
     }
   }
 
-  async function handleSendViaERP() {
-    if (!lead) return;
-    if (!lead.draftEmailSubject && !lead.draftEmailBody) {
-      Alert.alert('No draft', 'Use "Refine with AI" to generate a draft email first.');
+  // Phase 4.17 — Draft Cold Email widget actions.
+  async function handleSaveDraft() {
+    if (!lead || savingDraft) return;
+    const s = draftSubject.trim();
+    const b = draftBody.trim();
+    if (!s || !b) {
+      Alert.alert('Required', 'Subject and body both need content before saving.');
       return;
     }
+    setSavingDraft(true);
+    try {
+      const saved = await saveLeadOutreachDraft(lead.id, { subject: s, bodyText: b });
+      setDraftSavedSubject(saved.subject || '');
+      setDraftSavedBody(saved.bodyText || '');
+      Alert.alert('Saved', 'Draft saved.');
+      await load();
+    } catch (err: any) {
+      Alert.alert('Save failed', err.message || 'Unknown error');
+    } finally {
+      setSavingDraft(false);
+    }
+  }
+
+  function handleSendPress() {
+    if (!lead) return;
+    const s = draftSubject.trim();
+    const b = draftBody.trim();
+    if (!s || !b) {
+      Alert.alert('Required', 'Subject and body both need content before sending.');
+      return;
+    }
+    setConfirmSendModal(true);
+  }
+
+  async function handleConfirmSend() {
+    if (!lead) return;
     const brand = getBrand(lead.brandCode || 'SH');
-    const fromAddress = brand?.senderEmail || 'alex@sovernhouse.co';
-    const brandName = brand?.displayName || 'Sovern House';
-    Alert.alert(
-      'Send via ERP',
-      `Send this draft from ${fromAddress} (${brandName}) to ${lead.email}?\n\nReview the copy before confirming.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Send',
-          style: 'default',
-          onPress: async () => {
-            setSendingOutreach(true);
-            try {
-              await sendOutreachEmail(lead.id, {
-                fromAddress,
-                toAddress: lead.email,
-                toName: lead.contactName,
-                subject: lead.draftEmailSubject || '(No subject)',
-                bodyText: lead.draftEmailBody || '',
-                touchNumber: 1,
-              });
-              Alert.alert('Sent', `Email sent from ${fromAddress} to ${lead.email}.`);
-              await load();
-            } catch (err: any) {
-              Alert.alert('Send failed', err.message || 'Unknown error');
-            } finally {
-              setSendingOutreach(false);
-            }
-          },
-        },
-      ]
-    );
+    const fromAddress = brand?.senderEmail || undefined;
+    setSendingOutreach(true);
+    try {
+      const touch = pendingFollowUp
+        ? ((lead.outreachDraft?.sent?.touchNumber || 1) + 1)
+        : (lead.outreachDraft?.draft?.touchNumber || 1);
+      await sendOutreachEmail(lead.id, {
+        fromAddress,
+        toAddress: lead.email,
+        toName: lead.contactName,
+        subject: draftSubject.trim(),
+        bodyText: draftBody.trim(),
+        touchNumber: touch,
+      });
+      Alert.alert('Sent', `Email sent to ${lead.email}.`);
+      setConfirmSendModal(false);
+      await load();
+    } catch (err: any) {
+      Alert.alert('Send failed', err.message || 'Unknown error');
+    } finally {
+      setSendingOutreach(false);
+    }
+  }
+
+  async function handleConfirmDiscard() {
+    if (!lead) return;
+    setSavingDraft(true);
+    try {
+      await discardLeadOutreachDraft(lead.id);
+      setDraftSubject('');
+      setDraftBody('');
+      setDraftSavedSubject('');
+      setDraftSavedBody('');
+      setConfirmDiscardModal(false);
+      Alert.alert('Discarded', 'Draft discarded.');
+      await load();
+    } catch (err: any) {
+      Alert.alert('Discard failed', err.message || 'Unknown error');
+    } finally {
+      setSavingDraft(false);
+    }
+  }
+
+  function handleStartFollowUp() {
+    if (!lead?.outreachDraft?.sent) return;
+    const seed = lead.outreachDraft.sent;
+    setDraftSubject(seed.subject || '');
+    setDraftBody(seed.bodyText || '');
+    setDraftSavedSubject('');
+    setDraftSavedBody('');
+    setPendingFollowUp(true);
   }
 
   if (loading) {
@@ -399,68 +475,111 @@ export default function LeadDetailScreen() {
           ) : null}
         </View>
 
-        {/* ── Draft Cold Email — review/edit before sending; never sent automatically ─── */}
-        {(lead.draftEmailSubject || lead.draftEmailBody) ? (
-          <>
-            <SectionHeader title="Draft Cold Email" />
-            <View style={[styles.card, styles.draftCard]}>
-              {lead.draftEmailSubject ? (
+        {/* ── Draft Cold Email — Phase 4.17 inline editor. OutreachEmail is canonical. */}
+        {(() => {
+          const sentRow = lead.outreachDraft?.sent || null;
+          const draftRow = lead.outreachDraft?.draft || null;
+          const latestRow = lead.outreachDraft?.latest || null;
+          const sentState = !pendingFollowUp && latestRow?.status === 'sent';
+          const subjectDirty = draftSubject !== draftSavedSubject;
+          const bodyDirty = draftBody !== draftSavedBody;
+          const dirty = subjectDirty || bodyDirty;
+          const canSubmit = draftSubject.trim().length > 0 && draftBody.trim().length > 0 && !sentState;
+          return (
+            <>
+              <SectionHeader title="Draft Cold Email" />
+              <View style={[styles.card, styles.draftCard]}>
+                {dirty && !sentState ? (
+                  <View style={styles.draftDirtyBanner}>
+                    <Text style={styles.draftDirtyText}>● Unsaved changes</Text>
+                  </View>
+                ) : null}
+                {sentState && sentRow ? (
+                  <View style={styles.draftSentBanner}>
+                    <Text style={styles.draftSentText}>
+                      Sent {sentRow.sentAt ? new Date(sentRow.sentAt).toLocaleString() : ''}
+                      {sentRow.touchNumber ? ` · touch ${sentRow.touchNumber}` : ''}
+                      {sentRow.sentBy ? ` · by ${[sentRow.sentBy.firstName, sentRow.sentBy.lastName].filter(Boolean).join(' ') || sentRow.sentBy.email}` : ''}
+                    </Text>
+                  </View>
+                ) : null}
                 <View style={styles.draftRow}>
                   <Text style={styles.draftLabel}>Subject</Text>
-                  <Text style={styles.draftSubject}>{lead.draftEmailSubject}</Text>
+                  <TextInput
+                    style={styles.draftSubjectInput}
+                    value={draftSubject}
+                    onChangeText={setDraftSubject}
+                    editable={!sentState}
+                    placeholder="Subject (3-6 words for cold outreach)"
+                    placeholderTextColor={COLORS.muted}
+                  />
                 </View>
-              ) : null}
-              {lead.draftEmailBody ? (
                 <View style={styles.draftRow}>
                   <Text style={styles.draftLabel}>Body</Text>
-                  <Text style={styles.draftBody}>{lead.draftEmailBody}</Text>
+                  <TextInput
+                    style={styles.draftBodyInput}
+                    value={draftBody}
+                    onChangeText={setDraftBody}
+                    editable={!sentState}
+                    multiline
+                    numberOfLines={12}
+                    textAlignVertical="top"
+                    placeholder="Plain text body. Brand signature appended on send."
+                    placeholderTextColor={COLORS.muted}
+                  />
                 </View>
-              ) : null}
-              <View style={styles.draftActions}>
+                {!sentState ? (
+                  <View style={styles.draftActions}>
+                    <TouchableOpacity
+                      style={[styles.draftActionBtn, !canSubmit && { opacity: 0.5 }]}
+                      onPress={handleSaveDraft}
+                      disabled={!canSubmit || savingDraft}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.draftActionText}>{savingDraft ? 'Saving…' : 'Save Draft'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.draftActionBtn, styles.draftActionBtnPrimary, !canSubmit && { opacity: 0.5 }]}
+                      onPress={handleSendPress}
+                      disabled={!canSubmit || sendingOutreach}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.draftActionText}>{sendingOutreach ? 'Sending…' : 'Send'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.draftActions}>
+                    <TouchableOpacity
+                      style={[styles.draftActionBtn, styles.draftActionBtnPrimary]}
+                      onPress={handleStartFollowUp}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.draftActionText}>Send follow-up</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {!sentState && draftRow ? (
+                  <TouchableOpacity
+                    style={styles.draftDiscardBtn}
+                    onPress={() => setConfirmDiscardModal(true)}
+                    disabled={savingDraft || sendingOutreach}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.draftDiscardText}>Discard Draft</Text>
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity
-                  style={styles.draftActionBtn}
-                  onPress={handleSendViaERP}
-                  disabled={sendingOutreach}
+                  style={[styles.draftActionBtn, styles.aiRefineBtn]}
+                  onPress={() => setAiModal(true)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.draftActionText}>
-                    {sendingOutreach ? 'Sending…' : 'Send via ERP'}
-                  </Text>
+                  <Text style={styles.draftActionText}>✨ Refine with AI</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.draftActionBtn, styles.draftActionBtnSecondary]}
-                  onPress={() => {
-                    const subject = lead.draftEmailSubject || '';
-                    const body = lead.draftEmailBody || '';
-                    const mailto = `mailto:${encodeURIComponent(lead.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-                    Linking.openURL(mailto).catch(() => Alert.alert('Cannot open mail app'));
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.draftActionText, styles.draftActionTextSecondary]}>Open in Mail app</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.draftActionBtn, styles.draftActionBtnSecondary]}
-                  onPress={() => {
-                    const text = `Subject: ${lead.draftEmailSubject || ''}\n\n${lead.draftEmailBody || ''}`;
-                    Share.share({ message: text }).catch(() => {});
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.draftActionText, styles.draftActionTextSecondary]}>Share</Text>
-                </TouchableOpacity>
+                <Text style={styles.draftHint}>OutreachEmail is the source of truth. Save persists; Send transitions the row to sent.</Text>
               </View>
-              <TouchableOpacity
-                style={[styles.draftActionBtn, styles.aiRefineBtn]}
-                onPress={() => setAiModal(true)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.draftActionText}>✨ Refine with AI</Text>
-              </TouchableOpacity>
-              <Text style={styles.draftHint}>Review the copy before sending. Nothing sends automatically.</Text>
-            </View>
-          </>
-        ) : null}
+            </>
+          );
+        })()}
 
         {/* ── Product interest ─────────────────────────────────────────────── */}
         {lead.productInterests ? (
@@ -515,6 +634,99 @@ export default function LeadDetailScreen() {
 
         <View style={{ height: 80 }} />
       </ScrollView>
+
+      {/* ── Send confirmation (Phase 4.17) ───────────────────────────────── */}
+      <Modal
+        visible={confirmSendModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !sendingOutreach && setConfirmSendModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Send outreach email?</Text>
+            {(() => {
+              const brand = getBrand(lead.brandCode || 'SH');
+              const fromLabel = brand?.senderEmail || `(${lead.brandCode || 'SH'} sender)`;
+              const brandName = brand?.displayName || 'Sovern House';
+              const egyptBcc = (lead.brandCode === 'SH') && /egypt/i.test(lead.country || '');
+              return (
+                <ScrollView style={{ maxHeight: 400 }} contentContainerStyle={{ paddingHorizontal: 4 }}>
+                  <Text style={styles.confirmFieldLabel}>From</Text>
+                  <Text style={styles.confirmFieldValue}>{fromLabel} ({brandName})</Text>
+                  <Text style={styles.confirmFieldLabel}>To</Text>
+                  <Text style={styles.confirmFieldValue}>{lead.email}{lead.contactName ? ` (${lead.contactName})` : ''}</Text>
+                  <Text style={styles.confirmFieldLabel}>Subject</Text>
+                  <Text style={styles.confirmFieldValue}>{draftSubject}</Text>
+                  {egyptBcc ? (
+                    <View style={styles.confirmEgyptBcc}>
+                      <Text style={styles.confirmEgyptBccText}>
+                        Egypt BCC notice: Sovern House outreach to Egypt is BCC'd to the team distribution list per the standing rule.
+                      </Text>
+                    </View>
+                  ) : null}
+                  <Text style={styles.confirmFieldLabel}>Body preview</Text>
+                  <Text style={styles.confirmBody}>
+                    {draftBody}
+                    {brand?.signatureText ? `\n\n${brand.signatureText}` : '\n\n[brand signature appended on send]'}
+                  </Text>
+                </ScrollView>
+              );
+            })()}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setConfirmSendModal(false)}
+                disabled={sendingOutreach}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, sendingOutreach && { opacity: 0.6 }]}
+                onPress={handleConfirmSend}
+                disabled={sendingOutreach}
+              >
+                <Text style={styles.modalSubmitText}>{sendingOutreach ? 'Sending…' : 'Send Now'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Discard confirmation (Phase 4.17) ────────────────────────────── */}
+      <Modal
+        visible={confirmDiscardModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !savingDraft && setConfirmDiscardModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Discard draft?</Text>
+            <Text style={{ color: COLORS.ink, marginBottom: 12 }}>
+              Discard draft for {lead.companyName}? This cannot be undone.
+            </Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setConfirmDiscardModal(false)}
+                disabled={savingDraft}
+              >
+                <Text style={styles.modalCancelText}>Keep editing</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: '#B91C1C' }, savingDraft && { opacity: 0.6 }]}
+                onPress={handleConfirmDiscard}
+                disabled={savingDraft}
+              >
+                <Text style={styles.modalSubmitText}>Discard</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Status change modal ──────────────────────────────────────────── */}
       <Modal
@@ -860,10 +1072,73 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   draftActionBtnSecondary: { backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.forest },
+  draftActionBtnPrimary: { backgroundColor: '#2563EB' },
   aiRefineBtn: { backgroundColor: '#2563EB', marginHorizontal: 12, marginBottom: 8 },
   draftActionText: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
   draftActionTextSecondary: { color: COLORS.forest },
   draftHint: { fontSize: 12, color: COLORS.muted, paddingHorizontal: 16, paddingBottom: 12, fontStyle: 'italic' },
+  // Phase 4.17 — inline-editor styles
+  draftSubjectInput: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: COLORS.ink,
+  },
+  draftBodyInput: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: COLORS.ink,
+    minHeight: 200,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  draftDirtyBanner: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D',
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    margin: 12,
+    marginBottom: 0,
+    borderRadius: 6,
+  },
+  draftDirtyText: { color: '#92400E', fontSize: 12, fontWeight: '600' },
+  draftSentBanner: {
+    backgroundColor: '#D1FAE5',
+    borderColor: '#6EE7B7',
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    margin: 12,
+    marginBottom: 0,
+    borderRadius: 6,
+  },
+  draftSentText: { color: '#065F46', fontSize: 12, fontWeight: '600' },
+  draftDiscardBtn: { alignItems: 'center', paddingVertical: 8, marginBottom: 4 },
+  draftDiscardText: { color: '#B91C1C', fontSize: 13, fontWeight: '600' },
+  // Confirm-send modal fields
+  confirmFieldLabel: { fontSize: 11, fontWeight: '700', color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 8 },
+  confirmFieldValue: { fontSize: 14, color: COLORS.ink, marginTop: 2 },
+  confirmBody: {
+    marginTop: 4,
+    padding: 10,
+    backgroundColor: COLORS.cream,
+    borderRadius: 6,
+    color: COLORS.ink,
+    fontSize: 13,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    lineHeight: 19,
+  },
+  confirmEgyptBcc: { backgroundColor: '#FEF3C7', padding: 8, borderRadius: 6, marginTop: 6 },
+  confirmEgyptBccText: { color: '#92400E', fontSize: 12 },
 
   // AI refine modal
   aiHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.white },

@@ -3,6 +3,37 @@ const db = require('../models');
 const { sendOutreachEmail, applyEgyptBccIfNeeded } = require('../services/emailService');
 const dayjs = require('dayjs');
 const logger = require('../utils/logger.js');
+const auditService = require('../services/auditService');
+
+/**
+ * Phase 4.17 — brand-safety guard for outreach send/render paths.
+ * Per non-negotiable rule #9, refuse rather than fall back when the
+ * brand context can't be resolved. Throws { httpStatus, message,
+ * brandLeak } so callers can return the right status code without
+ * needing to know the internal failure mode.
+ */
+async function resolveBrandForOutreachOrThrow(lead) {
+  if (!lead) {
+    const err = new Error('Lead unavailable for brand resolution');
+    err.httpStatus = 400;
+    err.brandLeak = true;
+    throw err;
+  }
+  if (!lead.brandCode) {
+    const err = new Error(`Lead ${lead.id} has no brandCode set. Refusing to send outreach without an explicit brand declaration.`);
+    err.httpStatus = 422;
+    err.brandLeak = true;
+    throw err;
+  }
+  const brand = await db.Brand.findOne({ where: { code: lead.brandCode, active: true } });
+  if (!brand) {
+    const err = new Error(`Brand '${lead.brandCode}' not found or inactive. Refusing to send outreach without a valid brand row.`);
+    err.httpStatus = 422;
+    err.brandLeak = true;
+    throw err;
+  }
+  return brand;
+}
 
 /**
  * Default follow-up schedule by touch number (in days)
@@ -85,6 +116,29 @@ const sendOutreachEmailToLead = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Lead not found' });
     }
 
+    // Phase 4.17 (non-negotiable rule #9): refuse to send without an
+    // explicit, valid brand context. Catches the class of bug where
+    // brandCode is unset or the Brand row is missing/inactive — those
+    // used to fall back to alex@sovernhouse.co + SH signature, which
+    // is the exact PriceList brand-leak pattern from 2026-05-17.
+    let resolvedBrand;
+    try {
+      resolvedBrand = await resolveBrandForOutreachOrThrow(lead);
+    } catch (brandErr) {
+      if (brandErr.brandLeak) {
+        auditService.logAction(
+          req.user?.id || null,
+          'brand_leak_refused',
+          'OutreachEmail',
+          lead.id,
+          { context: 'outreach_send', brandCode: lead.brandCode || null, message: brandErr.message },
+          req.ip,
+        ).catch(() => {});
+        return res.status(brandErr.httpStatus).json({ success: false, message: brandErr.message, brandLeak: true });
+      }
+      throw brandErr;
+    }
+
     // Phase 4, C18: refuse to send outreach to a flagged lead unless
     // super-admin overrode the screening. Optionally re-screen if the
     // last screen is older than 7 days so a stale cleared lead can flip
@@ -122,14 +176,12 @@ const sendOutreachEmailToLead = async (req, res) => {
       }
     }
 
-    // Look up brand for this lead — derives fromAddress, signature, and display name.
-    const brand = lead.brandCode
-      ? await db.Brand.findOne({ where: { code: lead.brandCode, active: true } })
-      : null;
+    // Brand is the strict-resolved row from rule #9 above. No fallback path.
+    const brand = resolvedBrand;
 
     // Default fromAddress to the brand's sender email when not explicitly provided.
     if (!fromAddress) {
-      fromAddress = brand?.senderEmail || 'alex@sovernhouse.co';
+      fromAddress = brand.senderEmail;
     }
 
     // Build the From display name: "<Brand displayName> | Alex"
@@ -188,22 +240,52 @@ const sendOutreachEmailToLead = async (req, res) => {
     const daysToAdd = followUpDays || FOLLOWUP_SCHEDULE[touchNumber] || null;
     const followUpDueAt = daysToAdd ? now.add(daysToAdd, 'day').toDate() : null;
 
-    // Create OutreachEmail record
-    const outreachEmail = await db.OutreachEmail.create({
-      leadId: id,
-      sentByUserId: req.user?.id || null,
-      fromAddress,
-      toAddress,
-      toName: toName || null,
-      subject,
-      bodyText,
-      touchNumber,
-      status: 'sent',
-      smtpMessageId: messageId,
-      sentAt: now.toDate(),
-      followUpDueAt,
-      followUpCompleted: false,
+    // Phase 4.17: flip the existing draft for this lead instead of creating
+    // a parallel sent row. Preserves the draft row id so the audit trail
+    // and any external references survive the transition. Falls back to
+    // create() when no draft exists (e.g. direct send from a touch>1
+    // follow-up that was authored via the legacy path).
+    const existingDraft = await db.OutreachEmail.findOne({
+      where: { leadId: id, status: 'draft' },
+      order: [['createdAt', 'DESC']],
     });
+
+    let outreachEmail;
+    if (existingDraft) {
+      await existingDraft.update({
+        sentByUserId: req.user?.id || null,
+        fromAddress,
+        toAddress,
+        toName: toName || null,
+        subject,
+        bodyText,
+        touchNumber,
+        status: 'sent',
+        smtpMessageId: messageId,
+        sentAt: now.toDate(),
+        followUpDueAt,
+        followUpCompleted: false,
+        brandCode: lead.brandCode || existingDraft.brandCode,
+      });
+      outreachEmail = existingDraft;
+    } else {
+      outreachEmail = await db.OutreachEmail.create({
+        leadId: id,
+        sentByUserId: req.user?.id || null,
+        fromAddress,
+        toAddress,
+        toName: toName || null,
+        subject,
+        bodyText,
+        touchNumber,
+        status: 'sent',
+        smtpMessageId: messageId,
+        sentAt: now.toDate(),
+        followUpDueAt,
+        followUpCompleted: false,
+        brandCode: lead.brandCode || 'SH',
+      });
+    }
 
     // Update Lead status to 'contacted' if currently 'new'
     if (lead.status === 'new') {
@@ -326,6 +408,190 @@ const deleteAllOutreachEmails = async (req, res) => {
     const count = await db.OutreachEmail.destroy({ where: {}, truncate: false });
     res.json({ success: true, deleted: count });
   } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Phase 4.17 — single source of truth for the Lead detail Draft Cold
+ * Email widget. Three endpoints:
+ *
+ *   GET    /api/crm/leads/:id/outreach-draft  — read state
+ *   PUT    /api/crm/leads/:id/outreach-draft  — upsert draft
+ *   DELETE /api/crm/leads/:id/outreach-draft  — discard draft
+ *
+ * GET returns { latest, draft, sent } where:
+ *   - latest = most recent OutreachEmail for the lead, regardless of status
+ *   - draft  = most recent OutreachEmail with status='draft' (or null)
+ *   - sent   = most recent OutreachEmail with status='sent'  (or null)
+ *
+ * The widget uses `latest.status` to pick mode (draft / sent / empty).
+ */
+const getLeadOutreachDraft = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const lead = await db.Lead.findByPk(id);
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+
+    const include = [{
+      model: db.User,
+      as: 'sentBy',
+      attributes: ['id', 'firstName', 'lastName', 'email'],
+    }];
+
+    const [draft, sent, latest] = await Promise.all([
+      db.OutreachEmail.findOne({ where: { leadId: id, status: 'draft' }, include, order: [['createdAt', 'DESC']] }),
+      db.OutreachEmail.findOne({ where: { leadId: id, status: 'sent' }, include, order: [['sentAt', 'DESC'], ['createdAt', 'DESC']] }),
+      db.OutreachEmail.findOne({ where: { leadId: id }, include, order: [['createdAt', 'DESC']] }),
+    ]);
+
+    res.json({ success: true, data: { draft, sent, latest } });
+  } catch (error) {
+    logger.error('Error fetching outreach draft:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * PUT /api/crm/leads/:id/outreach-draft
+ * Body: { subject, bodyText, touchNumber? }
+ *
+ * Upserts the lead's draft. If a draft already exists, update subject +
+ * bodyText (and brandCode + fromAddress if they have drifted). Otherwise
+ * create a new draft row. Audit `lead_outreach_draft_saved` per write.
+ *
+ * Refuses (422) when the brand context is unresolved per rule #9. We
+ * still allow whitespace-only payloads through validation so AI tools
+ * can stage partial drafts; the widget enforces non-whitespace on its
+ * Save/Send buttons.
+ */
+const saveLeadOutreachDraft = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { subject, bodyText, touchNumber } = req.body || {};
+
+    if (typeof subject !== 'string' || typeof bodyText !== 'string') {
+      return res.status(400).json({ success: false, message: 'subject and bodyText are required strings' });
+    }
+    if (!subject.trim() && !bodyText.trim()) {
+      return res.status(400).json({ success: false, message: 'subject and bodyText cannot both be blank' });
+    }
+
+    const lead = await db.Lead.findByPk(id);
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+
+    let brand;
+    try {
+      brand = await resolveBrandForOutreachOrThrow(lead);
+    } catch (brandErr) {
+      if (brandErr.brandLeak) {
+        return res.status(brandErr.httpStatus).json({ success: false, message: brandErr.message, brandLeak: true });
+      }
+      throw brandErr;
+    }
+
+    const existing = await db.OutreachEmail.findOne({
+      where: { leadId: id, status: 'draft' },
+      order: [['createdAt', 'DESC']],
+    });
+
+    const subjectToSave = subject.trim() || '(draft subject — add before sending)';
+    const bodyToSave = bodyText.trim() || '(draft body — add content before sending)';
+    const fromAddress = brand.senderEmail;
+    let row;
+    let created = false;
+
+    if (existing) {
+      await existing.update({
+        subject: subjectToSave,
+        bodyText: bodyToSave,
+        fromAddress,
+        toAddress: lead.email,
+        toName: lead.contactName || null,
+        brandCode: lead.brandCode,
+        touchNumber: touchNumber || existing.touchNumber || 1,
+      });
+      row = existing;
+    } else {
+      row = await db.OutreachEmail.create({
+        leadId: id,
+        sentByUserId: req.user?.id || null,
+        fromAddress,
+        toAddress: lead.email,
+        toName: lead.contactName || null,
+        subject: subjectToSave,
+        bodyText: bodyToSave,
+        touchNumber: touchNumber || 1,
+        status: 'draft',
+        smtpMessageId: null,
+        sentAt: null,
+        followUpDueAt: null,
+        followUpCompleted: false,
+        brandCode: lead.brandCode,
+      });
+      created = true;
+    }
+
+    auditService.logAction(
+      req.user?.id || null,
+      'lead_outreach_draft_saved',
+      'OutreachEmail',
+      row.id,
+      {
+        leadId: id,
+        created,
+        brandCode: lead.brandCode,
+        subjectPreview: subjectToSave.slice(0, 120),
+      },
+      req.ip,
+    ).catch(() => {});
+
+    res.status(created ? 201 : 200).json({ success: true, data: row });
+  } catch (error) {
+    logger.error('Error saving outreach draft:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * DELETE /api/crm/leads/:id/outreach-draft
+ * Discards the lead's active draft (status='draft' rows are hard-deleted).
+ * Sent rows are NOT affected. Audit `user_discard_outreach_draft`.
+ */
+const discardLeadOutreachDraft = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const lead = await db.Lead.findByPk(id);
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+
+    const draft = await db.OutreachEmail.findOne({
+      where: { leadId: id, status: 'draft' },
+      order: [['createdAt', 'DESC']],
+    });
+    if (!draft) {
+      return res.status(404).json({ success: false, message: 'No draft to discard' });
+    }
+
+    const snapshot = {
+      id: draft.id,
+      leadId: id,
+      brandCode: draft.brandCode,
+      subjectPreview: (draft.subject || '').slice(0, 120),
+    };
+    await draft.destroy();
+
+    auditService.logAction(
+      req.user?.id || null,
+      'user_discard_outreach_draft',
+      'OutreachEmail',
+      snapshot.id,
+      snapshot,
+      req.ip,
+    ).catch(() => {});
+
+    res.json({ success: true, data: snapshot });
+  } catch (error) {
+    logger.error('Error discarding outreach draft:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -651,4 +917,10 @@ module.exports = {
   deleteAllOutreachEmails,
   sendCampaign,
   getCampaignStatus,
+  // Phase 4.17 draft endpoints.
+  getLeadOutreachDraft,
+  saveLeadOutreachDraft,
+  discardLeadOutreachDraft,
+  // Exported for unit tests + the lead controller include helper.
+  resolveBrandForOutreachOrThrow,
 };

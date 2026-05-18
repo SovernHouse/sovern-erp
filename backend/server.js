@@ -729,6 +729,18 @@ db.sequelize.authenticate()
       logger.warn('[boot] phase4.28e column_labels + footer_notes skipped:', e.message);
     }
 
+    // Phase 4.17: lift Lead.draftEmailSubject / Lead.draftEmailBody into
+    // OutreachEmail rows with status='draft'. Makes OutreachEmail the
+    // canonical source of truth for the Lead detail Draft Cold Email
+    // widget — the inline columns are deprecated and dropped in 4.17.x.
+    // Sentinel: phase4_17_lead_draft_columns_backfilled.
+    try {
+      const { migrate417LeadDraftBackfill } = require('./services/migrate417LeadDraftBackfill');
+      await migrate417LeadDraftBackfill(db);
+    } catch (e) {
+      logger.warn('[boot] phase4.17 lead draft backfill skipped:', e.message);
+    }
+
     // Phase 4.5, C24: refresh FW Brand signature (HTML + text) to the
     // Country Manager / FlorWay+HanHua design. Idempotent via AuditLog
     // sentinel; SH untouched.

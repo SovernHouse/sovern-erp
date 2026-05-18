@@ -1273,20 +1273,23 @@ async function callTool(name, args) {
 
       const { sendOutreachEmail } = require('../services/emailService');
 
-      // Phase 4.9.3.1 hotfix (2026-05-15): brand-aware fromAddress resolution.
-      // Previously hardcoded to process.env.SMTP_USER which was undefined →
-      // notNull violation on OutreachEmail.fromAddress. Now mirrors
-      // outreachController.sendOutreachEmail: lead.brandCode → Brand.senderEmail,
-      // with explicit override + final fallback.
-      const _brandForFrom = lead.brandCode
-        ? await getDb().Brand.findOne({ where: { code: lead.brandCode, active: true } })
-        : null;
+      // Phase 4.17 (rule #9): brand context must be explicit and resolvable.
+      // Refuse to send / draft when lead.brandCode is missing or its Brand
+      // row is gone/inactive — no fallback to alex@sovernhouse.co. This is
+      // the same guard the REST send path enforces; the MCP path needs to
+      // refuse for the same reason (the assistant can't be allowed to
+      // silently emit SH branding for an FW lead).
+      if (!lead.brandCode) {
+        return `Refusing to draft/send: Lead ${lead.id} has no brandCode set. Set lead.brandCode before drafting outreach.`;
+      }
+      const _brandForFrom = await getDb().Brand.findOne({ where: { code: lead.brandCode, active: true } });
+      if (!_brandForFrom) {
+        return `Refusing to draft/send: Brand '${lead.brandCode}' not found or inactive on Lead ${lead.id}.`;
+      }
       const fromAddress =
         args.fromAddress ||
         args.from_address ||
-        (_brandForFrom && _brandForFrom.senderEmail) ||
-        process.env.SMTP_USER ||
-        'alex@sovernhouse.co';
+        _brandForFrom.senderEmail;
 
       // Resolve user's default signature, if any (mirrors triageController.sendEmail).
       let signatureHtml = null;
@@ -1341,8 +1344,16 @@ async function callTool(name, args) {
       const followUpDueAt = new Date(Date.now() + followUpDays * 86400000);
 
       const status = draftOnly ? 'draft' : (sendError ? 'failed' : 'sent');
-      const row = await getDb().OutreachEmail.create({
-        leadId: lead.id,
+
+      // Phase 4.17: if a draft for this lead already exists, flip it
+      // instead of creating a parallel row. Preserves the row id so the
+      // audit trail (and any external refs) stay linear from draft → sent.
+      const existingDraft = await getDb().OutreachEmail.findOne({
+        where: { leadId: lead.id, status: 'draft' },
+        order: [['createdAt', 'DESC']],
+      });
+      let row;
+      const rowFields = {
         sentByUserId: USER_ID || null,
         fromAddress,
         toAddress: lead.email,
@@ -1355,7 +1366,14 @@ async function callTool(name, args) {
         smtpMessageId: smtpResult?.messageId || null,
         followUpDueAt,
         errorMessage: sendError || null,
-      });
+        brandCode: lead.brandCode,
+      };
+      if (existingDraft) {
+        await existingDraft.update(rowFields);
+        row = existingDraft;
+      } else {
+        row = await getDb().OutreachEmail.create({ leadId: lead.id, ...rowFields });
+      }
       // Phase 4.19a: audit invariant. Status carries the send outcome
       // (draft / sent / failed) so the audit trail distinguishes the
       // three branches without us needing per-branch action names.
@@ -1391,6 +1409,35 @@ async function callTool(name, args) {
         outreachEmail: row.toJSON(),
         followUpDueAt: followUpDueAt.toISOString(),
         message: `Sent to ${lead.email}. Follow-up due ${followUpDueAt.toISOString().slice(0, 10)} (touch ${touchNumber}).`,
+      };
+    }
+
+    case 'discard_outreach_draft': {
+      // Phase 4.17 (rule #8 — MCP coverage of every UI write). Deletes
+      // the active OutreachEmail draft for a lead. Sent rows are never
+      // touched. Audit row: ai_assistant_discard_outreach_draft.
+      const requester = await getCurrentUserOrThrow();
+      const { lead_id } = args;
+      if (!lead_id) return 'Missing required field: lead_id.';
+      const lead = await getDb().Lead.findByPk(lead_id);
+      if (!lead) return `Lead ${lead_id} not found.`;
+      const draft = await getDb().OutreachEmail.findOne({
+        where: { leadId: lead.id, status: 'draft' },
+        order: [['createdAt', 'DESC']],
+      });
+      if (!draft) return `No active draft for lead ${lead.id} (nothing to discard).`;
+      const snapshot = {
+        outreachEmailId: draft.id,
+        leadId: lead.id,
+        brandCode: draft.brandCode,
+        subjectPreview: (draft.subject || '').slice(0, 120),
+      };
+      await draft.destroy();
+      await auditAiWrite('discard_outreach_draft', 'OutreachEmail', snapshot.outreachEmailId, snapshot, requester.id);
+      return {
+        success: true,
+        message: `Draft for ${lead.email} (${lead.companyName}) discarded.`,
+        ...snapshot,
       };
     }
 
@@ -5672,13 +5719,24 @@ const TOOL_DEFS = [
     },
   },
   {
+    name: 'discard_outreach_draft',
+    description: 'Phase 4.17. Discard a lead\'s active OutreachEmail draft (status=draft). Sent rows are never touched — only the current draft is hard-deleted. Use when the user says "drop the draft" / "start over" / "trash that draft". Writes an ai_assistant_discard_outreach_draft AuditLog row. Returns success or a message saying there was no draft.',
+    inputSchema: {
+      type: 'object',
+      required: ['lead_id'],
+      properties: {
+        lead_id: { type: 'string', description: 'Lead UUID whose draft should be discarded.' },
+      },
+    },
+  },
+  {
     name: 'list_outreach_emails',
     description: 'List outreach emails with filters. Use follow_up_due=true to identify which leads are overdue for a follow-up. Use lead_id to see the full sequence sent to one prospect.',
     inputSchema: {
       type: 'object',
       properties: {
         lead_id:       { type: 'string', description: 'Filter to one lead' },
-        status:        { type: 'string', enum: ['queued', 'sent', 'failed', 'bounced'] },
+        status:        { type: 'string', enum: ['draft', 'queued', 'sent', 'failed', 'bounced'] },
         touch_number:  { type: 'number', description: 'Filter by sequence step' },
         follow_up_due: { type: 'boolean', description: 'true = show only sends whose follow-up is due now and not yet completed' },
         limit:         { type: 'number', description: 'Max results (default 20, max 100)' },

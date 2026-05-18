@@ -557,6 +557,37 @@ export interface ProductOriginVariant {
   leadTimeOverride?: number;
 }
 
+export interface OutreachEmailRow {
+  id: string;
+  leadId: string;
+  sentByUserId?: string | null;
+  fromAddress: string;
+  toAddress: string;
+  toName?: string | null;
+  subject: string;
+  bodyText: string;
+  touchNumber?: number;
+  status: 'draft' | 'queued' | 'sent' | 'failed' | 'bounced';
+  smtpMessageId?: string | null;
+  sentAt?: string | null;
+  followUpDueAt?: string | null;
+  followUpCompleted?: boolean;
+  brandCode?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  sentBy?: { id: string; firstName?: string; lastName?: string; email?: string } | null;
+}
+
+// Phase 4.17: surfaced on GET /crm/leads/:id so the mobile Draft Cold
+// Email card can render in one fetch. OutreachEmail is the canonical
+// source of truth; Lead.draftEmailSubject / Lead.draftEmailBody are
+// deprecated and dropped in 4.17.x.
+export interface OutreachDraftState {
+  draft: OutreachEmailRow | null;
+  sent: OutreachEmailRow | null;
+  latest: OutreachEmailRow | null;
+}
+
 export interface Lead {
   id: string;
   // Phase 4.8 Commit 3a: human-readable LD-YYYYMMDD-NNN. Nullable until
@@ -579,8 +610,11 @@ export interface Lead {
   source?: string;
   notes?: string;
   description?: string;
+  /** @deprecated Phase 4.17. Read OutreachEmail draft via outreachDraft instead. */
   draftEmailSubject?: string;
+  /** @deprecated Phase 4.17. Read OutreachEmail draft via outreachDraft instead. */
   draftEmailBody?: string;
+  outreachDraft?: OutreachDraftState;
   createdAt?: string;
   createdById?: string;
   createdBySource?: 'manual' | 'ai_research' | 'webhook' | 'import';
@@ -613,6 +647,32 @@ export async function sendOutreachEmail(leadId: string, payload: OutreachEmailPa
     { method: "POST", body: JSON.stringify(payload) }
   );
   return (res as any).data ?? res;
+}
+
+// Phase 4.17 — Draft Cold Email widget endpoints (mobile parity).
+export async function getLeadOutreachDraft(leadId: string): Promise<OutreachDraftState> {
+  const res = await request<{ success: boolean; data: OutreachDraftState }>(
+    `/api/crm/leads/${leadId}/outreach-draft`
+  );
+  return (res as any).data ?? { draft: null, sent: null, latest: null };
+}
+
+export async function saveLeadOutreachDraft(
+  leadId: string,
+  payload: { subject: string; bodyText: string; touchNumber?: number }
+): Promise<OutreachEmailRow> {
+  const res = await request<{ success: boolean; data: OutreachEmailRow }>(
+    `/api/crm/leads/${leadId}/outreach-draft`,
+    { method: 'PUT', body: JSON.stringify(payload) }
+  );
+  return (res as any).data;
+}
+
+export async function discardLeadOutreachDraft(leadId: string): Promise<void> {
+  await request(
+    `/api/crm/leads/${leadId}/outreach-draft`,
+    { method: 'DELETE' }
+  );
 }
 
 export interface Activity {

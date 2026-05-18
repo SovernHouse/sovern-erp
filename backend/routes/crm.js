@@ -104,6 +104,12 @@ router.patch('/leads/:id/outreach-emails/:emailId', outreachController.updateFol
 router.delete('/leads/:id/outreach-emails/:emailId', outreachController.deleteOutreachEmail);
 router.delete('/outreach/emails/all', outreachController.deleteAllOutreachEmails);
 
+// Phase 4.17 — Lead detail Draft Cold Email widget. OutreachEmail is the
+// canonical source of truth (Lead.draftEmailSubject/Body are deprecated).
+router.get('/leads/:id/outreach-draft', outreachController.getLeadOutreachDraft);
+router.put('/leads/:id/outreach-draft', outreachController.saveLeadOutreachDraft);
+router.delete('/leads/:id/outreach-draft', outreachController.discardLeadOutreachDraft);
+
 // EMAIL TEMPLATE ROUTES
 router.get('/email-templates', emailTemplateController.getEmailTemplates);
 router.post('/email-templates', emailTemplateController.createEmailTemplate);

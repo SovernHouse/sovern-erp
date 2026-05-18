@@ -134,7 +134,7 @@ async function createLead(payload, ctx) {
 }
 
 async function updateLead(id, patch, ctx) {
-  const { brandScope } = ctx || {};
+  const { brandScope, userId } = ctx || {};
 
   if (isCrossBrand(brandScope)) {
     return {
@@ -162,6 +162,67 @@ async function updateLead(id, patch, ctx) {
   const before = lead.toJSON();
   await lead.update(allowed);
   const after = lead.toJSON();
+
+  // Phase 4.17: when callers (REST or MCP update_lead) write the
+  // deprecated Lead.draftEmailSubject / Lead.draftEmailBody fields,
+  // mirror the values into an OutreachEmail draft row so the Lead
+  // detail Draft Cold Email widget surfaces them without a separate
+  // save step. OutreachEmail is the canonical source going forward;
+  // these inline columns will be dropped in Phase 4.17.x.
+  const wroteDraftFields = (
+    Object.prototype.hasOwnProperty.call(allowed, 'draftEmailSubject')
+    || Object.prototype.hasOwnProperty.call(allowed, 'draftEmailBody')
+  );
+  if (wroteDraftFields && db.OutreachEmail) {
+    try {
+      const subject = (after.draftEmailSubject || '').trim();
+      const body = (after.draftEmailBody || '').trim();
+      if (subject || body) {
+        const brand = lead.brandCode
+          ? await db.Brand.findOne({ where: { code: lead.brandCode, active: true } })
+          : null;
+        if (brand) {
+          const existing = await db.OutreachEmail.findOne({
+            where: { leadId: lead.id, status: 'draft' },
+            order: [['createdAt', 'DESC']],
+          });
+          const subjectToSave = subject || '(draft subject — add before sending)';
+          const bodyToSave = body || '(draft body — add content before sending)';
+          if (existing) {
+            await existing.update({
+              subject: subjectToSave,
+              bodyText: bodyToSave,
+              fromAddress: brand.senderEmail,
+              toAddress: lead.email,
+              toName: lead.contactName || null,
+              brandCode: lead.brandCode,
+            });
+          } else {
+            await db.OutreachEmail.create({
+              leadId: lead.id,
+              sentByUserId: userId || null,
+              fromAddress: brand.senderEmail,
+              toAddress: lead.email,
+              toName: lead.contactName || null,
+              subject: subjectToSave,
+              bodyText: bodyToSave,
+              touchNumber: 1,
+              status: 'draft',
+              smtpMessageId: null,
+              sentAt: null,
+              followUpDueAt: null,
+              followUpCompleted: false,
+              brandCode: lead.brandCode,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // Mirror is best-effort: a failure should not unwind the Lead
+      // update. The audit trail on the Lead change still records the
+      // inline-column write; the next manual draft save reconciles.
+    }
+  }
 
   return { ok: true, lead, before, after };
 }

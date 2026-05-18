@@ -44,8 +44,14 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       defaultValue: 1,
     },
+    // Phase 4.17 added 'draft' to make OutreachEmail the canonical source
+    // of truth for the Lead detail Draft Cold Email widget. Drafts live as
+    // a row with status='draft', flip to 'sent' on send (same id preserved),
+    // and are deleted on discard. SQLite stores ENUMs as TEXT and didn't
+    // enforce the prior list at insert, so the AI assistant's send_outreach_email
+    // MCP tool was already writing 'draft' here — this just makes it explicit.
     status: {
-      type: DataTypes.ENUM('queued', 'sent', 'failed', 'bounced'),
+      type: DataTypes.ENUM('draft', 'queued', 'sent', 'failed', 'bounced'),
       defaultValue: 'sent',
     },
     smtpMessageId: {

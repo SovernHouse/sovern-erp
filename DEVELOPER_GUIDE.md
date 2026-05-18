@@ -549,6 +549,25 @@ All endpoints are prefixed with `/api`. Auth required unless noted.
 |---|---|---|
 | POST | `/api/outreach/send` | Send outreach email to a lead |
 | GET | `/api/outreach/emails` | List sent outreach emails |
+| GET | `/api/crm/leads/:id/outreach-emails` | List all outreach rows for a lead |
+| POST | `/api/crm/leads/:id/outreach-emails` | Tracked send. Phase 4.17: flips an existing `status='draft'` row to `status='sent'` (preserves id), else creates a new row. |
+| GET | `/api/crm/leads/:id/outreach-draft` | Phase 4.17. Returns `{ draft, sent, latest }` for the Lead detail Draft Cold Email widget. |
+| PUT | `/api/crm/leads/:id/outreach-draft` | Phase 4.17. Upserts the lead's `status='draft'` OutreachEmail row. Body: `{ subject, bodyText, touchNumber? }`. |
+| DELETE | `/api/crm/leads/:id/outreach-draft` | Phase 4.17. Discards the lead's active draft (hard delete, audit-logged as `user_discard_outreach_draft`). |
+
+**Draft outreach email — OutreachEmail is canonical (Phase 4.17).**
+The Lead detail Draft Cold Email widget reads + writes OutreachEmail rows
+exclusively. `Lead.draftEmailSubject` and `Lead.draftEmailBody` are
+deprecated columns kept readable for one phase (4.17) and dropped via a
+SQLite ALTER TABLE rebuild in 4.17.x. New code MUST use the
+`/outreach-draft` endpoints; legacy `update_lead` calls that include
+`draftEmailSubject` / `draftEmailBody` are mirrored into an OutreachEmail
+draft by `leadWriteService.updateLead` for back-compat. The send action
+(`POST .../outreach-emails`) flips the existing draft row to `status='sent'`
+rather than creating a parallel row, so the audit trail stays linear.
+Per rule #9 the send + draft endpoints refuse (422 `brandLeak: true`) when
+the lead's brand context can't be resolved — no fallback to
+`alex@sovernhouse.co` / SH signature.
 
 ### Chat (Internal + Omnichannel)
 

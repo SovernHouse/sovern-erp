@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Toaster } from 'react-hot-toast';
 import api from '../../services/api';
-import { ArrowLeft, AlertCircle, CheckCircle, Mail, Copy, Check, Edit2, Lock, X as XIcon } from 'lucide-react';
+import { ArrowLeft, AlertCircle, CheckCircle, Edit2, Lock, X as XIcon } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Chatter from '../../components/Chatter';
 import LeadAIPanel from '../../components/LeadAIPanel';
 import BrandPicker from '../../components/BrandPicker';
+import DraftColdEmailWidget from '../../components/DraftColdEmailWidget';
 import { useAuth } from '../../hooks/useAuth';
 
 const LeadForm = () => {
@@ -37,14 +39,15 @@ const LeadForm = () => {
     state: '',
     country: '',
     tags: '',
-    draftEmailSubject: '',
-    draftEmailBody: '',
     // Phase 3, C13: brand context. BrandPicker auto-fills from
     // useBrands().defaultBrand on mount; users can override per D-4.
     // Sent to the backend on create; on subsequent loads it's read-only.
     brandCode: '',
   });
-  const [copiedField, setCopiedField] = useState(null);
+  // Phase 4.17: draft email widget is bound to OutreachEmail rows, not
+  // to formData. Initial state comes from getLead's outreachDraft payload.
+  const [outreachState, setOutreachState] = useState(null);
+  const [brandRow, setBrandRow] = useState(null);
   const [createdBy, setCreatedBy] = useState(null);
   const [createdById, setCreatedById] = useState(null);
   const [createdAt, setCreatedAt] = useState(null);
@@ -105,9 +108,18 @@ const LeadForm = () => {
         state: lead.state || '',
         country: lead.country || '',
         tags: Array.isArray(lead.tags) ? lead.tags.join(', ') : '',
-        draftEmailSubject: lead.draftEmailSubject || '',
-        draftEmailBody: lead.draftEmailBody || '',
+        brandCode: lead.brandCode || '',
       });
+      setOutreachState(lead.outreachDraft || null);
+      // Lookup brand row once so the Send-confirm modal can preview
+      // sender + signature without an extra round-trip from the widget.
+      if (lead.brandCode) {
+        try {
+          const brandsRes = await api.get('/brands');
+          const brands = Array.isArray(brandsRes.data?.data) ? brandsRes.data.data : (brandsRes.data || []);
+          setBrandRow(brands.find((b) => b.code === lead.brandCode) || null);
+        } catch (_) { /* non-fatal */ }
+      }
       setCreatedBy(lead.createdBy || null);
       setCreatedById(lead.createdById || null);
       setCreatedAt(lead.createdAt || null);
@@ -193,6 +205,7 @@ const LeadForm = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+      <Toaster position="top-right" />
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="flex items-center mb-8">
@@ -606,75 +619,6 @@ const LeadForm = () => {
             </div>
           </div>
 
-          {/* Draft Cold Email — populated by /new-clients research, editable, never sent automatically */}
-          {(formData.draftEmailSubject || formData.draftEmailBody || id) && (
-            <div className="border-2 border-emerald-200 bg-emerald-50/50 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center">
-                  <Mail className="w-5 h-5 text-emerald-700 mr-2" />
-                  <h2 className="text-xl font-semibold text-gray-900">Draft Cold Email</h2>
-                </div>
-                <span className="text-xs text-gray-500">Review and edit before sending. Nothing sends automatically.</span>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">Subject</label>
-                    {formData.draftEmailSubject && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(formData.draftEmailSubject);
-                          setCopiedField('subject');
-                          setTimeout(() => setCopiedField(null), 1500);
-                        }}
-                        className="text-xs text-emerald-700 hover:text-emerald-900 flex items-center"
-                      >
-                        {copiedField === 'subject' ? <Check size={14} className="mr-1" /> : <Copy size={14} className="mr-1" />}
-                        {copiedField === 'subject' ? 'Copied' : 'Copy'}
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    name="draftEmailSubject"
-                    value={formData.draftEmailSubject}
-                    onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-                    placeholder="(no draft subject — generate via /new-clients)"
-                  />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">Body</label>
-                    {formData.draftEmailBody && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(formData.draftEmailBody);
-                          setCopiedField('body');
-                          setTimeout(() => setCopiedField(null), 1500);
-                        }}
-                        className="text-xs text-emerald-700 hover:text-emerald-900 flex items-center"
-                      >
-                        {copiedField === 'body' ? <Check size={14} className="mr-1" /> : <Copy size={14} className="mr-1" />}
-                        {copiedField === 'body' ? 'Copied' : 'Copy'}
-                      </button>
-                    )}
-                  </div>
-                  <textarea
-                    name="draftEmailBody"
-                    value={formData.draftEmailBody}
-                    onChange={handleChange}
-                    rows="10"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-mono text-sm"
-                    placeholder="(no draft body — generate via /new-clients)"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Description */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
@@ -704,6 +648,26 @@ const LeadForm = () => {
             </div>
           </fieldset>
 
+          {/* Phase 4.17 — Draft Cold Email widget. Outside the fieldset
+              so subject + body are always editable regardless of the
+              page-level Edit toggle. Only mounted on saved leads with
+              edit permission so read-only viewers can't bypass RBAC. */}
+          {id && canEdit && (
+            <DraftColdEmailWidget
+              lead={{
+                id,
+                email: formData.email,
+                contactName: formData.contactName,
+                companyName: formData.companyName,
+                country: formData.country,
+                brandCode: formData.brandCode,
+              }}
+              initialOutreach={outreachState}
+              brand={brandRow}
+              onChanged={() => fetchLead(true)}
+            />
+          )}
+
           {/* AI Assistant — outside the fieldset so its input always accepts typing,
               even when the rest of the form is read-only. Only visible on saved
               leads with edit permission so read-only viewers can't bypass RBAC. */}
@@ -721,8 +685,8 @@ const LeadForm = () => {
                 industry: formData.industry,
                 vertical: formData.vertical,
                 website: formData.website,
-                draftEmailSubject: formData.draftEmailSubject,
-                draftEmailBody: formData.draftEmailBody,
+                draftEmailSubject: outreachState?.draft?.subject || '',
+                draftEmailBody: outreachState?.draft?.bodyText || '',
               }}
               onLeadChanged={() => fetchLead(true)}
             />

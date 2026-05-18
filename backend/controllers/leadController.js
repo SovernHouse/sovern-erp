@@ -127,6 +127,27 @@ exports.getLeadById = async (req, res) => {
     const leadData = lead.toJSON();
     leadData.score = calculateLeadScore(lead);
 
+    // Phase 4.17: surface the Draft Cold Email state on the lead detail
+    // payload so the widget can render in one fetch. OutreachEmail is the
+    // canonical source — Lead.draftEmailSubject/Body are deprecated.
+    if (db.OutreachEmail) {
+      const include = [{
+        model: db.User,
+        as: 'sentBy',
+        attributes: ['id', 'firstName', 'lastName', 'email'],
+      }];
+      const [latestDraft, latestSent, latest] = await Promise.all([
+        db.OutreachEmail.findOne({ where: { leadId: lead.id, status: 'draft' }, include, order: [['createdAt', 'DESC']] }),
+        db.OutreachEmail.findOne({ where: { leadId: lead.id, status: 'sent' }, include, order: [['sentAt', 'DESC'], ['createdAt', 'DESC']] }),
+        db.OutreachEmail.findOne({ where: { leadId: lead.id }, include, order: [['createdAt', 'DESC']] }),
+      ]);
+      leadData.outreachDraft = {
+        draft: latestDraft,
+        sent: latestSent,
+        latest,
+      };
+    }
+
     res.json({ success: true, data: leadData });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
