@@ -703,12 +703,20 @@ async function callTool(name, args) {
       // the model; the pre-4.12 handler accepted 'notes' but Sequelize
       // silently dropped it because the column doesn't exist. Translate
       // here so AI-set notes actually persist.
+      //
+      // 2026-05-18: brandCode added to the allow-list. leadWriteService.
+      // updateLead enforces the super_admin role gate on brand override,
+      // writes a super_admin_brand_override AuditLog row, posts a Lead
+      // chatter event, and cascades the new brand to active OutreachEmail
+      // drafts (including their from_address). Required for chat-driven
+      // re-brands without a desktop-UI roundtrip.
       const allowed = ['status', 'stage', 'description', 'productInterest',
         'estimatedValue', 'priority', 'nextFollowUp',
         'industry', 'address', 'city', 'state', 'country', 'website', 'vertical',
         'draftEmailSubject', 'draftEmailBody',
-        'assignedToId', 'responsibleUserIds'];
-      const aliasMap = { notes: 'description' };
+        'assignedToId', 'responsibleUserIds',
+        'brandCode'];
+      const aliasMap = { notes: 'description', brand_code: 'brandCode' };
       const updates = {};
       for (const [k, v] of Object.entries(args)) {
         const field = aliasMap[k] || k;
@@ -721,20 +729,40 @@ async function callTool(name, args) {
         updates.responsibleUserIds = updates.responsibleUserIds
           .filter(x => typeof x === 'string' && x.length > 0);
       }
+      if (updates.brandCode !== undefined) {
+        if (typeof updates.brandCode !== 'string' || !updates.brandCode.trim()) {
+          return `brandCode must be a non-empty string (e.g. 'FW', 'SH', 'HH').`;
+        }
+        updates.brandCode = updates.brandCode.toUpperCase().trim();
+      }
       const leadWriteService = require('../services/aiWriteServices/leadWriteService');
+      const requesterName = `${requester.firstName || ''} ${requester.lastName || ''}`.trim() || requester.email || null;
       const result = await leadWriteService.updateLead(args.id, updates, {
         userId: requester.id,
+        userRole: requester.role,
+        userName: requesterName,
         brandScope,
         ip: null,
         source: 'mcp',
       });
       if (!result.ok) return formatMcpWriteError(result);
+      const brandFlipped = result.before && result.after && result.before.brandCode !== result.after.brandCode;
       await auditAiWrite('update_lead', 'Lead', result.lead.id, {
         before: result.before,
         after: result.after,
         appliedKeys: Object.keys(updates),
+        brandFlipped: brandFlipped
+          ? { from: result.before.brandCode, to: result.after.brandCode }
+          : null,
       }, requester.id);
-      return { success: true, updated: Object.keys(updates), lead: result.lead.toJSON() };
+      return {
+        success: true,
+        updated: Object.keys(updates),
+        lead: result.lead.toJSON(),
+        brandFlipped: brandFlipped
+          ? `Brand changed: ${result.before.brandCode} → ${result.after.brandCode}. Active drafts re-labelled; sent rows untouched.`
+          : null,
+      };
     }
 
     case 'list_users': {
@@ -5422,7 +5450,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'update_lead',
-    description: 'Update a lead\'s status, location, industry, draft email, or any other editable field. Use this to backfill missing data on existing leads (e.g. industry/state/city/address from the company website) or to refine the AI-drafted cold email.',
+    description: 'Update a lead\'s status, location, industry, draft email, brand, or any other editable field. Use this to backfill missing data on existing leads (e.g. industry/state/city/address from the company website) or to refine the AI-drafted cold email. Super_admin only: can also flip brandCode (rule #9 corrections — e.g. a Resilient flooring lead mis-tagged SH that should be FW).',
     inputSchema: {
       type: 'object',
       required: ['id'],
@@ -5446,6 +5474,7 @@ const TOOL_DEFS = [
         draftEmailBody:    { type: 'string', description: 'Cold-email draft body (~80-120 words, follow Sovern voice + L-014 factory positioning for LVT/SPC campaign)' },
         assignedToId:      { type: 'string', description: 'Reassign the primary responsible owner. Pass a User UUID (look up via list_users first).' },
         responsibleUserIds:{ type: 'array', items: { type: 'string' }, description: 'Followers / additional responsible team members. Pass a complete array of User UUIDs (this REPLACES the existing list — to add one, get the current array first via get_lead and append). Look up users via list_users.' },
+        brandCode:         { type: 'string', description: 'Super_admin only: override the lead\'s brand (e.g. "FW" for FlorWay / Malaysia, "HH" for HanHua / China, "SH" for Sovern House). Use to correct rule #9 violations like a Resilient flooring (LVT/SPC/WPC) lead mis-tagged as SH. Server writes a super_admin_brand_override AuditLog + Lead chatter event and cascades the new brand to any active OutreachEmail drafts (including their from_address). Sent rows are not touched.' },
       },
     },
   },

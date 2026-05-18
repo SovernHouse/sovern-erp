@@ -216,4 +216,63 @@ describe('Phase 4.17 — Super Admin brand override (2026-05-18)', () => {
     // sibling test files that share this DB.
     await su.update({ accessibleBrands: ['SH', 'FW'] });
   });
+
+  it('6. MCP update_lead path: super_admin can flip brandCode (2026-05-18)', async () => {
+    // Exercise the leadWriteService directly with source='mcp' to confirm
+    // the MCP-side brand override fires the same audit + chatter + draft
+    // cascade as the REST route. The MCP handler in
+    // backend/mcp/erpToolServer.js wires userRole/userName through ctx
+    // after the 2026-05-18 update; this regression locks the wiring shut.
+    const lead = await newLead('SH');
+    const draft = await db.OutreachEmail.create({
+      id: uuidv4(), leadId: lead.id, fromAddress: 'alex@sovernhouse.co',
+      toAddress: lead.email, toName: lead.contactName,
+      subject: 'mcp draft', bodyText: 'body', touchNumber: 1,
+      status: 'draft', brandCode: 'SH',
+    });
+
+    const leadWriteService = require('../../services/aiWriteServices/leadWriteService');
+    // Stand in for the MCP harness: super_admin ctx + brandCode in patch.
+    const su = await db.User.findOne({ where: { email: 'superadmin@test.com' } });
+    const result = await leadWriteService.updateLead(lead.id, { brandCode: 'FW' }, {
+      userId: su.id,
+      userRole: 'super_admin',
+      userName: 'Super Admin',
+      brandScope: { accessibleBrands: ['SH', 'FW'], defaultBrand: 'SH', isCrossBrand: false },
+      ip: null,
+      source: 'mcp',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.lead.brandCode).toBe('FW');
+
+    await draft.reload();
+    expect(draft.brandCode).toBe('FW');
+    expect(draft.fromAddress).toBe('alexflorway@gmail.com');
+
+    const audit = await db.AuditLog.findOne({
+      where: { entity: 'Lead', entityId: lead.id, action: 'super_admin_brand_override' },
+      order: [['createdAt', 'DESC']],
+    });
+    expect(audit).toBeTruthy();
+    expect(audit.changes.from).toBe('SH');
+    expect(audit.changes.to).toBe('FW');
+    expect(audit.changes.source).toBe('mcp');
+  });
+
+  it('7. MCP update_lead: non-super_admin patch with brandCode is stripped', async () => {
+    const lead = await newLead('SH');
+    const leadWriteService = require('../../services/aiWriteServices/leadWriteService');
+    // Stand in for a non-super_admin AI caller (role='manager').
+    const result = await leadWriteService.updateLead(lead.id, { brandCode: 'FW', description: 'note' }, {
+      userId: null,
+      userRole: 'manager',
+      userName: 'Some Manager',
+      brandScope: { accessibleBrands: ['SH', 'FW'], defaultBrand: 'SH', isCrossBrand: false },
+      ip: null,
+      source: 'mcp',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.lead.brandCode).toBe('SH');
+    expect(result.lead.description).toBe('note');
+  });
 });
