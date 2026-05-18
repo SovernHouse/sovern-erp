@@ -752,6 +752,18 @@ db.sequelize.authenticate()
       logger.warn('[boot] phase4.17 outreach chatter backfill skipped:', e.message);
     }
 
+    // Phase 4.17 rule-9 correction (2026-05-18): flip 38 resilient-flooring
+    // leads (LVT / SPC / WPC / vinyl) from SH to FW. Hardcoded leadNumber
+    // list inside the migration file; super_admin_brand_override audit
+    // row + Lead chatter event per flip; idempotent via sentinel
+    // phase4_17_resilient_brand_correction_2026_05_18.
+    try {
+      const { migrate417ResilientBrandCorrection } = require('./services/migrate417ResilientBrandCorrection');
+      await migrate417ResilientBrandCorrection(db);
+    } catch (e) {
+      logger.warn('[boot] phase4.17 resilient brand correction skipped:', e.message);
+    }
+
     // Phase 4.5, C24: refresh FW Brand signature (HTML + text) to the
     // Country Manager / FlorWay+HanHua design. Idempotent via AuditLog
     // sentinel; SH untouched.
