@@ -741,6 +741,17 @@ db.sequelize.authenticate()
       logger.warn('[boot] phase4.17 lead draft backfill skipped:', e.message);
     }
 
+    // Phase 4.17 chatter bugfix (2026-05-18): write a backdated chatter
+    // 'event' row for every historical OutreachEmail with status='sent'
+    // that lacks a matching "Outreach email sent to ..." chatter entry.
+    // Sentinel: phase4_17_outreach_chatter_backfilled.
+    try {
+      const { migrate417OutreachChatterBackfill } = require('./services/migrate417OutreachChatterBackfill');
+      await migrate417OutreachChatterBackfill(db);
+    } catch (e) {
+      logger.warn('[boot] phase4.17 outreach chatter backfill skipped:', e.message);
+    }
+
     // Phase 4.5, C24: refresh FW Brand signature (HTML + text) to the
     // Country Manager / FlorWay+HanHua design. Idempotent via AuditLog
     // sentinel; SH untouched.
