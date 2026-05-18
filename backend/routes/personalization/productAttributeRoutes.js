@@ -37,6 +37,31 @@ router.post('/product-attributes', requireAuth, requireRole('admin'), async (req
 });
 
 /**
+ * Reorder product attributes
+ * @route PUT /api/personalization/product-attributes/reorder
+ *
+ * MUST be declared before PUT /product-attributes/:id below. Express
+ * matches routes in declaration order — if /:id comes first, /reorder
+ * matches with id='reorder' and ProductAttribute.findByPk('reorder')
+ * returns null → 404. Same class of bug as the 2026-05-18 /brands/me
+ * incident (L-069).
+ */
+router.put('/product-attributes/reorder', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { orderedIds } = req.body;
+    if (!Array.isArray(orderedIds)) return res.status(400).json({ success: false, error: { message: 'orderedIds must be an array', statusCode: 400 } });
+
+    for (let i = 0; i < orderedIds.length; i++) {
+      await db.ProductAttribute.update({ sequence: i }, { where: { id: orderedIds[i] } });
+    }
+
+    res.json(getSuccessResponse({ message: 'Attributes reordered' }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * Update a product attribute
  * @route PUT /api/personalization/product-attributes/:id
  */
@@ -66,24 +91,9 @@ router.delete('/product-attributes/:id', requireAuth, requireRole('admin'), asyn
   }
 });
 
-/**
- * Reorder product attributes
- * @route PUT /api/personalization/product-attributes/reorder
- */
-router.put('/product-attributes/reorder', requireAuth, requireRole('admin'), async (req, res, next) => {
-  try {
-    const { orderedIds } = req.body;
-    if (!Array.isArray(orderedIds)) return res.status(400).json({ success: false, error: { message: 'orderedIds must be an array', statusCode: 400 } });
-
-    for (let i = 0; i < orderedIds.length; i++) {
-      await db.ProductAttribute.update({ sequence: i }, { where: { id: orderedIds[i] } });
-    }
-
-    res.json(getSuccessResponse({ message: 'Attributes reordered' }));
-  } catch (error) {
-    next(error);
-  }
-});
+// (Note: PUT /product-attributes/reorder was moved above PUT
+// /product-attributes/:id earlier in this file to avoid the
+// route-shadow bug class — Express matches in declaration order.)
 
 // ========================================================================
 
