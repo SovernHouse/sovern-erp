@@ -606,8 +606,28 @@ function buildOutreachContent({ bodyText, customSignatureHtml, customSignatureTe
  */
 function encodeHeader(value) {
   if (!value) return '';
+  // 2026-05-18 bugfix: a plain comma in an ASCII display-name made Gmail
+  // parse the To header as TWO recipients per RFC 2822 — "Ofer Dardashti,
+  // Founder <info@ultimatefloors.net>" parsed as "Ofer Dardashti" (no
+  // email) + "Founder <info@ultimatefloors.net>", which Gmail rejected
+  // with "Invalid To header". Wrap any ASCII string that contains RFC
+  // 2822 "specials" in a quoted-string. RFC 2047 (=?UTF-8?B?...?=)
+  // covers non-ASCII as before.
   // eslint-disable-next-line no-control-regex
-  if (/^[\x00-\x7F]+$/.test(value)) return value;  // pure ASCII, no encoding needed
+  const isAscii = /^[\x00-\x7F]+$/.test(value);
+  if (isAscii) {
+    // Quote only the RFC 2822 specials that real-world parsers (Gmail
+    // most strict) actually break on. Skipping parens + dots: Gmail
+    // treats parens as RFC 2822 "comments" and dots are universally
+    // accepted in display-names ("Mr. Ben", "J. Smith"). Quoting them
+    // would just add noise on common contact names like
+    // "John Cerisano (President)" which already sent successfully.
+    if (/[,;<>@:\\"]/.test(value)) {
+      const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      return `"${escaped}"`;
+    }
+    return value;
+  }
   return '=?UTF-8?B?' + Buffer.from(value, 'utf8').toString('base64') + '?=';
 }
 
@@ -655,8 +675,11 @@ const sendOutreachEmailViaGmailAPI = async ({ fromAddress, toAddress, toName, su
 
   // Build RFC 2822 multipart/alternative message
   // Use the provided display name (brand-aware) or fall back to SH default.
+  // Pass display names through encodeHeader so RFC 2822 specials (comma,
+  // semicolon, parens, etc.) get properly quoted — see 2026-05-18 fix
+  // for "Ofer Dardashti, Founder" header rejection.
   const senderDisplayName = fromDisplayName || 'Sovern House | Alex';
-  const fromHeader = `${senderDisplayName} <${account.email}>`;
+  const fromHeader = `${encodeHeader(senderDisplayName)} <${account.email}>`;
   const toHeader = toName ? `${encodeHeader(toName)} <${toAddress}>` : toAddress;
   const boundary = '----=_Part_' + Math.random().toString(36).slice(2, 12) + '_' + Date.now();
 
@@ -958,4 +981,6 @@ module.exports = {
   sendTransactionalEmail,
   sendTransactionalEmailWithFallback,
   applyEgyptBccIfNeeded,
+  // Exported for unit testing of the 2026-05-18 RFC 2822 quoting fix.
+  encodeHeader,
 };
