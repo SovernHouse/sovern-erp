@@ -1,7 +1,7 @@
 const { PDFDocument, fs, path, formatCurrency, uploadDir,
   createDir, getCompanyHeader, getDocumentTitle, getDocumentDetails,
   createTable, addFooter, addFwInternalRecordBanner,
-  pipeToBufferOrDisk } = require('./pdfHelpers');
+  pipeToBufferOrDisk, assertSalesDocBrandSafe } = require('./pdfHelpers');
 
 // Phase 4.15a: each generator now accepts an opts={} trailing arg.
 // opts.returnBuffer=true switches the output sink from disk to an
@@ -12,6 +12,12 @@ const { PDFDocument, fs, path, formatCurrency, uploadDir,
 const generateQuotationPDF = (quotation, items, customer, salesPerson, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
+      // Phase 4.19a: brand-safety gateway. Note: documentGenerator.js
+      // overrides generateQuotationPDF to route through
+      // brandedQuotationRenderer.dispatch which has its own richer
+      // gateway. This raw entry is reachable from /api/pdf/quotation/:id
+      // and from tests; the assertion here is defense in depth.
+      assertSalesDocBrandSafe(quotation, items, 'Quotation');
       createDir(path.join(uploadDir, 'quotations'));
       const filename = `quotation-${quotation.quotationNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'quotations', filename);
@@ -80,6 +86,10 @@ const generateQuotationPDF = (quotation, items, customer, salesPerson, opts = {}
 const generateProformaInvoicePDF = (pi, items, customer, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
+      // Phase 4.19b: brand-safety gateway. Refuses missing brandCode,
+      // refuses FW/HH (this renderer is SH-only until Phase 4.20),
+      // refuses SH + Resilient items (rule #9).
+      assertSalesDocBrandSafe(pi, items, 'Proforma Invoice');
       createDir(path.join(uploadDir, 'proforma_invoices'));
       const filename = `pi-${pi.piNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'proforma_invoices', filename);
@@ -152,6 +162,9 @@ const generateProformaInvoicePDF = (pi, items, customer, opts = {}) => {
 const generateSalesNotePDF = (pi, items, customer, signedBy = {}, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
+      // Phase 4.19b: brand-safety gateway. Sales notes attach to PIs;
+      // same brand-safety constraints apply.
+      assertSalesDocBrandSafe(pi, items, 'Sales Note');
       createDir(path.join(uploadDir, 'sales_notes'));
       const filename = `sales-note-${pi.piNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'sales_notes', filename);

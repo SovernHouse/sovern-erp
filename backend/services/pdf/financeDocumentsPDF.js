@@ -1,7 +1,7 @@
 const { PDFDocument, fs, path, formatCurrency, uploadDir,
   createDir, getCompanyHeader, getDocumentTitle, getDocumentDetails,
   createTable, addFooter, addFwInternalRecordBanner,
-  pipeToBufferOrDisk } = require('./pdfHelpers');
+  pipeToBufferOrDisk, assertSalesDocBrandSafe } = require('./pdfHelpers');
 
 // Phase 4.15a: opts.returnBuffer=true returns a Buffer instead of writing
 // to disk. Default false keeps every existing caller unchanged.
@@ -9,6 +9,15 @@ const { PDFDocument, fs, path, formatCurrency, uploadDir,
 const generateInvoicePDF = (invoice, salesOrder, customer, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
+      // Phase 4.19d: brand-safety gateway. Invoice is a legal payment
+      // instrument — highest correctness bar. Refuses missing
+      // brandCode, refuses FW/HH on this SH-only renderer (pending
+      // Phase 4.20), refuses SH + Resilient items (rule #9).
+      // Item slug walk uses salesOrder.items if available; the invoice
+      // table itself doesn't carry items in this signature, so we pass
+      // an empty array if salesOrder is null (assertResilientNotSH
+      // is a no-op without items).
+      assertSalesDocBrandSafe(invoice, salesOrder?.items || [], 'Invoice');
       createDir(path.join(uploadDir, 'invoices'));
       const filename = `inv-${invoice.invoiceNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'invoices', filename);
@@ -77,6 +86,9 @@ const generateInvoicePDF = (invoice, salesOrder, customer, opts = {}) => {
 const generateCreditNotePDF = (creditNote, customer, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
+      // Phase 4.19d: brand-safety gateway. Credit notes inherit brand
+      // from the parent invoice; same SH-only constraint.
+      assertSalesDocBrandSafe(creditNote, [], 'Credit Note');
       createDir(path.join(uploadDir, 'credit_notes'));
       const filename = `cn-${creditNote.invoiceNumber || creditNote.id}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'credit_notes', filename);
@@ -128,6 +140,25 @@ const generateCreditNotePDF = (creditNote, customer, opts = {}) => {
 const generateStatementOfAccountPDF = (customer, invoices, payments, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
+      // Phase 4.19d: brand-safety gateway. Statements span multiple
+      // invoices — refuse if any invoice has a non-SH brand (rule #9;
+      // FW/HH need brand-aware statements pending Phase 4.20).
+      const { BrandLeakError } = require('../brandSafetyGateway');
+      const brands = [...new Set((invoices || []).map(i => i.brandCode).filter(Boolean))];
+      if (brands.length > 1) {
+        throw new BrandLeakError(
+          `Refusing to render Statement of Account for customer ${customer?.id || customer?.companyName}: ` +
+          `mixed brands across invoices (${brands.join(', ')}). Generate one statement per brand.`,
+          { entityId: customer?.id, leakField: 'mixed_brands_on_statement' }
+        );
+      }
+      if (brands.length === 1 && brands[0] !== 'SH') {
+        throw new BrandLeakError(
+          `Refusing to render Statement of Account for brand "${brands[0]}": ` +
+          `this generic renderer is SH-only (rule #9). Pending Phase 4.20 brand-aware version.`,
+          { entityId: customer?.id, brandCode: brands[0], leakField: 'renderer_not_brand_aware' }
+        );
+      }
       createDir(path.join(uploadDir, 'statements'));
       const filename = `stmt-${customer.id}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'statements', filename);

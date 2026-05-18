@@ -147,9 +147,79 @@ function pipeToBufferOrDisk(doc, opts, filepath, filename) {
 }
 
 
+/**
+ * Phase 4.19b/c/d/e (2026-05-18) — brand-safety gateway for the generic
+ * PDF renderers in this folder. These renderers (PI/SO/Invoice/
+ * PackingList/PurchaseOrder) print SH-styled output regardless of the
+ * entity's brandCode because `getCompanyHeader` reads PDF_COMPANY_NAME
+ * (SH-only env var). Until Phase 4.20 ships brand-aware versions of
+ * each, the safe move is to refuse rendering an FW/HH entity here.
+ *
+ * `brandedQuotationRenderer.js` already has brand-aware sub-renderers
+ * and a richer gateway; this helper is for the OTHER documents.
+ *
+ * Throws BrandLeakError on any rule #9 violation. Caller surfaces the
+ * error as 422 / clear chatter event.
+ *
+ * @param {object}  entity    PI/SO/Invoice/etc Sequelize instance or
+ *                            plain object. Must have .brandCode + .id.
+ * @param {Array}   items     line items (with .product or .Product)
+ * @param {string}  docKind   human-readable doc type for the error msg
+ *                            ("Proforma Invoice", "Sales Order", etc.)
+ */
+function assertSalesDocBrandSafe(entity, items, docKind) {
+  const { isResilient, BrandLeakError } = require('../brandSafetyGateway');
+
+  if (!entity?.brandCode) {
+    throw new BrandLeakError(
+      `Refusing to render ${docKind} ${entity?.id || '(unknown id)'}: brandCode is missing on the entity.`,
+      { entityId: entity?.id, leakField: 'brandCode' }
+    );
+  }
+
+  if (!['SH', 'FW', 'HH'].includes(entity.brandCode)) {
+    throw new BrandLeakError(
+      `Refusing to render ${docKind} ${entity.id}: unknown brandCode "${entity.brandCode}".`,
+      { entityId: entity.id, brandCode: entity.brandCode, leakField: 'brandCode' }
+    );
+  }
+
+  // Phase 4.20 will add brand-aware versions of these renderers; until
+  // then, FW/HH cannot be safely rendered through this generic path
+  // (getCompanyHeader prints SH-only PDF_COMPANY_NAME).
+  if (entity.brandCode !== 'SH') {
+    throw new BrandLeakError(
+      `Refusing to render ${docKind} ${entity.id} for brand "${entity.brandCode}": ` +
+      `this generic renderer is SH-only (rule #9). Phase 4.20 will add brand-aware ` +
+      `versions of the ${docKind} PDF; until then, use the Quotation PDF flow ` +
+      `(brandedQuotationRenderer) or wait for the Phase 4.20 directive.`,
+      { entityId: entity.id, brandCode: entity.brandCode, leakField: 'renderer_not_brand_aware' }
+    );
+  }
+
+  // SH + Resilient items is a hard rule #9 violation. Walk Products.
+  if (Array.isArray(items)) {
+    const slugs = [];
+    for (const it of items) {
+      const p = it.Product || it.product;
+      if (p?.productType) slugs.push(p.productType);
+      if (p?.category?.slug) slugs.push(p.category.slug);
+    }
+    if (isResilient(slugs)) {
+      throw new BrandLeakError(
+        `Refusing to render ${docKind} ${entity.id}: brand is SH but line items contain ` +
+        `Resilient flooring (${slugs.filter(Boolean).join(', ')}). Rule #9 — Resilient is ` +
+        `FW or HH, never SH. Correct the entity's brandCode first.`,
+        { entityId: entity.id, brandCode: 'SH', leakField: 'items_resilient_under_sh' }
+      );
+    }
+  }
+}
+
 module.exports = {
   PDFDocument, fs, path, formatCurrency, uploadDir,
   createDir, getCompanyHeader, getDocumentTitle, getDocumentDetails,
   createTable, addFooter, addFwInternalRecordBanner,
   pipeToBufferOrDisk,
+  assertSalesDocBrandSafe,
 };

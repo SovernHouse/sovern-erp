@@ -1,7 +1,7 @@
 const { PDFDocument, fs, path, formatCurrency, uploadDir,
   createDir, getCompanyHeader, getDocumentTitle, getDocumentDetails,
   createTable, addFooter, addFwInternalRecordBanner,
-  pipeToBufferOrDisk } = require('./pdfHelpers');
+  pipeToBufferOrDisk, assertSalesDocBrandSafe } = require('./pdfHelpers');
 
 // Phase 4.15a: opts.returnBuffer=true returns a Buffer instead of writing
 // to disk. Default false keeps every existing caller unchanged.
@@ -9,6 +9,8 @@ const { PDFDocument, fs, path, formatCurrency, uploadDir,
 const generateSalesOrderPDF = (salesOrder, items, customer, factory, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
+      // Phase 4.19c: brand-safety gateway.
+      assertSalesDocBrandSafe(salesOrder, items, 'Sales Order');
       createDir(path.join(uploadDir, 'sales_orders'));
       const filename = `so-${salesOrder.orderNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'sales_orders', filename);
@@ -69,6 +71,12 @@ const generateSalesOrderPDF = (salesOrder, items, customer, factory, opts = {}) 
 const generatePurchaseOrderPDF = (purchaseOrder, items, factory, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
+      // Phase 4.19g: brand-safety gateway. PurchaseOrders go to the
+      // factory (which already knows both brands), so leak risk is
+      // reversed vs the buyer-facing docs — but rule #9 still applies:
+      // an SH PO must not have Resilient items, an FW/HH PO must not
+      // render through this generic SH-styled renderer.
+      assertSalesDocBrandSafe(purchaseOrder, items, 'Purchase Order');
       createDir(path.join(uploadDir, 'purchase_orders'));
       const filename = `po-${purchaseOrder.poNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'purchase_orders', filename);
@@ -122,6 +130,8 @@ const generatePurchaseOrderPDF = (purchaseOrder, items, factory, opts = {}) => {
 const generatePackingListPDF = (packingList, items, opts = {}) => {
   return new Promise((resolve, reject) => {
     try {
+      // Phase 4.19e: brand-safety gateway.
+      assertSalesDocBrandSafe(packingList, items, 'Packing List');
       createDir(path.join(uploadDir, 'packing_lists'));
       const filename = `pl-${packingList.packingListNumber}-${Date.now()}.pdf`;
       const filepath = path.join(uploadDir, 'packing_lists', filename);
