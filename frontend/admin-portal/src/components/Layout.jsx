@@ -154,11 +154,12 @@ function LayoutBody({ children }) {
     .split('-')
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
-  // Some container path segments don't have a real landing page
-  // (`/crm`, `/personalization`, `/settings/x` parents, etc.). Tag
+  // Some container path segments don't have a real landing page. Tag
   // them as non-navigable so we render them as muted text instead of
-  // a Link that 404s. Extend this list when adding new namespaces.
-  const NON_NAVIGABLE_SEGMENTS = new Set(['crm', 'personalization'])
+  // a Link that 404s. /crm DOES have a CRMDashboard route, so it's
+  // navigable now. Extend this list only when a path prefix is truly
+  // a container with no route.
+  const NON_NAVIGABLE_SEGMENTS = new Set([])
   const crumbSegments = location.pathname === '/'
     ? [{ label: 'Dashboard', to: null }]
     : location.pathname.slice(1).split('/').map((s, i, all) => {

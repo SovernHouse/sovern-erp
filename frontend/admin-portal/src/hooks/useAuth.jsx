@@ -6,8 +6,20 @@ const AuthContext = createContext(null)
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
+    // 2026-05-18 hardening: don't trust localStorage.user without
+    // localStorage.authToken. Otherwise the UI shows a stale "logged
+    // in" state while every API call lands as anonymous, which is
+    // exactly the situation that masked the BrandsContext failure
+    // (UNKNOWN BRAND symptom). Clear both if either is missing.
     const savedUser = localStorage.getItem('user')
-    return savedUser ? JSON.parse(savedUser) : null
+    const savedToken = localStorage.getItem('authToken')
+    if (savedUser && savedToken) {
+      try { return JSON.parse(savedUser) } catch (_) { /* fall through */ }
+    }
+    // Wipe inconsistent half-state so the next render sees a clean slate.
+    localStorage.removeItem('user')
+    localStorage.removeItem('authToken')
+    return null
   })
 
   const [isLoading, setIsLoading] = useState(false)
@@ -22,6 +34,17 @@ export const AuthProvider = ({ children }) => {
       const responseData = response.data
       const userData = responseData.user
       const token = responseData.tokens?.accessToken || responseData.token
+
+      // 2026-05-18 hardening: refuse to "succeed" if the server didn't
+      // hand back a token. The previous version stored undefined as the
+      // string "undefined" in localStorage, which would later attach
+      // `Authorization: Bearer undefined` to every request and look
+      // like a logged-in session that the backend silently rejected.
+      if (!token || !userData) {
+        const message = 'Login response missing token or user — please try again.'
+        setError(message)
+        return { success: false, error: message }
+      }
 
       localStorage.setItem('authToken', token)
       localStorage.setItem('user', JSON.stringify(userData))
