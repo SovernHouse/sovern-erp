@@ -4,6 +4,7 @@ const { sendOutreachEmail, applyEgyptBccIfNeeded } = require('../services/emailS
 const dayjs = require('dayjs');
 const logger = require('../utils/logger.js');
 const auditService = require('../services/auditService');
+const { postSystemEvent } = require('./chatterController');
 
 /**
  * Phase 4.17 — brand-safety guard for outreach send/render paths.
@@ -292,6 +293,28 @@ const sendOutreachEmailToLead = async (req, res) => {
       await lead.update({ status: 'contacted' });
     }
 
+    // Phase 4.17 bugfix: log the send to the Lead's chatter so the trail
+    // is visible on the detail page. Best-effort — failure must not abort
+    // the send response. Mirrors the priceListRoutes chatter pattern.
+    await postSystemEvent(
+      'Lead',
+      lead.id,
+      'event',
+      `Outreach email sent to ${toAddress} from ${fromAddress} (${resolvedBrand.displayName}). Subject: "${(subject || '').slice(0, 120)}". Touch ${touchNumber}.`,
+      {
+        outreachEmailId: outreachEmail.id,
+        fromAddress,
+        toAddress,
+        touchNumber,
+        smtpMessageId: messageId || null,
+        brandCode: lead.brandCode,
+      },
+      req.user?.id || null,
+      req.user
+        ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email || 'System'
+        : 'System',
+    ).catch(() => {});
+
     res.status(201).json({
       success: true,
       data: outreachEmail,
@@ -546,6 +569,27 @@ const saveLeadOutreachDraft = async (req, res) => {
       req.ip,
     ).catch(() => {});
 
+    // Phase 4.17 bugfix: chatter event so the operator can see who edited
+    // the draft and when. `created` differentiates "new draft" vs "edited
+    // existing draft" in the message.
+    await postSystemEvent(
+      'Lead',
+      id,
+      'event',
+      created
+        ? `Drafted outreach email. Subject: "${subjectToSave.slice(0, 120)}".`
+        : `Edited outreach draft. Subject: "${subjectToSave.slice(0, 120)}".`,
+      {
+        outreachEmailId: row.id,
+        brandCode: lead.brandCode,
+        created,
+      },
+      req.user?.id || null,
+      req.user
+        ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email || 'System'
+        : 'System',
+    ).catch(() => {});
+
     res.status(created ? 201 : 200).json({ success: true, data: row });
   } catch (error) {
     logger.error('Error saving outreach draft:', error);
@@ -587,6 +631,23 @@ const discardLeadOutreachDraft = async (req, res) => {
       snapshot.id,
       snapshot,
       req.ip,
+    ).catch(() => {});
+
+    // Phase 4.17 bugfix: chatter event so the discard is visible on the
+    // Lead detail timeline (counter-balances the save event).
+    await postSystemEvent(
+      'Lead',
+      id,
+      'event',
+      `Discarded outreach draft. Subject was: "${snapshot.subjectPreview}".`,
+      {
+        outreachEmailId: snapshot.id,
+        brandCode: snapshot.brandCode,
+      },
+      req.user?.id || null,
+      req.user
+        ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email || 'System'
+        : 'System',
     ).catch(() => {});
 
     res.json({ success: true, data: snapshot });

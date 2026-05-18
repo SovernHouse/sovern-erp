@@ -1384,6 +1384,24 @@ async function callTool(name, args) {
         errorMessage: sendError || null,
       }, USER_ID);
 
+      // Phase 4.17 bugfix: AI-initiated drafts/sends/failures must also
+      // show up on the Lead's chatter so the operator sees the AI's
+      // activity inline with their own. Best-effort.
+      try {
+        const { postSystemEvent } = require('../controllers/chatterController');
+        const chatterBody = status === 'sent'
+          ? `Outreach email sent to ${lead.email} from ${fromAddress} (${_brandForFrom.displayName}). Subject: "${subject.slice(0, 120)}". Touch ${touchNumber}. (AI Assistant)`
+          : status === 'draft'
+            ? `Drafted outreach email (AI Assistant). Subject: "${subject.slice(0, 120)}".`
+            : `Outreach send FAILED (AI Assistant): ${sendError || 'unknown error'}. Subject: "${subject.slice(0, 120)}".`;
+        await postSystemEvent(
+          'Lead', lead.id, 'event', chatterBody,
+          { outreachEmailId: row.id, status, brandCode: lead.brandCode, ai: true },
+          USER_ID || null,
+          'AI Assistant',
+        );
+      } catch (_) { /* best-effort */ }
+
       if (draftOnly) {
         return {
           success: true,
@@ -1434,6 +1452,16 @@ async function callTool(name, args) {
       };
       await draft.destroy();
       await auditAiWrite('discard_outreach_draft', 'OutreachEmail', snapshot.outreachEmailId, snapshot, requester.id);
+      try {
+        const { postSystemEvent } = require('../controllers/chatterController');
+        await postSystemEvent(
+          'Lead', lead.id, 'event',
+          `Discarded outreach draft (AI Assistant). Subject was: "${snapshot.subjectPreview}".`,
+          { outreachEmailId: snapshot.outreachEmailId, brandCode: snapshot.brandCode, ai: true },
+          requester.id || null,
+          'AI Assistant',
+        );
+      } catch (_) { /* best-effort */ }
       return {
         success: true,
         message: `Draft for ${lead.email} (${lead.companyName}) discarded.`,

@@ -160,16 +160,22 @@ export function useDevModePushNotifications() {
         router.push('/dev-runs');
         return;
       }
-      // Phase 4.26 mobile parity: route auto_chain notifications to
-      // their entity tab. Mobile has tabs for SalesOrder, PurchaseOrder,
-      // Invoice, Quotation. ProformaInvoice / GoodsReceivedNote /
-      // PackingList have no mobile screen yet; fall back to dashboard.
-      if (data?.type === 'auto_chain' && data.entityType) {
+      // Phase 4.26d mobile parity: route auto_chain notifications to
+      // their entity tab. The backend workflowService.notifyAutoChain
+      // sends `kind: 'auto_chain'` in data (consistent with the
+      // dev_mode kind above). Older shapes may carry `type` instead,
+      // so we accept either.
+      const isAutoChain = data?.kind === 'auto_chain' || data?.type === 'auto_chain';
+      if (isAutoChain && data.entityType) {
         const map: Record<string, string> = {
           SalesOrder: '/(tabs)/sales-orders',
           PurchaseOrder: '/(tabs)/purchase-orders',
           Invoice: '/(tabs)/invoices',
           Quotation: '/(tabs)/quotations',
+          ProformaInvoice: '/(tabs)/quotations',
+          GoodsReceivedNote: '/(tabs)/purchase-orders',
+          PackingList: '/(tabs)/shipments',
+          Shipment: '/(tabs)/shipments',
         };
         const target = map[data.entityType] || '/(tabs)/dashboard';
         router.push(target);

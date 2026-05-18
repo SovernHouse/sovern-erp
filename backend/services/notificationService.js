@@ -8,50 +8,25 @@ const setIO = (socketIO) => {
 };
 
 
-// ─── Expo push (Phase 4.26 mobile parity) ─────────────────────────────────
+// ─── Expo push (Phase 4.26 mobile parity, Phase 4.26d refactor) ────────────
 //
 // Best-effort fan-out to every active ExpoPushToken for a user. Called
-// from createNotification after the Notification row commits. Mobile
-// users with the app installed get a push for the same notification
-// the bell shows.
-
-const EXPO_PUSH_API = 'https://exp.host/--/api/v2/push/send';
+// from createNotification after the Notification row commits. Phase 4.26d
+// pulled the actual HTTP call + dead-token cleanup into expoPushService
+// so dev-mode, research, and chain notifications all share one
+// implementation. This wrapper preserves the existing call shape
+// (positional title/body/data) so we don't have to touch every caller.
 
 async function sendExpoPushToUser(userId, title, body, data) {
-  if (!userId) return;
-  if (!db.ExpoPushToken) return;  // model not yet migrated; silent skip
   try {
-    const tokens = await db.ExpoPushToken.findAll({
-      where: { userId, isActive: true },
-      attributes: ['token'],
-    });
-    if (!tokens || tokens.length === 0) return;
-    const messages = tokens.map(t => ({
-      to: t.token,
-      sound: 'default',
+    const { sendPushToUser } = require('./expoPushService');
+    await sendPushToUser(userId, {
       title: title || 'Sovern Operations',
       body: body || '',
       data: data || {},
-      priority: 'high',
-    }));
-    const res = await fetch(EXPO_PUSH_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
-        ...(process.env.EXPO_ACCESS_TOKEN
-          ? { Authorization: `Bearer ${process.env.EXPO_ACCESS_TOKEN}` }
-          : {}),
-      },
-      body: JSON.stringify(messages),
     });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      logger.warn('[push] Expo push HTTP ' + res.status + ': ' + txt.slice(0, 200));
-    }
   } catch (e) {
-    logger.warn('[push] Expo push failed: ' + (e && e.message));
+    logger.warn('[push] Expo push delegate failed: ' + (e && e.message));
   }
 }
 

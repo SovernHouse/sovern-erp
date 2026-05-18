@@ -285,6 +285,39 @@ describe('Phase 4.17 — Lead Draft Cold Email widget (OutreachEmail canonical)'
     expect(send.body.brandLeak).toBe(true);
   });
 
+  it('10a. Save/Send/Discard all post a ChatterMessage on the Lead (bugfix 2026-05-18)', async () => {
+    const lead = await newLead();
+    await db.ChatterMessage.destroy({ where: { entityType: 'Lead', entityId: lead.id } });
+
+    // Save creates a chatter event.
+    await request
+      .put(`/api/crm/leads/${lead.id}/outreach-draft`)
+      .set(authHeaders())
+      .send({ subject: 'Chatter subject', bodyText: 'Chatter body' });
+    let messages = await db.ChatterMessage.findAll({ where: { entityType: 'Lead', entityId: lead.id }, order: [['createdAt', 'ASC']] });
+    expect(messages.length).toBe(1);
+    expect(messages[0].body).toMatch(/^Drafted outreach email/);
+
+    // Send adds a second event.
+    await request
+      .post(`/api/crm/leads/${lead.id}/outreach-emails`)
+      .set(authHeaders())
+      .send({ toAddress: lead.email, subject: 'Chatter subject', bodyText: 'Chatter body', touchNumber: 1 });
+    messages = await db.ChatterMessage.findAll({ where: { entityType: 'Lead', entityId: lead.id }, order: [['createdAt', 'ASC']] });
+    expect(messages.length).toBe(2);
+    expect(messages[1].body).toMatch(/^Outreach email sent to /);
+
+    // Discard test (start a fresh draft for a discardable target).
+    await request
+      .put(`/api/crm/leads/${lead.id}/outreach-draft`)
+      .set(authHeaders())
+      .send({ subject: 'second touch', bodyText: 'second body' });
+    await request.delete(`/api/crm/leads/${lead.id}/outreach-draft`).set(authHeaders());
+    messages = await db.ChatterMessage.findAll({ where: { entityType: 'Lead', entityId: lead.id }, order: [['createdAt', 'ASC']] });
+    const discardEntry = messages.find((m) => /^Discarded outreach draft/.test(m.body));
+    expect(discardEntry).toBeTruthy();
+  });
+
   it('10. Backfill migration is idempotent and lifts inline drafts cleanly', async () => {
     // Pre-flight: clear any sentinel left by an earlier suite so this
     // test actually exercises the migration body. (Subsequent runs from

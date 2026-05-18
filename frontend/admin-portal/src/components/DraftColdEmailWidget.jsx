@@ -55,7 +55,10 @@ export default function DraftColdEmailWidget({ lead, initialOutreach, brand, onC
         setLoading(true)
         const res = await api.get(`/crm/leads/${lead.id}/outreach-draft`)
         if (cancelled) return
-        const data = res.data?.data || {}
+        // api.js interceptor auto-unwraps { success, data } envelopes, so
+        // res.data is the payload directly. Tolerate both shapes in case
+        // a future interceptor change disables unwrap.
+        const data = (res.data && res.data.data) ? res.data.data : (res.data || {})
         applyOutreachState(data, { resetEditor: true })
       } catch (e) {
         // Non-fatal — leave widget empty + editable so user can author.
@@ -90,8 +93,9 @@ export default function DraftColdEmailWidget({ lead, initialOutreach, brand, onC
         subject: subject.trim(),
         bodyText: body.trim(),
       })
-      const saved = res.data?.data
-      if (saved) {
+      // Tolerate both unwrapped (interceptor on) and raw (interceptor off) shapes.
+      const saved = (res.data && res.data.data) ? res.data.data : res.data
+      if (saved && saved.id) {
         setDraft(saved)
         setLatest(saved)
         setSavedSubject(saved.subject || '')
@@ -119,8 +123,9 @@ export default function DraftColdEmailWidget({ lead, initialOutreach, brand, onC
         bodyText: body.trim(),
         touchNumber: (draft?.touchNumber || latest?.touchNumber || 1),
       })
-      const sentRow = res.data?.data || null
-      if (sentRow) {
+      // Tolerate both unwrapped (interceptor on) and raw (interceptor off) shapes.
+      const sentRow = (res.data && res.data.data) ? res.data.data : res.data
+      if (sentRow && sentRow.id) {
         setSent(sentRow)
         setDraft(null)
         setLatest(sentRow)

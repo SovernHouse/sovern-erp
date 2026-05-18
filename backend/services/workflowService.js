@@ -35,14 +35,22 @@ const { generateNumberWithCounter, incrementCounter } = require('./numberGenerat
  */
 async function notifyAutoChain(userId, entityType, entityId, data, link) {
   if (!userId) return;
+  const message = data && data.message ? data.message : `${entityType} auto-created`;
+
+  // notificationService.createNotification persists the Notification row,
+  // emits Socket.IO, AND fires Expo push to every active device token
+  // via expoPushService (Phase 4.26d). Single call covers all three
+  // notification channels; nothing else to fan out here.
+  // Pass `kind: 'auto_chain'` in data so the mobile push-tap handler
+  // routes to the right entity tab (useDevModePushNotifications.ts).
   try {
     const notificationService = require('./notificationService');
     await notificationService.createNotification(
       userId,
       'auto_chain',
       'Workflow update',
-      data && data.message ? data.message : `${entityType} auto-created`,
-      { entityType, entityId, ...(data || {}) },
+      message,
+      { kind: 'auto_chain', entityType, entityId, ...(data || {}) },
       link || null,
     );
   } catch (_) { /* best-effort */ }

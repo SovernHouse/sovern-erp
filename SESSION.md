@@ -4,6 +4,65 @@
 
 ---
 
+## Session wrap, 2026-05-18 Desktop (Phase 4.17 Lead Draft widget + 4.26d push refactor + 4.17 guard regression + 4.28h footer notes)
+
+Continuation from the 2026-05-17 PriceList arc. Closed Alex's directive on the Lead detail Draft Cold Email widget end-to-end (OutreachEmail canonical, inline editor, rule #9 brand-safe guard, mobile parity, MCP coverage). Then knocked the four pickup-list items: Phase 4.26d Expo push refactor (DRY + dead-token cleanup), SQLITE_STORAGE-out-of-.env defense-in-depth regression lock, and a minimal Phase 4.28h footer-notes editor on mobile.
+
+**Commits this arc (all pushed):**
+
+| Commit | What |
+|---|---|
+| `c0c1f06` | feat(crm): Phase 4.17 Lead detail Draft Cold Email widget rebuild (OutreachEmail canonical + inline editor + mobile parity + MCP discard tool + 10/10 tests) |
+| (pending) | feat(push): Phase 4.26d expoPushService refactor + Phase 4.17 SQLITE_STORAGE regression lock + Phase 4.28h mobile footer-notes editor |
+
+**Phase 4.17 — Lead detail Draft Cold Email widget rebuild (commit c0c1f06)**
+
+- **Single source of truth.** OutreachEmail rows are canonical; `Lead.draftEmailSubject` / `Lead.draftEmailBody` are deprecated read-only columns. Drop migration scheduled for 4.17.x.
+- **Backfill** `migrate417LeadDraftBackfill` (sentinel `phase4_17_lead_draft_columns_backfilled`) lifts every Lead with inline draft content into an OutreachEmail status='draft' row when none exists. Milliken Lead `79487b1c-07a2-47a8-9f15-2a163a34f0cd` already has a manually-synced draft, so the migration skips it cleanly.
+- **API.** New `GET / PUT / DELETE /api/crm/leads/:id/outreach-draft`. PUT upserts (id preserved on update). DELETE writes `user_discard_outreach_draft` audit. POST `/outreach-emails` now flips an existing draft row to status='sent' in place (same id) instead of creating a parallel row.
+- **Rule #9 brand-safety guard.** `resolveBrandForOutreachOrThrow` refuses (422 `brandLeak: true`) when `lead.brandCode` is missing or its Brand row is gone/inactive. No SH fallback. Same guard applied to the MCP `send_outreach_email` handler.
+- **Frontend widget** `DraftColdEmailWidget.jsx`: always-editable subject + 12-row textarea, Save / Send / Discard buttons disabled until both fields non-whitespace, Unsaved-changes pill, 50px skeleton on load, shadcn-style Send/Discard confirmation modals, sent-state badge with Send-follow-up that seeds a touch+1 draft. Mounted in `LeadForm.jsx` outside the page-edit fieldset so it's always editable.
+- **Mobile parity.** `app/lead/[id].tsx` replaces the read-only Draft Cold Email card with the inline editor (TextInput + multi-line TextInput), Save / Send / Discard actions, bottom-sheet Send confirmation (From / To / Subject / Body preview / brand signature / Egypt BCC notice), bottom-sheet Discard confirmation, sent-state with Send-follow-up. `api.ts` exports `OutreachEmailRow` / `OutreachDraftState` + new save/discard functions.
+- **MCP coverage (rule #8).** New `discard_outreach_draft` tool (super_admin gated, `auditAiWrite('discard_outreach_draft', ...)`); `send_outreach_email` now enforces strict brand resolution and flips the draft row in place.
+- **Tests.** `phase417LeadDraftCanonical.test.js` covers all 10 scenarios from the directive. **10/10 passing.**
+- **Docs.** DEVELOPER_GUIDE API table + "Draft outreach email — OutreachEmail is canonical (Phase 4.17)" prose section.
+
+**Phase 4.26d — Mobile push refactor**
+
+- New `backend/services/expoPushService.js` is the single Expo push entry point (priority=high, default channel, **DeviceNotRegistered ticket → token isActive=false cleanup**).
+- `notificationService.sendExpoPushToUser` now delegates to `expoPushService.sendPushToUser`. Inline Expo HTTP code removed.
+- `workflowService.notifyAutoChain` passes `kind: 'auto_chain'` in data so the mobile tap-handler routes correctly. (Previously the mobile hook checked `type` but workflowService set `kind` — inconsistent.)
+- Mobile `useDevModePushNotifications.ts` tap router now accepts either `kind === 'auto_chain'` or `type === 'auto_chain'` and adds entity-tab routes for ProformaInvoice / GoodsReceivedNote / PackingList / Shipment.
+- `phase426dExpoPush.test.js` locks: 5/5 passing.
+
+**Phase 4.17 — SQLITE_STORAGE-out-of-.env defense in depth (regression test)**
+
+- `backend/.env` does NOT carry SQLITE_STORAGE (verified).
+- `__tests__/setup.js` clears `process.env.SQLITE_STORAGE` before any sequelize require.
+- `config/database.js` (test env) refuses any SQLITE_STORAGE outside `os.tmpdir()` and forces `:memory:`.
+- `phase417SqliteStorageGuard.test.js` locks all three layers shut: 3/3 passing.
+
+**Phase 4.28h — Mobile footer-notes editor**
+
+- Scoped to footer notes only (single text field). The full editor (items, hidden columns, column rename, custom columns) stays admin-only per the Three-Surface Rule deferral note in the prior session.
+- New `updatePriceList(id, patch)` in mobile `api.ts` — partial PUT, never touches items.
+- New "Edit footer notes" action + bottom-sheet modal on `app/price-list/[id].tsx`.
+- Footer notes preview rendered on the detail screen below the action row.
+
+**Memory saved (auto-memory):**
+- `reference_gcp_vm_instability.md` — GCP VM (`sovern-erp`, us-central1-f) goes offline often; don't suspect code when live API is throwing connection refused; flag VM state in deploy checks.
+
+**Pickup list for next session:**
+
+1. **Live smoke test** of the new Draft Cold Email widget on the Milliken Lead (`79487b1c-07a2-47a8-9f15-2a163a34f0cd`). Expected: backfilled draft surfaces, edit inline, Send opens the confirmation modal with FW (Malaysia) sender + signature, sent state shows "Sent at … touch 1 … by Alex". Mobile parity check via the Sovern Ops app same lead.
+2. **PM2 restart on the VM** to land the new `/outreach-draft` endpoints + flipped-draft send + strict brand guard in prod. (CI Deploy was green on `c0c1f06`; verify pm2 picked up.)
+3. **Phase 4.17.x — drop `Lead.draftEmailSubject` / `Lead.draftEmailBody`** via SQLite ALTER table rebuild. Sentinel-guarded. One-commit cleanup.
+4. **Phase 4.28h full editor** (deferred candidate): items edit, hidden columns, column rename, custom columns on mobile. Scope is large; the desktop editor remains primary path per Three-Surface Rule.
+5. **Phase 4.17 inline-mirror MCP test.** Add an MCP-driven test that calls `update_lead` with `draftEmailSubject` and asserts an OutreachEmail draft was upserted (covers the `leadWriteService` mirror path).
+6. **EU sanctions URL probe** cron-scheduled for 2026-05-18 04:00 UTC; check the streak-alert state on next session start.
+
+---
+
 ## Session wrap, 2026-05-17 Desktop continuation (Phase 4.27 + 4.28 PriceList arc)
 
 Continuation of today's Macbook work. Started by reviewing the Macbook commits, then closed the PriceList loop end-to-end: MCP tools, Odoo detail page, brand-safe PDF + email, mobile parity, free-form column editing, footer notes, chatter audit, plus a brand-leak fix that became non-negotiable rule #9.

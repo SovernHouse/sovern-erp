@@ -2116,6 +2116,17 @@ export interface PriceListItemRow {
 
 export interface PriceListDetail extends PriceListRow {
   items: PriceListItemRow[];
+  footerNotes?: string | null;
+  description?: string | null;
+}
+
+export interface PriceListPatch {
+  name?: string;
+  description?: string | null;
+  footerNotes?: string | null;
+  validFrom?: string | null;
+  validTo?: string | null;
+  isActive?: boolean;
 }
 
 export async function listPriceLists(params?: { customerId?: string; factoryId?: string; isActive?: boolean }): Promise<PriceListRow[]> {
@@ -2142,6 +2153,19 @@ export async function getPriceList(id: string): Promise<PriceListDetail | null> 
   } catch (_) {
     return null;
   }
+}
+
+// Phase 4.28h — partial PriceList update from mobile. Backend's
+// PUT /price-lists/:id is admin-only and replaces items if `items` is
+// present; we only ever send metadata fields so items stay untouched.
+// The full freeform column editor stays desktop-only per the
+// Three-Surface Rule deferral note.
+export async function updatePriceList(id: string, patch: PriceListPatch): Promise<PriceListDetail> {
+  const res = await request<{ success: boolean; data: PriceListDetail }>(
+    `/api/personalization/price-lists/${id}`,
+    { method: 'PUT', body: JSON.stringify(patch) },
+  );
+  return (res as any).data;
 }
 
 export async function sendPriceListEmail(id: string, body: { to?: string | string[]; leadId?: string; customerId?: string; subject?: string; message?: string }): Promise<{ sent: boolean; recipients: string[]; messageId?: string | null; disabled?: boolean }> {

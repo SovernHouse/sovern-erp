@@ -22,7 +22,7 @@ import {
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import {
   getPriceList, sendPriceListEmail, requestPriceListApproval,
-  priceListPdfUrl,
+  priceListPdfUrl, updatePriceList,
   type PriceListDetail, type PriceListItemRow,
 } from '../../src/services/api';
 import ChatterSection from '../../src/components/ChatterSection';
@@ -48,6 +48,7 @@ export default function PriceListDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [emailOpen, setEmailOpen] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
 
   useEffect(() => { navigation.setOptions({ title: 'Price List' }); }, []);
 
@@ -124,7 +125,21 @@ export default function PriceListDetailScreen() {
             });
           }}
         />
+        <ActionButton
+          label="Edit footer notes"
+          variant="ghost"
+          onPress={() => setNotesOpen(true)}
+        />
       </View>
+
+      {/* Footer notes preview, when set. Renders below action row so the
+          operator can confirm the change before opening the editor. */}
+      {pl.footerNotes ? (
+        <View style={styles.footerNotesBlock}>
+          <Text style={styles.metaLabel}>FOOTER NOTES</Text>
+          <Text style={styles.footerNotesText}>{pl.footerNotes}</Text>
+        </View>
+      ) : null}
 
       {/* Items list */}
       <Text style={styles.sectionTitle}>Items</Text>
@@ -169,7 +184,65 @@ export default function PriceListDetailScreen() {
         onClose={() => setApprovalOpen(false)}
         onCreated={() => { setApprovalOpen(false); load(); Alert.alert('Approval request created'); }}
       />
+      <FooterNotesModal
+        open={notesOpen}
+        priceListId={pl.id}
+        initialNotes={pl.footerNotes || ''}
+        onClose={() => setNotesOpen(false)}
+        onSaved={(saved) => { setPl(saved); setNotesOpen(false); }}
+      />
     </ScrollView>
+  );
+}
+
+function FooterNotesModal({ open, onClose, onSaved, priceListId, initialNotes }: any) {
+  const [notes, setNotes] = useState(initialNotes || '');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setNotes(initialNotes || ''); }, [initialNotes, open]);
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const updated = await updatePriceList(priceListId, { footerNotes: notes });
+      onSaved && onSaved(updated);
+    } catch (err: any) {
+      Alert.alert('Save failed', err?.message || 'Unknown error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible={open} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Footer notes</Text>
+          <Text style={styles.modalHint}>
+            Appears below the items table on the PDF and the email. Use for
+            payment terms, duty breakdown, or any free-text disclaimer.
+          </Text>
+
+          <Text style={styles.fieldLabel}>Notes</Text>
+          <TextInput
+            style={[styles.input, { height: 140 }]}
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+            textAlignVertical="top"
+            placeholder="e.g. Net 30 from invoice date. Duty/VAT borne by buyer."
+          />
+
+          <View style={styles.modalActions}>
+            <TouchableOpacity onPress={onClose} style={[styles.modalBtn, styles.modalBtnGhost]}>
+              <Text style={styles.modalBtnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={submit} disabled={saving} style={[styles.modalBtn, styles.modalBtnPrimary, saving && { opacity: 0.5 }]}>
+              <Text style={styles.modalBtnPrimaryText}>{saving ? 'Saving…' : 'Save notes'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -375,6 +448,8 @@ const styles = StyleSheet.create({
   metaValue: { fontSize: 14, fontWeight: '700', color: COLORS.ink, marginTop: 4 },
 
   description: { marginTop: 12, fontSize: 13, color: COLORS.ink, lineHeight: 18 },
+  footerNotesBlock: { marginTop: 16, padding: 12, backgroundColor: COLORS.white, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border },
+  footerNotesText: { marginTop: 6, fontSize: 13, color: COLORS.ink, lineHeight: 19 },
 
   smartRow: { flexDirection: 'row', gap: 8, marginTop: 16 },
   chip: {
