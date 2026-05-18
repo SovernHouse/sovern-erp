@@ -53,13 +53,25 @@ export function BrandsProvider({ children }) {
         api.get('/brands'),
         api.get('/brands/me'),
       ])
-      const list = listRes.data?.data || []
+      // api.js interceptor auto-unwraps { success, data } envelopes, so
+      // res.data is the payload directly. Tolerate both unwrapped and
+      // raw shapes (2026-05-18 bugfix — the .data?.data read was always
+      // returning undefined, which left brands=[] and forced every
+      // BrandPicker into the disabled "single-brand" state + every
+      // BrandBadge into the "UNKNOWN BRAND" fallback).
+      const rawList = listRes.data
+      const list = Array.isArray(rawList)
+        ? rawList
+        : (Array.isArray(rawList?.data) ? rawList.data : [])
       setBrands(list)
       const map = new Map()
       for (const b of list) map.set(b.code, b)
       setByCode(map)
 
-      const me = meRes.data?.data || {}
+      const rawMe = meRes.data
+      const me = (rawMe && typeof rawMe === 'object' && rawMe.data && typeof rawMe.data === 'object')
+        ? rawMe.data
+        : (rawMe || {})
       if (Array.isArray(me.accessibleBrands) && me.accessibleBrands.length) {
         setAccessibleBrands(me.accessibleBrands)
       }
