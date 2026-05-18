@@ -94,12 +94,22 @@ router.put('/brands/:code',
 
 // GET /api/brands — list all active brands. No brand-scope filter (the
 // brands list itself is org-wide config, not a transactional entity).
+//
+// 2026-05-18 bugfix: send Cache-Control: no-store. The previous response
+// had no cache headers, so Express set an ETag and the browser issued
+// conditional requests. The server happily returned 304 Not Modified —
+// but axios's default validateStatus rejects 304 as an error, so
+// BrandsContext silently failed and left `brands: []`. Symptom: the
+// BrandPicker disabled itself (single-brand fallback) and BrandBadge
+// showed "UNKNOWN BRAND" on every existing FW lead. no-store stops the
+// browser issuing conditional requests so every call gets a fresh 200.
 router.get('/brands', requireAuth, async (req, res) => {
   try {
     const brands = await db.Brand.findAll({
       where: { active: true },
       order: [['code', 'ASC']],
     });
+    res.set('Cache-Control', 'no-store');
     res.json({ success: true, data: brands });
   } catch (err) {
     logger.error('[brandRoutes] list failed:', err.message);
@@ -114,6 +124,7 @@ router.get('/brands/me', requireAuth, brandScope, (req, res) => {
   if (!req.brandScope) {
     return res.status(500).json({ error: 'Brand scope not initialised' });
   }
+  res.set('Cache-Control', 'no-store');
   res.json({
     success: true,
     data: {

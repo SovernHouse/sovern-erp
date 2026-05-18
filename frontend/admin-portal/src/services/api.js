@@ -8,6 +8,16 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
+  // 2026-05-18 bugfix: accept HTTP 304 as a success. axios's default
+  // validateStatus rejects 3xx, so when the browser issued a conditional
+  // request and the server returned 304 Not Modified (with the browser
+  // serving the cached body), every caller's .catch() fired and silently
+  // wiped state — most visibly BrandsContext, which left brands=[] and
+  // turned every BrandBadge into "UNKNOWN BRAND". The server is also
+  // updated to send Cache-Control: no-store on /api/brands so 304s stop
+  // happening there, but this keeps the rest of the API safe if any
+  // other endpoint ever surfaces a 304.
+  validateStatus: (status) => (status >= 200 && status < 300) || status === 304,
 })
 
 // Phase 5c: helper to read the current user id from the auth blob so
