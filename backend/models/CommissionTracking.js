@@ -106,5 +106,25 @@ module.exports = (sequelize) => {
     ]
   });
 
+  // 2026-05-18 bugfix: declare Sequelize associations so the FW
+  // commission dashboard's eager-load `include: [SalesOrder, Customer]`
+  // doesn't throw "Customer is not associated to CommissionTracking!".
+  // The FK columns exist (lines 27/75 above) but the JS-level relation
+  // was never declared, so every commissions/dashboard GET 500'd.
+  CommissionTracking.associate = (models) => {
+    if (models.SalesOrder) {
+      CommissionTracking.belongsTo(models.SalesOrder, { foreignKey: 'salesOrderId' });
+    }
+    if (models.Customer) {
+      CommissionTracking.belongsTo(models.Customer, { foreignKey: 'customerId' });
+    }
+    if (models.User) {
+      CommissionTracking.belongsTo(models.User, { foreignKey: 'userId' });
+    }
+    if (models.CommissionRule) {
+      CommissionTracking.belongsTo(models.CommissionRule, { foreignKey: 'commissionRuleId' });
+    }
+  };
+
   return CommissionTracking;
 };
