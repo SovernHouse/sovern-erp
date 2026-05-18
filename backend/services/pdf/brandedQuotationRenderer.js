@@ -77,15 +77,85 @@ function makeRendererSink(doc, opts, filepath, filename) {
  * @returns {Promise<Buffer|{filename:string, filepath:string}>}
  */
 async function dispatch(quotation, items, customer, salesPerson, brand = null, opts = {}) {
-  // Resolve brand if caller didn't pass one
-  if (!brand && quotation?.brandCode) {
-    const db = require('../../models');
-    brand = await db.Brand.findOne({
-      where: { code: quotation.brandCode, active: true },
-    });
+  // Phase 4.19a (2026-05-18) — brand-safety gateway. Replaces the
+  // pre-fix `brandCode = brand?.code || 'SH'` fallback which silently
+  // stamped SH branding on any quotation whose Brand row didn't load.
+  // Exact L-068 pattern. Now we refuse hard.
+  const db = require('../../models');
+  const {
+    resolveBrandOrThrow,
+    assertBrandSafe,
+    assertResilientNotSH,
+    isResilient,
+    BrandLeakError,
+  } = require('../brandSafetyGateway');
+
+  if (!quotation?.brandCode) {
+    throw new BrandLeakError(
+      `Refusing to render Quotation ${quotation?.id || quotation?.quotationNumber || '(unknown)'}: brandCode is missing. ` +
+      `Set it on the entity before rendering (super_admin override in the desktop ERP or update_lead via the AI assistant).`,
+      { entityId: quotation?.id || null, leakField: 'brandCode' }
+    );
   }
 
-  const brandCode = brand?.code || 'SH';
+  // Resolve via the central gateway. Throws BrandLeakError if the Brand
+  // row is missing or inactive (no silent fallback).
+  if (!brand) {
+    const resolved = await resolveBrandOrThrow(db, quotation.brandCode);
+    brand = resolved.brand;
+  }
+  const brandCode = brand.code;
+
+  // Rule #9 special case: Resilient flooring (LVT / SPC / WPC / Engineered
+  // SPC / Vinyl Sheet / Rigid Core Vinyl) is NEVER SH. Walk the items'
+  // products and refuse if any line is Resilient AND brand is SH.
+  if (brandCode === 'SH' && Array.isArray(items)) {
+    const itemSlugs = [];
+    for (const it of items) {
+      // Items typically include a Product association. Pull category slug
+      // and product_type — both legitimate signals of Resilient.
+      const p = it.Product || it.product;
+      if (p?.productType) itemSlugs.push(p.productType);
+      if (p?.category?.slug) itemSlugs.push(p.category.slug);
+    }
+    if (isResilient(itemSlugs)) {
+      throw new BrandLeakError(
+        `Refusing to render Quotation ${quotation.id}: brand is SH but line items contain Resilient flooring ` +
+        `(slugs: ${itemSlugs.filter(s => s).join(', ')}). Rule #9 — Resilient is FW or HH, never SH. ` +
+        `Flip the Quotation's brandCode via super_admin override, then retry.`,
+        { entityId: quotation.id, brandCode: 'SH', leakField: 'items_resilient_under_sh' }
+      );
+    }
+  }
+  // Same special case the OTHER direction — calling assertResilientNotSH
+  // is a no-op for FW/HH but locks the rule #9 contract regardless of brand.
+  if (Array.isArray(items)) {
+    const productSlugs = items.flatMap(it => {
+      const p = it.Product || it.product;
+      return [p?.productType, p?.category?.slug].filter(Boolean);
+    });
+    assertResilientNotSH({ brandCode, productSlugs, entityId: quotation.id });
+  }
+
+  // Pre-render content scan: any customer-facing text fields that the
+  // renderer will stamp into the PDF (notes, payment terms, header,
+  // legal footer) get checked for foreign-brand identity markers. If
+  // the AI or operator authored copy that mentions "Sovern House" on
+  // an FW quotation, refuse before we burn it into a PDF.
+  assertBrandSafe({
+    brandCode,
+    contentFields: {
+      notes: quotation.notes,
+      termsAndConditions: quotation.termsAndConditions,
+      paymentTerms: quotation.paymentTerms,
+      headerNote: quotation.headerNote,
+      footerNote: quotation.footerNote,
+      brandFooterLegalText: brand.footerLegalText,
+      brandSignatureHtml: brand.signatureHtml,
+      brandSignatureText: brand.signatureText,
+    },
+    entityId: quotation.id,
+  });
 
   if (brandCode === 'FW') {
     const variant = tokens.resolveFlorWayVariant(customer);
@@ -98,7 +168,14 @@ async function dispatch(quotation, items, customer, salesPerson, brand = null, o
     return renderFlorWayGeneric(quotation, items, customer, salesPerson, brand, opts);
   }
 
-  // SH path — delegates to legacy in C9, replaced in C10
+  if (brandCode === 'HH') {
+    // HH currently uses the FW generic template (same Resilient family,
+    // same factory-direct voice). When HH gets its own dedicated
+    // renderer, branch here.
+    return renderFlorWayGeneric(quotation, items, customer, salesPerson, brand, opts);
+  }
+
+  // SH path — brand-styled buying-house layout
   return renderSovernHouseClassic(quotation, items, customer, salesPerson, brand, opts);
 }
 

@@ -165,6 +165,21 @@ const sendEmail = async (to, subject, htmlContent, options = {}) => {
 };
 
 const sendQuotationEmail = async (customer, quotation, expiryDays = 7) => {
+  // Phase 4.19a (2026-05-18) — brand-safety gateway. Refuse to ship a
+  // quotation email without an explicit brandCode on the entity. The
+  // `sendEmail` transactional path will then run the foreign-marker
+  // scan over subject + htmlContent before the SMTP / Gmail call.
+  // Body template is intentionally still generic ("Trading ERP Team")
+  // pending Phase 4.20 per-brand templates; this commit just adds the
+  // lock so a future per-brand template can't accidentally leak.
+  const { BrandLeakError } = require('./brandSafetyGateway');
+  if (!quotation?.brandCode) {
+    throw new BrandLeakError(
+      `Refusing to send Quotation ${quotation?.id || ''} email: brandCode is missing on the entity.`,
+      { entityId: quotation?.id, leakField: 'brandCode' }
+    );
+  }
+
   const subject = `New Quotation ${quotation.quotationNumber}`;
   const content = `
     <h2>Hi ${customer.contactPerson || customer.companyName},</h2>
@@ -191,10 +206,20 @@ const sendQuotationEmail = async (customer, quotation, expiryDays = 7) => {
     <p>Best regards,<br/>Trading ERP Team</p>
   `;
   const htmlContent = generateEmailTemplate('New Quotation', content);
-  return sendEmail(customer.email, subject, htmlContent);
+  return sendEmail(customer.email, subject, htmlContent, {
+    brandCode: quotation.brandCode,
+    entityId: quotation.id,
+  });
 };
 
 const sendProformaInvoiceEmail = async (customer, pi) => {
+  const { BrandLeakError } = require('./brandSafetyGateway');
+  if (!pi?.brandCode) {
+    throw new BrandLeakError(
+      `Refusing to send Proforma Invoice ${pi?.id || ''} email: brandCode is missing on the entity.`,
+      { entityId: pi?.id, leakField: 'brandCode' }
+    );
+  }
   const subject = `Proforma Invoice ${pi.piNumber}`;
   const content = `
     <h2>Hi ${customer.contactPerson || customer.companyName},</h2>
@@ -225,10 +250,20 @@ const sendProformaInvoiceEmail = async (customer, pi) => {
     <p>Best regards,<br/>Trading ERP Team</p>
   `;
   const htmlContent = generateEmailTemplate('Proforma Invoice', content);
-  return sendEmail(customer.email, subject, htmlContent);
+  return sendEmail(customer.email, subject, htmlContent, {
+    brandCode: pi.brandCode,
+    entityId: pi.id,
+  });
 };
 
 const sendOrderConfirmationEmail = async (customer, salesOrder) => {
+  const { BrandLeakError } = require('./brandSafetyGateway');
+  if (!salesOrder?.brandCode) {
+    throw new BrandLeakError(
+      `Refusing to send Sales Order ${salesOrder?.id || ''} confirmation email: brandCode is missing.`,
+      { entityId: salesOrder?.id, leakField: 'brandCode' }
+    );
+  }
   const subject = `Order Confirmation ${salesOrder.orderNumber}`;
   const content = `
     <h2>Hi ${customer.contactPerson || customer.companyName},</h2>
@@ -259,10 +294,20 @@ const sendOrderConfirmationEmail = async (customer, salesOrder) => {
     <p>Best regards,<br/>Trading ERP Team</p>
   `;
   const htmlContent = generateEmailTemplate('Order Confirmation', content);
-  return sendEmail(customer.email, subject, htmlContent);
+  return sendEmail(customer.email, subject, htmlContent, {
+    brandCode: salesOrder.brandCode,
+    entityId: salesOrder.id,
+  });
 };
 
 const sendShipmentNotificationEmail = async (customer, shipment) => {
+  const { BrandLeakError } = require('./brandSafetyGateway');
+  if (!shipment?.brandCode) {
+    throw new BrandLeakError(
+      `Refusing to send Shipment ${shipment?.id || ''} notification email: brandCode is missing.`,
+      { entityId: shipment?.id, leakField: 'brandCode' }
+    );
+  }
   const subject = `Shipment Notification ${shipment.shipmentNumber}`;
   const content = `
     <h2>Hi ${customer.companyName},</h2>
@@ -293,7 +338,10 @@ const sendShipmentNotificationEmail = async (customer, shipment) => {
     <p>Best regards,<br/>Trading ERP Team</p>
   `;
   const htmlContent = generateEmailTemplate('Shipment Update', content);
-  return sendEmail(customer.email, subject, htmlContent);
+  return sendEmail(customer.email, subject, htmlContent, {
+    brandCode: shipment.brandCode,
+    entityId: shipment.id,
+  });
 };
 
 const sendInspectionReportEmail = async (factory, inspection) => {
@@ -365,6 +413,13 @@ const sendClaimEmail = async (customer, claim) => {
 };
 
 const sendPaymentReminderEmail = async (customer, invoice) => {
+  const { BrandLeakError } = require('./brandSafetyGateway');
+  if (!invoice?.brandCode) {
+    throw new BrandLeakError(
+      `Refusing to send payment reminder for Invoice ${invoice?.id || ''}: brandCode is missing.`,
+      { entityId: invoice?.id, leakField: 'brandCode' }
+    );
+  }
   const subject = `Payment Reminder - Invoice ${invoice.invoiceNumber}`;
   const daysOverdue = dayjs().diff(dayjs(invoice.dueDate), 'day');
 
@@ -397,10 +452,20 @@ const sendPaymentReminderEmail = async (customer, invoice) => {
     <p>Best regards,<br/>Trading ERP Team</p>
   `;
   const htmlContent = generateEmailTemplate('Payment Reminder', content);
-  return sendEmail(customer.email, subject, htmlContent);
+  return sendEmail(customer.email, subject, htmlContent, {
+    brandCode: invoice.brandCode,
+    entityId: invoice.id,
+  });
 };
 
 const sendInvoiceEmail = async (customer, invoice) => {
+  const { BrandLeakError } = require('./brandSafetyGateway');
+  if (!invoice?.brandCode) {
+    throw new BrandLeakError(
+      `Refusing to send Invoice ${invoice?.id || ''} email: brandCode is missing.`,
+      { entityId: invoice?.id, leakField: 'brandCode' }
+    );
+  }
   const subject = `Invoice ${invoice.invoiceNumber}`;
   const content = `
     <h2>Hi ${customer.contactPerson || customer.companyName},</h2>
@@ -431,10 +496,20 @@ const sendInvoiceEmail = async (customer, invoice) => {
     <p>Best regards,<br/>Trading ERP Team</p>
   `;
   const htmlContent = generateEmailTemplate('Invoice', content);
-  return sendEmail(customer.email, subject, htmlContent);
+  return sendEmail(customer.email, subject, htmlContent, {
+    brandCode: invoice.brandCode,
+    entityId: invoice.id,
+  });
 };
 
 const sendPaymentConfirmationEmail = async (customer, invoice, payment) => {
+  const { BrandLeakError } = require('./brandSafetyGateway');
+  if (!invoice?.brandCode) {
+    throw new BrandLeakError(
+      `Refusing to send payment confirmation for Invoice ${invoice?.id || ''}: brandCode is missing.`,
+      { entityId: invoice?.id, leakField: 'brandCode' }
+    );
+  }
   const subject = `Payment Confirmation - Invoice ${invoice.invoiceNumber}`;
   const content = `
     <h2>Hi ${customer.contactPerson || customer.companyName},</h2>
@@ -469,10 +544,20 @@ const sendPaymentConfirmationEmail = async (customer, invoice, payment) => {
     <p>Best regards,<br/>Trading ERP Team</p>
   `;
   const htmlContent = generateEmailTemplate('Payment Confirmation', content);
-  return sendEmail(customer.email, subject, htmlContent);
+  return sendEmail(customer.email, subject, htmlContent, {
+    brandCode: invoice.brandCode,
+    entityId: invoice.id,
+  });
 };
 
 const sendPurchaseOrderEmail = async (factory, purchaseOrder) => {
+  const { BrandLeakError } = require('./brandSafetyGateway');
+  if (!purchaseOrder?.brandCode) {
+    throw new BrandLeakError(
+      `Refusing to send PurchaseOrder ${purchaseOrder?.id || ''} email: brandCode is missing.`,
+      { entityId: purchaseOrder?.id, leakField: 'brandCode' }
+    );
+  }
   const subject = `Purchase Order ${purchaseOrder.poNumber}`;
   const content = `
     <h2>Hi ${factory.contactPerson || factory.companyName},</h2>
@@ -503,10 +588,20 @@ const sendPurchaseOrderEmail = async (factory, purchaseOrder) => {
     <p>Best regards,<br/>Trading ERP Team</p>
   `;
   const htmlContent = generateEmailTemplate('Purchase Order', content);
-  return sendEmail(factory.email, subject, htmlContent);
+  return sendEmail(factory.email, subject, htmlContent, {
+    brandCode: purchaseOrder.brandCode,
+    entityId: purchaseOrder.id,
+  });
 };
 
 const sendShipmentUpdateEmail = async (customer, shipment, event) => {
+  const { BrandLeakError } = require('./brandSafetyGateway');
+  if (!shipment?.brandCode) {
+    throw new BrandLeakError(
+      `Refusing to send Shipment ${shipment?.id || ''} update email: brandCode is missing.`,
+      { entityId: shipment?.id, leakField: 'brandCode' }
+    );
+  }
   const subject = `Shipment Update - ${shipment.shipmentNumber}`;
   const content = `
     <h2>Hi ${customer.contactPerson || customer.companyName},</h2>
@@ -537,7 +632,10 @@ const sendShipmentUpdateEmail = async (customer, shipment, event) => {
     <p>Best regards,<br/>Trading ERP Team</p>
   `;
   const htmlContent = generateEmailTemplate('Shipment Update', content);
-  return sendEmail(customer.email, subject, htmlContent);
+  return sendEmail(customer.email, subject, htmlContent, {
+    brandCode: shipment.brandCode,
+    entityId: shipment.id,
+  });
 };
 
 const sendInspectionScheduledEmail = async (factory, inspection) => {
