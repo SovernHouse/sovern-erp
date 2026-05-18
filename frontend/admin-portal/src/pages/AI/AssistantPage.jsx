@@ -188,7 +188,7 @@ async function runSlashCommand(slash, conversationId, { onResearchStarted } = {}
       const arg = slash.arg.trim().toLowerCase()
       const params = arg === 'all' ? { limit: 20 } : { paid: false, limit: 20 }
       const res = await expensesAPI.list(params)
-      const rows = res.data?.data || []
+      const rows = res.data?.data || res.data || []
       if (!rows.length) return arg === 'all' ? 'No expenses found.' : 'No unpaid expenses. 🎉'
       const lines = rows.map(e =>
         `- ${e.entryDate} · **${e.originalCurrency} ${Number(e.originalAmount).toLocaleString()}** — ${e.description || e.category}` +
@@ -201,7 +201,7 @@ async function runSlashCommand(slash, conversationId, { onResearchStarted } = {}
       const officeArg = slash.arg.trim()
       if (!officeArg) return 'Specify an office code — e.g. `/expense-report SOVERN_TW`. Run `/expenses` first to see what\'s pending.'
       const officesRes = await expensesAPI.listOffices()
-      const offices = officesRes.data?.data || []
+      const offices = officesRes.data?.data || officesRes.data || []
       const office = offices.find(o =>
         o.code?.toLowerCase() === officeArg.toLowerCase() ||
         o.displayName?.toLowerCase() === officeArg.toLowerCase(),
@@ -214,10 +214,11 @@ async function runSlashCommand(slash, conversationId, { onResearchStarted } = {}
         return `Office **${office.code}** has no export template set. PATCH /api/expense-offices/${office.id} with one of: \`expense_to_alex_v2\`, \`inspector_travel_v2\`, \`custom_csv\`.`
       }
       const subRes = await expensesAPI.createSubmission({ officeId: office.id })
-      const sub = subRes.data?.data
+      const sub = subRes.data?.data ?? subRes.data
       const repRes = await expensesAPI.generateReport(sub.id)
-      const file = repRes.data?.data?.driveFile
-      return `📑 Report generated for **${office.code}** using \`${repRes.data?.data?.templateKey}\`.\n\n${file?.webViewLink ? `[Open in Drive](${file.webViewLink})` : `Drive file ID: \`${file?.id}\``}`
+      const repBody = repRes.data?.data ?? repRes.data ?? {}
+      const file = repBody.driveFile
+      return `📑 Report generated for **${office.code}** using \`${repBody.templateKey}\`.\n\n${file?.webViewLink ? `[Open in Drive](${file.webViewLink})` : `Drive file ID: \`${file?.id}\``}`
     }
 
     default:

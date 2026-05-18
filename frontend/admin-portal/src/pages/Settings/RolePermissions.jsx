@@ -342,7 +342,7 @@ export default function RolePermissions() {
   const load = useCallback(async () => {
     try {
       const res = await api.get('/settings/role-permissions')
-      setRoles(res.data?.data || [])
+      setRoles(res.data?.data || res.data || [])
     } catch {
       toast.error('Failed to load role permissions')
     } finally {

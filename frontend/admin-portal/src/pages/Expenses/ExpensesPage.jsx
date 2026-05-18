@@ -90,9 +90,11 @@ export default function ExpensesPage() {
         expensesAPI.listOffices(),
         customersAPI.getAll({ limit: 500 }),
       ])
-      setExpenses(eRes.data?.data || [])
-      setOffices(oRes.data?.data || [])
-      setCustomers(cRes.data?.data || cRes.data?.items || [])
+      // api.js interceptor auto-unwraps {success,data} envelopes, so the
+      // payload could land at res.data OR res.data.data. Tolerate both.
+      setExpenses(eRes.data?.data || eRes.data || [])
+      setOffices(oRes.data?.data || oRes.data || [])
+      setCustomers(cRes.data?.data || cRes.data?.items || cRes.data || [])
     } catch (err) {
       toast.error(err.response?.data?.error || err.message || 'Could not load expenses')
     } finally {
@@ -144,12 +146,14 @@ export default function ExpensesPage() {
     const toastId = toast.loading('Uploading receipt to Drive…')
     try {
       const up = await aiAPI.uploadAttachment(file)
-      const driveFileId = up.data?.data?.driveFileId
+      // Tolerate envelope-unwrapped (res.data is the row) vs raw (res.data.data).
+      const upBody = up.data?.data ?? up.data ?? {}
+      const driveFileId = upBody.driveFileId
       if (!driveFileId) throw new Error('Upload returned no driveFileId')
 
       toast.loading('Reading receipt with AI…', { id: toastId })
       const ex = await expensesAPI.extractFromReceipt(driveFileId)
-      const fields = ex.data?.data || {}
+      const fields = ex.data?.data || ex.data || {}
 
       const draft = {
         entryDate:          fields.entryDate          || new Date().toISOString().slice(0, 10),
@@ -161,7 +165,7 @@ export default function ExpensesPage() {
         receiptDriveFileIds:         fields.receiptDriveFileIds || [driveFileId],
         aiExtractedFromDriveFileId:  fields.aiExtractedFromDriveFileId || driveFileId,
         aiExtractionConfidence:      fields.aiExtractionConfidence != null ? fields.aiExtractionConfidence : (fields.confidence ?? null),
-        _receiptWebViewLink:         up.data?.data?.webViewLink || null,
+        _receiptWebViewLink:         upBody.webViewLink || null,
       }
 
       setDrawerExpense(draft)
@@ -184,9 +188,10 @@ export default function ExpensesPage() {
     try {
       toast.loading('Bundling expenses + generating report…', { id: 'gen' })
       const subRes = await expensesAPI.createSubmission({ officeId })
-      const sub = subRes.data?.data
+      const sub = subRes.data?.data ?? subRes.data
       const repRes = await expensesAPI.generateReport(sub.id)
-      const file = repRes.data?.data?.driveFile
+      const repBody = repRes.data?.data ?? repRes.data ?? {}
+      const file = repBody.driveFile
       toast.success('Report ready in Drive', { id: 'gen' })
       if (file?.webViewLink) window.open(file.webViewLink, '_blank', 'noopener')
       load()
@@ -392,12 +397,13 @@ function ExpenseDrawer({ expense, customers, offices, onClose, onSaved }) {
     const toastId = toast.loading('Uploading receipt to Drive…')
     try {
       const up = await aiAPI.uploadAttachment(file)
-      const driveFileId = up.data?.data?.driveFileId
+      const upBody = up.data?.data ?? up.data ?? {}
+      const driveFileId = upBody.driveFileId
       if (!driveFileId) throw new Error('Upload returned no driveFileId')
 
       toast.loading('Reading receipt with AI…', { id: toastId })
       const ex = await expensesAPI.extractFromReceipt(driveFileId)
-      const f = ex.data?.data || {}
+      const f = ex.data?.data || ex.data || {}
 
       setForm(prev => ({
         ...prev,

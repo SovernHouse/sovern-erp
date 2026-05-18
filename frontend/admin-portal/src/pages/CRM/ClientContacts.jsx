@@ -197,9 +197,10 @@ function ComposePanel({ prospect, onClose, onSent }) {
   const [selectedSigId, setSelectedSigId] = useState('');
 
   useEffect(() => {
-    api.get(`/crm/email-templates?brandCode=${prospectBrandCode}`).then(r => setTemplates(r.data?.data || [])).catch(() => {});
+    // Tolerate envelope-unwrapped (res.data is the array) and raw shapes.
+    api.get(`/crm/email-templates?brandCode=${prospectBrandCode}`).then(r => setTemplates(r.data?.data || r.data || [])).catch(() => {});
     api.get('/crm/email-signatures').then(r => {
-      const sigs = r.data?.data || [];
+      const sigs = r.data?.data || r.data || [];
       setSignatures(sigs);
       const def = sigs.find(s => s.isDefault);
       if (def) setSelectedSigId(def.id);
@@ -216,7 +217,8 @@ function ComposePanel({ prospect, onClose, onSent }) {
     setSavingTpl(true);
     try {
       const res = await api.post('/crm/email-templates', { name: saveName.trim(), subject: form.subject, bodyText: form.bodyText, brandCode: prospectBrandCode });
-      setTemplates(ts => [...ts, res.data.data]);
+      const saved = res.data?.data ?? res.data;
+      if (saved && saved.id) setTemplates(ts => [...ts, saved]);
       setSaveName(''); setShowSave(false);
     } catch {}
     setSavingTpl(false);
@@ -1418,12 +1420,12 @@ function BulkSendModal({ selectedLeads, onClose, onComplete }) {
   // Re-fetch templates when the from-address brand changes.
   useEffect(() => {
     const brandCode = fromOptions.find(o => o.value === form.fromAddress)?.code || 'SH';
-    api.get(`/crm/email-templates?brandCode=${brandCode}`).then(r => setTemplates(r.data?.data || [])).catch(() => {});
+    api.get(`/crm/email-templates?brandCode=${brandCode}`).then(r => setTemplates(r.data?.data || r.data || [])).catch(() => {});
   }, [form.fromAddress]);
 
   useEffect(() => {
     api.get('/crm/email-signatures').then(r => {
-      const sigs = r.data?.data || [];
+      const sigs = r.data?.data || r.data || [];
       setSignatures(sigs);
       const def = sigs.find(s => s.isDefault);
       if (def) setSelectedSigId(def.id);
@@ -1441,7 +1443,8 @@ function BulkSendModal({ selectedLeads, onClose, onComplete }) {
     const currentBrandCode = fromOptions.find(o => o.value === form.fromAddress)?.code || 'SH';
     try {
       const res = await api.post('/crm/email-templates', { name: saveName.trim(), subject: form.subjectTemplate, bodyText: form.bodyTemplate, brandCode: currentBrandCode });
-      setTemplates(ts => [...ts, res.data.data]);
+      const saved = res.data?.data ?? res.data;
+      if (saved && saved.id) setTemplates(ts => [...ts, saved]);
       setSaveName(''); setShowSave(false);
     } catch {}
     setSavingTpl(false);

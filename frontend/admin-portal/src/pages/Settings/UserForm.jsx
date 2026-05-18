@@ -50,7 +50,7 @@ export default function UserForm() {
     // Fetch live roles from DB (includes custom roles)
     api.get('/settings/role-permissions')
       .then(res => {
-        const opts = (res.data?.data || []).map(r => ({ value: r.role, label: r.label }))
+        const opts = (res.data?.data || res.data || []).map(r => ({ value: r.role, label: r.label }))
         if (opts.length > 0) setRoleOptions(opts)
       })
       .catch(() => {}) // fall back to DEFAULT_ROLES

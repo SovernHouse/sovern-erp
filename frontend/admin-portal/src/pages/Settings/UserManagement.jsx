@@ -502,7 +502,7 @@ export default function UserManagement() {
   const loadRoles = async () => {
     try {
       const res = await api.get('/settings/role-permissions')
-      const opts = (res.data?.data || []).map((r) => ({ value: r.role, label: r.label || roleLabel(r.role) }))
+      const opts = (res.data?.data || res.data || []).map((r) => ({ value: r.role, label: r.label || roleLabel(r.role) }))
       if (opts.length > 0) {
         setRoles(opts)
         return

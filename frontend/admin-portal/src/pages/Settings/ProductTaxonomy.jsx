@@ -37,7 +37,8 @@ function AddChildRow({ parentId, onSaved, onCancel }) {
     setSaving(true);
     try {
       const res = await api.post('/products/categories', { name: name.trim(), parentId });
-      onSaved(res.data.data);
+      // Tolerate envelope-unwrapped (res.data is the row) vs raw (res.data.data).
+      onSaved(res.data?.data ?? res.data);
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to create sub-category');
     } finally {
@@ -105,7 +106,7 @@ function SubCategoryRow({ child, onUpdate, onDelete, onMoveUp, onMoveDown, isFir
     if (!newName) return;
     try {
       const res = await api.put(`/products/categories/${child.id}`, { name: newName });
-      onUpdate({ ...child, ...res.data.data, children });
+      onUpdate({ ...child, ...(res.data?.data ?? res.data ?? {}), children });
       setEditing(false);
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to update');
@@ -250,7 +251,7 @@ function ParentCard({ category, onUpdate, onDelete, onMoveUp, onMoveDown, onArch
     if (!newName) return;
     try {
       const res = await api.put(`/products/categories/${category.id}`, { name: newName });
-      onUpdate({ ...category, ...res.data.data, children });
+      onUpdate({ ...category, ...(res.data?.data ?? res.data ?? {}), children });
       setEditingName(false);
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to update');
@@ -475,11 +476,12 @@ export default function ProductTaxonomy() {
         sortOrder,
         parentId: null,
       });
-      setCategories(prev => [...prev, { ...res.data.data, children: [] }]);
+      const created = res.data?.data ?? res.data ?? {};
+      setCategories(prev => [...prev, { ...created, children: [] }]);
       setNewParentName('');
       setNewParentIcon('');
       setAddingParent(false);
-      showToast(`"${res.data.data.name}" category created`);
+      showToast(`"${created.name}" category created`);
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to create category', 'error');
     } finally {

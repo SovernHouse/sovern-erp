@@ -102,7 +102,7 @@ export default function ResearchPage() {
       if (statusFilter) params.status = statusFilter
       if (modeFilter) params.mode = modeFilter
       const res = await researchAPI.listTasks(params)
-      setTasks(res.data?.data ?? [])
+      setTasks(res.data?.data ?? res.data ?? [])
     } catch (err) {
       toast.error(err.response?.data?.error || err.message || 'Could not load research tasks')
     } finally {
@@ -122,7 +122,7 @@ export default function ResearchPage() {
   async function refreshSelected(id) {
     try {
       const res = await researchAPI.getTask(id)
-      setSelected(res.data?.data ?? null)
+      setSelected(res.data?.data ?? res.data ?? null)
     } catch (err) {
       toast.error(err.response?.data?.error || err.message || 'Could not load task')
     }
