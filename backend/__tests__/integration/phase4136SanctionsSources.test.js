@@ -42,10 +42,13 @@ describe('Phase 4.13.6 — sanctions source URLs + streak detector', () => {
       expect(src.url).toMatch(/token=dG9rZW4tMjAxNw$/);
     });
 
-    it('UN URL is unchanged (still working upstream)', () => {
+    it('UN URL points to the post-2026-05 Azure Blob endpoint', () => {
+      // 2026-05-18: UN migrated the consolidated XML from
+      // scsanctions.un.org to Azure Blob storage; the legacy URL
+      // started returning 404 mid-week.
       const src = svc.SOURCES.find(s => s.key === 'un_consolidated');
       expect(src).toBeDefined();
-      expect(src.url).toMatch(/^https:\/\/scsanctions\.un\.org\//);
+      expect(src.url).toMatch(/^https:\/\/unsolprodfiles\.blob\.core\.windows\.net\/publiclegacyxmlfiles\/EN\/consolidated\.xml$/);
     });
   });
 
@@ -207,9 +210,15 @@ urlCheckDescribe('Phase 4.13.6 — real-URL HEAD probe (weekly)', () => {
 
   it.each(svc.SOURCES)('$key URL responds 200/302/304', async (src) => {
     const r = await head(src.url);
-    expect(
-      [200, 301, 302, 304].includes(r.status),
-      `${src.key} (${src.url}) → ${r.status} ${r.error || ''}`,
-    ).toBe(true);
+    const ok = [200, 301, 302, 304].includes(r.status);
+    // Modern Jest (28+) rejects a second arg to expect(...). Throw with
+    // a descriptive message instead so CI logs still show which URL
+    // drifted and what status was returned.
+    if (!ok) {
+      throw new Error(
+        `${src.key} URL drift: ${src.url} returned ${r.status} ${r.error || ''}`.trim()
+      );
+    }
+    expect(ok).toBe(true);
   });
 });

@@ -87,7 +87,14 @@ const SOURCES = [
   {
     key: 'un_consolidated',
     label: 'UN Consolidated',
-    url: 'https://scsanctions.un.org/resources/xml/en/consolidated.xml',
+    // 2026-05-18: scsanctions.un.org/resources/xml/en/consolidated.xml
+    // started returning 404. The UN Subsidiary Organs Branch migrated
+    // the public XML to Azure Blob storage. The HTML viewer at
+    // unsolprodfiles.blob.core.windows.net/publiclegacyxmlfiles/EN/
+    // consolidatedLegacyByNAME.html linked from main.un.org points to
+    // this same container; the sibling .xml is the schema-conformant
+    // file (CONSOLIDATED_LIST root, sc-sanctions.xsd).
+    url: 'https://unsolprodfiles.blob.core.windows.net/publiclegacyxmlfiles/EN/consolidated.xml',
     file: 'un_consolidated.xml',
     format: 'xml',
     parser: parseUnXml,
