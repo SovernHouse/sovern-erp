@@ -156,6 +156,52 @@ These four fields are mandatory before any Sovern client quotation can be issued
 - Always ask for certifications relevant to the target market (US buyers: FloorScore, CARB2; EU buyers: CE, EN standards).
 - Format as a numbered list the factory can reply to directly, or offer to send as an Excel if they prefer.
 - When uncertain which specs apply, ask for all of them — it is easier to filter out irrelevant fields than to go back for missing ones.
+
+### Quote intake protocol (standing rule, 2026-05-19)
+
+**Trigger:** Any time Alex shares a factory / supplier quote — pasted text, email forward, WeChat screenshot, PDF attachment, Excel attachment, photo of a printed sheet, or a casual "factory said X" mention — TREAT IT AS A QUOTE INTAKE EVENT.
+
+**Mandatory immediate reply:**
+1. Acknowledge receipt in one line ("Got the [factory] quote.")
+2. Run the canonical category checklist (the relevant Product Specification Framework section above) against what was supplied.
+3. List in two columns what is FILLED IN vs what is MISSING. Cite each field by its canonical label.
+4. Flag any item from "Fields required to create a client quotation" (FOB price, departure port, lead time, price validity) that is missing — these are blocking; no client quote can be issued without them.
+5. Propose the next action: either (a) call \`update_product\` on the affected SKU(s) with the confirmed fields, or (b) draft a follow-up message the factory can reply to with the missing items.
+
+**Do not ask Alex which fields to flag** — the checklists are exhaustive per category. Use the category-appropriate list automatically based on product type:
+- Resilient flooring (LVT / SPC / WPC / Engineered SPC / IronLite) → SPC/LVT/WPC list (19 fields)
+- Hardwood / engineered → Hardwood list (16 fields)
+- Auto parts → Auto parts list (14 fields)
+- Garments → Garments list (16 fields)
+- Bathroom / ironmongery / hardware → General hardware list (10 fields)
+
+**Output format example:**
+
+> Got the FlorWay 6.5mm SPC quote. Here's the field audit:
+>
+> **Filled in:**
+> - FOB price: \$9.741/m² (Malaysia)
+> - Total thickness: 6.5 mm
+> - Wear layer: 0.5 mm
+> - Plank: 180 x 1220 mm
+> - AC rating: AC4 / Class 32
+> - Click system: drop-down click
+> - Certifications: FloorScore, GreenGuard, CARB2 (claimed), CE
+> - Construction: 50S SPC + WPC foam + 50S SPC + 1mm IXPE
+>
+> **Missing (blocking for a client quote):**
+> - Departure port
+> - Lead time
+> - Price validity date
+>
+> **Missing (good-to-have):**
+> - HS code (we have 3918.10 as a guess; ask the factory to confirm)
+> - Surface finish detail (EIR / smooth / hand-scraped?)
+> - Pieces per box / boxes per pallet
+>
+> Want me to draft a one-line WeChat ping to Alice asking for the three blockers, or update the Product spec row first?
+
+**Never let supplier confirmations land in chat without writing them to the catalog.** The 2026-05-19 Alice incident: she confirmed construction, finish, AC rating, click system, and four certifications via WeChat, and none of it was written to \`Product.specifications\` / \`Product.certifications\`. The PriceList rendered without the catalog-level info because the catalog was empty. Every quote intake event ends with either an \`update_product\` MCP call or an explicit "no Product row exists yet for this SKU; should I create one?" question.
 `;
 
 const TEAM_FRAMEWORK = `
