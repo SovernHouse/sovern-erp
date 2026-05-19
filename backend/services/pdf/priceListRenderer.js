@@ -19,6 +19,9 @@ const PDFDocument = require('pdfkit');
 const { formatCurrency } = require('../../utils/helpers');
 const { resolveTokens, registerBrandFonts } = require('./brandStyleTokens');
 const { resolveBrand, assertBrandSafe, BrandLeakError } = require('../priceListBrandResolver');
+const {
+  displayUnit, displayPrice, originPortFor,
+} = require('./priceFormatHelpers');
 
 const PAGE_MARGIN = 50;
 // Phase 4.28d follow-up: per-PriceList column visibility. hidden_columns
@@ -26,27 +29,30 @@ const PAGE_MARGIN = 50;
 // reflow to fill the row. SKU + productName + price are always shown
 // (the minimum needed for a useful price list). The renderer normalizes
 // the ratios so the remaining columns fill 100% of the row.
+//
+// Phase 4.28m (2026-05-19): widened SKU default 0.22 → 0.28 to fit the
+// new ILMY-180x1220-12.0mm / ILCN-180x1220-12.0mm origin-prefixed SKUs.
+// Per-list manual override via PriceList.columnWidths takes precedence.
 const ALWAYS_VISIBLE = new Set(['sku', 'productName', 'price']);
 const DEFAULT_COL_RATIOS = {
-  sku:          0.22,
-  productName:  0.34,
+  sku:          0.28,
+  productName:  0.30,
   unit:         0.08,
   moq:          0.10,
-  lead:         0.12,
+  lead:         0.10,
   price:        0.14,
 };
 const COL_ORDER = ['sku', 'productName', 'unit', 'moq', 'lead', 'price'];
-// "LEAD (D)" was overflowing the 0.10-ratio column (Alex feedback
-// 2026-05-17, header rendered as "LEAD (D" with the closing paren
-// cut). Bumped lead to 0.12 and stripped the parenthetical; the unit
-// (days) is implicit on a trade price list.
+// Phase 4.28m: price column header is "FOB PRICE" with the origin
+// port rendered as a smaller subline beneath. Other columns use a
+// single label.
 const COL_HEADERS = {
   sku:         'SKU',
   productName: 'PRODUCT',
   unit:        'UNIT',
   moq:         'MOQ',
   lead:        'LEAD',
-  price:       'PRICE',
+  price:       'FOB PRICE',
 };
 
 // Custom columns (defined per-PriceList via columnDefinitions) get a
@@ -55,16 +61,27 @@ const COL_HEADERS = {
 // the standard cols.
 const CUSTOM_COL_RATIO = 0.10;
 
-function resolveColumns(hiddenList, customDefs, labelOverrides) {
+function resolveColumns(hiddenList, customDefs, labelOverrides, widthOverrides) {
   const hidden = new Set(
     (Array.isArray(hiddenList) ? hiddenList : []).map(s => String(s).toLowerCase()),
   );
   const labels = (labelOverrides && typeof labelOverrides === 'object' && !Array.isArray(labelOverrides))
     ? labelOverrides : {};
+  const widths = (widthOverrides && typeof widthOverrides === 'object' && !Array.isArray(widthOverrides))
+    ? widthOverrides : {};
   const headerFor = (k) => {
     const override = labels[k];
     if (override && String(override).trim()) return String(override).trim().toUpperCase();
     return COL_HEADERS[k];
+  };
+  // Phase 4.28m: per-list manual width override on PriceList.columnWidths.
+  // Caller passes a {sku:0.30, price:0.18, ...} map; missing keys fall
+  // back to the renderer default. Final widths are normalised to sum 1.0.
+  const widthFor = (k, fallback) => {
+    const raw = widths[k];
+    if (raw == null || raw === '') return fallback;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
   };
   const visible = [];
 
@@ -74,7 +91,7 @@ function resolveColumns(hiddenList, customDefs, labelOverrides) {
       kind:    'std',
       key:     k,
       header:  headerFor(k),
-      ratio:   DEFAULT_COL_RATIOS[k],
+      ratio:   widthFor(k, DEFAULT_COL_RATIOS[k]),
       align:   (k === 'moq' || k === 'lead' || k === 'price') ? 'right' : 'left',
     });
   }
@@ -87,7 +104,7 @@ function resolveColumns(hiddenList, customDefs, labelOverrides) {
       key:       `custom:${c.key}`,
       customKey: c.key,
       header:    String(c.label || c.key).toUpperCase(),
-      ratio:     CUSTOM_COL_RATIO,
+      ratio:     widthFor(`custom:${c.key}`, CUSTOM_COL_RATIO),
       type,
       align:     (type === 'number' || type === 'boolean') ? 'right' : 'left',
     });
@@ -266,7 +283,11 @@ async function renderPriceListPdf(priceList, opts = {}) {
       if (typeof columnLabels === 'string') {
         try { columnLabels = JSON.parse(columnLabels); } catch (_) { columnLabels = {}; }
       }
-      const visibleCols = resolveColumns(hiddenList, customDefs, columnLabels);
+      let columnWidths = priceList.columnWidths || priceList.column_widths || {};
+      if (typeof columnWidths === 'string') {
+        try { columnWidths = JSON.parse(columnWidths); } catch (_) { columnWidths = {}; }
+      }
+      const visibleCols = resolveColumns(hiddenList, customDefs, columnLabels, columnWidths);
 
       // Precompute width + x for each column. Column object gets .width
       // and .x mutated in place so the rest of the rendering can read
@@ -280,13 +301,24 @@ async function renderPriceListPdf(priceList, opts = {}) {
         }
       }
 
-      // Header row — brand-tinted (cream / accent) with primary-color text.
-      doc.rect(PAGE_MARGIN, tableTop, pageWidth, 22).fill(tokens.accentColor || '#F1F5F9');
-      doc.fillColor(tokens.primaryColor).fontSize(9).font(fonts.bodyBold);
+      // Phase 4.28m: header row is now 30pt tall so the FOB PRICE column
+      // can carry a port subline ("Port Klang" for FW, "Shanghai" for
+      // HH) under the main label. Other columns still render the single
+      // label vertically centred in the band.
+      const HEADER_H = 30;
+      const portSubline = originPortFor(resolution.brand);
+      doc.rect(PAGE_MARGIN, tableTop, pageWidth, HEADER_H).fill(tokens.accentColor || '#F1F5F9');
       for (const c of visibleCols) {
         const opts = { width: c.width - 12 };
         if (c.align === 'right') opts.align = 'right';
-        doc.text(c.header, c.x + 6, tableTop + 7, opts);
+        // Main label
+        doc.fillColor(tokens.primaryColor).fontSize(9).font(fonts.bodyBold);
+        doc.text(c.header, c.x + 6, tableTop + 6, opts);
+        // Port subline under FOB PRICE only (other columns stay clean).
+        if (c.kind === 'std' && c.key === 'price' && portSubline) {
+          doc.fillColor(tokens.steel || '#64748B').fontSize(7).font(fonts.body);
+          doc.text(portSubline, c.x + 6, tableTop + 18, opts);
+        }
       }
 
       // Rows. Phase 4.28d follow-up: each row's height is now derived
@@ -294,7 +326,7 @@ async function renderPriceListPdf(priceList, opts = {}) {
       // long custom value is usually the longest). All cells wrap
       // (lineBreak:true) so no truncation; the row rectangle grows to
       // fit. Minimum 18pt for single-line readability.
-      y = tableTop + 22;
+      y = tableTop + HEADER_H;
       const items = Array.isArray(priceList.items) ? priceList.items : [];
       const currency = priceList.currencyCode || 'USD';
       const MIN_ROW_HEIGHT = 18;
@@ -317,10 +349,15 @@ async function renderPriceListPdf(priceList, opts = {}) {
         switch (col.key) {
           case 'sku':         return item.sku || null;
           case 'productName': return item.productName || null;
-          case 'unit':        return item.unit || 'sqm';
+          // Phase 4.28m: display unit goes through the shared mapper
+          // ('sqm' → 'M2', etc.). Raw db value stays 'sqm'.
+          case 'unit':        return displayUnit(item.unit || 'sqm');
           case 'moq':         return item.minimumOrder != null ? String(item.minimumOrder) : null;
           case 'lead':        return item.leadTimeDays != null ? String(item.leadTimeDays) : null;
-          case 'price':       return fmtMoney(item.sellingPrice, currency);
+          // Phase 4.28m: price renders as "$9.10/M2" via the shared
+          // helper. Unit on each item defaults to 'sqm' (the column
+          // value), which displayUnit normalises to M2.
+          case 'price':       return displayPrice(item.sellingPrice, currency, item.unit || 'sqm');
           default:            return null;
         }
       };

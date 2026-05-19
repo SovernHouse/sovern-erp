@@ -78,6 +78,10 @@ const PriceListManager = () => {
   // for standard column headers (e.g. cost: 'FOB'). Empty / missing key
   // falls back to the default label from STANDARD_ITEM_COLS.
   const [columnLabels, setColumnLabels] = useState({})
+  // Phase 4.28m: per-list manual width override for each column. Shape:
+  // { sku: 0.30, productName: 0.32, price: 0.18, ... }. Empty / missing
+  // key falls back to the renderer's default ratio. Number 0.05–0.50.
+  const [columnWidths, setColumnWidths] = useState({})
   // Free-text block rendered at the bottom of the PDF (payment terms,
   // duty breakdown, Incoterm caveat, sample policy).
   const [footerNotes, setFooterNotes] = useState('')
@@ -174,6 +178,11 @@ const PriceListManager = () => {
         try { labels = JSON.parse(labels) } catch (_) { labels = {} }
       }
       setColumnLabels(labels && typeof labels === 'object' && !Array.isArray(labels) ? labels : {})
+      let widths = priceList.columnWidths
+      if (typeof widths === 'string') {
+        try { widths = JSON.parse(widths) } catch (_) { widths = {} }
+      }
+      setColumnWidths(widths && typeof widths === 'object' && !Array.isArray(widths) ? widths : {})
       setFooterNotes(priceList.footerNotes || '')
     } catch (error) {
       console.error('Failed to load price list details:', error)
@@ -198,6 +207,7 @@ const PriceListManager = () => {
     setColumnDefs([])
     setHiddenStandardCols([])
     setColumnLabels({})
+    setColumnWidths({})
     setFooterNotes('')
     setSelectedPriceList(null)
   }
@@ -383,6 +393,7 @@ const PriceListManager = () => {
         columnDefinitions: columnDefs,
         hiddenColumns: hiddenStandardCols,
         columnLabels: columnLabels,
+        columnWidths: columnWidths,
         footerNotes: footerNotes || null,
         items: cleanItems,
       }
@@ -871,6 +882,26 @@ const PriceListManager = () => {
                             setColumnLabels(next)
                           }}
                           className="flex-1 min-w-0 px-2 py-1 border border-slate-300 rounded text-sm"
+                        />
+                        {/* Phase 4.28m: per-column width override. Empty
+                            input = renderer default. Number 0.05–0.50
+                            represents share of page width. */}
+                        <span className="text-xs text-slate-400">Width:</span>
+                        <input
+                          type="number"
+                          min={0.05} max={0.5} step={0.01}
+                          value={columnWidths[opt.k] ?? ''}
+                          placeholder="auto"
+                          onChange={(e) => {
+                            const next = { ...columnWidths }
+                            const v = e.target.value
+                            const n = parseFloat(v)
+                            if (Number.isFinite(n) && n > 0) next[opt.k] = n
+                            else delete next[opt.k]
+                            setColumnWidths(next)
+                          }}
+                          className="w-20 px-2 py-1 border border-slate-300 rounded text-sm text-right"
+                          title="Share of page width (0.05–0.50). Empty for renderer default."
                         />
                       </div>
                     )

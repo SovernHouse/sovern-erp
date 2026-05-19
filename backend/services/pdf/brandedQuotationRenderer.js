@@ -389,13 +389,18 @@ function drawFwCustomerAndMeta(doc, t, fonts, quotation, customer, salesPerson, 
 // applies to area-based units (sqm <-> sqft). Other units (box, piece,
 // pallet, etc.) pass through unchanged.
 function convertLineForDisplay(item, displayAreaUnit) {
+  // Phase 4.28m: route the final unitLabel through the shared
+  // displayUnit helper so 'sqm' → 'M2', 'sqft' → 'SQFT', etc. The
+  // canonical storage value is unchanged; the display surface is
+  // consistent across PriceList, Quotation, PI, SO, Invoice, PO.
+  const { displayUnit } = require('./priceFormatHelpers');
   const lineUnit = (item.unit || '').toLowerCase();
   const isArea = lineUnit === 'sqm' || lineUnit === 'sqft';
   if (!isArea || !displayAreaUnit || displayAreaUnit === lineUnit) {
     return {
       qty: Number(item.quantity || 0),
       unitPrice: Number(item.unitPrice || 0),
-      unitLabel: item.unit || 'unit',
+      unitLabel: displayUnit(item.unit || 'unit'),
     };
   }
   // Need to convert. Treat the stored values as canonical for `lineUnit`
@@ -404,20 +409,20 @@ function convertLineForDisplay(item, displayAreaUnit) {
     return {
       qty: sqmToSqft(item.quantity || 0),
       unitPrice: pricePerSqmToPricePerSqft(item.unitPrice || 0),
-      unitLabel: 'sqft',
+      unitLabel: displayUnit('sqft'),
     };
   }
   if (lineUnit === 'sqft' && displayAreaUnit === 'sqm') {
     return {
       qty: (Number(item.quantity || 0)) / 10.7639104167097,
       unitPrice: (Number(item.unitPrice || 0)) * 10.7639104167097,
-      unitLabel: 'sqm',
+      unitLabel: displayUnit('sqm'),
     };
   }
   return {
     qty: Number(item.quantity || 0),
     unitPrice: Number(item.unitPrice || 0),
-    unitLabel: item.unit || 'unit',
+    unitLabel: displayUnit(item.unit || 'unit'),
   };
 }
 

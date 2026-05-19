@@ -54,7 +54,7 @@ const generateSalesOrderPDF = (salesOrder, items, customer, factory, opts = {}) 
       const rows = items.map(item => [
         item.product?.name || 'N/A',
         item.quantity.toString(),
-        item.unit,
+        require('./priceFormatHelpers').displayUnit(item.unit),
         formatCurrency(item.unitPrice, salesOrder.currency),
         formatCurrency(item.total, salesOrder.currency)
       ]);
@@ -121,7 +121,7 @@ const generatePurchaseOrderPDF = (purchaseOrder, items, factory, opts = {}) => {
       const rows = items.map(item => [
         item.product?.name || 'N/A',
         item.quantity.toString(),
-        item.unit,
+        require('./priceFormatHelpers').displayUnit(item.unit),
         formatCurrency(item.unitPrice, purchaseOrder.currency),
         formatCurrency(item.total, purchaseOrder.currency)
       ]);
@@ -181,7 +181,7 @@ const generatePackingListPDF = (packingList, items, opts = {}) => {
       const rows = items.map(item => [
         item.product?.name || 'N/A',
         item.quantity.toString(),
-        item.unit,
+        require('./priceFormatHelpers').displayUnit(item.unit),
         item.packageNumber || 'N/A',
         `${item.grossWeight || 0} kg`
       ]);

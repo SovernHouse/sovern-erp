@@ -555,6 +555,8 @@ db.sequelize.authenticate()
       "ALTER TABLE ProductPrices ADD COLUMN price_type VARCHAR(10) DEFAULT 'FOB'",
       // ProductSpecification client-visible fields selector
       'ALTER TABLE ProductSpecifications ADD COLUMN client_visible_fields TEXT',
+      // Phase 4.28m: PriceList.column_widths for per-list manual width override
+      'ALTER TABLE PriceList ADD COLUMN column_widths TEXT',
     ];
     for (const sql of additiveMigrations) {
       try {

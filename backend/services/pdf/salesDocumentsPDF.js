@@ -53,7 +53,7 @@ const generateQuotationPDF = (quotation, items, customer, salesPerson, opts = {}
       const rows = items.map(item => [
         item.product?.name || 'N/A',
         item.quantity.toString(),
-        item.unit,
+        require('./priceFormatHelpers').displayUnit(item.unit),
         formatCurrency(item.unitPrice, quotation.currency),
         formatCurrency(item.total, quotation.currency)
       ]);
@@ -129,7 +129,7 @@ const generateProformaInvoicePDF = (pi, items, customer, opts = {}) => {
       const rows = items.map(item => [
         item.product?.name || 'N/A',
         item.quantity.toString(),
-        item.unit,
+        require('./priceFormatHelpers').displayUnit(item.unit),
         formatCurrency(item.unitPrice, pi.currency),
         formatCurrency(item.total, pi.currency)
       ]);
@@ -281,7 +281,7 @@ const generateSalesNotePDF = (pi, items, customer, signedBy = {}, opts = {}) => 
         doc.text(productName, colX[0] + 2, y + 4, { width: colW[0] - 4 });
         doc.text(sku, colX[1] + 2, y + 4, { width: colW[1] - 4 });
         doc.text(String(item.quantity || 0), colX[2] + 2, y + 4, { width: colW[2] - 4 });
-        doc.text(item.unit || '—', colX[3] + 2, y + 4, { width: colW[3] - 4 });
+        doc.text(require('./priceFormatHelpers').displayUnit(item.unit || '—'), colX[3] + 2, y + 4, { width: colW[3] - 4 });
         doc.text(formatCurrency(item.unitPrice, pi.currency), colX[4] + 2, y + 4, { width: colW[4] - 4 });
         doc.text(formatCurrency(item.total, pi.currency), colX[5] + 2, y + 4, { width: colW[5] - 4 });
         y += rowH;

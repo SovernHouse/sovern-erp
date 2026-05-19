@@ -81,6 +81,18 @@ module.exports = (sequelize) => {
       allowNull: true,
       defaultValue: {},
     },
+    // Phase 4.28m (2026-05-19). Per-PriceList width override for each
+    // standard or custom column. Shape: { sku: 0.30, productName: 0.32,
+    // price: 0.18, ... } where each value is the column's share of the
+    // page width as a decimal. Renderer normalises all visible widths
+    // so they sum to 1.0; missing keys fall back to the built-in
+    // default ratio. Lets the operator widen the SKU column for the
+    // longer ILMY/ILCN SKUs without touching the codebase.
+    columnWidths: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: {},
+    },
     // Phase 4.28d second follow-up. Free-text block rendered at the
     // bottom of the PDF (above the brand footer). Used for payment
     // terms, duty breakdown, Incoterm clarification, lead-time caveats,
