@@ -44,7 +44,7 @@ The construction headline used in customer materials:
 | **Wear layer** | **50S = 0.5 mm = 20 mil.** Conversion key: 100S = 1 mm. |
 | **AC rating** | **AC4 / Class 32 (commercial light).** Per Alice via WeChat 2026-05-19, applies when wear layer is 50S. |
 | **Surface Finish** | **Ultra Scratch Resistant UV Lacquer.** Standard across all SKUs. |
-| **Surface Texture** | **Embossed.** EIR (Embossed In Register) available as an upgrade at **+$0.20/m²** (negotiable, per Alex 2026-05-19). |
+| **Surface Texture (customer-facing)** | **Embossed (EIR +$0.20/m²).** No more, no less. Buyer never sees the words "uplift" or "negotiable" — those are internal. The $0.20 is Alex's marker, negotiable per-deal, but the customer-facing label stays as printed. |
 | **Lock System** | **Unilin** (patent-licensed). Supersedes the earlier "drop-down click" / "Click System" / "Installation Method" notes. |
 | **Bevel** | **Micro-Bevel.** |
 | **Construction (canonical, per total thickness)** | **0.5mm Wear Layer + 0.6mm Vinyl + 1mm SPC + Nmm WPC + 1mm + 1mm IXPE.** N = total − 4.1mm. e.g. 6.5 mm SKU → 2.4mm WPC; 12.0 mm SKU → 7.9mm WPC. |
