@@ -852,6 +852,19 @@ db.sequelize.authenticate()
       logger.warn('[boot] 4.28f IronLite price fix skipped:', e.message);
     }
 
+    // Phase 4.28g: follow-up to 4.28f. The parallel ProductPrice table
+    // carried markup_percent=0.07 on every FW/HH row; the reconcile job
+    // in productPriceService.reconcileBaseFobPrices then overwrote
+    // baseFobPrice with cost * 1.07 on each boot. Zero the markup and
+    // set selling_price = cost explicitly so FW/HH supplier FOB is
+    // quoted verbatim. Idempotent via AuditLog sentinel.
+    try {
+      const { migrate428gProductPriceMarkupZero } = require('./services/migrate428gProductPriceMarkupZero');
+      await migrate428gProductPriceMarkupZero(db);
+    } catch (e) {
+      logger.warn('[boot] 4.28g FW/HH markup zero skipped:', e.message);
+    }
+
     // Phase 4.9 C-2: seed initial tariff rates (CN->US, MY->US) per
     // Alex's HanHua factory note. Idempotent on (origin, destination,
     // effectiveFrom). Future rate changes are made via the admin UI.
