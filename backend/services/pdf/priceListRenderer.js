@@ -262,8 +262,109 @@ async function renderPriceListPdf(priceList, opts = {}) {
         y += doc.heightOfString(priceList.description, { width: pageWidth });
       }
 
+      // ── Product Details block (Phase 4.28v, 2026-05-19)
+      //
+      // Constants across all items in a price list (construction, click
+      // system, surface finish, AC rating, certifications, HS code)
+      // render once near the top so the buyer doesn't have to read the
+      // SKU table to learn what they're buying. Picks the most common
+      // non-null value per spec field across the included Product rows.
+      // Falls back silently if no items carry the field.
+      const itemsForSpecs = Array.isArray(priceList.items) ? priceList.items : [];
+      const pickCommon = (key, accessor) => {
+        const counts = new Map();
+        for (const it of itemsForSpecs) {
+          const v = accessor(it);
+          if (v == null || v === '') continue;
+          counts.set(v, (counts.get(v) || 0) + 1);
+        }
+        let best = null, bestCount = 0;
+        for (const [v, c] of counts) {
+          if (c > bestCount) { best = v; bestCount = c; }
+        }
+        return best;
+      };
+      const itemSpecs = (it) => {
+        const p = it.Product || it.product || {};
+        let s = p.specifications;
+        if (typeof s === 'string') { try { s = JSON.parse(s); } catch (_) { s = null; } }
+        return s || {};
+      };
+      const itemCerts = (it) => {
+        const p = it.Product || it.product || {};
+        let c = p.certifications;
+        if (typeof c === 'string') { try { c = JSON.parse(c); } catch (_) { c = null; } }
+        return Array.isArray(c) ? c : [];
+      };
+
+      const productDetails = [
+        ['Construction',  pickCommon('construction', (it) => itemSpecs(it).construction)],
+        ['Click System',  pickCommon('clickSystem',  (it) => itemSpecs(it).clickSystem)],
+        ['Surface',       pickCommon('finish',       (it) => itemSpecs(it).finish)],
+        ['AC Rating',     pickCommon('acRating',     (it) => itemSpecs(it).acRating)],
+        ['Wear Layer',    pickCommon('wearLayer',    (it) => itemSpecs(it).wearLayer)],
+        ['HS Code',       pickCommon('hsCode',       (it) => (it.Product || it.product || {}).hsCode)],
+      ].filter(([, v]) => v != null && v !== '');
+
+      // Certifications: aggregate unique names across every item's product.
+      const certNames = new Set();
+      for (const it of itemsForSpecs) {
+        for (const c of itemCerts(it)) {
+          if (c && c.name) certNames.add(c.note ? `${c.name} (${c.note})` : c.name);
+        }
+      }
+      const certList = Array.from(certNames).join(' · ');
+
+      if (productDetails.length > 0 || certList) {
+        y += 16;
+        // Block header
+        doc.fillColor(tokens.primaryColor).fontSize(9).font(fonts.bodyBold)
+           .text('PRODUCT DETAILS', PAGE_MARGIN, y, { width: pageWidth });
+        y += 12;
+        doc.moveTo(PAGE_MARGIN, y - 2)
+           .lineTo(PAGE_MARGIN + Math.min(80, pageWidth), y - 2)
+           .strokeColor(tokens.primaryColor).lineWidth(0.8).stroke();
+        y += 4;
+
+        // Two-column key-value list. Same auto-grow pattern as the meta
+        // block above (heightOfString → tallest cell drives row advance).
+        const PD_LABEL_H = 11;
+        const PD_VALUE_FONT = 10;
+        const PD_ROW_PAD = 8;
+        const pdColWidth = pageWidth / 2 - 10;
+        for (let i = 0; i < productDetails.length; i += 2) {
+          const rowCells = productDetails.slice(i, i + 2);
+          // Measure tallest value in the row.
+          let maxValueH = 0;
+          for (const [, v] of rowCells) {
+            doc.font(fonts.bodyBold).fontSize(PD_VALUE_FONT);
+            const h = doc.heightOfString(String(v), { width: pdColWidth });
+            if (h > maxValueH) maxValueH = h;
+          }
+          const rowH = PD_LABEL_H + maxValueH;
+          for (let c = 0; c < rowCells.length; c++) {
+            const [label, value] = rowCells[c];
+            const x = PAGE_MARGIN + c * (pdColWidth + 20);
+            doc.fontSize(8).fillColor(tokens.steel || '#64748B').font(fonts.body)
+               .text(label.toUpperCase(), x, y, { width: pdColWidth, lineBreak: false });
+            doc.fontSize(PD_VALUE_FONT).fillColor(tokens.ink || '#0F172A').font(fonts.bodyBold)
+               .text(String(value), x, y + PD_LABEL_H, { width: pdColWidth });
+          }
+          y += rowH + PD_ROW_PAD;
+        }
+
+        if (certList) {
+          doc.fontSize(8).fillColor(tokens.steel || '#64748B').font(fonts.body)
+             .text('CERTIFICATIONS', PAGE_MARGIN, y, { width: pageWidth, lineBreak: false });
+          y += PD_LABEL_H;
+          doc.fontSize(PD_VALUE_FONT).fillColor(tokens.ink || '#0F172A').font(fonts.bodyBold)
+             .text(certList, PAGE_MARGIN, y, { width: pageWidth });
+          y += doc.heightOfString(certList, { width: pageWidth }) + PD_ROW_PAD;
+        }
+      }
+
       // ── Items table
-      y += 36;
+      y += 20;
       const tableTop = y;
 
       // Resolve which standard + custom columns to render. Both

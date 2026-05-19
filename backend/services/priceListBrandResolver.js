@@ -280,7 +280,13 @@ function priceListIncludeForBrand(db) {
       as: 'items',
       include: [{
         model: db.Product,
-        attributes: ['id', 'name', 'sku', 'brandCode', 'productType', 'categoryId'],
+        // Phase 4.28v (2026-05-19): include specifications + certifications
+        // so the price-list PDF can render the common product details
+        // block (construction / click system / surface finish / AC rating /
+        // certifications) above the items table. Without these the PDF
+        // shows only the items grid even though Alice's WeChat-confirmed
+        // specs are sitting on the row.
+        attributes: ['id', 'name', 'sku', 'brandCode', 'productType', 'categoryId', 'specifications', 'certifications', 'hsCode', 'originCountry'],
         include: [{
           model: db.ProductCategory,
           as: 'category',
