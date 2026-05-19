@@ -86,18 +86,18 @@ function ProfitabilitySection({ customerId }: { customerId: string }) {
               <Text style={profitStyles.metricSub}>{USD_FMT.format(data.revenue?.paid || 0)} paid</Text>
             </View>
             <View style={profitStyles.metric}>
-              <Text style={profitStyles.metricLabel}>Gross Profit</Text>
-              <Text style={[profitStyles.metricValue, (data.grossProfit || 0) < 0 && { color: COLORS.error }]}>
-                {USD_FMT.format(data.grossProfit || 0)}
+              <Text style={profitStyles.metricLabel}>Commission</Text>
+              <Text style={profitStyles.metricValue}>
+                {USD_FMT.format(data.commissionRevenue?.accrued || 0)}
               </Text>
-              <Text style={profitStyles.metricSub}>Revenue − COGS</Text>
+              <Text style={profitStyles.metricSub}>FW/HH agent accrued</Text>
             </View>
             <View style={profitStyles.metric}>
-              <Text style={profitStyles.metricLabel}>Net Profit</Text>
-              <Text style={[profitStyles.metricValue, (data.netProfit || 0) < 0 && { color: COLORS.error }]}>
-                {USD_FMT.format(data.netProfit || 0)}
+              <Text style={profitStyles.metricLabel}>Total Net Profit</Text>
+              <Text style={[profitStyles.metricValue, (data.totalNetProfit ?? data.netProfit ?? 0) < 0 && { color: COLORS.error }]}>
+                {USD_FMT.format(data.totalNetProfit ?? data.netProfit ?? 0)}
               </Text>
-              <Text style={profitStyles.metricSub}>After overhead</Text>
+              <Text style={profitStyles.metricSub}>Gross + comm − unreimb − overhead</Text>
             </View>
             <View style={profitStyles.metric}>
               <Text style={profitStyles.metricLabel}>Direct Cost Ratio</Text>
@@ -118,9 +118,21 @@ function ProfitabilitySection({ customerId }: { customerId: string }) {
               <BreakdownLine label="COGS" value={USD_FMT.format(data.cogs || 0)} sign="−" />
               <BreakdownLine label="Gross Profit" value={USD_FMT.format(data.grossProfit || 0)} emphasis />
               <BreakdownLine
+                label={`Commission Revenue (${data.commissionRevenue?.count || 0})`}
+                sub="FW/HH accrued in period"
+                value={USD_FMT.format(data.commissionRevenue?.accrued || 0)}
+                sign="+"
+              />
+              <BreakdownLine
                 label={`Direct Expenses (${data.directExpenses?.count || 0})`}
                 value={USD_FMT.format(data.directExpenses?.total || 0)}
                 sign="−"
+              />
+              <BreakdownLine
+                label={`Reimbursements (${data.reimbursementsReceived?.count || 0})`}
+                sub="Expense rows paid back by factory"
+                value={USD_FMT.format(data.reimbursementsReceived?.total || 0)}
+                sign="+"
               />
               <BreakdownLine
                 label="Allocated Overhead"
@@ -130,9 +142,20 @@ function ProfitabilitySection({ customerId }: { customerId: string }) {
                 value={USD_FMT.format(data.allocatedOverhead?.total || 0)}
                 sign="−"
               />
-              <BreakdownLine label="Net Profit" value={USD_FMT.format(data.netProfit || 0)} emphasis />
+              <BreakdownLine
+                label="Net Commission Profit"
+                sub="Commission − unreimbursed exp"
+                value={USD_FMT.format(data.netCommissionProfit ?? 0)}
+              />
+              <BreakdownLine
+                label="Total Net Profit"
+                value={USD_FMT.format(data.totalNetProfit ?? data.netProfit ?? 0)}
+                emphasis
+              />
               <Text style={profitStyles.footnote}>
-                Period {data.period?.from} to {data.period?.to}. USD basis. Overhead allocated by revenue share.
+                Period {data.period?.from} to {data.period?.to}. USD basis. FW/HH agent model:
+                buyer FOB already includes 7% commission, so gross margin is $0 and the income lands
+                in CommissionTracking. Reimbursements close the loop on expenses the factory paid back.
               </Text>
             </View>
           ) : null}

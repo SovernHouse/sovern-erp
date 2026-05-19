@@ -338,6 +338,18 @@ export interface CustomerProfitability {
   revenue: { invoiced: number; paid: number };
   cogs: number;
   directExpenses: { total: number; count: number };
+  // Phase 4.28h: reimbursement + commission visibility for FW/HH agent model
+  reimbursementsReceived: { total: number; count: number };
+  unreimbursedExpenses: { total: number; count: number };
+  commissionRevenue: {
+    accrued: number;
+    paid: number;
+    total: number;
+    count: number;
+    byBrand: { brandCode: string; amount: number }[];
+  };
+  netCommissionProfit: number;
+  totalNetProfit: number;
   allocatedOverhead: { total: number; basis: string; revenueShare: number; overheadPool: number };
   grossProfit: number;
   netProfit: number;

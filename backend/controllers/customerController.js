@@ -497,6 +497,10 @@ const getProfitability = async (req, res, next) => {
     const toIso   = to.toISOString().slice(0, 10);
 
     // ─── Revenue: Invoice rows for this customer in the period ───────────────
+    // Phase 4.28h: column is `total`, not `totalAmount`. The original
+    // controller used `totalAmount` which threw "no such column" on every
+    // call, so this endpoint had been returning HTTP 500 in prod since
+    // it shipped. paidAmount is fine (camelCase resolves to paid_amount).
     let invoicedTotal = 0;
     let paidTotal = 0;
     if (db.Invoice) {
@@ -505,19 +509,20 @@ const getProfitability = async (req, res, next) => {
           customerId: id,
           createdAt: { [Op.between]: [from, to] },
         },
-        attributes: ['id', 'totalAmount', 'paidAmount', 'currency', 'status'],
+        attributes: ['id', 'total', 'paidAmount', 'currency', 'status'],
       });
       for (const inv of invoices) {
         // Invoice totals are stored in the customer's currency typically; for
         // the v1 P&L we treat all numerics as USD-equivalent (most Sovern
         // invoices are USD anyway). A fuller version would convert via
         // ExchangeRate using each invoice's currency + invoice date.
-        invoicedTotal += Number(inv.totalAmount) || 0;
-        paidTotal     += Number(inv.paidAmount)  || 0;
+        invoicedTotal += Number(inv.total)      || 0;
+        paidTotal     += Number(inv.paidAmount) || 0;
       }
     }
 
     // ─── COGS: PurchaseOrder costs for this customer's SalesOrders ────────────
+    // PurchaseOrder column is also `total` (same bug class).
     let cogsTotal = 0;
     if (db.PurchaseOrder && db.SalesOrder) {
       const salesOrders = await db.SalesOrder.findAll({
@@ -528,25 +533,38 @@ const getProfitability = async (req, res, next) => {
       if (soIds.length > 0) {
         const pos = await db.PurchaseOrder.findAll({
           where: { salesOrderId: { [Op.in]: soIds } },
-          attributes: ['id', 'totalAmount', 'currency'],
+          attributes: ['id', 'total', 'currency'],
         });
-        for (const po of pos) cogsTotal += Number(po.totalAmount) || 0;
+        for (const po of pos) cogsTotal += Number(po.total) || 0;
       }
     }
 
     // ─── Direct expenses: Expense rows with customerId = X ──────────────────
+    // Phase 4.28h: also capture submissionStatus + brandCode so the response
+    // can surface reimbursements separately and split by brand. Sovern's FW/HH
+    // agent-model deals reimburse most direct expenses through the factory;
+    // the cash net is only the unreimbursed portion. SH expenses do not
+    // reimburse (Sovern bears them) so they always count as unreimbursed.
     const directExpenseRows = await db.Expense.findAll({
       where: {
         customerId: id,
         entryDate: { [Op.between]: [fromIso, toIso] },
       },
-      attributes: ['id', 'usdAmount', 'originalAmount', 'originalCurrency'],
+      attributes: ['id', 'usdAmount', 'originalAmount', 'originalCurrency', 'submissionStatus', 'brandCode'],
     });
-    const directExpensesTotal = directExpenseRows.reduce((sum, e) => {
-      if (e.usdAmount != null) return sum + Number(e.usdAmount);
-      if ((e.originalCurrency || '').toUpperCase() === 'USD') return sum + Number(e.originalAmount || 0);
-      return sum; // skip rows with no usdAmount + non-USD currency to avoid mixing
-    }, 0);
+    const usdOf = (e) => {
+      if (e.usdAmount != null) return Number(e.usdAmount);
+      if ((e.originalCurrency || '').toUpperCase() === 'USD') return Number(e.originalAmount || 0);
+      return 0; // skip rows with no usdAmount + non-USD currency to avoid mixing
+    };
+    const directExpensesTotal = directExpenseRows.reduce((sum, e) => sum + usdOf(e), 0);
+
+    // Reimbursements received = direct expenses where the submitting office
+    // has already paid Alex back. submissionStatus 'paid' is the canonical
+    // signal. 'not_claimable' rows are NOT reimbursed (Sovern eats them).
+    const reimbursedRows = directExpenseRows.filter((e) => e.submissionStatus === 'paid');
+    const reimbursementsTotal = reimbursedRows.reduce((sum, e) => sum + usdOf(e), 0);
+    const unreimbursedExpensesTotal = directExpensesTotal - reimbursementsTotal;
 
     // ─── Allocated overhead: unattributed Expense rows × this client's revenue share ─
     const overheadRows = await db.Expense.findAll({
@@ -568,17 +586,60 @@ const getProfitability = async (req, res, next) => {
     if (db.Invoice) {
       const allInvoices = await db.Invoice.findAll({
         where: { createdAt: { [Op.between]: [from, to] } },
-        attributes: ['totalAmount'],
+        attributes: ['total'],
       });
-      totalPeriodRevenue = allInvoices.reduce((s, i) => s + (Number(i.totalAmount) || 0), 0);
+      totalPeriodRevenue = allInvoices.reduce((s, i) => s + (Number(i.total) || 0), 0);
     }
     const revenueShare = totalPeriodRevenue > 0 ? invoicedTotal / totalPeriodRevenue : 0;
     const allocatedOverhead = overheadTotal * revenueShare;
 
+    // ─── Commission revenue (FW/HH agent model) ──────────────────────────────
+    // For FW/HH deals the buyer-facing price is already inclusive of Sovern's
+    // commission. Invoice − PO produces $0 gross margin by design; Sovern's
+    // actual revenue lives in CommissionTracking, accrued at SalesOrder
+    // status='confirmed'. Pull it here so the P&L reflects real income.
+    let commissionAccruedTotal = 0;
+    let commissionPaidTotal = 0;
+    let commissionCount = 0;
+    const commissionByBrand = new Map();
+    if (db.CommissionTracking) {
+      const commissionRows = await db.CommissionTracking.findAll({
+        where: {
+          customerId: id,
+          accrualDate: { [Op.between]: [from, to] },
+        },
+        attributes: ['id', 'amount', 'status', 'brandCode'],
+      });
+      for (const r of commissionRows) {
+        const amt = Number(r.amount || 0);
+        if (!Number.isFinite(amt)) continue;
+        commissionCount++;
+        if (r.status === 'paid') commissionPaidTotal += amt;
+        if (r.status !== 'clawed_back') commissionAccruedTotal += amt;
+        const bc = r.brandCode || 'FW';
+        commissionByBrand.set(bc, (commissionByBrand.get(bc) || 0) + amt);
+      }
+    }
+    const commissionRevenue = {
+      accrued: round2(commissionAccruedTotal),
+      paid:    round2(commissionPaidTotal),
+      total:   round2(commissionAccruedTotal),
+      count:   commissionCount,
+      byBrand: Array.from(commissionByBrand.entries()).map(([brandCode, amount]) => ({
+        brandCode,
+        amount: round2(amount),
+      })),
+    };
+
     // ─── Aggregates ─────────────────────────────────────────────────────────
+    // grossProfit + netProfit retained for backwards compat (Invoice − PO −
+    // expenses − overhead). totalNetProfit folds commission revenue and
+    // reimbursements in so the agent-model deals don't show as fake losses.
     const grossProfit = invoicedTotal - cogsTotal;
     const netProfit   = grossProfit - directExpensesTotal - allocatedOverhead;
     const directCostRatio = invoicedTotal > 0 ? directExpensesTotal / invoicedTotal : null;
+    const netCommissionProfit = commissionAccruedTotal - unreimbursedExpensesTotal;
+    const totalNetProfit = grossProfit + commissionAccruedTotal - unreimbursedExpensesTotal - allocatedOverhead;
 
     return res.json(getSuccessResponse({
       customer: {
@@ -597,14 +658,41 @@ const getProfitability = async (req, res, next) => {
         total: round2(directExpensesTotal),
         count: directExpenseRows.length,
       },
+      // Phase 4.28h: subset of directExpenses that have been reimbursed by
+      // the factory (Expense.submissionStatus='paid'). Cash-net impact is
+      // zero for these; they are tracked for visibility on the agent-model
+      // P&L but excluded from netCommissionProfit / totalNetProfit.
+      reimbursementsReceived: {
+        total: round2(reimbursementsTotal),
+        count: reimbursedRows.length,
+      },
+      unreimbursedExpenses: {
+        total: round2(unreimbursedExpensesTotal),
+        count: directExpenseRows.length - reimbursedRows.length,
+      },
       allocatedOverhead: {
         total:        round2(allocatedOverhead),
         basis:        'revenue_share',
         revenueShare: round4(revenueShare),
         overheadPool: round2(overheadTotal),
       },
+      // Phase 4.28h: commission revenue from FW/HH agent-model deals.
+      // CommissionTracking rows accrue at SalesOrder.status='confirmed';
+      // the 7% Sovern earns on each FW/HH order lands here, not in the
+      // Invoice − PO gross margin (which is $0 by design for those brands).
+      commissionRevenue,
       grossProfit: round2(grossProfit),
       netProfit:   round2(netProfit),
+      // Phase 4.28h:
+      //   netCommissionProfit = commissionRevenue.accrued − unreimbursedExpenses
+      //     The agent-model P&L for FW/HH. Excludes the Invoice − PO axis
+      //     which is structurally $0 for these brands.
+      //   totalNetProfit = grossProfit + commissionRevenue.accrued
+      //                    − unreimbursedExpenses − allocatedOverhead
+      //     The blended view across both SH (markup margin) and FW/HH
+      //     (commission) revenue streams for this customer.
+      netCommissionProfit: round2(netCommissionProfit),
+      totalNetProfit:      round2(totalNetProfit),
       // Per DECIDE 4B: surface the high-touch signal alongside the
       // allocation-based net so the user can spot expensive clients
       // independent of allocation method.

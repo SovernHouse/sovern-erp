@@ -153,7 +153,9 @@ export default function ProfitabilityPanel({ customerId }) {
         <p className="text-slate-500 text-center py-12">No profitability data.</p>
       ) : (
         <>
-          {/* Top metrics */}
+          {/* Top metrics. Phase 4.28h: Commission Revenue surfaces the
+              FW/HH agent-model income; Total Net Profit folds it in alongside
+              Invoice-PO gross margin. */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <MetricCard
               label="Revenue (invoiced)"
@@ -161,16 +163,20 @@ export default function ProfitabilityPanel({ customerId }) {
               sublabel={`${USD.format(data.revenue?.paid || 0)} paid`}
             />
             <MetricCard
-              label="Gross Profit"
-              value={USD.format(data.grossProfit || 0)}
-              sublabel="Revenue − COGS"
-              tone={data.grossProfit >= 0 ? 'positive' : 'negative'}
+              label="Commission Revenue"
+              value={USD.format(data.commissionRevenue?.accrued || 0)}
+              sublabel={
+                (data.commissionRevenue?.byBrand?.length || 0) > 0
+                  ? `${data.commissionRevenue.byBrand.map(b => b.brandCode).join(' + ')} accrued (FW/HH agent model)`
+                  : 'CommissionTracking accrued in period'
+              }
+              tone={(data.commissionRevenue?.accrued || 0) > 0 ? 'positive' : 'muted'}
             />
             <MetricCard
-              label="Net Profit"
-              value={USD.format(data.netProfit || 0)}
-              sublabel="After direct + allocated overhead"
-              tone={data.netProfit >= 0 ? 'positive' : 'negative'}
+              label="Total Net Profit"
+              value={USD.format(data.totalNetProfit ?? data.netProfit ?? 0)}
+              sublabel="Gross + commission − unreimbursed exp − overhead"
+              tone={(data.totalNetProfit ?? data.netProfit ?? 0) >= 0 ? 'positive' : 'negative'}
             />
             <MetricCard
               label="Direct Cost Ratio"
@@ -191,14 +197,38 @@ export default function ProfitabilityPanel({ customerId }) {
             />
             <BreakdownRow
               label="Gross Profit"
+              sublabel="Invoice − COGS (SH markup model)"
               value={USD.format(data.grossProfit || 0)}
               emphasis
+            />
+            {/* Phase 4.28h: commission revenue + reimbursements section.
+                Shown unconditionally so the structure is consistent across
+                SH-only (zeros) and FW/HH customers. */}
+            <BreakdownRow
+              label="Commission Revenue (FW/HH)"
+              sublabel={
+                (data.commissionRevenue?.count || 0) > 0
+                  ? `${data.commissionRevenue.count} accrued ${data.commissionRevenue.count === 1 ? 'row' : 'rows'} on confirmed sales orders`
+                  : 'No commission accrued in period'
+              }
+              value={USD.format(data.commissionRevenue?.accrued || 0)}
+              sign="+"
             />
             <BreakdownRow
               label="Direct Expenses"
               sublabel={`${data.directExpenses?.count || 0} expense ${data.directExpenses?.count === 1 ? 'row' : 'rows'} tagged to this customer`}
               value={USD.format(data.directExpenses?.total || 0)}
               sign="−"
+            />
+            <BreakdownRow
+              label="Reimbursements Received"
+              sublabel={
+                (data.reimbursementsReceived?.count || 0) > 0
+                  ? `${data.reimbursementsReceived.count} expense ${data.reimbursementsReceived.count === 1 ? 'row' : 'rows'} reimbursed by factory (status=paid)`
+                  : 'No reimbursements in period'
+              }
+              value={USD.format(data.reimbursementsReceived?.total || 0)}
+              sign="+"
             />
             <BreakdownRow
               label="Allocated Overhead"
@@ -211,20 +241,34 @@ export default function ProfitabilityPanel({ customerId }) {
               sign="−"
             />
             <BreakdownRow
-              label="Net Profit"
-              value={USD.format(data.netProfit || 0)}
+              label="Net Commission Profit"
+              sublabel="Commission − unreimbursed expenses (FW/HH agent P&L)"
+              value={USD.format(data.netCommissionProfit ?? 0)}
+            />
+            <BreakdownRow
+              label="Total Net Profit"
+              sublabel="Blended: gross + commission − unreimbursed − overhead"
+              value={USD.format(data.totalNetProfit ?? data.netProfit ?? 0)}
               emphasis
             />
           </div>
 
           {/* Footnotes */}
-          <div className="text-xs text-slate-500 leading-relaxed">
+          <div className="text-xs text-slate-500 leading-relaxed space-y-1">
             <p>
               Period: {data.period?.from} to {data.period?.to}. All amounts in USD; expense rows
               without a USD-equivalent in a non-USD currency are excluded so totals don&apos;t mix
               currencies. Allocated overhead uses revenue-share allocation: unassigned expenses
               (no customer / no factory) are split across customers in proportion to each
               customer&apos;s share of period revenue.
+            </p>
+            <p>
+              <strong>FW/HH agent model:</strong> the buyer-facing FOB on FlorWay (Malaysia) and
+              HanHua (China) Resilient flooring deals already includes Sovern&apos;s 7% commission.
+              Invoice − PO gross margin is therefore $0 on these brands by design; the real income
+              lands in CommissionTracking (accrued at SalesOrder confirmation) and is shown above
+              as &quot;Commission Revenue&quot;. Reimbursements close the loop on direct expenses the
+              factory pays back via the Expenses module.
             </p>
           </div>
         </>
