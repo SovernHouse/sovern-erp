@@ -18,6 +18,7 @@ import {
 import toast from 'react-hot-toast'
 import api from '../services/api'
 import { formatRelativeTime } from '../utils/formatters'
+import EntityLink from './EntityLink'
 
 // ── Message type metadata ───────────────────────────────────────────────────
 const MSG_META = {
@@ -52,7 +53,57 @@ function Avatar({ name, size = 'sm' }) {
   )
 }
 
-function SystemEventRow({ msg }) {
+// Phase 4.28q (2026-05-19): chatter entity-link rendering. System
+// events frequently carry foreign-key references in metadata (a status
+// change on an SO mentions the related Quotation; an approval-request
+// names the assignee User; an email_sent points at a Lead). Render
+// each known reference as an inline EntityLink so the operator can
+// click straight to the referenced row. The map below is conservative
+// (every key here is a verified pattern used by existing system-event
+// emitters); add new keys as new event sources land.
+const METADATA_ENTITY_KEYS = {
+  // Foreign-key columns
+  assigneeId:         { type: 'User',            labelKey: 'assigneeName',         linkText: 'Assignee' },
+  assignedToId:       { type: 'User',            labelKey: 'assignedToName',       linkText: 'Assigned to' },
+  assignedById:       { type: 'User',            labelKey: 'assignedByName',       linkText: 'Assigned by' },
+  userId:             { type: 'User',            labelKey: 'userName',             linkText: 'User' },
+  customerId:         { type: 'Customer',        labelKey: 'customerName',         linkText: 'Customer' },
+  factoryId:          { type: 'Factory',         labelKey: 'factoryName',          linkText: 'Supplier' },
+  supplierId:         { type: 'Factory',         labelKey: 'supplierName',         linkText: 'Supplier' },
+  leadId:             { type: 'Lead',            labelKey: 'leadName',             linkText: 'Lead' },
+  productId:          { type: 'Product',         labelKey: 'productName',          linkText: 'Product' },
+  quotationId:        { type: 'Quotation',       labelKey: 'quotationNumber',      linkText: 'Quotation' },
+  proformaInvoiceId:  { type: 'ProformaInvoice', labelKey: 'proformaNumber',       linkText: 'Proforma' },
+  salesOrderId:       { type: 'SalesOrder',      labelKey: 'orderNumber',          linkText: 'Sales Order' },
+  invoiceId:          { type: 'Invoice',         labelKey: 'invoiceNumber',        linkText: 'Invoice' },
+  creditNoteId:       { type: 'CreditNote',      labelKey: 'creditNoteNumber',     linkText: 'Credit Note' },
+  purchaseOrderId:    { type: 'PurchaseOrder',   labelKey: 'poNumber',             linkText: 'Purchase Order' },
+  packingListId:      { type: 'PackingList',     labelKey: 'packingListNumber',    linkText: 'Packing List' },
+  shipmentId:         { type: 'Shipment',        labelKey: 'shipmentNumber',       linkText: 'Shipment' },
+  goodsReceivedNoteId:{ type: 'GoodsReceivedNote', labelKey: 'grnNumber',          linkText: 'GRN' },
+  inspectionId:       { type: 'Inspection',      labelKey: 'inspectionNumber',     linkText: 'Inspection' },
+  paymentId:          { type: 'Payment',         labelKey: 'paymentReference',     linkText: 'Payment' },
+  claimId:            { type: 'Claim',           labelKey: 'claimNumber',          linkText: 'Claim' },
+  priceListId:        { type: 'PriceList',       labelKey: 'priceListName',        linkText: 'Price List' },
+  scheduledActivityId:{ type: 'ScheduledActivity', labelKey: 'activityLabel',      linkText: 'Activity' },
+}
+
+function extractMetadataLinks(md, parentEntityType, parentEntityId) {
+  // Pull every recognised foreign-key out of metadata. Skip the parent
+  // entity itself (already in scope on the detail page) so chatter
+  // doesn't link a SalesOrder chatter row back to its own SalesOrder.
+  const links = []
+  for (const [key, spec] of Object.entries(METADATA_ENTITY_KEYS)) {
+    const id = md[key]
+    if (!id) continue
+    if (spec.type === parentEntityType && id === parentEntityId) continue
+    const label = md[spec.labelKey] || spec.linkText
+    links.push({ key, type: spec.type, id, label, linkText: spec.linkText })
+  }
+  return links
+}
+
+function SystemEventRow({ msg, parentEntityType, parentEntityId }) {
   const meta = MSG_META[msg.messageType] || MSG_META.event
   const Icon = meta.icon
   const md = msg.metadata || {}
@@ -62,12 +113,23 @@ function SystemEventRow({ msg }) {
     body = `Status changed: ${md.oldStatus} → ${md.newStatus}`
   }
 
+  const links = extractMetadataLinks(md, parentEntityType, parentEntityId)
+
   return (
     <div className={`flex items-start gap-3 px-4 py-2 ${meta.bg} border-l-2 border-slate-200 rounded`}>
       <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${meta.color}`} />
       <div className="flex-1 min-w-0">
         <p className="text-sm text-slate-600">{body}</p>
-        <span className="text-xs text-slate-400">
+        {links.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            {links.map((l) => (
+              <span key={l.key} className="text-xs text-slate-500">
+                {l.linkText}: <EntityLink type={l.type} id={l.id} label={l.label} className="text-xs" />
+              </span>
+            ))}
+          </div>
+        )}
+        <span className="text-xs text-slate-400 mt-0.5 inline-block">
           {msg.authorName ? `${msg.authorName} · ` : ''}
           {formatRelativeTime(msg.createdAt)}
         </span>
@@ -247,7 +309,7 @@ export default function Chatter({ entityType, entityId, className = '' }) {
         ) : (
           messages.map(msg => (
             isSystemEvent(msg.messageType)
-              ? <SystemEventRow key={msg.id} msg={msg} />
+              ? <SystemEventRow key={msg.id} msg={msg} parentEntityType={entityType} parentEntityId={entityId} />
               : <CommentRow key={msg.id} msg={msg} currentUserId={currentUserId} onDelete={handleDelete} />
           ))
         )}

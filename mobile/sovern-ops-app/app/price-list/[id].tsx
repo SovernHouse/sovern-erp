@@ -17,9 +17,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
-  Modal, TextInput, Alert,
+  Modal, TextInput, Alert, Pressable,
 } from 'react-native';
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { useLocalSearchParams, useNavigation, router } from 'expo-router';
 import {
   getPriceList, sendPriceListEmail, requestPriceListApproval,
   priceListPdfUrl, updatePriceList,
@@ -141,30 +141,46 @@ export default function PriceListDetailScreen() {
         </View>
       ) : null}
 
-      {/* Items list. Phase 4.28p TODO: route to Product detail screen on
-          tap once mobile/app/product/[id].tsx exists. Until then the
-          cards remain read-only on mobile; desktop ERP has the
-          clickable nav. */}
+      {/* Items list. Phase 4.28q: each row with a productId is a
+          Pressable that navigates to the Product detail screen
+          (app/product/[id].tsx). Free-form items (no productId)
+          render plain. Mirrors the desktop EntityLink behaviour. */}
       <Text style={styles.sectionTitle}>Items</Text>
       {items.length === 0 ? (
         <Text style={styles.empty}>No items in this price list yet.</Text>
       ) : (
         <View style={styles.itemsBlock}>
-          {items.map((it) => (
-            <View key={it.id} style={styles.itemCard}>
-              <View style={styles.itemHeader}>
-                <Text style={styles.itemSku}>{it.sku || '—'}</Text>
-                <Text style={styles.itemPrice}>{fmtMoney(it.sellingPrice, currency)}</Text>
-              </View>
-              <Text style={styles.itemName} numberOfLines={2}>{it.productName || it.sku || '(item)'}</Text>
-              <View style={styles.itemMetaRow}>
-                <Text style={styles.itemMeta}>{it.unit || 'sqm'}</Text>
-                {it.minimumOrder != null ? <Text style={styles.itemMeta}>· MOQ {it.minimumOrder}</Text> : null}
-                {it.leadTimeDays != null ? <Text style={styles.itemMeta}>· {it.leadTimeDays}d lead</Text> : null}
-                {it.costPrice != null ? <Text style={styles.itemMeta}>· FOB {fmtMoney(it.costPrice, currency)}</Text> : null}
-              </View>
-            </View>
-          ))}
+          {items.map((it) => {
+            const productId = (it as any).productId || (it as any).Product?.id
+            const inner = (
+              <>
+                <View style={styles.itemHeader}>
+                  <Text style={styles.itemSku}>{it.sku || '—'}</Text>
+                  <Text style={styles.itemPrice}>{fmtMoney(it.sellingPrice, currency)}</Text>
+                </View>
+                <Text style={styles.itemName} numberOfLines={2}>{it.productName || it.sku || '(item)'}</Text>
+                <View style={styles.itemMetaRow}>
+                  <Text style={styles.itemMeta}>{it.unit || 'sqm'}</Text>
+                  {it.minimumOrder != null ? <Text style={styles.itemMeta}>· MOQ {it.minimumOrder}</Text> : null}
+                  {it.leadTimeDays != null ? <Text style={styles.itemMeta}>· {it.leadTimeDays}d lead</Text> : null}
+                  {it.costPrice != null ? <Text style={styles.itemMeta}>· FOB {fmtMoney(it.costPrice, currency)}</Text> : null}
+                </View>
+              </>
+            )
+            return productId ? (
+              <Pressable
+                key={it.id}
+                style={({ pressed }) => [styles.itemCard, pressed && { opacity: 0.6 }]}
+                onPress={() => router.push(`/product/${productId}` as any)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open product ${it.sku || ''}`}
+              >
+                {inner}
+              </Pressable>
+            ) : (
+              <View key={it.id} style={styles.itemCard}>{inner}</View>
+            )
+          })}
         </View>
       )}
 
