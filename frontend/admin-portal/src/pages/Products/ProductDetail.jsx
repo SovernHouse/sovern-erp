@@ -65,9 +65,15 @@ const ALL_CLIENT_FIELDS = [
   { key: 'edgeType', label: 'Edge Type' },
   { key: 'woodSpecies', label: 'Wood Species' },
   { key: 'woodGrade', label: 'Wood Grade' },
-  { key: 'installationMethod', label: 'Installation Method' },
-  { key: 'clickSystem', label: 'Click System' },
-  { key: 'underlaymentRequired', label: 'Underlayment' },
+  // Phase 4.28z (2026-05-19): combined installationMethod + clickSystem into
+  // a single 'Lock System' row showing the click-system brand (e.g. Unilin).
+  // installationMethod is still on the model for filtering / reporting, just
+  // hidden from the detail view per Alex's preferred terminology.
+  { key: 'clickSystem', label: 'Lock System' },
+  // Underlayment column reads from underlaymentType so the displayed value
+  // is the material (e.g. '1mm IXPE'), not the technical 'Attached / Required'
+  // status the prior key carried.
+  { key: 'underlaymentType', label: 'Underlayment' },
   { key: 'sqmPerBox', label: 'sqm / Box' },
   { key: 'sqftPerBox', label: 'sqft / Box' },
   { key: 'planksPerBox', label: 'Planks / Box' },
@@ -384,9 +390,12 @@ function SpecificationsTab({ specs, clientVisible }) {
           {ALL_CLIENT_FIELDS.map(({ key, label }) => {
             const val = specs[key]
             if (val == null || val === '' || (Array.isArray(val) && val.length === 0)) return null
+            // Phase 4.28z: array-of-objects (e.g. certifications =
+            // [{name, issuer}, ...]) rendered as '[object Object]' via the
+            // raw .join(). Extract a sensible string per element first.
             const display = typeof val === 'boolean'
               ? (val ? <span className="flex items-center text-green-600"><Check className="w-3 h-3 mr-1" />Yes</span> : <span className="flex items-center text-slate-400"><X className="w-3 h-3 mr-1" />No</span>)
-              : Array.isArray(val) ? val.join(', ')
+              : Array.isArray(val) ? val.map(v => (typeof v === 'object' && v) ? (v.name ?? v.label ?? JSON.stringify(v)) : String(v)).join(', ')
               : String(val)
             return (
               <div key={key}>
@@ -414,7 +423,7 @@ function SpecificationsTab({ specs, clientVisible }) {
               if (val == null || val === '' || (Array.isArray(val) && val.length === 0)) return null
               const display = typeof val === 'boolean'
                 ? (val ? <span className="flex items-center text-green-600"><Check className="w-3 h-3 mr-1" />Yes</span> : <span className="flex items-center text-slate-400"><X className="w-3 h-3 mr-1" />No</span>)
-                : Array.isArray(val) ? val.join(', ')
+                : Array.isArray(val) ? val.map(v => (typeof v === 'object' && v) ? (v.name ?? v.label ?? JSON.stringify(v)) : String(v)).join(', ')
                 : String(val)
               return (
                 <div key={key}>
