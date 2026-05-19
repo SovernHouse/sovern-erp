@@ -62,7 +62,7 @@ const ALL_CLIENT_FIELDS = [
   { key: 'surfaceFinish', label: 'Surface Finish' },
   { key: 'surfaceTexture', label: 'Surface Texture' },
   { key: 'colorPattern', label: 'Color / Pattern' },
-  { key: 'edgeType', label: 'Edge Type' },
+  { key: 'edgeType', label: 'Bevel' },
   { key: 'woodSpecies', label: 'Wood Species' },
   { key: 'woodGrade', label: 'Wood Grade' },
   // Phase 4.28z (2026-05-19): combined installationMethod + clickSystem into
