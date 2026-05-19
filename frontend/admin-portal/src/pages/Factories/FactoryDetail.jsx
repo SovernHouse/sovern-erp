@@ -17,9 +17,12 @@ export default function FactoryDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [factory, setFactory] = useState(null)
-  useBreadcrumbs(factory?.name)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  // Phase 4.28t: Factory model column is `companyName`, not `name`.
+  // Pre-4.28t breadcrumb showed blank because of the wrong key.
+  // Active tab now appends after a chevron.
+  useBreadcrumbs(factory?.companyName || factory?.name, activeTab)
   const [products, setProducts] = useState([])
   const [purchaseOrders, setPurchaseOrders] = useState([])
   const [contacts, setContacts] = useState([])

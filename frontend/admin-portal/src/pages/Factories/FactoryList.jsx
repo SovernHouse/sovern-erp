@@ -7,6 +7,7 @@ import SearchBar from '../../components/SearchBar'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import StatusBadge from '../../components/StatusBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import EntityLink from '../../components/EntityLink'
 import { factoriesAPI } from '../../services/api'
 import { FACTORY_STATUS } from '../../utils/constants'
 import { SelectInput } from '../../components/FormFields'
@@ -51,8 +52,17 @@ export default function FactoryList() {
     }
   }
 
+  // Phase 4.28t (2026-05-19): the Factory model column is `companyName`,
+  // not `name`. The old key='name' rendered an empty cell. Status is
+  // derived from isActive (boolean), not a separate status field.
+  // Name cell is now an EntityLink so the row is consistent with the
+  // Odoo navigation pattern used on PriceListDetail Items + Overview.
   const columns = [
-    { key: 'name', label: 'Name' },
+    {
+      key: 'companyName',
+      label: 'Name',
+      render: (row) => <EntityLink type="Factory" id={row.id} label={row.companyName || '(unnamed)'} subtle />,
+    },
     { key: 'country', label: 'Country' },
     { key: 'city', label: 'City' },
     { key: 'contactPerson', label: 'Contact' },
@@ -60,7 +70,7 @@ export default function FactoryList() {
     {
       key: 'status',
       label: 'Status',
-      render: (row) => <StatusBadge status={row.status} />,
+      render: (row) => <StatusBadge status={row.isActive ? 'active' : 'inactive'} />,
     },
   ]
 
@@ -107,7 +117,7 @@ export default function FactoryList() {
         onClose={() => setDeleteConfirm({ isOpen: false, factory: null })}
         onConfirm={handleDelete}
         title="Delete Factory"
-        message={`Are you sure you want to delete ${deleteConfirm.factory?.name}? This action cannot be undone.`}
+        message={`Are you sure you want to delete ${deleteConfirm.factory?.companyName || 'this supplier'}? This action cannot be undone.`}
         confirmText="Delete"
         isDangerous
       />

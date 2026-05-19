@@ -39,18 +39,8 @@ export default function PriceListDetail() {
   const [showApprovalModal, setShowApprovalModal] = useState(false)
   const [pendingApprovals, setPendingApprovals] = useState([])
 
-  // Phase 4.28t (2026-05-19): append active tab name to the breadcrumb
-  // trail so the user can see at-a-glance where they are inside the
-  // detail page. 'Overview' stays implicit (no suffix); Items /
-  // Approvals / Chatter all surface their label.
-  const tabLabelForBreadcrumb = activeTab && activeTab !== 'overview'
-    ? activeTab.charAt(0).toUpperCase() + activeTab.slice(1)
-    : null
-  useBreadcrumbs(
-    priceList?.name
-      ? (tabLabelForBreadcrumb ? `${priceList.name} › ${tabLabelForBreadcrumb}` : priceList.name)
-      : null
-  )
+  // Phase 4.28t: 2-arg useBreadcrumbs appends the active tab name.
+  useBreadcrumbs(priceList?.name, activeTab)
 
   useEffect(() => {
     fetchAll()

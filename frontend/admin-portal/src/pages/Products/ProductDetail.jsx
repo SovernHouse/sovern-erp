@@ -83,10 +83,11 @@ export default function ProductDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [product, setProduct] = useState(null)
-  useBreadcrumbs(product?.name)
   const [specs, setSpecs] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  // Phase 4.28t: breadcrumb appends the active tab name after a chevron.
+  useBreadcrumbs(product?.name, activeTab)
 
   // Phase 4.21b — related-data collections, each fetched once on mount.
   const [quotations, setQuotations] = useState([])

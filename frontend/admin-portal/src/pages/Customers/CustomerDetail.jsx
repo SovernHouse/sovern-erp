@@ -24,9 +24,11 @@ export default function CustomerDetail() {
   const { accessibleBrands, isCrossBrand, getBrand } = useBrands()
   const { user } = useAuth()
   const [customer, setCustomer] = useState(null)
-  useBreadcrumbs(customer?.name)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  // Phase 4.28t: breadcrumb appends active tab. Customer column is
+  // `companyName` (model); fall back to `name` for any legacy callers.
+  useBreadcrumbs(customer?.companyName || customer?.name, activeTab)
   // Phase 1 Commit 4: brand-context tab — which brand's activity am I
   // looking at? Defaults to the customer's first brand (their oldest
   // relationship). Super-admin can switch to 'all-brands' for the
