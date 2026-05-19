@@ -152,6 +152,29 @@ module.exports = (sequelize) => {
       defaultValue: [],
       allowNull: false,
       comment: 'Array of per-origin pricing variants. Raw JSON per L-023 (no JSON.stringify).',
+    },
+    // Phase 4.28x (2026-05-19): finish / specification variants that
+    // affect price. Examples: EIR upgrade (+$0.20/m² over Embossed),
+    // colour-match surcharge, custom plank size. Each entry:
+    //   {
+    //     label:       'EIR (Embossed In Register)',
+    //     baseValue:   'Embossed',          // what this replaces
+    //     uplift:      0.20,                // per priceUnit
+    //     priceUnit:   'sqm',               // unit the uplift is quoted in
+    //     currency:    'USD',
+    //     negotiable:  true,                // soft uplift — AI must
+    //                                       // surface as a discussion
+    //                                       // point, not auto-apply
+    //     notes:       'Standard finish is Embossed; EIR uplift is a
+    //                  negotiation point per Alex (2026-05-19).'
+    //   }
+    // Never auto-applied to a quotation total. The AI surfaces matching
+    // variants when relevant and lets Alex confirm the final price.
+    priceVariants: {
+      type: DataTypes.JSON,
+      defaultValue: [],
+      allowNull: false,
+      comment: 'Array of finish/spec price variants the operator can negotiate on top of the base FOB. Raw JSON per L-023 (no JSON.stringify). Negotiable variants must never be auto-summed at quotation time; surface and ask.',
     }
   }, {
     indexes: [

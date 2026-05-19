@@ -58,6 +58,22 @@ The construction headline used in customer materials:
 | **Wear layer commercial rating** | Commercial-grade (see `product-flooring-industry.md`) |
 | **HS Code** | 3918.10 (PVC vinyl flooring) |
 
+### Price variants (negotiable uplifts on top of base FOB)
+
+Stored on \`Product.priceVariants\` as a JSON array. Each entry has
+\`label\`, \`uplift\`, \`priceUnit\`, \`currency\`, and a \`negotiable\` flag.
+For IronLite Core the only variant today is the EIR finish upgrade:
+
+| Label | Base | Indicative uplift | Negotiable |
+|---|---|---|---|
+| EIR (Embossed In Register) | Embossed (standard) | +\$0.20/m² | Yes |
+
+**Rule:** when drafting a quotation, the AI surfaces the EIR option as
+a separate line below the base item and asks Alex which way to go.
+The \$0.20 is Alex's marker, not a fixed uplift. Final number gets
+agreed per deal. See \`aiContextService.js\` "Price-variant negotiation
+protocol".
+
 ### Certifications (confirmed by Alice, 2026-05-19)
 
 | Certification | Status | Notes |

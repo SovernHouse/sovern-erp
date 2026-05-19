@@ -557,6 +557,8 @@ db.sequelize.authenticate()
       'ALTER TABLE ProductSpecifications ADD COLUMN client_visible_fields TEXT',
       // Phase 4.28m: PriceList.column_widths for per-list manual width override
       'ALTER TABLE PriceList ADD COLUMN column_widths TEXT',
+      // Phase 4.28x: Product.price_variants — finish/spec uplift options
+      "ALTER TABLE Product ADD COLUMN price_variants TEXT DEFAULT '[]'",
     ];
     for (const sql of additiveMigrations) {
       try {

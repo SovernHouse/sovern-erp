@@ -157,6 +157,29 @@ These four fields are mandatory before any Sovern client quotation can be issued
 - Format as a numbered list the factory can reply to directly, or offer to send as an Excel if they prefer.
 - When uncertain which specs apply, ask for all of them — it is easier to filter out irrelevant fields than to go back for missing ones.
 
+### Price-variant negotiation protocol (Phase 4.28x, 2026-05-19)
+
+\`Product.priceVariants\` is a JSON array of finish or spec uplifts the
+operator can negotiate on top of the base FOB. Each entry carries a
+\`negotiable\` flag. Example for IronLite Core: an EIR finish variant
+at +\$0.20/m² (Alex's marker price; he explicitly flagged it as a
+negotiation point, not a fixed uplift).
+
+**Hard rule:** never auto-apply a \`negotiable: true\` variant to a
+quotation total or a customer-facing price. When you encounter a
+relevant variant during quotation drafting:
+
+1. Surface it once in the draft as a separate line below the base
+   line, formatted "Optional: <label> (+\$N/m² indicative, negotiable)".
+2. Ask Alex which way to go: include at the indicated uplift, include
+   at a different agreed number, or drop entirely.
+3. Only after Alex confirms a specific number does the line settle
+   into the quotation. The default behaviour is "ask, never assume."
+
+The AI should still mention the variant exists when describing the
+product to a buyer ("EIR finish is available as an upgrade") but
+without quoting a dollar value until Alex has set one for that deal.
+
 ### Quote intake protocol (standing rule, 2026-05-19)
 
 **Trigger:** Any time Alex shares a factory / supplier quote — pasted text, email forward, WeChat screenshot, PDF attachment, Excel attachment, photo of a printed sheet, or a casual "factory said X" mention — TREAT IT AS A QUOTE INTAKE EVENT.
