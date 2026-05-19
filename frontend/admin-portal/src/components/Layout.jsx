@@ -154,13 +154,8 @@ function LayoutBody({ children }) {
     .split('-')
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
-  // Some container path segments don't have a real landing page. Tag
-  // them as non-navigable so we render them as muted text instead of
-  // a Link that 404s. /crm DOES have a CRMDashboard route, so it's
-  // navigable now. Extend this list only when a path prefix is truly
-  // a container with no route.
   const NON_NAVIGABLE_SEGMENTS = new Set([])
-  const crumbSegments = location.pathname === '/'
+  const urlSegments = location.pathname === '/'
     ? [{ label: 'Dashboard', to: null }]
     : location.pathname.slice(1).split('/').map((s, i, all) => {
         const isUuid = uuidRe.test(s)
@@ -171,6 +166,17 @@ function LayoutBody({ children }) {
           : '/' + all.slice(0, i + 1).join('/')
         return { label, to }
       })
+  // Phase 4.28bb (2026-05-19): referrer-aware breadcrumb. If the user
+  // arrived via an EntityLink, location.state.from carries the
+  // previous page's label + path. Prepend it as a clickable segment
+  // so the trail reads "PriceList › Items › Products › <product>"
+  // instead of just "Products › <product>". Deep-linked / nav-bar
+  // landings have no state.from and fall through to the URL-derived
+  // chain unchanged.
+  const fromState = location.state?.from
+  const crumbSegments = (fromState && fromState.label && fromState.to)
+    ? [{ label: fromState.label, to: fromState.to }, ...urlSegments]
+    : urlSegments
 
   // User initials
   const initials = user

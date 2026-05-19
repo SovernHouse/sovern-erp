@@ -28,7 +28,8 @@
  * Reference for Odoo five-pillar conformance: trade-odoo-patterns.md.
  */
 
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import { useBreadcrumbContext } from '../contexts/BreadcrumbContext'
 
 // One source of truth for entity → route mapping. When a new entity is
 // added to App.jsx, add it here too. Keys are PascalCase model names
@@ -68,6 +69,18 @@ export default function EntityLink({ type, id, label, subtle = false, className 
   const href = entityRouteFor(type, id)
   const text = label || type || '—'
 
+  // Phase 4.28bb (2026-05-19): capture the current page's context so the
+  // destination page's breadcrumb can render "← <from>" as a clickable
+  // segment prepended to the URL-derived crumb chain. Without this the
+  // breadcrumb resets to the URL hierarchy and the user loses the
+  // trail back to where they started (e.g. PriceList → Product hides
+  // the PriceList path on the Product page).
+  const location = useLocation()
+  const { pageTitle } = useBreadcrumbContext()
+  const from = pageTitle
+    ? { label: pageTitle, to: location.pathname + (location.search || '') }
+    : null
+
   // Unmapped or missing — render as plain text. Don't break the page.
   if (!href) {
     if (import.meta.env.DEV && type && !ENTITY_ROUTES[type]) {
@@ -82,7 +95,12 @@ export default function EntityLink({ type, id, label, subtle = false, className 
     : 'text-primary-700 hover:text-primary-800 hover:underline cursor-pointer font-medium'
 
   return (
-    <Link to={href} className={`${base} ${className}`} title={`Open ${type}: ${text}`}>
+    <Link
+      to={href}
+      state={from ? { from } : undefined}
+      className={`${base} ${className}`}
+      title={`Open ${type}: ${text}`}
+    >
       {text}
     </Link>
   )
