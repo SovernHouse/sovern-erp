@@ -141,7 +141,10 @@ export default function PriceListDetailScreen() {
         </View>
       ) : null}
 
-      {/* Items list */}
+      {/* Items list. Phase 4.28p TODO: route to Product detail screen on
+          tap once mobile/app/product/[id].tsx exists. Until then the
+          cards remain read-only on mobile; desktop ERP has the
+          clickable nav. */}
       <Text style={styles.sectionTitle}>Items</Text>
       {items.length === 0 ? (
         <Text style={styles.empty}>No items in this price list yet.</Text>

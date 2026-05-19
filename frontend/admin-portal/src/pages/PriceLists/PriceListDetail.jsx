@@ -25,6 +25,7 @@ import { customersAPI, factoriesAPI } from '../../services/api'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import StatusBadge from '../../components/StatusBadge'
 import Chatter from '../../components/Chatter'
+import EntityLink from '../../components/EntityLink'
 import { useBreadcrumbs } from '../../hooks/useBreadcrumbs'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 
@@ -95,11 +96,21 @@ export default function PriceListDetail() {
 
   const handlePrint = () => window.print()
 
-  const parentLabel = priceList.Customer
-    ? `Client: ${priceList.Customer.companyName}`
+  // Phase 4.28p (2026-05-19): "Parent" replaced with the concrete role
+  // label (Supplier / Client) and rendered via EntityLink so the user
+  // can drill into the linked entity. Falls back to a plain span when
+  // there's no parent (template lists).
+  const parentRole = priceList.Customer ? 'Client'
+    : priceList.Factory ? 'Supplier'
+      : null
+  const parentEntity = priceList.Customer
+    ? { type: 'Customer', id: priceList.Customer.id, label: priceList.Customer.companyName }
     : priceList.Factory
-      ? `Supplier: ${priceList.Factory.companyName}`
-      : 'Template (no parent)'
+      ? { type: 'Factory', id: priceList.Factory.id, label: priceList.Factory.companyName }
+      : null
+  const parentLabelText = parentEntity
+    ? `${parentRole}: ${parentEntity.label}`
+    : 'Template (no parent)'
 
   const smartButtons = [
     { key: 'items',      label: 'Items',             count: items.length },
@@ -127,7 +138,15 @@ export default function PriceListDetail() {
           </button>
           <div>
             <h1 className="text-3xl font-bold text-slate-900">{priceList.name}</h1>
-            <p className="text-slate-500 text-sm mt-0.5">{parentLabel}</p>
+            <p className="text-slate-500 text-sm mt-0.5">
+              {parentEntity ? (
+                <>
+                  {parentRole}: <EntityLink type={parentEntity.type} id={parentEntity.id} label={parentEntity.label} />
+                </>
+              ) : (
+                parentLabelText
+              )}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -206,7 +225,7 @@ export default function PriceListDetail() {
           {(activeTab === 'overview' || activeTab === 'items' || activeTab === 'approvals') && (
             <>
               {activeTab === 'overview' && (
-                <OverviewTab pl={priceList} parentLabel={parentLabel} />
+                <OverviewTab pl={priceList} parentRole={parentRole} parentEntity={parentEntity} />
               )}
               {activeTab === 'items' && (
                 <ItemsTab items={items} currency={currency} />
@@ -242,14 +261,24 @@ export default function PriceListDetail() {
 
 // ── Tab components ──────────────────────────────────────────────────────────
 
-function OverviewTab({ pl, parentLabel }) {
+function OverviewTab({ pl, parentRole, parentEntity }) {
+  // Phase 4.28p: the parent row uses the concrete role label (Supplier /
+  // Client) and the value is a clickable EntityLink so the user can
+  // drill into the linked Factory / Customer detail page.
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       <InfoRow label="Status" value={pl.isActive ? 'Active' : 'Inactive'} />
       <InfoRow label="Currency" value={pl.currencyCode || 'USD'} />
       <InfoRow label="Valid From" value={pl.validFrom ? formatDate(pl.validFrom) : '—'} />
       <InfoRow label="Valid To" value={pl.validTo ? formatDate(pl.validTo) : '—'} />
-      <InfoRow label="Parent" value={parentLabel} />
+      <div>
+        <p className="text-xs text-slate-500 mb-1">{parentRole || 'Parent'}</p>
+        {parentEntity ? (
+          <EntityLink type={parentEntity.type} id={parentEntity.id} label={parentEntity.label} />
+        ) : (
+          <p className="text-sm font-medium text-slate-900">Template (no parent)</p>
+        )}
+      </div>
       <InfoRow label="Created" value={pl.createdAt ? formatDate(pl.createdAt) : '—'} />
       {pl.description && (
         <div className="col-span-2 md:col-span-4">
@@ -274,6 +303,10 @@ function ItemsTab({ items, currency }) {
   if (!items.length) {
     return <p className="text-sm text-slate-400 py-6">No items in this price list yet.</p>
   }
+  // Phase 4.28p (2026-05-19): SKU + Product cells route to the Product
+  // detail page when the line carries a productId. Rows without a
+  // catalog link (free-form items) render plain. Hover highlight on the
+  // row to advertise the affordance.
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -289,21 +322,33 @@ function ItemsTab({ items, currency }) {
           </tr>
         </thead>
         <tbody>
-          {items.map((it) => (
-            <tr key={it.id} className="border-b border-slate-100">
-              <td className="px-3 py-2 font-mono text-xs">{it.sku || '—'}</td>
-              <td className="px-3 py-2">{it.productName || it.Product?.name || '—'}</td>
-              <td className="px-3 py-2 text-center text-slate-600">{it.unit || 'sqm'}</td>
-              <td className="px-3 py-2 text-right">{it.minimumOrder ?? '—'}</td>
-              <td className="px-3 py-2 text-right">{it.leadTimeDays ?? '—'}</td>
-              <td className="px-3 py-2 text-right text-slate-600">
-                {it.costPrice ? formatCurrency(it.costPrice, currency) : '—'}
-              </td>
-              <td className="px-3 py-2 text-right font-semibold">
-                {it.sellingPrice ? formatCurrency(it.sellingPrice, currency) : '—'}
-              </td>
-            </tr>
-          ))}
+          {items.map((it) => {
+            const productId = it.productId || it.Product?.id
+            const productName = it.productName || it.Product?.name || '—'
+            return (
+              <tr key={it.id} className="border-b border-slate-100 hover:bg-slate-50">
+                <td className="px-3 py-2 font-mono text-xs">
+                  {productId
+                    ? <EntityLink type="Product" id={productId} label={it.sku || '—'} subtle />
+                    : (it.sku || '—')}
+                </td>
+                <td className="px-3 py-2">
+                  {productId
+                    ? <EntityLink type="Product" id={productId} label={productName} subtle />
+                    : productName}
+                </td>
+                <td className="px-3 py-2 text-center text-slate-600">{it.unit || 'sqm'}</td>
+                <td className="px-3 py-2 text-right">{it.minimumOrder ?? '—'}</td>
+                <td className="px-3 py-2 text-right">{it.leadTimeDays ?? '—'}</td>
+                <td className="px-3 py-2 text-right text-slate-600">
+                  {it.costPrice ? formatCurrency(it.costPrice, currency) : '—'}
+                </td>
+                <td className="px-3 py-2 text-right font-semibold">
+                  {it.sellingPrice ? formatCurrency(it.sellingPrice, currency) : '—'}
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
