@@ -116,7 +116,7 @@ module.exports = (sequelize) => {
     baseFobPrice: {
       type: DataTypes.DECIMAL(12, 2),
       allowNull: true,
-      comment: 'Buyer-facing FOB price floor (USD per unit). ALREADY INCLUDES Alex\'s commission per the no-markup invariant. Quotation line items default to this; super_admin can quote below with a reason.',
+      comment: 'Buyer-facing FOB price (USD per unit) for single-origin Products. ALREADY INCLUDES Alex\'s commission for FW/HH per the no-markup invariant; do NOT multiply by 1.07 / divide by (1-0.07). For multi-origin Products (e.g. IronLite Core which ships from both FW Malaysia and HH China) read originVariants[].fobPriceUsd keyed by originCountry instead — this column carries only one of the origins. Quotation line items default to the matching origin variant; super_admin can quote below with a reason.',
     },
     currency: {
       type: DataTypes.STRING(3),

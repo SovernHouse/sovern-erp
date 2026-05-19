@@ -35,6 +35,15 @@ const RESILIENT_CATEGORY_SLUGS = new Set([
 // Resilient is NEVER SH. Per Alex 2026-05-17 incident + non-negotiable #9.
 const RESILIENT_ALLOWED_BRANDS = new Set(['FW', 'HH']);
 
+// Sister-brand co-mention is allowed in the declared-conflict check.
+// Per brand-safety.md (L-070): "FW <-> HH co-mention is ALLOWED (sister
+// factories under the Resilient family, both factories listed in each
+// other's seeded signatures)." A single SKU may ship from either origin
+// (IronLite Core: FlorWay Malaysia OR Anhui HanHua China), so a
+// Product.brand_code of FW must not block an HH price list, and vice
+// versa. SH <-> FW/HH is still refused in either direction.
+const SISTER_BRAND_PAIR = new Set(['FW', 'HH']);
+
 // Default brand to assume when the caller doesn't specify and items don't
 // disambiguate. The resolver refuses to render at this point — but the
 // constant is preserved for tests that probe the legacy single-brand
@@ -232,10 +241,18 @@ function assertBrandSafe(priceList, brand) {
 
   // 2) Items with a declared Product.brand_code that disagrees with the
   //    chosen brand are a brand-bleed in waiting. Refuse.
+  //
+  // Exception: FW <-> HH sister-brand co-mention is allowed per
+  // brand-safety.md (L-070). The same engineered-SPC SKU ships from
+  // both FlorWay (Malaysia) and Anhui HanHua (China) production lines;
+  // a Product tagged brand_code='FW' must not block an HH price list
+  // (and vice versa). SH <-> FW/HH is still refused in either direction.
   const declaredConflicts = items
     .filter((it) => {
       const d = itemDeclaredBrand(it);
-      return d && d !== upperBrand;
+      if (!d || d === upperBrand) return false;
+      if (SISTER_BRAND_PAIR.has(d) && SISTER_BRAND_PAIR.has(upperBrand)) return false;
+      return true;
     })
     .map((it) => ({
       sku: it.sku || it.Product?.sku,

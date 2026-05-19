@@ -120,14 +120,44 @@ describe('Phase 4.28d — PriceList brand-leak guard', () => {
     }
   });
 
-  test('Items declaring different brand than PriceList → conflict throws', () => {
-    const pl = {
-      id: 'pl-5',
-      name: 'FW list with HH items',
+  test('Sister-brand exemption: FW list with HH-tagged items passes (and vice versa)', () => {
+    // Per brand-safety.md L-070, FW <-> HH co-mention is allowed because
+    // the same engineered-SPC SKU ships from both FlorWay (Malaysia) and
+    // Anhui HanHua (China). This exemption was added 2026-05-19 after
+    // the HH IronLite PDF refused to render (Alex incident).
+    const plFW = {
+      id: 'pl-5a',
+      name: 'FW list with HH-tagged items',
       brandCode: 'FW',
       items: [resilientItem({ brand: 'HH' })],
     };
-    expect(() => assertBrandSafe(pl, 'FW')).toThrow(BrandLeakError);
+    expect(() => assertBrandSafe(plFW, 'FW')).not.toThrow();
+
+    const plHH = {
+      id: 'pl-5b',
+      name: 'HH list with FW-tagged items',
+      brandCode: 'HH',
+      items: [resilientItem({ brand: 'FW' })],
+    };
+    expect(() => assertBrandSafe(plHH, 'HH')).not.toThrow();
+  });
+
+  test('SH <-> FW/HH cross-brand items still refused (exemption is FW<->HH only)', () => {
+    // SH on an FW list = brand-bleed; refuse regardless of Resilient
+    // status. The sister-brand exemption applies only to the {FW, HH}
+    // pair.
+    const plFWwithSH = {
+      id: 'pl-5c',
+      name: 'FW list with SH-tagged items',
+      brandCode: 'FW',
+      items: [
+        // SH item with a non-resilient product type so the Resilient
+        // refusal at line 1 doesn't fire first; this isolates the
+        // declared-conflict path.
+        genericItem({ brand: 'SH', type: 'hardwood' }),
+      ],
+    };
+    expect(() => assertBrandSafe(plFWwithSH, 'FW')).toThrow(BrandLeakError);
   });
 
   test('renderPriceListPdf surfaces BrandLeakError (no PDF buffer produced) when brand cannot be resolved', async () => {

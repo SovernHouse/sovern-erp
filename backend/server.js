@@ -839,6 +839,19 @@ db.sequelize.authenticate()
       logger.warn('[boot] C-49a originVariants backfill skipped:', e.message);
     }
 
+    // Phase 4.28f: 2026-05-19 IronLite Core price-list incident. AI added
+    // 7% on top of the FlorWay HanHua Excel for both FW and HH lists.
+    // Normalize the 9 IL- originVariants entries to the canonical Phase
+    // 4.9 C-1 shape (originCountry + fobPriceUsd) with the supplier's
+    // real per-origin buyer-ready FOB, and archive the two inflated
+    // PriceLists. Idempotent via AuditLog sentinel.
+    try {
+      const { migrate428fIronlitePricesFix } = require('./services/migrate428fIronlitePricesFix');
+      await migrate428fIronlitePricesFix(db);
+    } catch (e) {
+      logger.warn('[boot] 4.28f IronLite price fix skipped:', e.message);
+    }
+
     // Phase 4.9 C-2: seed initial tariff rates (CN->US, MY->US) per
     // Alex's HanHua factory note. Idempotent on (origin, destination,
     // effectiveFrom). Future rate changes are made via the admin UI.

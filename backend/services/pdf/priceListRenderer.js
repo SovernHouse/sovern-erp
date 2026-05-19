@@ -353,7 +353,24 @@ async function renderPriceListPdf(priceList, opts = {}) {
       // caveat / sample policy). Rendered above the brand footer. Plain
       // text; newlines preserved. Page-breaks if it doesn't fit; the
       // brand footer always sits on the last page (rendered after).
-      const footerNotesRaw = priceList.footerNotes || priceList.footer_notes;
+      //
+      // Phase 4.28f — every FW/HH list auto-prepends a tariff-reconfirm
+      // disclaimer. US/CN and US/MY duty rates are policy-volatile;
+      // anything printed on a list dated more than a few days back is
+      // not safe to quote without re-checking. Operator-entered
+      // footerNotes append after the standard disclaimer.
+      const STANDARD_TARIFF_DISCLAIMER =
+        'Tariff and duty rates referenced on this list are indicative and based on '
+        + 'factory notes current at the date of issue. US import duty on rigid-core flooring '
+        + 'is policy-volatile. Tariff rates and applicable surcharges must be reconfirmed '
+        + 'with the factory at the time the order is confirmed, before the buyer commits to '
+        + 'landed-cost figures.';
+      const brandForNotes = String(resolution.brand || '').toUpperCase();
+      const includeStandardDisclaimer = brandForNotes === 'FW' || brandForNotes === 'HH';
+      const operatorNotes = (priceList.footerNotes || priceList.footer_notes || '').toString().trim();
+      const footerNotesRaw = includeStandardDisclaimer
+        ? (operatorNotes ? `${STANDARD_TARIFF_DISCLAIMER}\n\n${operatorNotes}` : STANDARD_TARIFF_DISCLAIMER)
+        : operatorNotes;
       if (footerNotesRaw && String(footerNotesRaw).trim()) {
         const notes = String(footerNotesRaw).trim();
         doc.font(fonts.body).fontSize(9);
