@@ -43,12 +43,12 @@ The construction headline used in customer materials:
 | **Total thickness range** | 6.5 mm to 12.0 mm |
 | **Wear layer** | **50S = 0.5 mm = 20 mil.** Conversion key: 100S = 1 mm. |
 | **AC rating** | **AC4 / Class 32 (commercial light).** Per Alice via WeChat 2026-05-19, applies when wear layer is 50S. |
-| **Surface finish (standard)** | **Embossed.** EIR (Embossed In Register) available as an upgrade at **+$0.20/m²** (Alex, 2026-05-19). |
-| **Surface coating** | **Ultra Scratch Resistant UV Lacquer.** Standard across all SKUs. |
-| **Click system** | **Unilin** (patent-licensed). Per Alex, 2026-05-19 (supersedes the earlier "drop-down click" note). |
-| **Installation method** | **Lock System** — floating, no glue required. |
-| **Core construction (canonical, per total thickness)** | Five-layer stack: 0.5 mm wear layer + 1 mm SPC top + Nmm WPC foam core + 1 mm SPC stability + 1 mm IXPE backing. **N = total − 3.5 mm**. e.g. 6.5 mm SKU → 3 mm WPC core; 12.0 mm SKU → 8.5 mm WPC core. |
-| **Underlayment** | **1 mm IXPE, attached / bonded to the back.** No separate underlay SKU. |
+| **Surface Finish** | **Ultra Scratch Resistant UV Lacquer.** Standard across all SKUs. |
+| **Surface Texture** | **Embossed.** EIR (Embossed In Register) available as an upgrade at **+$0.20/m²** (negotiable, per Alex 2026-05-19). |
+| **Lock System** | **Unilin** (patent-licensed). Supersedes the earlier "drop-down click" / "Click System" / "Installation Method" notes. |
+| **Bevel** | **Micro-Bevel.** |
+| **Construction (canonical, per total thickness)** | **0.5mm Wear Layer + 0.6mm Vinyl + 1mm SPC + Nmm WPC + 1mm + 1mm IXPE.** N = total − 4.1mm. e.g. 6.5 mm SKU → 2.4mm WPC; 12.0 mm SKU → 7.9mm WPC. |
+| **Underlayment** | **1mm IXPE, attached / bonded to the back.** No separate underlay SKU. |
 | **Core density** | 1,200 kg/m³ |
 | **Conventional SPC density** | 2,050 kg/m³ |
 | **Weight reduction vs SPC** | 41% lighter |

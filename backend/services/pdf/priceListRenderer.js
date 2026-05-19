@@ -297,13 +297,21 @@ async function renderPriceListPdf(priceList, opts = {}) {
         return Array.isArray(c) ? c : [];
       };
 
+      // Phase 4.28aa (2026-05-19): label terminology updated to match
+      // Alex's standard (Lock System, Surface Finish vs Surface Texture,
+      // Bevel). Title Case preserved; the PDF .toUpperCase()s for the
+      // header band rendering.
       const productDetails = [
-        ['Construction',  pickCommon('construction', (it) => itemSpecs(it).construction)],
-        ['Click System',  pickCommon('clickSystem',  (it) => itemSpecs(it).clickSystem)],
-        ['Surface',       pickCommon('finish',       (it) => itemSpecs(it).finish)],
-        ['AC Rating',     pickCommon('acRating',     (it) => itemSpecs(it).acRating)],
-        ['Wear Layer',    pickCommon('wearLayer',    (it) => itemSpecs(it).wearLayer)],
-        ['HS Code',       pickCommon('hsCode',       (it) => (it.Product || it.product || {}).hsCode)],
+        ['Core Type',       pickCommon('coreType',       (it) => itemSpecs(it).coreType)],
+        ['Construction',    pickCommon('construction',   (it) => itemSpecs(it).construction)],
+        ['Lock System',     pickCommon('clickSystem',    (it) => itemSpecs(it).clickSystem)],
+        ['Surface Finish',  pickCommon('finish',         (it) => itemSpecs(it).finish)],
+        ['Surface Texture', pickCommon('surfaceTexture', (it) => itemSpecs(it).surfaceTexture)],
+        ['Bevel',           pickCommon('bevel',          (it) => itemSpecs(it).bevel)],
+        ['AC Rating',       pickCommon('acRating',       (it) => itemSpecs(it).acRating)],
+        ['Wear Layer',      pickCommon('wearLayer',      (it) => itemSpecs(it).wearLayer)],
+        ['Underlayment',    pickCommon('underlayment',   (it) => itemSpecs(it).underlayment)],
+        ['HS Code',         pickCommon('hsCode',         (it) => (it.Product || it.product || {}).hsCode)],
       ].filter(([, v]) => v != null && v !== '');
 
       // Certifications: aggregate unique names across every item's product.
