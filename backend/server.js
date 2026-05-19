@@ -865,6 +865,18 @@ db.sequelize.authenticate()
       logger.warn('[boot] 4.28g FW/HH markup zero skipped:', e.message);
     }
 
+    // Phase 4.28k: PriceListItem.display_order column + thickness-aware
+    // backfill. Lexicographic SKU sort put IronLite 10.0mm before 6.5mm
+    // on rendered PDFs; explicit display_order lets the operator drag-
+    // reorder and gives the backfill a chance to fix flooring lists by
+    // extracting -N.NNmm from the SKU. Idempotent via AuditLog sentinel.
+    try {
+      const { migrate428kPriceListItemDisplayOrder } = require('./services/migrate428kPriceListItemDisplayOrder');
+      await migrate428kPriceListItemDisplayOrder(db);
+    } catch (e) {
+      logger.warn('[boot] 4.28k display_order backfill skipped:', e.message);
+    }
+
     // Phase 4.9 C-2: seed initial tariff rates (CN->US, MY->US) per
     // Alex's HanHua factory note. Idempotent on (origin, destination,
     // effectiveFrom). Future rate changes are made via the admin UI.

@@ -4550,6 +4550,17 @@ async function callTool(name, args) {
           : (productRow ? productRow.name : null);
       const num = (v) => (v === undefined || v === null || v === '' ? null : parseFloat(v));
       const int = (v) => (v === undefined || v === null || v === '' ? null : parseInt(v, 10));
+
+      // Phase 4.28k: auto-assign displayOrder if the caller didn't
+      // supply one. Picks max(existing) + 10 so new items append to
+      // the end of the editor's row order without colliding with the
+      // 10/20/30 backfill stride.
+      let displayOrder = int(args.displayOrder ?? args.display_order);
+      if (displayOrder == null) {
+        const max = await getDb().PriceListItem.max('displayOrder', { where: { priceListId } });
+        displayOrder = (max != null ? Number(max) : 0) + 10;
+      }
+
       const row = await getDb().PriceListItem.create({
         id: uuidv4(),
         priceListId,
@@ -4569,6 +4580,7 @@ async function callTool(name, args) {
           ? args.customColumns
           : (args.custom_columns && typeof args.custom_columns === 'object' ? args.custom_columns : {}),
         notes:        args.notes || null,
+        displayOrder,
       });
       await auditAiWrite('add_price_list_item', 'PriceListItem', row.id, {
         priceListId,

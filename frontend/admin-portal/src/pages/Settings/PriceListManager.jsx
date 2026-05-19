@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Plus,
@@ -11,7 +11,8 @@ import {
   ChevronDown,
   Save,
   AlertCircle,
-  Check
+  Check,
+  GripVertical
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api, { customersAPI, factoriesAPI } from '../../services/api'
@@ -257,6 +258,45 @@ const PriceListManager = () => {
     setItems(prev => prev.map(item =>
       item.id === id ? { ...item, [field]: value } : item
     ))
+  }
+
+  // Phase 4.28k: drag-and-drop row reorder. Uses native HTML5 DnD so no
+  // new deps. dragSrcIdRef is a ref because onDragStart/onDragOver/onDrop
+  // fire on different rows and React state would lag the pointer.
+  const dragSrcIdRef = useRef(null)
+  const [dropTargetId, setDropTargetId] = useState(null)
+  const handleRowDragStart = (id) => (e) => {
+    dragSrcIdRef.current = id
+    e.dataTransfer.effectAllowed = 'move'
+    // Firefox needs a non-empty payload to fire drop
+    try { e.dataTransfer.setData('text/plain', String(id)) } catch (_) {}
+  }
+  const handleRowDragOver = (id) => (e) => {
+    if (dragSrcIdRef.current == null || dragSrcIdRef.current === id) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dropTargetId !== id) setDropTargetId(id)
+  }
+  const handleRowDragLeave = () => setDropTargetId(null)
+  const handleRowDrop = (id) => (e) => {
+    e.preventDefault()
+    const srcId = dragSrcIdRef.current
+    dragSrcIdRef.current = null
+    setDropTargetId(null)
+    if (srcId == null || srcId === id) return
+    setItems(prev => {
+      const next = [...prev]
+      const fromIdx = next.findIndex(it => it.id === srcId)
+      const toIdx   = next.findIndex(it => it.id === id)
+      if (fromIdx === -1 || toIdx === -1) return prev
+      const [moved] = next.splice(fromIdx, 1)
+      next.splice(toIdx, 0, moved)
+      return next
+    })
+  }
+  const handleRowDragEnd = () => {
+    dragSrcIdRef.current = null
+    setDropTargetId(null)
   }
 
   // Edit a value in the item's customColumns bucket. The columnDefinitions
@@ -936,6 +976,11 @@ const PriceListManager = () => {
                         <table className="w-full">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-200">
+                              {/* Phase 4.28k: drag handle column. Grip
+                                  icon, no label. Drag the row up/down to
+                                  reorder; the new order is sent to
+                                  POST /reorder on save. */}
+                              <th className="w-8" aria-label="Drag handle"></th>
                               {visibleStandardCols.map((c) => (
                                 <th key={c.k} className={`px-4 py-3 font-semibold text-slate-900 text-sm ${c.align === 'right' ? 'text-right' : 'text-left'}`}>
                                   {labelFor(c)}
@@ -951,7 +996,19 @@ const PriceListManager = () => {
                           </thead>
                           <tbody>
                             {items.map((item) => (
-                              <tr key={item.id} className="border-b border-slate-200 hover:bg-slate-50">
+                              <tr
+                                key={item.id}
+                                className={`border-b border-slate-200 hover:bg-slate-50 ${dropTargetId === item.id ? 'bg-blue-50 outline outline-2 outline-blue-400' : ''}`}
+                                draggable
+                                onDragStart={handleRowDragStart(item.id)}
+                                onDragOver={handleRowDragOver(item.id)}
+                                onDragLeave={handleRowDragLeave}
+                                onDrop={handleRowDrop(item.id)}
+                                onDragEnd={handleRowDragEnd}
+                              >
+                                <td className="w-8 px-1 text-slate-400 cursor-grab active:cursor-grabbing select-none" title="Drag to reorder">
+                                  <GripVertical className="w-4 h-4 mx-auto" />
+                                </td>
                                 {visibleStandardCols.map((c) => (
                                   <td key={c.k} className="px-4 py-3">
                                     <input

@@ -91,10 +91,68 @@ router.get('/price-lists/:id', requireAuth, async (req, res, next) => {
         { model: db.Factory, attributes: ['id', 'companyName'] },
         { model: db.PriceListItem, as: 'items', include: [{ model: db.Product, attributes: ['id', 'name', 'sku'] }] },
         { model: db.User, as: 'creator', attributes: ['id', 'firstName', 'lastName'] }
-      ]
+      ],
+      // Phase 4.28k: items render in display_order (manually set by the
+      // editor's drag-and-drop, or by the thickness backfill).
+      order: [
+        [{ model: db.PriceListItem, as: 'items' }, 'displayOrder', 'ASC'],
+        [{ model: db.PriceListItem, as: 'items' }, 'sku',          'ASC'],
+      ],
     });
     if (!priceList) return res.status(404).json({ success: false, error: { message: 'Price list not found', statusCode: 404 } });
     res.json(getSuccessResponse(priceList));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Reorder a price list's items via drag-and-drop.
+ * @route POST /api/personalization/price-lists/:id/reorder
+ * @body  { itemIds: string[] }   // new ordering, first = top of the list
+ */
+router.post('/price-lists/:id/reorder', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { itemIds } = req.body || {};
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+      return res.status(400).json({ success: false, error: { message: 'itemIds[] is required and must be non-empty.', statusCode: 400 } });
+    }
+    const priceList = await db.PriceList.findByPk(id, { attributes: ['id', 'name'] });
+    if (!priceList) return res.status(404).json({ success: false, error: { message: 'Price list not found', statusCode: 404 } });
+
+    // Pull current items, build an id → row map, refuse the request if
+    // the caller's itemIds list doesn't fully match this list's items.
+    const items = await db.PriceListItem.findAll({ where: { priceListId: id }, attributes: ['id'] });
+    const liveIds = new Set(items.map(r => r.id));
+    const sentIds = new Set(itemIds);
+    if (liveIds.size !== sentIds.size || ![...liveIds].every(x => sentIds.has(x))) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          message: 'Reorder payload mismatch — itemIds must be the full set of items on this price list, with no extras.',
+          statusCode: 409,
+          info: { liveCount: liveIds.size, sentCount: sentIds.size },
+        },
+      });
+    }
+
+    // 10, 20, 30, ... so future single-row drag inserts can slot
+    // between two rows without renumbering everything.
+    let updated = 0;
+    for (let i = 0; i < itemIds.length; i++) {
+      const [count] = await db.PriceListItem.update(
+        { displayOrder: (i + 1) * 10 },
+        { where: { id: itemIds[i], priceListId: id } },
+      );
+      updated += count;
+    }
+
+    res.json(getSuccessResponse({
+      priceListId: id,
+      itemsReordered: updated,
+      newOrder: itemIds,
+    }));
   } catch (error) {
     next(error);
   }
@@ -203,7 +261,15 @@ router.put('/price-lists/:id', requireAuth, requireRole('admin'), async (req, re
     if (items) {
       await db.PriceListItem.destroy({ where: { priceListId: priceList.id } });
       if (items.length > 0) {
-        const itemsWithListId = items.map(item => ({ ...item, priceListId: priceList.id }));
+        // Phase 4.28k: when the editor sends an items[] array, the order
+        // of the array IS the operator-intended row order. Assign
+        // displayOrder = (i+1)*10 unless the item explicitly carries
+        // its own displayOrder (e.g. a programmatic import).
+        const itemsWithListId = items.map((item, idx) => ({
+          ...item,
+          priceListId: priceList.id,
+          displayOrder: item.displayOrder != null ? item.displayOrder : (idx + 1) * 10,
+        }));
         await db.PriceListItem.bulkCreate(itemsWithListId);
       }
     }
@@ -479,7 +545,13 @@ router.get('/price-lists/:id/pdf', requireAuth, async (req, res, next) => {
       require('../../services/priceListBrandResolver');
     const priceList = await db.PriceList.findByPk(req.params.id, {
       include: priceListIncludeForBrand(db),
-      order: [[{ model: db.PriceListItem, as: 'items' }, 'sku', 'ASC']],
+      // Phase 4.28k: order by display_order ASC NULLS LAST, then sku ASC
+      // so backfilled/manually-ordered rows render in operator intent,
+      // and pre-4.28k rows still get a deterministic fallback.
+      order: [
+        [{ model: db.PriceListItem, as: 'items' }, 'displayOrder', 'ASC'],
+        [{ model: db.PriceListItem, as: 'items' }, 'sku',          'ASC'],
+      ],
     });
     if (!priceList) {
       return res.status(404).json({ success: false, error: { message: 'Price list not found', statusCode: 404 } });

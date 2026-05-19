@@ -24,7 +24,12 @@ async function loadPriceList(priceListId) {
   const { priceListIncludeForBrand } = require('./priceListBrandResolver');
   return db.PriceList.findByPk(priceListId, {
     include: priceListIncludeForBrand(db),
-    order: [[{ model: db.PriceListItem, as: 'items' }, 'sku', 'ASC']],
+    // Phase 4.28k: same order as the PDF route so the emailed PDF
+    // matches the editor view.
+    order: [
+      [{ model: db.PriceListItem, as: 'items' }, 'displayOrder', 'ASC'],
+      [{ model: db.PriceListItem, as: 'items' }, 'sku',          'ASC'],
+    ],
   });
 }
 

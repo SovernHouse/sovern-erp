@@ -57,12 +57,24 @@ module.exports = (sequelize) => {
     notes: {
       type: DataTypes.TEXT,
       allowNull: true
+    },
+    // Phase 4.28k (2026-05-19): explicit row order for the editor + PDF.
+    // Default queries ORDER BY display_order ASC, sku ASC so the
+    // ASCII-lex fallback on SKUs like IL-180x1220-10.0mm vs -6.5mm
+    // doesn't surface again. Backfilled by migrate428kPriceListItem
+    // DisplayOrder which extracts -N.NNmm thickness from SKU/productName
+    // when available, otherwise preserves insertion order.
+    displayOrder: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Explicit row order in the PriceListItem table for editor + PDF. Lower number renders first. NULL falls back to sku ASC.',
     }
   }, {
     indexes: [
       { fields: ['price_list_id'] },
       { fields: ['product_id'] },
-      { fields: ['price_list_id', 'product_id'] }
+      { fields: ['price_list_id', 'product_id'] },
+      { fields: ['price_list_id', 'display_order'] }
     ]
   });
 
