@@ -111,6 +111,20 @@ async function backfillBrandsIfNeeded(db) {
   }
 
   // (3b) Promote configured super-admin users to multi-brand access.
+  //
+  // Phase 4.28y (2026-05-19): two bugs fixed at once.
+  //
+  //   1. L-047 recurrence — Sequelize returned u.accessibleBrands as a
+  //      stringified JSON array on some query paths. Array.isArray(string)
+  //      is false, so the prior version believed current=[], ran the
+  //      merge, and silently overwrote the existing value with
+  //      ['SH','FW'] every boot. For Alex specifically this stripped
+  //      'HH' every pm2 restart, causing the recurring
+  //      'Failed to load product' on ILCN-* clicks. Parse-on-read.
+  //
+  //   2. HH is now an active brand (Phase 4.28l SKU split). Every
+  //      super-admin needs SH + FW + HH coverage by default. The merge
+  //      now adds all three; existing brands on the row are preserved.
   if (db.User && db.User.rawAttributes.accessibleBrands) {
     const emails = getMultiBrandUserEmails();
     if (emails.length) {
@@ -118,16 +132,24 @@ async function backfillBrandsIfNeeded(db) {
         const users = await db.User.findAll({
           where: { email: { [Op.in]: emails } },
         });
+        const REQUIRED_BRANDS = ['SH', 'FW', 'HH'];
         for (const u of users) {
-          const current = Array.isArray(u.accessibleBrands) ? u.accessibleBrands : [];
-          // Only update if missing FW — avoids spurious writes on re-boot.
-          if (!current.includes('FW')) {
-            const merged = Array.from(new Set([...current, 'SH', 'FW']));
+          let raw = u.accessibleBrands;
+          if (typeof raw === 'string') {
+            try { raw = JSON.parse(raw); } catch (_) { raw = null; }
+          }
+          const current = Array.isArray(raw) ? raw : [];
+          // Compute what's missing; only update when at least one
+          // required brand is absent so re-boots are a no-op once
+          // every super-admin is fully provisioned.
+          const missing = REQUIRED_BRANDS.filter(b => !current.includes(b));
+          if (missing.length > 0) {
+            const merged = Array.from(new Set([...current, ...REQUIRED_BRANDS]));
             await u.update(
               { accessibleBrands: merged },
               { validate: false, hooks: false, silent: true },
             );
-            logger.info(`[migrateBrands] Upgraded ${u.email} to accessibleBrands=${JSON.stringify(merged)}`);
+            logger.info(`[migrateBrands] Upgraded ${u.email} accessibleBrands → ${JSON.stringify(merged)} (added: ${missing.join(', ')})`);
             updated++;
           }
         }
