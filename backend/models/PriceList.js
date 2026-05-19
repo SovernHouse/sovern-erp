@@ -99,9 +99,15 @@ module.exports = (sequelize) => {
     // sample policy, anything that doesn't fit a per-item column. Plain
     // text; newlines preserved. Empty / null → footer renders without
     // this section.
+    //
+    // Phase 4.28n (2026-05-19): new PriceLists default to the standard
+    // Incoterm-flexibility note. Operator can edit or clear per list.
+    // For FW/HH this lives BELOW the auto-prepended tariff disclaimer
+    // the renderer adds (priceListRenderer.js line ~373).
     footerNotes: {
       type: DataTypes.TEXT,
       allowNull: true,
+      defaultValue: 'DDP, CIF available upon request',
     },
     createdBy: {
       type: DataTypes.UUID,

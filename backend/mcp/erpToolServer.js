@@ -4409,6 +4409,12 @@ async function callTool(name, args) {
         const f = await getDb().Factory.findByPk(factoryId);
         if (!f) return `Error: Factory ${factoryId} not found.`;
       }
+      // Phase 4.28n: default footer notes match the model defaultValue
+      // ("DDP, CIF available upon request"). Caller can override by
+      // passing footerNotes / footer_notes (including '' to clear it).
+      const callerFooter = args.footerNotes !== undefined
+        ? args.footerNotes
+        : (args.footer_notes !== undefined ? args.footer_notes : undefined);
       const row = await getDb().PriceList.create({
         id: uuidv4(),
         name,
@@ -4424,6 +4430,7 @@ async function callTool(name, args) {
           : (Array.isArray(args.column_definitions) ? args.column_definitions : []),
         isActive: args.isActive !== false && args.is_active !== false,
         createdBy: requester.id,
+        ...(callerFooter !== undefined ? { footerNotes: callerFooter } : {}),
       });
       await auditAiWrite('create_price_list', 'PriceList', row.id, {
         name,

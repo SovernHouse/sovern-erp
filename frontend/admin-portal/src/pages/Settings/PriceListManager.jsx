@@ -84,7 +84,11 @@ const PriceListManager = () => {
   const [columnWidths, setColumnWidths] = useState({})
   // Free-text block rendered at the bottom of the PDF (payment terms,
   // duty breakdown, Incoterm caveat, sample policy).
-  const [footerNotes, setFooterNotes] = useState('')
+  //
+  // Phase 4.28n: new PriceLists pre-fill with the standard Incoterm
+  // flexibility note. Editable / clearable per list.
+  const DEFAULT_FOOTER_NOTES = 'DDP, CIF available upon request'
+  const [footerNotes, setFooterNotes] = useState(DEFAULT_FOOTER_NOTES)
 
   useEffect(() => {
     customersAPI.getAll({ limit: 500 }).then(r => setCustomers(Array.isArray(r.data) ? r.data : (r.data?.data || []))).catch(() => {})
@@ -183,7 +187,10 @@ const PriceListManager = () => {
         try { widths = JSON.parse(widths) } catch (_) { widths = {} }
       }
       setColumnWidths(widths && typeof widths === 'object' && !Array.isArray(widths) ? widths : {})
-      setFooterNotes(priceList.footerNotes || '')
+      // Phase 4.28n: load whatever's saved on the row; do not fall back
+      // to the default when editing — the operator may have intentionally
+      // cleared it. New lists pre-fill via the useState initial value.
+      setFooterNotes(priceList.footerNotes != null ? priceList.footerNotes : '')
     } catch (error) {
       console.error('Failed to load price list details:', error)
       toast.error('Failed to load price list details')
@@ -208,7 +215,7 @@ const PriceListManager = () => {
     setHiddenStandardCols([])
     setColumnLabels({})
     setColumnWidths({})
-    setFooterNotes('')
+    setFooterNotes(DEFAULT_FOOTER_NOTES)
     setSelectedPriceList(null)
   }
 
@@ -1116,7 +1123,7 @@ const PriceListManager = () => {
                   value={footerNotes}
                   onChange={(e) => setFooterNotes(e.target.value)}
                   rows={5}
-                  placeholder={'e.g.\nPayment: 30% T/T deposit, 70% before shipment.\nDuty: DDP USA shown; CIF available on request.\nLead times exclude ocean freight.'}
+                  placeholder={DEFAULT_FOOTER_NOTES}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                 />
               </div>
