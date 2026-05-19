@@ -21,7 +21,10 @@
     "backend/server.js",
     "package-lock.json",
     "scripts/sensitive-vocab.json",
-    "scripts/check-sensitive-vocab.js"
+    "scripts/check-sensitive-vocab.js",
+    "scripts/git-hooks/pre-commit",
+    "scripts/install-hooks.js",
+    ".github/workflows/sensitive-vocab.yml"
   ],
   "$comment_allowlist_dirs": "Whole-directory allowlists. Files inside these dirs are exempt from scanning. The scope here is INTERNAL / OPERATOR-FACING surfaces — admin portal, mobile ops app, docs, skills, models, migrations, services. The scanner stays strict on BUYER-FACING and FACTORY-FACING surfaces: frontend/customer-portal/ + frontend/factory-portal/ + the website repo (separate). The runtime brandSafetyGateway covers the data layer for those surfaces. The git-time scanner covers the source layer.",
   "allowlist_dirs": [
