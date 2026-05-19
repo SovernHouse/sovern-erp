@@ -40,6 +40,15 @@ async function createFactory(payload, ctx) {
   if (!payload || !payload.companyName) {
     return err('validation', 400, 'companyName is required');
   }
+  // Phase 4.28i: scan Factory.notes for compensation vocabulary. Factory
+  // rows feed the factory portal + internal exports — commission /
+  // markup / margin language must never appear here.
+  try {
+    const { assertNoSensitiveCompensationVocab } = require('../brandSafetyGateway');
+    assertNoSensitiveCompensationVocab(payload.notes, 'Factory.notes');
+  } catch (vocabErr) {
+    return err('sensitive_vocab', 422, vocabErr.message);
+  }
   const brand = await resolveBrandCode(payload.brandCode);
   if (!brand.ok) return err('validation', 400, brand.message);
 
@@ -75,6 +84,16 @@ async function updateFactory(id, patch, ctx) {
 
   if (ctx?.userId && !canViewFactory(ctx.userId, factory)) {
     return err('not_found', 404, 'Factory not found');
+  }
+
+  // Phase 4.28i: same vocab guard on update.
+  if (patch.notes !== undefined) {
+    try {
+      const { assertNoSensitiveCompensationVocab } = require('../brandSafetyGateway');
+      assertNoSensitiveCompensationVocab(patch.notes, 'Factory.notes');
+    } catch (vocabErr) {
+      return err('sensitive_vocab', 422, vocabErr.message);
+    }
   }
 
   const before = factory.toJSON();

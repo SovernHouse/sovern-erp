@@ -28,7 +28,11 @@
     "lint": "echo lint",
     "test:e2e": "npx playwright test",
     "test:e2e:headed": "npx playwright test --headed",
-    "test:e2e:ui": "npx playwright test --ui"
+    "test:e2e:ui": "npx playwright test --ui",
+    "vocab:check": "node scripts/check-sensitive-vocab.js",
+    "vocab:check:staged": "node scripts/check-sensitive-vocab.js --staged",
+    "hooks:install": "node scripts/install-hooks.js",
+    "postinstall": "node scripts/install-hooks.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0",

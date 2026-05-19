@@ -99,6 +99,24 @@ exports.postMessage = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Message body or attachment is required.' });
     }
 
+    // Phase 4.28i: user-authored chatter renders on the entity detail
+    // page; if a Customer-portal chatter view is added later, the body
+    // becomes buyer-visible. Refuse compensation vocabulary at save time.
+    // postSystemEvent (used for internal status_change / event / audit
+    // rows) is NOT scanned — system events legitimately log internal
+    // commission state changes.
+    try {
+      const { assertNoSensitiveCompensationVocab, BrandLeakError } =
+        require('../services/brandSafetyGateway');
+      assertNoSensitiveCompensationVocab(body, 'ChatterMessage.body');
+    } catch (vocabErr) {
+      const { BrandLeakError } = require('../services/brandSafetyGateway');
+      if (vocabErr instanceof BrandLeakError) {
+        return res.status(422).json({ success: false, error: { message: vocabErr.message, code: 'sensitive_vocab', leakField: vocabErr.leakField, statusCode: 422 } });
+      }
+      throw vocabErr;
+    }
+
     const authorName = req.user
       ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim()
       : 'System';

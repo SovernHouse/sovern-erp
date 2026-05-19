@@ -53,6 +53,17 @@ async function createQuotation(payload, ctx) {
     displayAreaUnit, displayDimensionUnit, validDays,
   } = payload || {};
 
+  // Phase 4.28i: terms renders to the quotation PDF + email. Refuse any
+  // commission / markup / margin language at save time. Catches the
+  // 2026-05-19 PriceList.description leak class on the quotation surface.
+  try {
+    const { assertNoSensitiveCompensationVocab } = require('../brandSafetyGateway');
+    assertNoSensitiveCompensationVocab(terms, 'Quotation.terms');
+    assertNoSensitiveCompensationVocab(payload?.notes, 'Quotation.notes');
+  } catch (vocabErr) {
+    return err('sensitive_vocab', 422, vocabErr.message);
+  }
+
   if (!customerId) {
     return err('validation', 400, 'customerId is required');
   }
@@ -311,6 +322,15 @@ async function updateQuotation(id, patch, ctx) {
   if (quotation.status && quotation.status !== 'draft') {
     return err('validation', 400,
       `Quotation ${quotation.quotationNumber} is in status "${quotation.status}"; only draft quotations are editable. Create a revision instead.`);
+  }
+
+  // Phase 4.28i: vocab guard on the update path. Mirrors create.
+  try {
+    const { assertNoSensitiveCompensationVocab } = require('../brandSafetyGateway');
+    if (patch?.terms !== undefined) assertNoSensitiveCompensationVocab(patch.terms, 'Quotation.terms');
+    if (patch?.notes !== undefined) assertNoSensitiveCompensationVocab(patch.notes, 'Quotation.notes');
+  } catch (vocabErr) {
+    return err('sensitive_vocab', 422, vocabErr.message);
   }
 
   // brandCode is immutable on the standard update path (mirrors leadWriteService).

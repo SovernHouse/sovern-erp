@@ -107,6 +107,22 @@ router.get('/price-lists/:id', requireAuth, async (req, res, next) => {
 router.post('/price-lists', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
     const { items, ...listData } = req.body;
+    // Phase 4.28i: every buyer-facing field gets scanned for forbidden
+    // compensation vocabulary before save. PriceList.description renders
+    // to the PDF; footerNotes prints on every page. Catches the 2026-05-19
+    // PriceList.description "factory commissions" leak class.
+    try {
+      const { assertNoSensitiveCompensationVocab, BrandLeakError } =
+        require('../../services/brandSafetyGateway');
+      assertNoSensitiveCompensationVocab(listData.description, 'PriceList.description');
+      assertNoSensitiveCompensationVocab(listData.footerNotes,  'PriceList.footerNotes');
+    } catch (err) {
+      const { BrandLeakError } = require('../../services/brandSafetyGateway');
+      if (err instanceof BrandLeakError) {
+        return res.status(422).json({ success: false, error: { message: err.message, code: 'sensitive_vocab', leakField: err.leakField, statusCode: 422 } });
+      }
+      throw err;
+    }
     const priceList = await db.PriceList.create({ ...listData, createdBy: req.user.id });
 
     if (items && items.length > 0) {
@@ -136,6 +152,21 @@ router.put('/price-lists/:id', requireAuth, requireRole('admin'), async (req, re
     if (!priceList) return res.status(404).json({ success: false, error: { message: 'Price list not found', statusCode: 404 } });
 
     const { items, ...listData } = req.body;
+    // Phase 4.28i: forbid compensation vocabulary on the buyer-facing
+    // PDF fields. Same guard as POST /price-lists, applied symmetrically
+    // on the update path.
+    try {
+      const { assertNoSensitiveCompensationVocab, BrandLeakError } =
+        require('../../services/brandSafetyGateway');
+      assertNoSensitiveCompensationVocab(listData.description, 'PriceList.description');
+      assertNoSensitiveCompensationVocab(listData.footerNotes,  'PriceList.footerNotes');
+    } catch (err) {
+      const { BrandLeakError } = require('../../services/brandSafetyGateway');
+      if (err instanceof BrandLeakError) {
+        return res.status(422).json({ success: false, error: { message: err.message, code: 'sensitive_vocab', leakField: err.leakField, statusCode: 422 } });
+      }
+      throw err;
+    }
     // Phase 4.28d: validate brandCode if the caller is changing it. Active
     // brand required. Resilient enforcement happens in the renderer guard,
     // not here, so the operator can stage a brand change before fixing

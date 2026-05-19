@@ -1,0 +1,59 @@
+{
+  "$comment": "Phase 4.28i — single source of truth for compensation/margin vocabulary that must not appear in any new source change. The pre-commit hook (scripts/check-sensitive-vocab.js) and the CI workflow (.github/workflows/sensitive-vocab.yml) both consume this file. Sync this list with the runtime guard in backend/services/brandSafetyGateway.js if you add or remove patterns.",
+  "patterns": [
+    { "name": "commission",          "regex": "\\bcommission(s|ed|ing)?\\b" },
+    { "name": "markup",              "regex": "\\bmark[\\s-]?up(s|ped|ping)?\\b" },
+    { "name": "sourcing fee",        "regex": "\\bsourcing[\\s-]?fee(s)?\\b" },
+    { "name": "buying commission",   "regex": "\\bbuying[\\s-]?commission(s)?\\b" },
+    { "name": "agency fee",          "regex": "\\bagency[\\s-]?fee(s)?\\b" },
+    { "name": "Sales Rep Agreement", "regex": "\\bSales\\s+Rep(resentative)?\\s+Agreement\\b" },
+    { "name": "profit margin",       "regex": "\\bprofit\\s+margins?\\b" },
+    { "name": "factory rebate",      "regex": "\\b(factory|supplier)\\s+rebate(s)?\\b" },
+    { "name": "kickback",            "regex": "\\bkick[\\s-]?back(s)?\\b" }
+  ],
+  "$comment_allowlist": "Files where the words are STRUCTURAL — the model, service, controller, migration, seed, AI prompt, or skill file that legitimately implements / documents the compensation system. Adding paths here is allowed; weakening the patterns is not.",
+  "allowlist_paths": [
+    "CLAUDE.md",
+    "DEVELOPER_GUIDE.md",
+    "PRODUCT_ARCHITECTURE.md",
+    "SESSION.md",
+    "README.md",
+    "backend/server.js",
+    "package-lock.json",
+    "scripts/sensitive-vocab.json",
+    "scripts/check-sensitive-vocab.js"
+  ],
+  "$comment_allowlist_dirs": "Whole-directory allowlists. Files inside these dirs are exempt from scanning. The scope here is INTERNAL / OPERATOR-FACING surfaces — admin portal, mobile ops app, docs, skills, models, migrations, services. The scanner stays strict on BUYER-FACING and FACTORY-FACING surfaces: frontend/customer-portal/ + frontend/factory-portal/ + the website repo (separate). The runtime brandSafetyGateway covers the data layer for those surfaces. The git-time scanner covers the source layer.",
+  "allowlist_dirs": [
+    "backend/__tests__/",
+    "backend/migrations/",
+    "backend/seeds/",
+    "backend/skills/",
+    "backend/models/",
+    "backend/services/",
+    "backend/controllers/",
+    "backend/routes/",
+    "backend/mcp/",
+    "backend/utils/",
+    "backend/middleware/",
+    "backend/modules/",
+    "backend/scripts/",
+    "backend/sanctions/",
+    "backend/templates/",
+    "backend/uploads/",
+    "docs/",
+    "skills/",
+    "e2e/",
+    "frontend/admin-portal/",
+    "frontend/shared/",
+    "mobile/sovern-ops-app/",
+    "node_modules/",
+    "frontend/customer-portal/node_modules/",
+    "frontend/factory-portal/node_modules/"
+  ],
+  "$comment_strict_dirs": "Surfaces the scanner stays strict on. Everything under these dirs is scanned. These are the directories whose source code renders strings directly to buyers or factories. Listed here for documentation; the scanner currently treats them as 'not allowlisted' rather than reading this field. Keep this list in sync with reality — add new buyer/factory-facing app directories as they appear.",
+  "strict_dirs": [
+    "frontend/customer-portal/",
+    "frontend/factory-portal/"
+  ]
+}

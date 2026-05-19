@@ -116,6 +116,23 @@ const update = async (req, res, next) => {
       commissionRateOverride, displayAreaUnit, displayDimensionUnit,
     } = req.body;
 
+    // Phase 4.28i: Quotation.terms renders to the buyer PDF. Refuse
+    // any commission / markup / margin vocabulary at save time. Notes
+    // field would be scanned too if Quotation.notes is supported by
+    // the schema in a future build.
+    try {
+      const { assertNoSensitiveCompensationVocab, BrandLeakError } =
+        require('../services/brandSafetyGateway');
+      assertNoSensitiveCompensationVocab(terms, 'Quotation.terms');
+      assertNoSensitiveCompensationVocab(req.body.notes, 'Quotation.notes');
+    } catch (vocabErr) {
+      const { BrandLeakError } = require('../services/brandSafetyGateway');
+      if (vocabErr instanceof BrandLeakError) {
+        return res.status(422).json({ success: false, error: { message: vocabErr.message, code: 'sensitive_vocab', leakField: vocabErr.leakField, statusCode: 422 } });
+      }
+      throw vocabErr;
+    }
+
     const quotation = await db.Quotation.findByPk(id);
     if (!quotation || quotation.deletedAt) {
       throw new NotFoundError('Quotation not found');

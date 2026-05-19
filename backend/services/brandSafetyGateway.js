@@ -204,9 +204,74 @@ function assertResilientNotSH({ brandCode, productSlugs = [], entityId = null })
   }
 }
 
+// ─── Sensitive compensation vocabulary scan (Phase 4.28i) ───────────────────
+//
+// 2026-05-19 incident: a PriceList.description string written by the
+// data-fix script contained the phrase "Buyer-facing FOB inclusive of
+// factory commissions". The string was rendered onto every PDF for
+// FW + HH lists and would have leaked Sovern's compensation model to
+// any buyer who received one. The renderer's existing brand-safety
+// guard checked for FOREIGN-brand markers (SH on an FW list, etc.)
+// but had no check for FORBIDDEN-vocabulary regardless of brand.
+//
+// Compensation / margin / commission language is internal-only across
+// every brand — buyer-facing and factory-facing output must use
+// neutral phrasing like "supplier sheet price", "buyer-ready FOB",
+// "agreed rate". The check fires at save time on every buyer-visible
+// or factory-visible string so the leak class is impossible to ship.
+//
+// Wired into:
+//   - PriceList.description + .footerNotes (RENDERS TO PDF)
+//   - Factory.notes (factory portal + internal exports)
+//   - Quotation.notes + .terms (RENDERS TO PDF)
+//   - ChatterMessage.body for user-authored types (comment, email_sent)
+//
+// Internal-only fields are NOT scanned (CommissionTracking.notes,
+// AuditLog.changes, Brand internal config — these legitimately store
+// the model state and cannot be neutralised).
+
+const SENSITIVE_COMPENSATION_PATTERNS = [
+  { name: 'commission',          regex: /\bcommission(s|ed|ing)?\b/i },
+  { name: 'markup',              regex: /\bmark[\s-]?up(s|ped|ping)?\b/i },
+  { name: 'sourcing fee',        regex: /\bsourcing[\s-]?fee(s)?\b/i },
+  { name: 'buying commission',   regex: /\bbuying[\s-]?commission(s)?\b/i },
+  { name: 'agency fee',          regex: /\bagency[\s-]?fee(s)?\b/i },
+  { name: 'Sales Rep Agreement', regex: /\bSales\s+Rep(resentative)?\s+Agreement\b/i },
+  { name: 'profit margin',       regex: /\bprofit\s+margins?\b/i },
+  { name: 'factory rebate',      regex: /\b(factory|supplier)\s+rebate(s)?\b/i },
+  { name: 'kickback',            regex: /\bkick[\s-]?back(s)?\b/i },
+];
+
+/**
+ * Assert that a content string does not contain forbidden compensation
+ * vocabulary. Throws BrandLeakError on hit. Apply at the save path of
+ * any field that renders to a buyer-facing or factory-facing surface.
+ *
+ * Internal-only fields (CommissionTracking.notes, AuditLog.changes,
+ * Brand internal config) MUST NOT call this — they legitimately store
+ * the compensation model state.
+ *
+ * @param {string} content - the prose string being saved
+ * @param {string} fieldName - human-readable label for the error msg
+ * @param {string|null} entityId - the artifact's id, for the audit row
+ */
+function assertNoSensitiveCompensationVocab(content, fieldName, entityId = null) {
+  if (!content || typeof content !== 'string') return;
+  for (const { name, regex } of SENSITIVE_COMPENSATION_PATTERNS) {
+    const match = content.match(regex);
+    if (match) {
+      throw new BrandLeakError(
+        `Sensitive vocabulary refused: ${fieldName} contains "${match[0]}" (compensation / margin language). This field renders to buyer-facing or factory-facing output. Rephrase using neutral language — e.g. "supplier sheet price", "buyer-ready FOB", "agreed rate". Hit pattern: ${name}.`,
+        { leakField: fieldName, entityId }
+      );
+    }
+  }
+}
+
 module.exports = {
   assertBrandSafe,
   assertNoForeignMarkers,
+  assertNoSensitiveCompensationVocab,
   resolveBrandOrThrow,
   assertResilientNotSH,
   isResilient,
@@ -216,4 +281,5 @@ module.exports = {
   FW_MARKERS,
   HH_MARKERS,
   RESILIENT_PRODUCT_SLUGS,
+  SENSITIVE_COMPENSATION_PATTERNS,
 };

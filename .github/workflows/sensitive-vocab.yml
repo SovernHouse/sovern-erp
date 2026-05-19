@@ -1,0 +1,36 @@
+name: Sensitive Vocabulary Scan
+
+# Phase 4.28i — defense in depth alongside the pre-commit hook.
+# Pre-commit catches leaks before they ever reach a remote. This CI
+# workflow catches anything that slipped past a local hook (e.g. a push
+# from a fresh clone where install-hooks.js hadn't run, or --no-verify
+# was used). Failing the workflow stops the PR / push branch from
+# merging into main with leaked vocabulary.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  scan:
+    name: Scan for compensation / commission / markup vocabulary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run full-repo scan
+        run: node scripts/check-sensitive-vocab.js
+
+      - name: Summarise on success
+        if: success()
+        run: echo "Sensitive vocabulary scan passed. Buyer-facing and factory-facing source surfaces are clean."

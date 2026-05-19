@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+# Phase 4.28i — sensitive vocabulary pre-commit hook.
+#
+# Runs scripts/check-sensitive-vocab.js --staged on the in-flight diff.
+# If any forbidden compensation / commission / markup / margin language
+# appears in non-allowlisted files, the commit is refused with a clear
+# diagnostic pointing at the offending file:line:pattern.
+#
+# Install: `npm run hooks:install` (added in root package.json), or
+# manually: `cp scripts/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+node "$REPO_ROOT/scripts/check-sensitive-vocab.js" --staged
+status=$?
+
+if [ $status -ne 0 ]; then
+  echo ""
+  echo "Commit refused. To override (emergency only, leaves a paper trail in git log):"
+  echo "    git commit --no-verify"
+  echo ""
+  exit $status
+fi
+
+exit 0
