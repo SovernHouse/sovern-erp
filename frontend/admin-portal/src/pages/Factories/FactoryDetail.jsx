@@ -35,15 +35,21 @@ export default function FactoryDetail() {
       const res = await factoriesAPI.getById(id)
       setFactory(res.data)
 
-      const [productsRes, posRes, contactsRes] = await Promise.all([
+      // Phase 4.28t (2026-05-19): switched Promise.all → allSettled so a
+      // single broken related-data endpoint doesn't blank the whole
+      // page. Before this fix, a missing /factories/:id/purchase-orders
+      // route 404'd and bounced the user back to /factories with a
+      // misleading 'Failed to load factory' toast — even though the
+      // factory itself loaded fine.
+      const [productsRes, posRes, contactsRes] = await Promise.allSettled([
         factoriesAPI.getProducts(id),
         factoriesAPI.getPurchaseOrders(id),
         api.get(`/crm/contacts?factoryId=${id}&isActive=true&limit=100`),
       ])
 
-      setProducts(productsRes.data || [])
-      setPurchaseOrders(posRes.data || [])
-      setContacts(contactsRes.data || [])
+      setProducts(productsRes.status === 'fulfilled' ? (productsRes.value.data || []) : [])
+      setPurchaseOrders(posRes.status === 'fulfilled' ? (posRes.value.data || []) : [])
+      setContacts(contactsRes.status === 'fulfilled' ? (contactsRes.value.data || []) : [])
     } catch (error) {
       toast.error('Failed to load factory')
       navigate('/factories')

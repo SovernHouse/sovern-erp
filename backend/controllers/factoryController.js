@@ -142,6 +142,42 @@ const getProducts = async (req, res, next) => {
   }
 };
 
+// Phase 4.28t (2026-05-19): related-data endpoint matching the Odoo
+// detail-page pattern. The admin FactoryDetail.jsx already calls this
+// in its Promise.all batch; before this commit it 404'd and bounced
+// the whole page back to the factories list. Brand-scope honoured via
+// req.brandScope.where when present.
+const getPurchaseOrders = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 20 } = req.query;
+    const { offset } = getPagination(page, limit);
+
+    const factory = await db.Factory.findByPk(id);
+    if (!factory) {
+      throw new NotFoundError('Factory not found');
+    }
+
+    const where = { ...(req.brandScope?.where || {}), factoryId: id };
+    const [count, rows] = await Promise.all([
+      db.PurchaseOrder.count({ where }),
+      db.PurchaseOrder.findAll({
+        where,
+        include: [
+          { model: db.SalesOrder, as: 'salesOrder', attributes: ['id', 'orderNumber'] },
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['createdAt', 'DESC']],
+      }),
+    ]);
+
+    res.json(getPaginatedResponse(rows, count, parseInt(page), parseInt(limit)));
+  } catch (error) {
+    next(error);
+  }
+};
+
 const updatePrices = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -305,6 +341,7 @@ module.exports = {
   update,
   delete: delete_,
   getProducts,
+  getPurchaseOrders,
   updatePrices,
   getPerformance
 };

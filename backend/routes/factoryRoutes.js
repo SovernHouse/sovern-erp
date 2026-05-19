@@ -46,6 +46,12 @@ router.delete('/:id', requireAuth, requireAny('factories'), factoryController.de
 
 router.get('/:id/products', requireAuth, factoryController.getProducts);
 
+// Phase 4.28t: related-data Odoo endpoint. Admin FactoryDetail.jsx
+// expected this to exist; before this commit the missing route 404'd
+// and the Promise.all on the detail page rejected, redirecting users
+// back to /factories with "Failed to load factory".
+router.get('/:id/purchase-orders', requireAuth, factoryController.getPurchaseOrders);
+
 router.post('/:id/update-prices', requireAuth, requireAny('factories'),
   body('prices').isArray(),
   handleValidationErrors,
