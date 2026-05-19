@@ -171,21 +171,23 @@ async function renderPriceListPdf(priceList, opts = {}) {
       doc.fontSize(14).font(fonts.bodyBold).fillColor(tokens.ink || '#0F172A')
          .text(priceList.name || '(unnamed)', PAGE_MARGIN, PAGE_MARGIN + 104);
 
-      // ── Meta block (2 columns)
+      // ── Meta block (2 columns, auto-height rows)
       //
-      // Each entry is rendered as a stacked label + value pair. The
-      // previous version used a fixed 18pt row advance and no width on
-      // the value, so the value (font 11, line height ~14pt) bled into
-      // the next row's label, and long values like "FlorWay SDN. BHD"
-      // ran past the column boundary into the next cell. Alex feedback
-      // 2026-05-17: meta rows are too small / running together.
-      //
-      // Fix: explicit width on label and value, ellipsis on overflow so
-      // the value stays on one line, and a 30pt row advance so the
-      // 22pt-tall label/value stack never overlaps the next row.
+      // 2026-05-19 Alex feedback: the Supplier cell on the IronLite HH
+      // list rendered "Anhui HanHua Building Materials Technology Co.,
+      // Ltd." (52 chars) into a single-line cell with ellipsis, and
+      // visually it ran into the description text below. Fix: drop
+      // lineBreak:false on the value, measure each cell's actual
+      // rendered height with heightOfString, advance y by the tallest
+      // cell in each 2-column row plus padding. Every meta cell now
+      // grows to fit its content instead of clipping with ellipsis.
       const metaY = PAGE_MARGIN + 134;
       const colWidth = pageWidth / 2 - 10;
-      const META_ROW_GAP = 30;
+      const META_LABEL_H = 11;     // label font size + descent
+      const META_VALUE_FONT = 11;  // value font size (bold)
+      const META_ROW_PAD = 10;     // vertical gap after each row
+      const META_MIN_ROW_H = 22;   // floor so empty/short cells don't squash
+
       const meta = [
         ['Currency',  priceList.currencyCode || 'USD'],
         ['Valid from', fmtDate(priceList.validFrom)],
@@ -205,19 +207,39 @@ async function renderPriceListPdf(priceList, opts = {}) {
         ]);
       }
 
+      // Group meta cells into rows of 2 columns. Each row's height is
+      // max(value heights in the row) + label height + padding. Cells
+      // wrap to multiple lines if needed (e.g. long supplier names).
       let y = metaY;
-      meta.forEach(([label, value], idx) => {
-        const col = idx % 2;
-        const x = PAGE_MARGIN + col * (colWidth + 20);
-        if (col === 0 && idx > 0) y += META_ROW_GAP;
-        doc.fontSize(8).fillColor(tokens.steel || '#64748B').font(fonts.body)
-           .text(label.toUpperCase(), x, y, { width: colWidth, lineBreak: false });
-        doc.fontSize(11).fillColor(tokens.ink || '#0F172A').font(fonts.bodyBold)
-           .text(String(value), x, y + 11, { width: colWidth, lineBreak: false, ellipsis: true });
-      });
+      for (let i = 0; i < meta.length; i += 2) {
+        const rowCells = meta.slice(i, i + 2);
+
+        // First pass — measure each value cell's height at the value font.
+        let maxValueH = 0;
+        for (const [, value] of rowCells) {
+          doc.font(fonts.bodyBold).fontSize(META_VALUE_FONT);
+          const h = doc.heightOfString(String(value), { width: colWidth });
+          if (h > maxValueH) maxValueH = h;
+        }
+        const rowH = Math.max(META_MIN_ROW_H, META_LABEL_H + maxValueH);
+
+        // Second pass — render label (top) + value (under label) in each col.
+        for (let c = 0; c < rowCells.length; c++) {
+          const [label, value] = rowCells[c];
+          const x = PAGE_MARGIN + c * (colWidth + 20);
+          doc.fontSize(8).fillColor(tokens.steel || '#64748B').font(fonts.body)
+             .text(label.toUpperCase(), x, y, { width: colWidth, lineBreak: false });
+          doc.fontSize(META_VALUE_FONT).fillColor(tokens.ink || '#0F172A').font(fonts.bodyBold)
+             .text(String(value), x, y + META_LABEL_H, { width: colWidth });
+        }
+        y += rowH + META_ROW_PAD;
+      }
 
       if (priceList.description) {
-        y += 28;
+        // y already points at the bottom of the meta block + standard
+        // row padding. Add a small extra gap before the description so
+        // the two blocks read as separate sections.
+        y += 8;
         doc.fontSize(9).fillColor(tokens.steel || '#475569').font(fonts.body)
            .text(priceList.description, PAGE_MARGIN, y, { width: pageWidth });
         y += doc.heightOfString(priceList.description, { width: pageWidth });
