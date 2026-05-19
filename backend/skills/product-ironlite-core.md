@@ -40,7 +40,11 @@ The construction headline used in customer materials:
 |---|---|
 | **Default plank dimension** | 180 mm x 1220 mm |
 | **Total thickness range** | 6.5 mm to 12.0 mm |
-| **Wear layer** | 0.5 mm (approximately 20 mil) |
+| **Wear layer** | **50S = 0.5 mm = 20 mil.** Conversion key: 100S = 1 mm. |
+| **AC rating** | **AC4 / Class 32 (commercial light).** Per Alice via WeChat 2026-05-19, applies when wear layer is 50S. |
+| **Surface finish** | **EIR / Embossed.** Standard across all nine SKUs (Alice, 2026-05-19). |
+| **Click system** | **Drop-down click.** Standard across all nine SKUs. |
+| **Core construction (canonical)** | **50S SPC wear + WPC foam middle + 50S SPC stability + 1 mm IXPE underlay bonded.** Mixed three-layer rigid core; the 100S notation = 1 mm. |
 | **Core density** | 1,200 kg/m³ |
 | **Conventional SPC density** | 2,050 kg/m³ |
 | **Weight reduction vs SPC** | 41% lighter |
@@ -48,6 +52,30 @@ The construction headline used in customer materials:
 | **Container yield uplift vs SPC** | 1.7x more m² per HQ at the same weight payload |
 | **Approximate freight saving** | $0.76/m² lower ocean freight vs SPC |
 | **Wear layer commercial rating** | Commercial-grade (see `product-flooring-industry.md`) |
+| **HS Code** | 3918.10 (PVC vinyl flooring) |
+
+### Certifications (confirmed by Alice, 2026-05-19)
+
+| Certification | Status | Notes |
+|---|---|---|
+| **FloorScore** | Certified | Issuer: SCS Global Services |
+| **GreenGuard** | Certified | Issuer: UL Environment |
+| **CARB2** | Claimed | Factory says yes; **no certificate on file** — surface as a verifiable claim, not a documented credential. Request the certificate before any buyer asks for paperwork. |
+| **CE** | Certified | Issuer: European Conformity |
+
+### AI directive — capture supplier confirmations into Product specs
+
+When the operator shares supplier-confirmed product details over chat (WeChat
+exports, gmail forwards, screenshots of WeChat conversations), **immediately
+propose an `update_product` call** that writes the confirmed values to
+`Product.specifications` (JSON: thickness, width, length, material, finish,
+color, wearLayer, acRating, species, grade, construction, clickSystem) and/or
+`Product.certifications` (JSON array of `{name, issuer, expiresAt, note}`).
+Don't leave that information stranded in chat. The 2026-05-19 incident:
+Alice confirmed construction, finish, AC rating, click system, and four
+certifications, and the AI didn't write any of it to the product row —
+the price-list PDF rendered without crucial product info because the
+catalog was empty.
 
 ### The Nine-SKU Lineup
 
