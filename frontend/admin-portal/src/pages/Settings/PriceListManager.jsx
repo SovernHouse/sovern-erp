@@ -87,7 +87,10 @@ const PriceListManager = () => {
   //
   // Phase 4.28n: new PriceLists pre-fill with the standard Incoterm
   // flexibility note. Editable / clearable per list.
-  const DEFAULT_FOOTER_NOTES = 'DDP, CIF available upon request'
+  const DEFAULT_FOOTER_NOTES =
+    'Payment: 30% T/T deposit, 70% before shipment.\n'
+    + 'DDP, CIF available upon request.\n'
+    + 'Lead times exclude ocean freight.'
   const [footerNotes, setFooterNotes] = useState(DEFAULT_FOOTER_NOTES)
 
   useEffect(() => {

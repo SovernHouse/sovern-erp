@@ -128,11 +128,14 @@ describe('Phase 4.28l — IronLite origin-specific SKU split', () => {
   });
 
   test('FW PriceList items now show ILMY-* SKUs', async () => {
+    // 4.28o: '(Malaysia)' / '(China)' suffix dropped from product names
+    // — origin is encoded in the SKU prefix, the parenthetical was
+    // redundant. Just assert the SKU pattern + that the name is non-empty.
     const items = await db.PriceListItem.findAll({ where: { priceListId: FW_PRICE_LIST } });
     expect(items.length).toBe(9);
     for (const it of items) {
       expect(it.sku).toMatch(/^ILMY-180x1220-\d+(\.\d+)?mm$/);
-      expect(it.productName).toMatch(/Malaysia/);
+      expect(it.productName).toMatch(/IronLite Core/);
     }
   });
 
@@ -141,7 +144,7 @@ describe('Phase 4.28l — IronLite origin-specific SKU split', () => {
     expect(items.length).toBe(9);
     for (const it of items) {
       expect(it.sku).toMatch(/^ILCN-180x1220-\d+(\.\d+)?mm$/);
-      expect(it.productName).toMatch(/China/);
+      expect(it.productName).toMatch(/IronLite Core/);
     }
   });
 

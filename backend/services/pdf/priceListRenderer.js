@@ -311,13 +311,21 @@ async function renderPriceListPdf(priceList, opts = {}) {
       for (const c of visibleCols) {
         const opts = { width: c.width - 12 };
         if (c.align === 'right') opts.align = 'right';
-        // Main label
+        // Phase 4.28o (Alex 2026-05-19): on the price column specifically,
+        // CENTER the FOB PRICE label so the port subline below it can sit
+        // dead-under the label rather than against the right edge.
+        const labelOpts = (c.kind === 'std' && c.key === 'price' && portSubline)
+          ? { ...opts, align: 'center' }
+          : opts;
+        // Main label — primary brand colour, centred for the price column.
         doc.fillColor(tokens.primaryColor).fontSize(9).font(fonts.bodyBold);
-        doc.text(c.header, c.x + 6, tableTop + 6, opts);
-        // Port subline under FOB PRICE only (other columns stay clean).
+        doc.text(c.header, c.x + 6, tableTop + 6, labelOpts);
+        // Port subline under FOB PRICE only. Same colour weight as the
+        // main label (Alex wants it black, matching FOB PRICE), bold, one
+        // size smaller, centred under the label.
         if (c.kind === 'std' && c.key === 'price' && portSubline) {
-          doc.fillColor(tokens.steel || '#64748B').fontSize(7).font(fonts.body);
-          doc.text(portSubline, c.x + 6, tableTop + 18, opts);
+          doc.fillColor(tokens.primaryColor).fontSize(8).font(fonts.bodyBold);
+          doc.text(portSubline, c.x + 6, tableTop + 18, { ...opts, align: 'center' });
         }
       }
 

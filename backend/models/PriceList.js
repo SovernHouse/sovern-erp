@@ -107,7 +107,10 @@ module.exports = (sequelize) => {
     footerNotes: {
       type: DataTypes.TEXT,
       allowNull: true,
-      defaultValue: 'DDP, CIF available upon request',
+      defaultValue:
+        'Payment: 30% T/T deposit, 70% before shipment.\n'
+        + 'DDP, CIF available upon request.\n'
+        + 'Lead times exclude ocean freight.',
     },
     createdBy: {
       type: DataTypes.UUID,

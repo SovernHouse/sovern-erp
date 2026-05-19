@@ -107,7 +107,9 @@ async function migrate428lIronliteOriginSkus(db) {
     const oldRow = await db.Product.findOne({ where: { sku: OLD_SKU(t) } });
     let cnProductId = null;
     if (oldRow) {
-      const cnName = `IronLite Core 180mm x 1220mm x ${t}mm Engineered SPC (China)`;
+      // 4.28o (2026-05-19): the parenthetical "(China)" is redundant —
+      // origin is encoded in the SKU prefix ILCN-. Drop from the name.
+      const cnName = `IronLite Core 180mm x 1220mm x ${t}mm Engineered SPC`;
       await oldRow.update({
         sku: CN_SKU(t),
         name: cnName,
@@ -137,7 +139,8 @@ async function migrate428lIronliteOriginSkus(db) {
     if (existingMy) {
       myProductId = existingMy.id;
     } else {
-      const myName = `IronLite Core 180mm x 1220mm x ${t}mm Engineered SPC (Malaysia)`;
+      // 4.28o: same — drop the "(Malaysia)" suffix. SKU prefix ILMY- says it.
+      const myName = `IronLite Core 180mm x 1220mm x ${t}mm Engineered SPC`;
       const newRow = await db.Product.create({
         id: uuidv4(),
         sku: MY_SKU(t),
@@ -172,7 +175,7 @@ async function migrate428lIronliteOriginSkus(db) {
         await it.update({
           productId: myProductId,
           sku: MY_SKU(t),
-          productName: `IronLite Core 180mm x 1220mm x ${t}mm Engineered SPC (Malaysia)`,
+          productName: `IronLite Core 180mm x 1220mm x ${t}mm Engineered SPC`,
         });
         summary.fwItemsRepointed++;
       }
