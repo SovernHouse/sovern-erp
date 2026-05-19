@@ -877,6 +877,19 @@ db.sequelize.authenticate()
       logger.warn('[boot] 4.28k display_order backfill skipped:', e.message);
     }
 
+    // Phase 4.28l: split the 9 IronLite Products into origin-specific
+    // SKUs — IL-* becomes ILCN-* (HH, China origin) + ILMY-* (FW,
+    // Malaysia origin). Repoints FW PriceList items at the new ILMY
+    // catalog rows and HH items at the renamed ILCN rows. Aligns
+    // Product.brand_code with Product.origin_country which were
+    // previously mismatched. Sentinel-guarded.
+    try {
+      const { migrate428lIronliteOriginSkus } = require('./services/migrate428lIronliteOriginSkus');
+      await migrate428lIronliteOriginSkus(db);
+    } catch (e) {
+      logger.warn('[boot] 4.28l IronLite origin SKU split skipped:', e.message);
+    }
+
     // Phase 4.9 C-2: seed initial tariff rates (CN->US, MY->US) per
     // Alex's HanHua factory note. Idempotent on (origin, destination,
     // effectiveFrom). Future rate changes are made via the admin UI.

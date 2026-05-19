@@ -51,17 +51,23 @@ The construction headline used in customer materials:
 
 ### The Nine-SKU Lineup
 
-| SKU | Total Thickness | Core Layer | Pieces / Box | m² / Box | m² / HQ |
-|---|---|---|---|---|---|
-| IL-180x1220-6.5mm | 6.5 mm | 5.5 mm | 11 | 2.42 | 3,140 |
-| IL-180x1220-7.0mm | 7.0 mm | 6.0 mm | 11 | 2.42 | 2,899 |
-| IL-180x1220-7.5mm | 7.5 mm | 6.5 mm | 9 | 1.98 | 2,569 |
-| IL-180x1220-8.0mm | 8.0 mm | 7.0 mm | 8 | 1.76 | 2,460 |
-| IL-180x1220-8.5mm | 8.5 mm | 7.5 mm | 8 | 1.76 | 2,284 |
-| IL-180x1220-9.0mm | 9.0 mm | 8.0 mm | 7 | 1.54 | 2,152 |
-| IL-180x1220-10.0mm | 10.0 mm | 9.0 mm | 7 | 1.54 | 1,998 |
-| IL-180x1220-11.0mm | 11.0 mm | 10.0 mm | 6 | 1.32 | 1,845 |
-| IL-180x1220-12.0mm | 12.0 mm | 11.0 mm | 6 | 1.32 | 1,713 |
+Each thickness ships from two production lines. Pick the SKU prefix by
+origin: **ILMY-*** for FlorWay (Malaysia, FW brand) and **ILCN-*** for
+Anhui HanHua (China, HH brand). The pre-2026-05-19 unified `IL-*` SKUs
+were retired during Phase 4.28l — the AI must use the origin-prefixed
+forms in every new outreach, quotation, and price list.
+
+| Malaysia SKU (FW) | China SKU (HH) | Total Thickness | Core Layer | Pieces / Box | m² / Box | m² / HQ |
+|---|---|---|---|---|---|---|
+| ILMY-180x1220-6.5mm  | ILCN-180x1220-6.5mm  | 6.5 mm  | 5.5 mm  | 11 | 2.42 | 3,140 |
+| ILMY-180x1220-7.0mm  | ILCN-180x1220-7.0mm  | 7.0 mm  | 6.0 mm  | 11 | 2.42 | 2,899 |
+| ILMY-180x1220-7.5mm  | ILCN-180x1220-7.5mm  | 7.5 mm  | 6.5 mm  | 9  | 1.98 | 2,569 |
+| ILMY-180x1220-8.0mm  | ILCN-180x1220-8.0mm  | 8.0 mm  | 7.0 mm  | 8  | 1.76 | 2,460 |
+| ILMY-180x1220-8.5mm  | ILCN-180x1220-8.5mm  | 8.5 mm  | 7.5 mm  | 8  | 1.76 | 2,284 |
+| ILMY-180x1220-9.0mm  | ILCN-180x1220-9.0mm  | 9.0 mm  | 8.0 mm  | 7  | 1.54 | 2,152 |
+| ILMY-180x1220-10.0mm | ILCN-180x1220-10.0mm | 10.0 mm | 9.0 mm  | 7  | 1.54 | 1,998 |
+| ILMY-180x1220-11.0mm | ILCN-180x1220-11.0mm | 11.0 mm | 10.0 mm | 6  | 1.32 | 1,845 |
+| ILMY-180x1220-12.0mm | ILCN-180x1220-12.0mm | 12.0 mm | 11.0 mm | 6  | 1.32 | 1,713 |
 
 All boards: 180 mm x 1220 mm plank, 0.5 mm wear layer, 1 mm IXPE underlay bonded.
 
