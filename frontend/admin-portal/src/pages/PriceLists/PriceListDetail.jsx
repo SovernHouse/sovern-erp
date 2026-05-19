@@ -284,7 +284,7 @@ function ItemsTab({ items, currency }) {
             <th className="px-3 py-2 text-center font-semibold text-slate-700">Unit</th>
             <th className="px-3 py-2 text-right font-semibold text-slate-700">MOQ</th>
             <th className="px-3 py-2 text-right font-semibold text-slate-700">Lead (d)</th>
-            <th className="px-3 py-2 text-right font-semibold text-slate-700">Cost</th>
+            <th className="px-3 py-2 text-right font-semibold text-slate-700">FOB</th>
             <th className="px-3 py-2 text-right font-semibold text-slate-700">Selling</th>
           </tr>
         </thead>

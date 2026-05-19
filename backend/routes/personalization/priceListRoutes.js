@@ -318,7 +318,7 @@ router.get('/price-lists/:id/export', requireAuth, async (req, res, next) => {
       { key: 'sku', label: 'SKU', width: 15 },
       { key: 'productName', label: 'Product Name', width: 30 },
       { key: 'sellingPrice', label: 'Selling Price', width: 15 },
-      { key: 'costPrice', label: 'Cost Price', width: 15 },
+      { key: 'costPrice', label: 'FOB Price', width: 15 },
       { key: 'minimumOrder', label: 'Min Order', width: 12 },
       { key: 'leadTimeDays', label: 'Lead Time (days)', width: 15 },
       { key: 'unit', label: 'Unit', width: 10 },
@@ -362,7 +362,7 @@ router.post('/price-lists/:id/import', requireAuth, requireRole('admin'), upload
         else if (lower.includes('sku')) { item.sku = value; }
         else if (lower.includes('product') && lower.includes('name')) { item.productName = value; }
         else if (lower.includes('selling') || lower === 'price') { item.sellingPrice = parseFloat(value) || 0; }
-        else if (lower.includes('cost')) { item.costPrice = parseFloat(value) || 0; }
+        else if (lower.includes('fob') || lower.includes('cost')) { item.costPrice = parseFloat(value) || 0; }
         else if (lower.includes('min')) { item.minimumOrder = parseFloat(value) || 0; }
         else if (lower.includes('lead')) { item.leadTimeDays = parseInt(value) || 0; }
         else if (lower.includes('unit')) { item.unit = value; }

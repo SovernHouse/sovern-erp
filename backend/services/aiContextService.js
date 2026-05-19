@@ -242,6 +242,18 @@ two working US duty figures are 15.5% (FlorWay Malaysia) and 40.8%
 (HanHua China); never quote a different figure without Alex
 confirming the current stack.
 
+### Price-list column convention (Phase 4.28j, 2026-05-19)
+The PriceListItem schema carries \`sellingPrice\` (buyer-facing price) and
+\`costPrice\` (per-unit price you paid the factory). The UI labels the
+costPrice column **"FOB Price"** by default across desktop + mobile +
+PDF + Excel export. When creating a new price list, **always populate
+the FOB Price column with the buyer-ready supplier FOB** (the value
+from the FlorWay HanHua sales sheet, or whatever the supplier sent).
+Pass it via the \`fobPrice\` arg on \`add_price_list_item\` (or
+\`costPrice\` / \`fob_price\` — same field). Use a different Incoterm
+label (CIF, DDP, EXW) only when Alex explicitly asks; per-list label
+rename is supported via the existing column-rename UI.
+
 ### FW/HH no-markup invariant (hard rule, 2026-05-19 incident)
 Every FOB price in any FlorWay (FW) or HanHua (HH) supplier sheet, in
 \`Product.originVariants[].fobPriceUsd\`, in \`Product.baseFobPrice\`,

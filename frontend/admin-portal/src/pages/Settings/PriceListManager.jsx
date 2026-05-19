@@ -27,7 +27,7 @@ const STANDARD_ITEM_COLS = [
   { k: 'sku',         label: 'SKU',           field: 'sku',          type: 'text',   align: 'left',  required: true },
   { k: 'productName', label: 'Product Name',  field: 'productName',  type: 'text',   align: 'left',  required: true },
   { k: 'price',       label: 'Selling Price', field: 'sellingPrice', type: 'number', align: 'right', required: true, step: '0.01' },
-  { k: 'cost',        label: 'Cost Price',    field: 'costPrice',    type: 'number', align: 'right', step: '0.01' },
+  { k: 'cost',        label: 'FOB Price',     field: 'costPrice',    type: 'number', align: 'right', step: '0.01' },
   { k: 'moq',         label: 'Min Order',     field: 'minimumOrder', type: 'number', align: 'right', step: '1' },
   { k: 'lead',        label: 'Lead Time',     field: 'leadTimeDays', type: 'number', align: 'right', step: '1' },
   { k: 'unit',        label: 'Unit',          field: 'unit',         type: 'text',   align: 'left' },
@@ -604,7 +604,7 @@ const PriceListManager = () => {
                     <th className="px-4 py-3 text-left font-semibold text-slate-900 text-sm">SKU</th>
                     <th className="px-4 py-3 text-left font-semibold text-slate-900 text-sm">Product Name</th>
                     <th className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">Selling Price</th>
-                    <th className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">Cost Price</th>
+                    <th className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">FOB Price</th>
                     <th className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">Min Order</th>
                     <th className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">Lead Time (days)</th>
                     <th className="px-4 py-3 text-left font-semibold text-slate-900 text-sm">Unit</th>
@@ -786,13 +786,14 @@ const PriceListManager = () => {
                   renamed. Toggle affects BOTH the items table below
                   AND the generated PDF (where applicable). 2026-05-17
                   feedback: international trade uses Incoterm-style
-                  prices (FOB, CIF, DDP) so "Cost Price" needs to be
-                  free-renameable per list. */}
+                  prices (FOB, CIF, DDP) so the FOB column needs to be
+                  free-renameable per list. 2026-05-19: default label
+                  is now "FOB Price" (was "Cost Price"). */}
               <div>
                 <h3 className="text-lg font-semibold text-slate-900 mb-1">Columns</h3>
                 <p className="text-xs text-slate-500 mb-3 italic">
                   Show or hide each standard column. Rename a column to fit your trade vocabulary
-                  (e.g. <strong>Cost Price → FOB</strong>, <strong>Min Order → Min QTY</strong>).
+                  (e.g. <strong>FOB Price → CIF</strong>, <strong>Min Order → Min QTY</strong>).
                   SKU, Product Name, and Selling Price cannot be hidden but can be renamed.
                 </p>
                 <div className="border border-slate-200 rounded-lg divide-y divide-slate-200 bg-white">
@@ -1134,7 +1135,7 @@ const PriceListManager = () => {
 
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <p className="text-xs text-blue-900">
-                  <strong>Note:</strong> Ensure your file contains columns: SKU, Product Name, Selling Price, and optionally Cost Price, Min Order, Lead Time Days, Unit, Notes.
+                  <strong>Note:</strong> Ensure your file contains columns: SKU, Product Name, Selling Price, and optionally FOB Price (also accepts "Cost Price" for legacy files), Min Order, Lead Time Days, Unit, Notes.
                 </p>
               </div>
             </div>

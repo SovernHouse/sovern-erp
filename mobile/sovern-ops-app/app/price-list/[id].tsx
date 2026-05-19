@@ -158,7 +158,7 @@ export default function PriceListDetailScreen() {
                 <Text style={styles.itemMeta}>{it.unit || 'sqm'}</Text>
                 {it.minimumOrder != null ? <Text style={styles.itemMeta}>· MOQ {it.minimumOrder}</Text> : null}
                 {it.leadTimeDays != null ? <Text style={styles.itemMeta}>· {it.leadTimeDays}d lead</Text> : null}
-                {it.costPrice != null ? <Text style={styles.itemMeta}>· cost {fmtMoney(it.costPrice, currency)}</Text> : null}
+                {it.costPrice != null ? <Text style={styles.itemMeta}>· FOB {fmtMoney(it.costPrice, currency)}</Text> : null}
               </View>
             </View>
           ))}

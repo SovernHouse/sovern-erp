@@ -4557,7 +4557,10 @@ async function callTool(name, args) {
         sku:          resolvedSku,
         productName:  resolvedName,
         sellingPrice: num(args.sellingPrice ?? args.selling_price),
-        costPrice:    num(args.costPrice    ?? args.cost_price),
+        // Phase 4.28j (2026-05-19): the costPrice column is labeled
+        // "FOB Price" by default in the UI; accept fobPrice / fob_price
+        // as aliases so the AI can use the buyer-facing terminology.
+        costPrice:    num(args.costPrice    ?? args.cost_price ?? args.fobPrice ?? args.fob_price),
         minimumOrder: num(args.minimumOrder ?? args.minimum_order),
         leadTimeDays: int(args.leadTimeDays ?? args.lead_time_days),
         margin:       num(args.margin),
@@ -7357,7 +7360,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'add_price_list_item',
-    description: 'Phase 4.27 — Add a PriceListItem to an existing PriceList (super-admin only). priceListId is required. productId is optional — entries can be free-form (sku + productName) for SKUs that are not in the catalog yet. Writes ai_assistant_add_price_list_item to AuditLog.',
+    description: 'Phase 4.27 — Add a PriceListItem to an existing PriceList (super-admin only). priceListId is required. productId is optional — entries can be free-form (sku + productName) for SKUs that are not in the catalog yet. **Default by Phase 4.28j (2026-05-19): the underlying costPrice column is labeled "FOB Price" in every UI. When populating a new list, use fobPrice as the buyer-facing FOB value (the supplier sheet number) unless the user explicitly asks for a different Incoterm.** Writes ai_assistant_add_price_list_item to AuditLog.',
     inputSchema: {
       type: 'object',
       required: ['priceListId'],
@@ -7366,11 +7369,12 @@ const TOOL_DEFS = [
         productId:    { type: 'string', description: 'Optional. UUID of a catalog Product. Omit for free-form items.' },
         sku:          { type: 'string', description: 'Required when productId is omitted; optional otherwise (overrides the catalog SKU display label).' },
         productName:  { type: 'string', description: 'Display name; required when productId is omitted.' },
-        sellingPrice: { type: 'number', description: 'Per-unit selling price in the PriceList currency.' },
-        costPrice:    { type: 'number', description: 'Per-unit cost in the PriceList currency.' },
+        sellingPrice: { type: 'number', description: 'Per-unit selling price in the PriceList currency (what the buyer pays).' },
+        fobPrice:     { type: 'number', description: 'Per-unit FOB Price from the supplier sheet, in the PriceList currency. Default field for cost-side data going forward (Phase 4.28j). Stored on the costPrice column; "costPrice" and "fob_price" are accepted aliases.' },
+        costPrice:    { type: 'number', description: 'Alias for fobPrice. The underlying column name; UI label is "FOB Price".' },
         minimumOrder: { type: 'number' },
         leadTimeDays: { type: 'number' },
-        margin:       { type: 'number', description: 'Decimal margin override (e.g. 0.07 = 7%). Optional.' },
+        margin:       { type: 'number', description: 'Decimal markup override on FW/HH lists this MUST stay null/zero — supplier FOB is already buyer-ready. Only set on SH lists when Alex confirms a per-deal rate.' },
         unit:         { type: 'string', description: 'Unit label (default "sqm").' },
         customColumns:{ type: 'object', description: 'Free-form JSON map keyed by the PriceList.columnDefinitions keys.' },
         notes:        { type: 'string' },
